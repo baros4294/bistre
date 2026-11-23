@@ -107,45 +107,96 @@ fn seed_synthetic_chats(engine: &InProcessEngine, count: u32) -> BistreResult<()
     Ok(())
 }
 
+/// Longest the daemon sleeps before re-reading cron schedules (the app process may edit them).
+const MAX_SCHEDULE_SLEEP: Duration = Duration::from_secs(300);
+/// How long an active-scoped daemon waits, with the window closed and no work, before exiting.
+const IDLE_EXIT_GRACE: Duration = Duration::from_secs(10);
+
+/// Whether the app window has detached, plus a wake-up for anything waiting on that.
+#[derive(Debug, Default)]
+struct ClientState {
+    detached: AtomicBool,
+    changed: Notify,
+}
+
+impl ClientState {
+    fn set_detached(&self, detached: bool) {
+        self.detached.store(detached, Ordering::SeqCst);
+        self.changed.notify_one();
+    }
+}
+
+fn unix_now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+}
+
+/// Earliest `next_run_ms` among enabled cron jobs.
+fn next_cron_due_ms(engine: &InProcessEngine) -> Option<i64> {
+    match engine.storage().list_cron_jobs() {
+        Ok(jobs) => jobs
+            .iter()
+            .filter(|j| j.enabled)
+            .map(|j| j.next_run_ms)
+            .min(),
+        Err(err) => {
+            tracing::warn!(key = err.key.as_key(), "reading cron schedules failed");
+            None
+        }
+    }
+}
+
+/// Event-driven housekeeping: fires due cron jobs and exits an idle active-scoped daemon.
+/// Sleeps until the next cron deadline (at most [`MAX_SCHEDULE_SLEEP`]) and wakes early on
+/// engine events or a client attach/detach; it never polls on a short timer.
 fn spawn_idle_and_cron_task(
-    idle_engine: Arc<InProcessEngine>,
-    idle_shutdown: Arc<Notify>,
-    idle_detached: Arc<AtomicBool>,
+    engine: Arc<InProcessEngine>,
+    shutdown: Arc<Notify>,
+    client: Arc<ClientState>,
     active_scoped: bool,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let mut idle_ticks: u32 = 0;
-        let mut cron_tick: u32 = 0;
+        let mut events = engine.subscribe_events();
         loop {
-            tokio::time::sleep(Duration::from_secs(2)).await;
-            cron_tick = cron_tick.saturating_add(1);
-            if cron_tick.is_multiple_of(8) {
-                let now_ms = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .ok()
-                    .and_then(|d| i64::try_from(d.as_millis()).ok())
-                    .unwrap_or(0);
-                if let Ok(due) =
-                    bistre_core::cron::poll_due_cron_jobs(&idle_engine.storage(), now_ms)
-                    && !due.is_empty()
-                {
+            let now_ms = unix_now_ms();
+            match bistre_core::cron::poll_due_cron_jobs(&engine.storage(), now_ms) {
+                Ok(due) if !due.is_empty() => {
                     tracing::info!(count = due.len(), "daemon triggered scheduled cron jobs");
                 }
+                Ok(_) => {}
+                Err(err) => tracing::warn!(key = err.key.as_key(), "cron poll failed"),
             }
-            if active_scoped
-                && idle_detached.load(Ordering::SeqCst)
-                && idle_engine.active_work_count() == 0
-            {
-                idle_ticks = idle_ticks.saturating_add(1);
-                if idle_ticks >= 5 {
-                    tracing::info!(
-                        "active-scoped daemon idle after window close; shutting down cleanly"
-                    );
-                    idle_shutdown.notify_waiters();
-                    break;
-                }
+            let until_cron = next_cron_due_ms(&engine).map_or(MAX_SCHEDULE_SLEEP, |due| {
+                Duration::from_millis(u64::try_from(due.saturating_sub(now_ms)).unwrap_or(0))
+            });
+            let idle = active_scoped
+                && client.detached.load(Ordering::SeqCst)
+                && engine.active_work_count() == 0;
+            let wait = if idle {
+                until_cron.min(MAX_SCHEDULE_SLEEP).min(IDLE_EXIT_GRACE)
             } else {
-                idle_ticks = 0;
+                until_cron.min(MAX_SCHEDULE_SLEEP)
+            };
+            tokio::select! {
+                () = tokio::time::sleep(wait) => {
+                    let still_idle = active_scoped
+                        && client.detached.load(Ordering::SeqCst)
+                        && engine.active_work_count() == 0;
+                    if idle && still_idle {
+                        tracing::info!(
+                            "active-scoped daemon idle after window close; shutting down cleanly"
+                        );
+                        shutdown.notify_one();
+                        break;
+                    }
+                }
+                recv = events.recv() => {
+                    if matches!(recv, Err(tokio::sync::broadcast::error::RecvError::Closed)) {
+                        break;
+                    }
+                }
+                () = client.changed.notified() => {}
             }
         }
     })
@@ -172,7 +223,8 @@ async fn run_health_check_and_exit(engine: &InProcessEngine) -> ExitCode {
     }
 }
 
-#[tokio::main]
+// Two workers: enough for IPC plus one run, and far less idle RSS than one per core.
+#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> ExitCode {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -254,17 +306,17 @@ async fn main() -> ExitCode {
 
     let endpoint = daemon_ipc_endpoint(&cli.data_dir);
     let shutdown_notify = Arc::new(Notify::new());
-    let client_detached = Arc::new(AtomicBool::new(false));
+    let client_state = Arc::new(ClientState::default());
     let idle_task = spawn_idle_and_cron_task(
         Arc::clone(&engine),
         Arc::clone(&shutdown_notify),
-        Arc::clone(&client_detached),
+        Arc::clone(&client_state),
         cli.active_scoped,
     );
 
     let ipc_engine = Arc::clone(&engine);
     let ipc_endpoint = endpoint.clone();
-    let ipc_detached = Arc::clone(&client_detached);
+    let ipc_detached = Arc::clone(&client_state);
     let ipc_shutdown = Arc::clone(&shutdown_notify);
     let ipc_task = tokio::spawn(async move {
         if let Err(err) =
@@ -337,13 +389,15 @@ fn platform_power_backend() -> Arc<dyn PowerGuardBackend> {
 async fn serve_local_ipc(
     engine: Arc<InProcessEngine>,
     endpoint: &str,
-    client_detached: Arc<AtomicBool>,
+    client_detached: Arc<ClientState>,
     shutdown_notify: Arc<Notify>,
 ) -> BistreResult<()> {
     #[cfg(windows)]
     {
         use tokio::net::windows::named_pipe::ServerOptions;
         let mut first = true;
+        let slots = Arc::new(tokio::sync::Semaphore::new(MAX_IPC_CONNECTIONS));
+        let mut backoff = AcceptBackoff::default();
         loop {
             let server = ServerOptions::new()
                 .first_pipe_instance(first)
@@ -351,12 +405,18 @@ async fn serve_local_ipc(
                 .map_err(|_| BistreError::new(DiagnosticKey::DaemonUnavailable))?;
             first = false;
             if server.connect().await.is_err() {
+                backoff.wait().await;
                 continue;
             }
+            backoff.reset();
+            let Ok(slot) = Arc::clone(&slots).acquire_owned().await else {
+                return Err(BistreError::new(DiagnosticKey::DaemonUnavailable));
+            };
             let eng = Arc::clone(&engine);
             let det = Arc::clone(&client_detached);
             let sd = Arc::clone(&shutdown_notify);
             tokio::spawn(async move {
+                let _slot = slot;
                 let mut conn = server;
                 if let Ok(req) = read_ipc_frame::<_, DaemonRpcRequest>(&mut conn).await {
                     let resp = dispatch_rpc(&eng, req, &det, &sd).await;
@@ -378,14 +438,22 @@ async fn serve_local_ipc(
         // Fail closed: a socket other local users could open must never serve RPCs.
         std::fs::set_permissions(endpoint, std::fs::Permissions::from_mode(0o600))
             .map_err(|_| BistreError::new(DiagnosticKey::DaemonUnavailable))?;
+        let slots = Arc::new(tokio::sync::Semaphore::new(MAX_IPC_CONNECTIONS));
+        let mut backoff = AcceptBackoff::default();
         loop {
             let Ok((mut stream, _)) = listener.accept().await else {
+                backoff.wait().await;
                 continue;
+            };
+            backoff.reset();
+            let Ok(slot) = Arc::clone(&slots).acquire_owned().await else {
+                return Err(BistreError::new(DiagnosticKey::DaemonUnavailable));
             };
             let eng = Arc::clone(&engine);
             let det = Arc::clone(&client_detached);
             let sd = Arc::clone(&shutdown_notify);
             tokio::spawn(async move {
+                let _slot = slot;
                 if let Ok(req) = read_ipc_frame::<_, DaemonRpcRequest>(&mut stream).await {
                     let resp = dispatch_rpc(&eng, req, &det, &sd).await;
                     if let Err(err) = write_ipc_frame(&mut stream, &resp).await {
@@ -397,15 +465,70 @@ async fn serve_local_ipc(
     }
 }
 
+/// Concurrent IPC connections; further clients wait for a slot.
+const MAX_IPC_CONNECTIONS: usize = 16;
+
+/// Exponential backoff (50 ms → 2 s) after failed accepts, so a persistent error cannot spin.
+#[derive(Debug, Default)]
+struct AcceptBackoff {
+    failures: u32,
+}
+
+impl AcceptBackoff {
+    async fn wait(&mut self) {
+        self.failures = self.failures.saturating_add(1);
+        let ms = 50_u64
+            .saturating_mul(1_u64 << self.failures.min(6))
+            .min(2_000);
+        tracing::warn!(failures = self.failures, "IPC accept failed; backing off");
+        tokio::time::sleep(Duration::from_millis(ms)).await;
+    }
+
+    fn reset(&mut self) {
+        self.failures = 0;
+    }
+}
+
+/// Parses RPC params; empty means none, malformed JSON is an error (never silently `null`).
+fn parse_rpc_params(raw: &str) -> Result<serde_json::Value, BistreError> {
+    if raw.trim().is_empty() {
+        return Ok(serde_json::Value::Null);
+    }
+    serde_json::from_str(raw)
+        .map_err(|_| BistreError::with_detail(DiagnosticKey::InvalidInput, "rpc_params_json"))
+}
+
+fn rpc_response(
+    request_id: u64,
+    result: Result<serde_json::Value, BistreError>,
+) -> DaemonRpcResponse {
+    match result {
+        Ok(val) => DaemonRpcResponse {
+            request_id,
+            ok: true,
+            payload_json: val.to_string(),
+            error: None,
+        },
+        Err(err) => DaemonRpcResponse {
+            request_id,
+            ok: false,
+            payload_json: String::new(),
+            error: Some(err),
+        },
+    }
+}
+
 async fn dispatch_rpc(
     engine: &Arc<InProcessEngine>,
     req: DaemonRpcRequest,
-    client_detached: &Arc<AtomicBool>,
+    client_detached: &Arc<ClientState>,
     shutdown_notify: &Arc<Notify>,
 ) -> DaemonRpcResponse {
     let request_id = req.request_id;
-    let params: serde_json::Value =
-        serde_json::from_str(&req.params_json).unwrap_or(serde_json::Value::Null);
+    let params = match parse_rpc_params(&req.params_json) {
+        Ok(v) => v,
+        Err(err) => return rpc_response(request_id, Err(err)),
+    };
 
     let result: Result<serde_json::Value, BistreError> =
         match req.method.as_str() {
@@ -476,18 +599,18 @@ async fn dispatch_rpc(
                     })
             }
             "client_attached" => {
-                client_detached.store(false, Ordering::SeqCst);
+                client_detached.set_detached(false);
                 Ok(serde_json::json!({ "active_work": engine.active_work_count() }))
             }
             "client_detached" => {
-                client_detached.store(true, Ordering::SeqCst);
+                client_detached.set_detached(true);
                 let remaining = engine.active_work_count();
                 Ok(serde_json::json!({ "stay_alive": remaining > 0, "active_work": remaining }))
             }
             "shutdown_if_idle" => {
                 let remaining = engine.active_work_count();
                 if remaining == 0 {
-                    shutdown_notify.notify_waiters();
+                    shutdown_notify.notify_one();
                 }
                 Ok(serde_json::json!({ "shutting_down": remaining == 0, "active_work": remaining }))
             }
@@ -497,20 +620,7 @@ async fn dispatch_rpc(
             )),
         };
 
-    match result {
-        Ok(val) => DaemonRpcResponse {
-            request_id,
-            ok: true,
-            payload_json: val.to_string(),
-            error: None,
-        },
-        Err(err) => DaemonRpcResponse {
-            request_id,
-            ok: false,
-            payload_json: String::new(),
-            error: Some(err),
-        },
-    }
+    rpc_response(request_id, result)
 }
 
 fn default_data_dir() -> PathBuf {
