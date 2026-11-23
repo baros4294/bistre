@@ -7,7 +7,7 @@ extension FolioThreadActions on FolioController {
   void scheduleDraftSave(String text) {
     final tid = _activeThread?.id;
     if (tid == null) return;
-    _draftSaved = false;
+    draftSavedState.value = false;
     _draftDebounce?.cancel();
     _draftDebounce = Timer(const Duration(milliseconds: 220), () async {
       await _persistDraftNow(tid, text);
@@ -24,8 +24,8 @@ extension FolioThreadActions on FolioController {
   Future<void> _persistDraftNow(String threadId, String text) async {
     try {
       await _gateway.saveDraft(threadId, text);
-      _draftSaved = text.isNotEmpty;
-      _notify();
+      if (_disposed) return;
+      draftSavedState.value = text.isNotEmpty;
     } catch (e) {
       _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
       _notify();
@@ -75,7 +75,7 @@ extension FolioThreadActions on FolioController {
       }
       _quotedExcerpt = null;
       _attachments = const <ComposerAttachment>[];
-      _draftSaved = false;
+      draftSavedState.value = false;
       _threads = _withoutPendingDeletes(await _gateway.listThreads());
       _health = await _gateway.getHealth();
       _notify();

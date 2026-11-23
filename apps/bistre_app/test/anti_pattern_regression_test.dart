@@ -391,42 +391,55 @@ void main() {
     await gw.shutdown();
   });
 
-  testWidgets('toasts and search keystrokes never rebuild the sidebar', (
-    WidgetTester tester,
-  ) async {
-    tester.view.physicalSize = const Size(1320, 820);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final (ctrl, gw, l10n) = await boot();
-    await tester.pumpWidget(
-      BistreApp(l10nController: l10n, folioController: ctrl),
-    );
-    await tester.pumpAndSettle();
-    expect(find.byType(FolioSidebar), findsOneWidget);
+  testWidgets(
+    'toasts, search, drafts, and the sidebar filter rebuild only their own widgets',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1320, 820);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final (ctrl, gw, l10n) = await boot();
+      await tester.pumpWidget(
+        BistreApp(l10nController: l10n, folioController: ctrl),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(FolioSidebar), findsOneWidget);
 
-    var sidebarBuilds = 0;
-    final previous = debugOnRebuildDirtyWidget;
-    debugOnRebuildDirtyWidget = (element, builtOnce) {
-      if (element.widget is FolioSidebar) sidebarBuilds++;
-    };
-    addTearDown(() => debugOnRebuildDirtyWidget = previous);
+      var sidebarBuilds = 0;
+      var feedBuilds = 0;
+      final previous = debugOnRebuildDirtyWidget;
+      debugOnRebuildDirtyWidget = (element, builtOnce) {
+        if (element.widget is FolioSidebar) sidebarBuilds++;
+        if (element.widget is FolioMessageFeed) feedBuilds++;
+      };
+      addTearDown(() => debugOnRebuildDirtyWidget = previous);
 
-    ctrl.showToast(L10nKey.toastCopied);
-    await tester.pump();
-    expect(find.text(l10n.t(L10nKey.toastCopied)), findsOneWidget);
-    ctrl.dismissToast();
-    await tester.pump();
-    for (final q in <String>['h', 'he', 'hel']) {
-      unawaited(ctrl.updateSearch(q));
+      ctrl.showToast(L10nKey.toastCopied);
       await tester.pump();
-    }
-    await tester.pump(FolioController.searchDebounce);
-    await tester.pumpAndSettle();
-    expect(ctrl.searchQuery, 'hel');
-    expect(sidebarBuilds, 0);
+      expect(find.text(l10n.t(L10nKey.toastCopied)), findsOneWidget);
+      ctrl.dismissToast();
+      await tester.pump();
+      for (final q in <String>['h', 'he', 'hel']) {
+        unawaited(ctrl.updateSearch(q));
+        await tester.pump();
+      }
+      await tester.pump(FolioController.searchDebounce);
+      await tester.pumpAndSettle();
+      expect(ctrl.searchQuery, 'hel');
+      await ctrl.flushDraftNow('a draft');
+      await tester.pump();
+      expect(ctrl.draftSaved, isTrue);
+      expect(sidebarBuilds, 0);
 
-    ctrl.dispose();
-    await gw.shutdown();
-  });
+      feedBuilds = 0;
+      for (final q in <String>['c', 'ch']) {
+        ctrl.setSidebarFilter(q);
+        await tester.pump();
+      }
+      expect(feedBuilds, 0);
+
+      ctrl.dispose();
+      await gw.shutdown();
+    },
+  );
 }

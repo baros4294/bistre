@@ -284,7 +284,9 @@ class FolioController extends ChangeNotifier {
   bool _sidebarOpen = true;
   bool _inspectorOpen = false;
   SidebarTab _sidebarTab = SidebarTab.chat;
-  String _sidebarFilter = '';
+
+  /// Sidebar filter text; only the sidebar's chat list listens.
+  final ValueNotifier<String> sidebarFilterQuery = ValueNotifier<String>('');
   String _activeAssistantId = 'default_assistant';
 
   bool _searchPanelOpen = false;
@@ -303,7 +305,9 @@ class FolioController extends ChangeNotifier {
   // Draft & diagnostics.
   String _restoredDraft = '';
   int _draftEpoch = 0;
-  bool _draftSaved = false;
+
+  /// Whether the composer draft is saved; only the composer's "Draft saved" label listens.
+  final ValueNotifier<bool> draftSavedState = ValueNotifier<bool>(false);
   String? _lastDiagnosticKey;
   Timer? _draftDebounce;
   StreamSubscription<BistreEvent>? _eventSub;
@@ -430,7 +434,7 @@ class FolioController extends ChangeNotifier {
   bool get sidebarOpen => _sidebarOpen;
   bool get inspectorOpen => _inspectorOpen;
   SidebarTab get sidebarTab => _sidebarTab;
-  String get sidebarFilter => _sidebarFilter;
+  String get sidebarFilter => sidebarFilterQuery.value;
 
   bool get searchPanelOpen => _searchPanelOpen;
   bool get searchAllThreads => search.allThreads;
@@ -490,7 +494,7 @@ class FolioController extends ChangeNotifier {
 
   String get restoredDraft => _restoredDraft;
   int get draftEpoch => _draftEpoch;
-  bool get draftSaved => _draftSaved;
+  bool get draftSaved => draftSavedState.value;
   String? get lastDiagnosticKey => _lastDiagnosticKey;
 
   String? assistantNameFor(String assistantId) =>
@@ -602,7 +606,7 @@ class FolioController extends ChangeNotifier {
   }
 
   List<EngineThread> get filteredThreads {
-    final q = _sidebarFilter.trim().toLowerCase();
+    final q = sidebarFilterQuery.value.trim().toLowerCase();
     return _threads
         .where((t) {
           if (q.isEmpty) return true;
@@ -1050,7 +1054,7 @@ class FolioController extends ChangeNotifier {
     }
     _restoredDraft = draft ?? '';
     _draftEpoch++;
-    _draftSaved = _restoredDraft.isNotEmpty;
+    draftSavedState.value = _restoredDraft.isNotEmpty;
     if (hits != null && search.query == query) search.update(hits: hits);
   }
 
@@ -1234,8 +1238,7 @@ class FolioController extends ChangeNotifier {
   }
 
   void setSidebarFilter(String query) {
-    _sidebarFilter = query;
-    notifyListeners();
+    sidebarFilterQuery.value = query;
   }
 
   void toggleSearchPanel() {
@@ -1443,6 +1446,8 @@ class FolioController extends ChangeNotifier {
     if (unsaved != null) unawaited(_gateway.saveSettings(unsaved));
     toast.dispose();
     search.dispose();
+    sidebarFilterQuery.dispose();
+    draftSavedState.dispose();
     // The user deleted these chats; closing the app inside the Undo window must not bring
     // them back.
     unawaited(flushPendingDeletes());
