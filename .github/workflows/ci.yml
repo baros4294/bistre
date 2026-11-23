@@ -339,6 +339,14 @@ jobs:
           # the number is known; launch, first paint, and the streaming probe still fail the job.
           cargo build --locked --release -p bistre-daemon
           dart run tools/bistre_guard/bin/bistre_guard.dart perf --strict --rss-report-only
+      - name: Upload the Windows release bundle (GPU measurements on a developer machine)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: windows-release-bundle
+          path: apps/bistre_app/build/windows/x64/runner/Release/
+          if-no-files-found: error
+          retention-days: 7
 
   android-arm64-16kb:
     name: android-arm64-16kb
