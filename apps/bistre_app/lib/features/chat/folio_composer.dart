@@ -577,10 +577,12 @@ class _FolioComposerState extends State<FolioComposer> {
                       ),
                       child: _ComposerToolbar(
                         twoRows: twoRowToolbar,
-                        gauge: ContextGaugeRing(
-                          threadId: ctrl.activeThread?.id ?? '',
-                          text: ctrl.contextGaugeText,
-                          limitTokens: ctrl.activeContextLimitOrFetch,
+                        gauge: ValueListenableBuilder<int>(
+                          valueListenable: ctrl.contextUsedTokens,
+                          builder: (context, used, _) => ContextGaugeRing(
+                            usedTokens: used,
+                            limitTokens: ctrl.activeContextLimitOrFetch,
+                          ),
                         ),
                         leading: <Widget>[
                           BistreIconButton(

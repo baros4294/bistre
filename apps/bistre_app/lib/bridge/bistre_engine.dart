@@ -185,6 +185,10 @@ abstract interface class BistreEngineGateway {
   /// The model's conversation limit in tokens, or null when unknown.
   Future<int?> modelContextTokens(String model);
 
+  /// Estimated tokens the next request sends for the branch ending at [leafNodeId] (core
+  /// applies compaction and the context pin exactly as a run does).
+  Future<int> contextUsage(String threadId, String leafNodeId);
+
   /// Records the user's approval of one exact call; returns a one-use permit id.
   Future<String> approveToolCall({
     required String threadId,
@@ -789,6 +793,10 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
   @override
   Future<int?> modelContextTokens(String model) =>
       frb.modelContextTokens(model: model);
+
+  @override
+  Future<int> contextUsage(String threadId, String leafNodeId) =>
+      frb.contextUsage(threadId: threadId, leafNodeId: leafNodeId);
 
   @override
   Future<String> approveToolCall({
