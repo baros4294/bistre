@@ -361,3 +361,12 @@ pub(crate) fn map_event(e: EngineEvent) -> FfiEngineEvent {
         }
     }
 }
+
+/// Maps a core error to the FFI error string: `diag.<key>` or `diag.<key>:<detail_code>`.
+/// The Dart side reads the leading key; the detail stays available for logs and support.
+pub(crate) fn ffi_err(err: bistre_protocol::BistreError) -> String {
+    match err.detail_code {
+        Some(detail) => format!("{}:{detail}", err.key.as_key()),
+        None => err.key.as_key().to_owned(),
+    }
+}

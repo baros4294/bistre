@@ -7,6 +7,7 @@
 // ignore_for_file: argument_type_not_assignable
 
 import 'api.dart';
+import 'api/harness.dart';
 import 'api/story.dart';
 
 import 'dart:async';

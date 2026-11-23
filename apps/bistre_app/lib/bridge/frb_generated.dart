@@ -4,6 +4,7 @@
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
 import 'api.dart';
+import 'api/harness.dart';
 import 'api/story.dart';
 
 import 'dart:async';
@@ -74,7 +75,7 @@ class BistreRustLib
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -1954107110;
+  int get rustContentHash => -1777703805;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -97,7 +98,7 @@ abstract class BistreRustLibApi extends BaseApi {
     required String content,
   });
 
-  Future<String> crateApiApproveToolCall({
+  Future<String> crateApiHarnessApproveToolCall({
     required String threadId,
     required String toolName,
     required String argumentsJson,
@@ -105,7 +106,7 @@ abstract class BistreRustLibApi extends BaseApi {
 
   Future<void> crateApiBackupDatabase({required String destPath});
 
-  Future<String> crateApiCallMcpToolJson({
+  Future<String> crateApiHarnessCallMcpToolJson({
     required String serverConfigJson,
     required String toolName,
     required String argumentsJson,
@@ -121,7 +122,7 @@ abstract class BistreRustLibApi extends BaseApi {
     required String providerId,
   });
 
-  Future<FfiNodeRecord> crateApiCompactThread({
+  Future<FfiNodeRecord> crateApiHarnessCompactThread({
     required String threadId,
     required int keepRecentTurns,
     String? customSummary,
@@ -163,9 +164,9 @@ abstract class BistreRustLibApi extends BaseApi {
 
   Future<void> crateApiStoryDeleteCharacterCard({required String cardId});
 
-  Future<void> crateApiDeleteCronJob({required String jobId});
+  Future<void> crateApiHarnessDeleteCronJob({required String jobId});
 
-  Future<void> crateApiDeleteMemoryEntry({required String entryId});
+  Future<void> crateApiHarnessDeleteMemoryEntry({required String entryId});
 
   Future<void> crateApiDeleteNode({
     required String threadId,
@@ -180,13 +181,13 @@ abstract class BistreRustLibApi extends BaseApi {
 
   Future<void> crateApiDeleteThread({required String threadId});
 
-  Future<String> crateApiDiscoverLocalServersJson();
+  Future<String> crateApiHarnessDiscoverLocalServersJson();
 
-  Future<String> crateApiDiscoverMcpServerJson({
+  Future<String> crateApiHarnessDiscoverMcpServerJson({
     required String serverConfigJson,
   });
 
-  Future<String> crateApiDiscoverWorkspaceSkillsJson({
+  Future<String> crateApiHarnessDiscoverWorkspaceSkillsJson({
     required String workspaceRoot,
   });
 
@@ -201,7 +202,7 @@ abstract class BistreRustLibApi extends BaseApi {
     required String content,
   });
 
-  Future<String> crateApiExecuteWorkspaceToolJson({
+  Future<String> crateApiHarnessExecuteWorkspaceToolJson({
     required String workspaceRoot,
     required String threadId,
     required String toolName,
@@ -220,11 +221,11 @@ abstract class BistreRustLibApi extends BaseApi {
     required String providerId,
   });
 
-  Future<String?> crateApiGetContextStartPin({required String threadId});
+  Future<String?> crateApiHarnessGetContextStartPin({required String threadId});
 
   Future<FfiHealthSnapshot> crateApiGetHealth();
 
-  Future<String?> crateApiGetKvMeta({required String key});
+  Future<String?> crateApiHarnessGetKvMeta({required String key});
 
   Future<FfiStorageStats> crateApiGetStorageStats();
 
@@ -256,14 +257,14 @@ abstract class BistreRustLibApi extends BaseApi {
 
   Future<String> crateApiStoryListCharacterCardsJson();
 
-  Future<String> crateApiListCheckpointsJson({
+  Future<String> crateApiHarnessListCheckpointsJson({
     required String threadId,
     required int limit,
   });
 
-  Future<String> crateApiListCronJobsJson();
+  Future<String> crateApiHarnessListCronJobsJson();
 
-  Future<String> crateApiListMemoryEntriesJson({String? scope});
+  Future<String> crateApiHarnessListMemoryEntriesJson({String? scope});
 
   Future<List<FfiNodeRecord>> crateApiListNodes({required String threadId});
 
@@ -297,7 +298,7 @@ abstract class BistreRustLibApi extends BaseApi {
 
   Future<FfiAppSettings> crateApiLoadSettings();
 
-  Future<String> crateApiLoadSkillBody({
+  Future<String> crateApiHarnessLoadSkillBody({
     required String workspaceRoot,
     required String skillPath,
   });
@@ -310,7 +311,7 @@ abstract class BistreRustLibApi extends BaseApi {
 
   Future<FfiPowerGuardStatus> crateApiPowerGuardStatus();
 
-  Future<String> crateApiPrepareSubagentSandboxJson({
+  Future<String> crateApiHarnessPrepareSubagentSandboxJson({
     required String workspaceRoot,
   });
 
@@ -326,7 +327,7 @@ abstract class BistreRustLibApi extends BaseApi {
 
   Future<bool> crateApiRetryRunNow({required String threadId});
 
-  Future<String> crateApiRewindCheckpoint({
+  Future<String> crateApiHarnessRewindCheckpoint({
     required String workspaceRoot,
     required String checkpointId,
   });
@@ -361,12 +362,15 @@ abstract class BistreRustLibApi extends BaseApi {
     required bool batteryUnrestricted,
   });
 
-  Future<String?> crateApiSetContextStartPin({
+  Future<String?> crateApiHarnessSetContextStartPin({
     required String threadId,
     String? nodeId,
   });
 
-  Future<void> crateApiSetKvMeta({required String key, required String value});
+  Future<void> crateApiHarnessSetKvMeta({
+    required String key,
+    required String value,
+  });
 
   Future<FfiProviderProfile> crateApiSetProviderApiKey({
     required String providerId,
@@ -379,7 +383,7 @@ abstract class BistreRustLibApi extends BaseApi {
 
   Stream<FfiEngineEvent> crateApiSubscribeEvents();
 
-  Future<void> crateApiUndoCompaction({
+  Future<void> crateApiHarnessUndoCompaction({
     required String threadId,
     required String compactionNodeId,
   });
@@ -438,9 +442,9 @@ abstract class BistreRustLibApi extends BaseApi {
     required String cardJson,
   });
 
-  Future<String> crateApiUpsertCronJobJson({required String jobJson});
+  Future<String> crateApiHarnessUpsertCronJobJson({required String jobJson});
 
-  Future<String> crateApiUpsertMemoryEntryJson({
+  Future<String> crateApiHarnessUpsertMemoryEntryJson({
     String? id,
     required String scope,
     required String scopeId,
@@ -552,7 +556,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   );
 
   @override
-  Future<String> crateApiApproveToolCall({
+  Future<String> crateApiHarnessApproveToolCall({
     required String threadId,
     required String toolName,
     required String argumentsJson,
@@ -575,17 +579,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_String,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiApproveToolCallConstMeta,
+        constMeta: kCrateApiHarnessApproveToolCallConstMeta,
         argValues: [threadId, toolName, argumentsJson],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiApproveToolCallConstMeta => const TaskConstMeta(
-    debugName: "approve_tool_call",
-    argNames: ["threadId", "toolName", "argumentsJson"],
-  );
+  TaskConstMeta get kCrateApiHarnessApproveToolCallConstMeta =>
+      const TaskConstMeta(
+        debugName: "approve_tool_call",
+        argNames: ["threadId", "toolName", "argumentsJson"],
+      );
 
   @override
   Future<void> crateApiBackupDatabase({required String destPath}) {
@@ -616,7 +621,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "backup_database", argNames: ["destPath"]);
 
   @override
-  Future<String> crateApiCallMcpToolJson({
+  Future<String> crateApiHarnessCallMcpToolJson({
     required String serverConfigJson,
     required String toolName,
     required String argumentsJson,
@@ -639,17 +644,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_String,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiCallMcpToolJsonConstMeta,
+        constMeta: kCrateApiHarnessCallMcpToolJsonConstMeta,
         argValues: [serverConfigJson, toolName, argumentsJson],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiCallMcpToolJsonConstMeta => const TaskConstMeta(
-    debugName: "call_mcp_tool_json",
-    argNames: ["serverConfigJson", "toolName", "argumentsJson"],
-  );
+  TaskConstMeta get kCrateApiHarnessCallMcpToolJsonConstMeta =>
+      const TaskConstMeta(
+        debugName: "call_mcp_tool_json",
+        argNames: ["serverConfigJson", "toolName", "argumentsJson"],
+      );
 
   @override
   Future<bool> crateApiCancelActiveRun({required String threadId}) {
@@ -747,7 +753,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
-  Future<FfiNodeRecord> crateApiCompactThread({
+  Future<FfiNodeRecord> crateApiHarnessCompactThread({
     required String threadId,
     required int keepRecentTurns,
     String? customSummary,
@@ -770,17 +776,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_ffi_node_record,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiCompactThreadConstMeta,
+        constMeta: kCrateApiHarnessCompactThreadConstMeta,
         argValues: [threadId, keepRecentTurns, customSummary],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiCompactThreadConstMeta => const TaskConstMeta(
-    debugName: "compact_thread",
-    argNames: ["threadId", "keepRecentTurns", "customSummary"],
-  );
+  TaskConstMeta get kCrateApiHarnessCompactThreadConstMeta =>
+      const TaskConstMeta(
+        debugName: "compact_thread",
+        argNames: ["threadId", "keepRecentTurns", "customSummary"],
+      );
 
   @override
   Future<FfiAssistantRecord> crateApiCreateAssistant({
@@ -1027,7 +1034,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
-  Future<void> crateApiDeleteCronJob({required String jobId}) {
+  Future<void> crateApiHarnessDeleteCronJob({required String jobId}) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -1044,18 +1051,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_unit,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiDeleteCronJobConstMeta,
+        constMeta: kCrateApiHarnessDeleteCronJobConstMeta,
         argValues: [jobId],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiDeleteCronJobConstMeta =>
+  TaskConstMeta get kCrateApiHarnessDeleteCronJobConstMeta =>
       const TaskConstMeta(debugName: "delete_cron_job", argNames: ["jobId"]);
 
   @override
-  Future<void> crateApiDeleteMemoryEntry({required String entryId}) {
+  Future<void> crateApiHarnessDeleteMemoryEntry({required String entryId}) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -1072,17 +1079,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_unit,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiDeleteMemoryEntryConstMeta,
+        constMeta: kCrateApiHarnessDeleteMemoryEntryConstMeta,
         argValues: [entryId],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiDeleteMemoryEntryConstMeta => const TaskConstMeta(
-    debugName: "delete_memory_entry",
-    argNames: ["entryId"],
-  );
+  TaskConstMeta get kCrateApiHarnessDeleteMemoryEntryConstMeta =>
+      const TaskConstMeta(
+        debugName: "delete_memory_entry",
+        argNames: ["entryId"],
+      );
 
   @override
   Future<void> crateApiDeleteNode({
@@ -1238,7 +1246,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "delete_thread", argNames: ["threadId"]);
 
   @override
-  Future<String> crateApiDiscoverLocalServersJson() {
+  Future<String> crateApiHarnessDiscoverLocalServersJson() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -1254,21 +1262,21 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_String,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiDiscoverLocalServersJsonConstMeta,
+        constMeta: kCrateApiHarnessDiscoverLocalServersJsonConstMeta,
         argValues: [],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiDiscoverLocalServersJsonConstMeta =>
+  TaskConstMeta get kCrateApiHarnessDiscoverLocalServersJsonConstMeta =>
       const TaskConstMeta(
         debugName: "discover_local_servers_json",
         argNames: [],
       );
 
   @override
-  Future<String> crateApiDiscoverMcpServerJson({
+  Future<String> crateApiHarnessDiscoverMcpServerJson({
     required String serverConfigJson,
   }) {
     return handler.executeNormal(
@@ -1287,21 +1295,21 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_String,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiDiscoverMcpServerJsonConstMeta,
+        constMeta: kCrateApiHarnessDiscoverMcpServerJsonConstMeta,
         argValues: [serverConfigJson],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiDiscoverMcpServerJsonConstMeta =>
+  TaskConstMeta get kCrateApiHarnessDiscoverMcpServerJsonConstMeta =>
       const TaskConstMeta(
         debugName: "discover_mcp_server_json",
         argNames: ["serverConfigJson"],
       );
 
   @override
-  Future<String> crateApiDiscoverWorkspaceSkillsJson({
+  Future<String> crateApiHarnessDiscoverWorkspaceSkillsJson({
     required String workspaceRoot,
   }) {
     return handler.executeNormal(
@@ -1320,14 +1328,14 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_String,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiDiscoverWorkspaceSkillsJsonConstMeta,
+        constMeta: kCrateApiHarnessDiscoverWorkspaceSkillsJsonConstMeta,
         argValues: [workspaceRoot],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiDiscoverWorkspaceSkillsJsonConstMeta =>
+  TaskConstMeta get kCrateApiHarnessDiscoverWorkspaceSkillsJsonConstMeta =>
       const TaskConstMeta(
         debugName: "discover_workspace_skills_json",
         argNames: ["workspaceRoot"],
@@ -1405,7 +1413,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   );
 
   @override
-  Future<String> crateApiExecuteWorkspaceToolJson({
+  Future<String> crateApiHarnessExecuteWorkspaceToolJson({
     required String workspaceRoot,
     required String threadId,
     required String toolName,
@@ -1432,14 +1440,14 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_String,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiExecuteWorkspaceToolJsonConstMeta,
+        constMeta: kCrateApiHarnessExecuteWorkspaceToolJsonConstMeta,
         argValues: [workspaceRoot, threadId, toolName, argumentsJson, permitId],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiExecuteWorkspaceToolJsonConstMeta =>
+  TaskConstMeta get kCrateApiHarnessExecuteWorkspaceToolJsonConstMeta =>
       const TaskConstMeta(
         debugName: "execute_workspace_tool_json",
         argNames: [
@@ -1552,7 +1560,9 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
-  Future<String?> crateApiGetContextStartPin({required String threadId}) {
+  Future<String?> crateApiHarnessGetContextStartPin({
+    required String threadId,
+  }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -1569,17 +1579,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_opt_String,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiGetContextStartPinConstMeta,
+        constMeta: kCrateApiHarnessGetContextStartPinConstMeta,
         argValues: [threadId],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiGetContextStartPinConstMeta => const TaskConstMeta(
-    debugName: "get_context_start_pin",
-    argNames: ["threadId"],
-  );
+  TaskConstMeta get kCrateApiHarnessGetContextStartPinConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_context_start_pin",
+        argNames: ["threadId"],
+      );
 
   @override
   Future<FfiHealthSnapshot> crateApiGetHealth() {
@@ -1609,7 +1620,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "get_health", argNames: []);
 
   @override
-  Future<String?> crateApiGetKvMeta({required String key}) {
+  Future<String?> crateApiHarnessGetKvMeta({required String key}) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -1626,14 +1637,14 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_opt_String,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiGetKvMetaConstMeta,
+        constMeta: kCrateApiHarnessGetKvMetaConstMeta,
         argValues: [key],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiGetKvMetaConstMeta =>
+  TaskConstMeta get kCrateApiHarnessGetKvMetaConstMeta =>
       const TaskConstMeta(debugName: "get_kv_meta", argNames: ["key"]);
 
   @override
@@ -1913,7 +1924,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "list_character_cards_json", argNames: []);
 
   @override
-  Future<String> crateApiListCheckpointsJson({
+  Future<String> crateApiHarnessListCheckpointsJson({
     required String threadId,
     required int limit,
   }) {
@@ -1934,21 +1945,21 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_String,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiListCheckpointsJsonConstMeta,
+        constMeta: kCrateApiHarnessListCheckpointsJsonConstMeta,
         argValues: [threadId, limit],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiListCheckpointsJsonConstMeta =>
+  TaskConstMeta get kCrateApiHarnessListCheckpointsJsonConstMeta =>
       const TaskConstMeta(
         debugName: "list_checkpoints_json",
         argNames: ["threadId", "limit"],
       );
 
   @override
-  Future<String> crateApiListCronJobsJson() {
+  Future<String> crateApiHarnessListCronJobsJson() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -1964,18 +1975,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_String,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiListCronJobsJsonConstMeta,
+        constMeta: kCrateApiHarnessListCronJobsJsonConstMeta,
         argValues: [],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiListCronJobsJsonConstMeta =>
+  TaskConstMeta get kCrateApiHarnessListCronJobsJsonConstMeta =>
       const TaskConstMeta(debugName: "list_cron_jobs_json", argNames: []);
 
   @override
-  Future<String> crateApiListMemoryEntriesJson({String? scope}) {
+  Future<String> crateApiHarnessListMemoryEntriesJson({String? scope}) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -1992,14 +2003,14 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_String,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiListMemoryEntriesJsonConstMeta,
+        constMeta: kCrateApiHarnessListMemoryEntriesJsonConstMeta,
         argValues: [scope],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiListMemoryEntriesJsonConstMeta =>
+  TaskConstMeta get kCrateApiHarnessListMemoryEntriesJsonConstMeta =>
       const TaskConstMeta(
         debugName: "list_memory_entries_json",
         argNames: ["scope"],
@@ -2393,7 +2404,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "load_settings", argNames: []);
 
   @override
-  Future<String> crateApiLoadSkillBody({
+  Future<String> crateApiHarnessLoadSkillBody({
     required String workspaceRoot,
     required String skillPath,
   }) {
@@ -2414,17 +2425,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_String,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiLoadSkillBodyConstMeta,
+        constMeta: kCrateApiHarnessLoadSkillBodyConstMeta,
         argValues: [workspaceRoot, skillPath],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiLoadSkillBodyConstMeta => const TaskConstMeta(
-    debugName: "load_skill_body",
-    argNames: ["workspaceRoot", "skillPath"],
-  );
+  TaskConstMeta get kCrateApiHarnessLoadSkillBodyConstMeta =>
+      const TaskConstMeta(
+        debugName: "load_skill_body",
+        argNames: ["workspaceRoot", "skillPath"],
+      );
 
   @override
   Future<String> crateApiStoryLoadStoryThreadStateJson({
@@ -2521,7 +2533,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "power_guard_status", argNames: []);
 
   @override
-  Future<String> crateApiPrepareSubagentSandboxJson({
+  Future<String> crateApiHarnessPrepareSubagentSandboxJson({
     required String workspaceRoot,
   }) {
     return handler.executeNormal(
@@ -2540,14 +2552,14 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_String,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiPrepareSubagentSandboxJsonConstMeta,
+        constMeta: kCrateApiHarnessPrepareSubagentSandboxJsonConstMeta,
         argValues: [workspaceRoot],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiPrepareSubagentSandboxJsonConstMeta =>
+  TaskConstMeta get kCrateApiHarnessPrepareSubagentSandboxJsonConstMeta =>
       const TaskConstMeta(
         debugName: "prepare_subagent_sandbox_json",
         argNames: ["workspaceRoot"],
@@ -2651,7 +2663,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "retry_run_now", argNames: ["threadId"]);
 
   @override
-  Future<String> crateApiRewindCheckpoint({
+  Future<String> crateApiHarnessRewindCheckpoint({
     required String workspaceRoot,
     required String checkpointId,
   }) {
@@ -2672,17 +2684,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_String,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiRewindCheckpointConstMeta,
+        constMeta: kCrateApiHarnessRewindCheckpointConstMeta,
         argValues: [workspaceRoot, checkpointId],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiRewindCheckpointConstMeta => const TaskConstMeta(
-    debugName: "rewind_checkpoint",
-    argNames: ["workspaceRoot", "checkpointId"],
-  );
+  TaskConstMeta get kCrateApiHarnessRewindCheckpointConstMeta =>
+      const TaskConstMeta(
+        debugName: "rewind_checkpoint",
+        argNames: ["workspaceRoot", "checkpointId"],
+      );
 
   @override
   Future<FfiDraftRecord> crateApiSaveDraft({
@@ -2889,7 +2902,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
-  Future<String?> crateApiSetContextStartPin({
+  Future<String?> crateApiHarnessSetContextStartPin({
     required String threadId,
     String? nodeId,
   }) {
@@ -2910,20 +2923,24 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_opt_String,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiSetContextStartPinConstMeta,
+        constMeta: kCrateApiHarnessSetContextStartPinConstMeta,
         argValues: [threadId, nodeId],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSetContextStartPinConstMeta => const TaskConstMeta(
-    debugName: "set_context_start_pin",
-    argNames: ["threadId", "nodeId"],
-  );
+  TaskConstMeta get kCrateApiHarnessSetContextStartPinConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_context_start_pin",
+        argNames: ["threadId", "nodeId"],
+      );
 
   @override
-  Future<void> crateApiSetKvMeta({required String key, required String value}) {
+  Future<void> crateApiHarnessSetKvMeta({
+    required String key,
+    required String value,
+  }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -2941,14 +2958,14 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_unit,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiSetKvMetaConstMeta,
+        constMeta: kCrateApiHarnessSetKvMetaConstMeta,
         argValues: [key, value],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSetKvMetaConstMeta =>
+  TaskConstMeta get kCrateApiHarnessSetKvMetaConstMeta =>
       const TaskConstMeta(debugName: "set_kv_meta", argNames: ["key", "value"]);
 
   @override
@@ -3073,7 +3090,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "subscribe_events", argNames: ["sink"]);
 
   @override
-  Future<void> crateApiUndoCompaction({
+  Future<void> crateApiHarnessUndoCompaction({
     required String threadId,
     required String compactionNodeId,
   }) {
@@ -3094,17 +3111,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_unit,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiUndoCompactionConstMeta,
+        constMeta: kCrateApiHarnessUndoCompactionConstMeta,
         argValues: [threadId, compactionNodeId],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiUndoCompactionConstMeta => const TaskConstMeta(
-    debugName: "undo_compaction",
-    argNames: ["threadId", "compactionNodeId"],
-  );
+  TaskConstMeta get kCrateApiHarnessUndoCompactionConstMeta =>
+      const TaskConstMeta(
+        debugName: "undo_compaction",
+        argNames: ["threadId", "compactionNodeId"],
+      );
 
   @override
   Future<FfiAssistantRecord> crateApiUpdateAssistant({
@@ -3400,7 +3418,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
-  Future<String> crateApiUpsertCronJobJson({required String jobJson}) {
+  Future<String> crateApiHarnessUpsertCronJobJson({required String jobJson}) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -3417,20 +3435,21 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_String,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiUpsertCronJobJsonConstMeta,
+        constMeta: kCrateApiHarnessUpsertCronJobJsonConstMeta,
         argValues: [jobJson],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiUpsertCronJobJsonConstMeta => const TaskConstMeta(
-    debugName: "upsert_cron_job_json",
-    argNames: ["jobJson"],
-  );
+  TaskConstMeta get kCrateApiHarnessUpsertCronJobJsonConstMeta =>
+      const TaskConstMeta(
+        debugName: "upsert_cron_job_json",
+        argNames: ["jobJson"],
+      );
 
   @override
-  Future<String> crateApiUpsertMemoryEntryJson({
+  Future<String> crateApiHarnessUpsertMemoryEntryJson({
     String? id,
     required String scope,
     required String scopeId,
@@ -3459,14 +3478,14 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_String,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiUpsertMemoryEntryJsonConstMeta,
+        constMeta: kCrateApiHarnessUpsertMemoryEntryJsonConstMeta,
         argValues: [id, scope, scopeId, key, content, pinned],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiUpsertMemoryEntryJsonConstMeta =>
+  TaskConstMeta get kCrateApiHarnessUpsertMemoryEntryJsonConstMeta =>
       const TaskConstMeta(
         debugName: "upsert_memory_entry_json",
         argNames: ["id", "scope", "scopeId", "key", "content", "pinned"],

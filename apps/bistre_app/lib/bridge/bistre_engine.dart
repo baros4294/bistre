@@ -6,6 +6,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
 
 import '../platform/vault_key_host.dart';
 import 'api.dart' as frb;
+import 'api/harness.dart' as frb;
 import 'api/story.dart' as frb;
 import 'engine_models.dart';
 import 'engine_story_models.dart';
