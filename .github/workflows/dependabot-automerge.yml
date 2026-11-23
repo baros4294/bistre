@@ -1,0 +1,79 @@
+name: Dependabot auto-merge
+
+# Zero-checkout: merges a Dependabot minor/patch PR only after the CI workflow succeeded on the
+# exact tested head commit. No repository code from the PR is ever checked out or executed here.
+on:
+  workflow_run: # zizmor: ignore[dangerous-triggers] -- zero checkout; acts only on API metadata of a CI-tested SHA
+    workflows: ["CI"]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: dependabot-automerge-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    name: merge
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write # merge the CI-tested Dependabot pull request
+      pull-requests: write # approve and merge the Dependabot pull request via gh
+    steps:
+      - name: Merge tested minor/patch Dependabot PR (refuses major bumps)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$TESTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "ERROR: invalid tested SHA"
+            exit 1
+          fi
+          pr_json="$(gh api "repos/${REPO}/commits/${TESTED_SHA}/pulls" --jq '[.[] | select(.state == "open")] | first // empty')"
+          if [ -z "$pr_json" ]; then
+            echo "No open PR for ${TESTED_SHA}; nothing to merge."
+            exit 0
+          fi
+          number="$(jq -r '.number' <<<"$pr_json")"
+          author="$(jq -r '.user.login' <<<"$pr_json")"
+          head_sha="$(jq -r '.head.sha' <<<"$pr_json")"
+          if [ "$author" != "dependabot[bot]" ] || [ "$head_sha" != "$TESTED_SHA" ]; then
+            echo "PR #${number} is not an untouched Dependabot PR at the tested SHA; skipping."
+            exit 0
+          fi
+          text="$(jq -r '(.title // "") + "\n" + (.body // "")' <<<"$pr_json")"
+          found=0
+          while IFS= read -r bump; do
+            [ -z "$bump" ] && continue
+            found=1
+            from="$(awk '{print $2}' <<<"$bump" | sed 's/^v//')"
+            to="$(awk '{print $4}' <<<"$bump" | sed 's/^v//')"
+            from_major="${from%%.*}"
+            to_major="${to%%.*}"
+            if [ "$from_major" != "$to_major" ]; then
+              echo "Refusing major bump (${bump}); review manually."
+              exit 0
+            fi
+            if [ "$from_major" = "0" ]; then
+              from_minor="$(cut -d. -f2 <<<"$from")"
+              to_minor="$(cut -d. -f2 <<<"$to")"
+              if [ "$from_minor" != "$to_minor" ]; then
+                echo "Refusing 0.x minor (breaking) bump (${bump}); review manually."
+                exit 0
+              fi
+            fi
+          done < <(grep -oE 'from v?[0-9][0-9A-Za-z.+-]* to v?[0-9][0-9A-Za-z.+-]*' <<<"$text" || true)
+          if [ "$found" -eq 0 ]; then
+            echo "Could not parse any version bump for PR #${number}; review manually."
+            exit 0
+          fi
+          gh pr merge "$number" --repo "$REPO" --squash --match-head-commit "$TESTED_SHA"

@@ -1,0 +1,462 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  merge_group:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  RUST_VERSION: "1.100.0"
+  FLUTTER_VERSION: "3.50.1"
+  ANDROID_NDK_VERSION: "30.0.16248370"
+  ANDROID_COMPILE_SDK: "36"
+  ANDROID_BUILD_TOOLS: "36.0.0"
+
+jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      rust: ${{ steps.plan.outputs.rust }}
+      flutter: ${{ steps.plan.outputs.flutter }}
+      android: ${{ steps.plan.outputs.android }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Plan jobs from changed paths (docs-only changes skip heavy builds)
+        id: plan
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          all() {
+            {
+              echo "rust=true"
+              echo "flutter=true"
+              echo "android=true"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          if [ "$EVENT_NAME" != "pull_request" ]; then all; fi
+          valid_sha='^[0-9a-f]{40}$'
+          if ! [[ "$BASE_SHA" =~ $valid_sha && "$HEAD_SHA" =~ $valid_sha ]] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then all; fi
+          changed="$(mktemp)"
+          if ! git diff --name-only -z "$BASE_SHA" "$HEAD_SHA" | tr '\0' '\n' > "$changed"; then
+            gh api "repos/${REPO}/compare/${BASE_SHA}...${HEAD_SHA}" --paginate --jq '.files[].filename' > "$changed" || all
+          fi
+          if [ ! -s "$changed" ]; then all; fi
+          rust=false
+          flutter=false
+          android=false
+          while IFS= read -r path; do
+            case "$path" in
+              .github/*) all ;;
+              crates/*|Cargo.toml|Cargo.lock|.cargo/*|rust-toolchain.toml|clippy.toml|deny.toml)
+                rust=true; flutter=true; android=true ;;
+              apps/bistre_app/android/*) android=true ;;
+              apps/*|l10n/*|pubspec.yaml|pubspec.lock|analysis_options.yaml|tools/bistre_lints/*)
+                flutter=true; android=true ;;
+              *) ;;
+            esac
+          done < "$changed"
+          {
+            echo "rust=${rust}"
+            echo "flutter=${flutter}"
+            echo "android=${android}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Planned: rust=${rust} flutter=${flutter} android=${android}"
+
+  security-and-hygiene:
+    name: security-and-hygiene
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: taiki-e/install-action@25f51f6b1bf4e18876107cece836f4f77ac17c8c # v2
+        with:
+          tool: zizmor,actionlint
+      - name: Lint GitHub Actions workflows and embedded shell scripts (actionlint + shellcheck)
+        shell: bash
+        run: actionlint
+      - name: Security-audit GitHub Actions and Dependabot config (zizmor auditor)
+        shell: bash
+        run: zizmor --persona auditor .github/
+      - name: Scan repository history and working tree for secrets (open-source gitleaks CLI)
+        shell: bash
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+        run: |
+          set -euo pipefail
+          tmp_dir="$(mktemp -d)"
+          trap 'rm -rf "$tmp_dir"' EXIT
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          bash .github/scripts/with-download-retry.sh curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}" -o "${tmp_dir}/${archive}"
+          echo "${GITLEAKS_SHA256}  ${tmp_dir}/${archive}" | sha256sum -c -
+          tar -xzf "${tmp_dir}/${archive}" -C "$tmp_dir" gitleaks
+          "${tmp_dir}/gitleaks" git --redact --verbose --config .gitleaks.toml
+          "${tmp_dir}/gitleaks" dir --redact --verbose --config .gitleaks.toml .
+
+  repo-guard-and-docs:
+    name: repo-guard-and-docs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Resolve Dart Pub Workspace (enforcing pubspec.lock)
+        shell: bash
+        run: bash .github/scripts/with-download-retry.sh flutter pub get --enforce-lockfile
+      - name: Run mechanical code, doc-sync, version-parity, and CI security guards
+        shell: bash
+        run: dart run tools/bistre_guard/bin/bistre_guard.dart
+      - name: Validate ICU localization catalogs, Rust DiagnosticKey parity, and generated assets
+        shell: bash
+        run: dart run tools/bistre_i18n/bin/bistre_i18n.dart check
+      - name: Check Dart formatting across app, hooks, and tooling
+        shell: bash
+        run: |
+          dart format --output=none --set-exit-if-changed \
+            apps/bistre_app/lib \
+            apps/bistre_app/test \
+            apps/bistre_app/hook \
+            tools/bistre_lints \
+            tools/bistre_i18n \
+            tools/bistre_guard
+      - name: Analyze Dart tooling packages
+        shell: bash
+        run: dart analyze tools/bistre_lints tools/bistre_i18n tools/bistre_guard
+      - name: Run Dart tooling unit tests
+        shell: bash
+        run: |
+          dart test tools/bistre_lints
+          dart test tools/bistre_i18n
+          dart test tools/bistre_guard
+
+  rust-fortress:
+    name: rust-fortress (${{ matrix.os }})
+    needs: [plan]
+    if: needs.plan.outputs.rust == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update --component rustfmt,clippy
+          rustup default "$RUST_VERSION"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          shared-key: rust-fortress-${{ matrix.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-bin: false
+      - uses: taiki-e/install-action@25f51f6b1bf4e18876107cece836f4f77ac17c8c # v2
+        with:
+          tool: cargo-nextest,cargo-deny
+      - name: Rust format check
+        shell: bash
+        run: cargo fmt --all -- --check
+      - name: Rust clippy anti-slop gate (locked)
+        shell: bash
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Supply-chain and hexagonal boundary check (cargo-deny)
+        shell: bash
+        run: cargo deny --locked check
+      - name: Rust unit and integration tests (locked)
+        shell: bash
+        run: cargo nextest run --locked --workspace
+      - name: Verify strict crate boundary isolation via cargo tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          for pkg in bistre-protocol bistre-crypto bistre-storage bistre-core; do
+            if cargo tree --locked -p "$pkg" | grep -E "flutter_rust_bridge|openssl-sys|native-tls|ksni|tray-icon|winit|tao|gtk"; then
+              echo "ERROR: Forbidden dependency leaked into $pkg"
+              exit 1
+            fi
+          done
+          if cargo tree --locked -p bistre-ffi --depth 1 | grep -E "rusqlite|reqwest|openssl-sys"; then
+            echo "ERROR: Direct SQLite/HTTP/OpenSSL dependency leaked into thin bistre-ffi"
+            exit 1
+          fi
+      - name: Build and smoke-test bistre-daemon and bistre-updater release binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked --release -p bistre-daemon -p bistre-updater
+          tmp_dir="${RUNNER_TEMP}/bistre-daemon-smoke"
+          rm -rf "$tmp_dir"
+          mkdir -p "$tmp_dir"
+          trap 'rm -rf "$tmp_dir"' EXIT
+          health_json="$(./target/release/bistre-daemon --health-check --data-dir "$tmp_dir")"
+          echo "$health_json"
+          echo "$health_json" | grep -q '"wal_mode_active":true'
+          echo "$health_json" | grep -q '"status_key":"diag.ok"'
+          set +e
+          ./target/release/bistre-updater >/dev/null 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 2 ]; then
+            echo "ERROR: expected bistre-updater usage exit code 2, got $status"
+            exit 1
+          fi
+
+  flutter-desktop:
+    name: flutter-desktop (${{ matrix.os }})
+    needs: [plan]
+    if: needs.plan.outputs.flutter == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update
+          rustup default "$RUST_VERSION"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          shared-key: flutter-desktop-${{ matrix.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-bin: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Install Linux desktop build dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+      - name: Resolve Dart Pub Workspace (enforcing pubspec.lock)
+        shell: bash
+        run: bash .github/scripts/with-download-retry.sh flutter pub get --enforce-lockfile
+      - name: Flutter static analysis (includes all 5 bistre_lints rules)
+        shell: bash
+        run: flutter analyze apps/bistre_app
+      - name: Flutter widget, a11y, RTL, contrast, and live Rust FRB v2 Native Assets tests
+        working-directory: apps/bistre_app
+        shell: bash
+        run: flutter test
+      - name: Build Linux release bundle
+        if: runner.os == 'Linux'
+        working-directory: apps/bistre_app
+        shell: bash
+        run: flutter build linux --release
+      - name: Build Windows release bundle
+        if: runner.os == 'Windows'
+        working-directory: apps/bistre_app
+        shell: bash
+        run: flutter build windows --release
+
+  android-arm64-16kb:
+    name: android-arm64-16kb
+    needs: [plan]
+    if: needs.plan.outputs.android == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6
+        with:
+          distribution: temurin
+          java-version: "25"
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update --target aarch64-linux-android
+          rustup default "$RUST_VERSION"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          shared-key: android-arm64
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-bin: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Provision Android SDK API 36 and pinned NDK r30
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          sdkmanager_bin="${sdk_root}/cmdline-tools/latest/bin/sdkmanager"
+          sudo mkdir -p "${sdk_root}/ndk" "${sdk_root}/platforms" "${sdk_root}/build-tools" "${sdk_root}/licenses"
+          sudo chown -R "$(id -u):$(id -g)" "$sdk_root"
+          set +o pipefail
+          yes | "$sdkmanager_bin" --sdk_root="$sdk_root" --licenses >/dev/null
+          set -o pipefail
+          bash .github/scripts/with-download-retry.sh "$sdkmanager_bin" --sdk_root="$sdk_root" --install \
+            "platforms;android-${ANDROID_COMPILE_SDK}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}" \
+            "ndk;${ANDROID_NDK_VERSION}"
+          ndk_dir="${sdk_root}/ndk/${ANDROID_NDK_VERSION}"
+          test -d "$ndk_dir"
+          {
+            echo "ANDROID_HOME=${sdk_root}"
+            echo "ANDROID_SDK_ROOT=${sdk_root}"
+            echo "ANDROID_NDK_HOME=${ndk_dir}"
+          } >> "$GITHUB_ENV"
+      - name: Resolve Dart Pub Workspace (enforcing pubspec.lock)
+        shell: bash
+        run: bash .github/scripts/with-download-retry.sh flutter pub get --enforce-lockfile
+      - name: Build Android arm64-v8a direct release APK
+        working-directory: apps/bistre_app
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build apk --release --target-platform android-arm64
+      - name: Verify 16KB ELF alignment (pure-Dart verifier), binary budgets, zipalign, and manifest permissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="apps/bistre_app/build/app/outputs/flutter-apk/app-release.apk"
+          zipalign_bin="${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}/zipalign"
+          aapt2_bin="${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}/aapt2"
+
+          test -x "$zipalign_bin"
+          test -x "$aapt2_bin"
+          test -f "$apk"
+
+          # Spec 11 hard-fail budgets: APK <= 32 MiB, libbistre_ffi.so <= 10 MiB.
+          max_apk_bytes=$((32 * 1024 * 1024))
+          max_so_bytes=$((10 * 1024 * 1024))
+
+          apk_bytes="$(stat -c %s "$apk")"
+          echo "APK size (${apk}): ${apk_bytes} bytes"
+          if [ "$apk_bytes" -gt "$max_apk_bytes" ]; then
+            echo "ERROR: ${apk} exceeds 32 MiB hard-fail budget (${apk_bytes} bytes)"
+            exit 1
+          fi
+          "$zipalign_bin" -c -P 16 4 "$apk"
+
+          tmp_so="$(mktemp -d)"
+          unzip -q "$apk" 'lib/arm64-v8a/*.so' -d "$tmp_so"
+          ffi_so="${tmp_so}/lib/arm64-v8a/libbistre_ffi.so"
+          if [ ! -f "$ffi_so" ]; then
+            echo "ERROR: libbistre_ffi.so missing from ${apk}"
+            rm -rf "$tmp_so"
+            exit 1
+          fi
+          so_bytes="$(stat -c %s "$ffi_so")"
+          echo "libbistre_ffi.so size (${apk}): ${so_bytes} bytes"
+          if [ "$so_bytes" -gt "$max_so_bytes" ]; then
+            echo "ERROR: libbistre_ffi.so exceeds 10 MiB hard-fail budget (${so_bytes} bytes)"
+            rm -rf "$tmp_so"
+            exit 1
+          fi
+          rm -rf "$tmp_so"
+          # Pure-Dart ELF64 PT_LOAD p_align >= 0x4000 verifier over every lib/arm64-v8a/*.so in the APK.
+          dart run tools/bistre_guard/bin/bistre_guard.dart verify-elf "$apk"
+
+          if ! "$aapt2_bin" dump permissions "$apk" | grep -q REQUEST_INSTALL_PACKAGES; then
+            echo "ERROR: direct GitHub APK must declare REQUEST_INSTALL_PACKAGES"
+            exit 1
+          fi
+
+  ci-gate:
+    name: ci-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    if: always()
+    needs:
+      - plan
+      - security-and-hygiene
+      - repo-guard-and-docs
+      - rust-fortress
+      - flutter-desktop
+      - android-arm64-16kb
+    env:
+      RES_PLAN: ${{ needs.plan.result }}
+      PLAN_RUST: ${{ needs.plan.outputs.rust }}
+      PLAN_FLUTTER: ${{ needs.plan.outputs.flutter }}
+      PLAN_ANDROID: ${{ needs.plan.outputs.android }}
+      RES_SECURITY: ${{ needs.security-and-hygiene.result }}
+      RES_GUARD: ${{ needs.repo-guard-and-docs.result }}
+      RES_RUST: ${{ needs.rust-fortress.result }}
+      RES_DESKTOP: ${{ needs.flutter-desktop.result }}
+      RES_ANDROID: ${{ needs.android-arm64-16kb.result }}
+    steps:
+      - name: Enforce all required CI gates passed (planned-out jobs may be skipped)
+        shell: bash
+        run: |
+          set -euo pipefail
+          require() {
+            if [ "$2" != "success" ]; then
+              echo "ERROR: required CI gate $1 finished with '$2'"
+              exit 1
+            fi
+          }
+          optional() {
+            if [ "$2" = "true" ]; then
+              require "$1" "$3"
+            elif [ "$3" != "skipped" ] && [ "$3" != "success" ]; then
+              echo "ERROR: CI gate $1 finished with '$3'"
+              exit 1
+            fi
+          }
+          require plan "$RES_PLAN"
+          require security-and-hygiene "$RES_SECURITY"
+          require repo-guard-and-docs "$RES_GUARD"
+          optional rust-fortress "$PLAN_RUST" "$RES_RUST"
+          optional flutter-desktop "$PLAN_FLUTTER" "$RES_DESKTOP"
+          optional android-arm64-16kb "$PLAN_ANDROID" "$RES_ANDROID"
+          echo "OK: all Bistre CI gates passed."

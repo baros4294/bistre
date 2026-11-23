@@ -1,0 +1,85 @@
+name: CodeQL
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
+jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      languages: ${{ steps.plan.outputs.languages }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select CodeQL languages from changed paths
+        id: plan
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo 'languages=["rust","actions"]' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          rust=false
+          actions=false
+          while IFS= read -r path; do
+            case "$path" in
+              crates/*|Cargo.toml|Cargo.lock|.cargo/*) rust=true ;;
+              .github/*) actions=true ;;
+              *) ;;
+            esac
+          done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          langs=()
+          if [ "$rust" = true ]; then langs+=('"rust"'); fi
+          if [ "$actions" = true ]; then langs+=('"actions"'); fi
+          joined="$(IFS=,; echo "${langs[*]-}")"
+          echo "languages=[${joined}]" >> "$GITHUB_OUTPUT"
+          echo "CodeQL languages: [${joined}]"
+
+  analyze:
+    name: analyze (${{ matrix.language }})
+    needs: [plan]
+    if: needs.plan.outputs.languages != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJSON(needs.plan.outputs.languages) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read # read workflow-run metadata the CodeQL action reports against
+      security-events: write # upload CodeQL SARIF results to code scanning
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
+        with:
+          category: "/language:${{ matrix.language }}"
