@@ -337,6 +337,17 @@ pub async fn init_runtime(
         Some(bytes) => Some(VaultKey::from_slice(&bytes).map_err(|e| e.key.as_key().to_owned())?),
         None => bistre_core::vault_key::resolve_vault_key(std::path::Path::new(&data_dir)).await,
     };
+    // Re-initialising (hot restart, data-dir switch) must never leave two engines, and so two
+    // SQLite writers, alive: take and shut down the previous engine before opening the next.
+    let previous = ENGINE
+        .write()
+        .map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())?
+        .take();
+    if let Some(old) = previous {
+        old.shutdown()
+            .await
+            .map_err(|e| e.key.as_key().to_owned())?;
+    }
     let engine = InProcessEngine::open(data_dir, key).map_err(|e| e.key.as_key().to_owned())?;
     {
         let mut guard = ENGINE
@@ -1056,10 +1067,10 @@ pub async fn subscribe_events(sink: StreamSink<FfiEngineEvent>) -> Result<(), St
                         }
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                        if sink.add(FfiEngineEvent::diagnostic(
-                            DiagnosticKey::StorageBusy.as_key().to_owned(),
-                            Some("event_bus_lagged".to_owned()),
-                        )).is_err() {
+                        // Events were dropped: drop the partial frame and tell the UI to reload
+                        // state from storage (not an error the user must act on).
+                        pending_delta = None;
+                        if sink.add(FfiEngineEvent::blank("events_lagged")).is_err() {
                             break;
                         }
                     }

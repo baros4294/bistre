@@ -1331,11 +1331,27 @@ impl EngineClient for InProcessEngine {
                     flag.store(true, Ordering::SeqCst);
                 }
             }
+            // Let cancelled runs record their final state before storage closes (bounded).
+            let mut runs = std::mem::take(&mut *lock_or_recover(&self.run_tasks, "run_tasks"));
+            let drained = tokio::time::timeout(RUN_DRAIN_TIMEOUT, async {
+                while runs.join_next().await.is_some() {}
+            })
+            .await;
+            if drained.is_err() {
+                tracing::warn!(
+                    remaining = runs.len(),
+                    "runs did not stop in time; aborting"
+                );
+                runs.abort_all();
+            }
             self.storage.shutdown()?;
             Ok(())
         })
     }
 }
+
+/// Upper bound on how long shutdown waits for cancelled runs to finish.
+const RUN_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 fn parse_tool_args(arguments_json: &str) -> BistreResult<serde_json::Value> {
     serde_json::from_str(arguments_json)

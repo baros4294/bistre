@@ -104,6 +104,8 @@ pub struct InProcessEngine {
     /// The last signature-verified OTA manifest; `stage_update` acts only on this, never on
     /// fields round-tripped through the UI.
     verified_update: Arc<Mutex<Option<ota::VerifiedManifest>>>,
+    /// Every spawned run; shutdown cancels and drains them before closing storage.
+    run_tasks: Arc<Mutex<tokio::task::JoinSet<()>>>,
     /// Release key override (tests only); unset uses `ota::OFFICIAL_RELEASE_PUBKEY_B64`.
     ota_release_key: std::sync::OnceLock<String>,
 }
@@ -164,6 +166,7 @@ impl InProcessEngine {
             active_runs: Arc::new(AtomicU32::new(0)),
             cancellations: Arc::new(Mutex::new(HashMap::new())),
             verified_update: Arc::new(Mutex::new(None)),
+            run_tasks: Arc::new(Mutex::new(tokio::task::JoinSet::new())),
             ota_release_key: std::sync::OnceLock::new(),
         }))
     }
@@ -410,7 +413,10 @@ impl InProcessEngine {
             },
         );
 
-        tokio::spawn(async move {
+        let mut tasks = lock_or_recover(&self.run_tasks, "run_tasks");
+        // Reap finished runs so the set stays bounded by the number of live runs.
+        while tasks.try_join_next().is_some() {}
+        tasks.spawn(async move {
             let lease_guard = power_lease;
             let final_node_id = execute_durable_stream_loop(
                 &storage,

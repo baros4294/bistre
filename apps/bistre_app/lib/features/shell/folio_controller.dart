@@ -899,6 +899,11 @@ class FolioController extends ChangeNotifier {
         notifyListeners();
       case LocalePackVerifiedEvent():
         notifyListeners();
+      case EventsLaggedEvent():
+        final threadId = _activeThread?.id;
+        if (threadId != null) unawaited(_refreshAfterRun(threadId));
+      case UnknownEngineEvent():
+        debugPrint('Ignoring unknown engine event kind: ${event.kind}');
     }
   }
 
