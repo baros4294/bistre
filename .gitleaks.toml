@@ -32,4 +32,8 @@ description = "Allow only explicitly named dummy test tokens (never blanket-exem
 regexes = [
   '''dummy-secret-value''',
   '''sk-(?:test|dummy|example)-[A-Za-z0-9_-]+''',
+  # Fake vault test fixtures from the first commits (renamed to sk-test-* since); listed exactly
+  # so the history scan stays green without exempting anything broader.
+  '''sk-sealed-secret-112233''',
+  '''sk-legacy-plaintext-445566''',
 ]

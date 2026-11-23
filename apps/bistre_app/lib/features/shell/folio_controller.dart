@@ -139,6 +139,14 @@ class FolioController extends ChangeNotifier {
   /// Notifies listeners on behalf of the extension parts of this library.
   void _notify() => notifyListeners();
 
+  /// Async work (FFI calls, font discovery) can finish after the shell is gone; a late
+  /// notification must not touch a disposed notifier.
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
   /// Background refresh failures never interrupt the user; they are logged with their
   /// diagnostic key instead of being swallowed.
   void _noteNonFatal(String where, Object error) {

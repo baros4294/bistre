@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:bistre_app/bridge/bistre_engine.dart';
+import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
+    show ExternalLibrary;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -14,7 +16,9 @@ void main() {
       }
     });
 
-    final gateway = FrbBistreEngineGateway();
+    final gateway = FrbBistreEngineGateway(
+      externalLibrary: _locateBuiltLibrary(),
+    );
     final health = await gateway.init(tmpDir.path);
     expect(health.coreVersion, '0.1.0');
     expect(health.schemaVersion, greaterThanOrEqualTo(6));
@@ -284,4 +288,21 @@ void main() {
     expect(reloadedSettings.activeModelId, 'local-ffi-model');
     await gateway.shutdown();
   });
+}
+
+/// On Linux the test host does not put hook-built native assets on the loader
+/// path, so the round-trip loads the `libbistre_ffi.so` that the build hook
+/// produced for this run. Other platforms use the default loader.
+ExternalLibrary? _locateBuiltLibrary() {
+  if (!Platform.isLinux) return null;
+  final candidates = <File>[
+    for (final dir in <String>['.dart_tool', 'build'])
+      if (Directory(dir).existsSync())
+        ...Directory(dir)
+            .listSync(recursive: true, followLinks: false)
+            .whereType<File>()
+            .where((f) => f.path.endsWith('/libbistre_ffi.so')),
+  ]..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+  if (candidates.isEmpty) return null;
+  return ExternalLibrary.open(candidates.first.path);
 }

@@ -616,7 +616,7 @@ wLMDjy9FLAuxZ3q4NlEvkgtyhrr0gtTu6KC4KBJdITbbOeAi1zBIYo0v4iTgt8jJpIidRJnp94ABQkJA
     fn sealed_vault_encrypts_at_rest_and_survives_reopen() {
         let dir = tempdir().ok();
         let Some(dir) = dir else { return };
-        let secret = b"sk-sealed-secret-112233";
+        let secret = b"sk-test-sealed-secret-112233";
         let vault = sealed_vault(dir.path(), &[7_u8; 32]);
         assert!(vault.as_ref().is_some_and(LocalSecretVault::is_encrypted));
         let Some(vault) = vault else { return };
@@ -639,7 +639,7 @@ wLMDjy9FLAuxZ3q4NlEvkgtyhrr0gtTu6KC4KBJdITbbOeAi1zBIYo0v4iTgt8jJpIidRJnp94ABQkJA
     fn plaintext_entries_from_older_versions_are_encrypted_on_open() {
         let dir = tempdir().ok();
         let Some(dir) = dir else { return };
-        let secret = b"sk-legacy-plaintext-445566";
+        let secret = b"sk-test-legacy-plaintext-445566";
         let legacy = format!("{{\"provider:openai\": \"{}\"}}", hex::encode(secret));
         assert!(std::fs::write(dir.path().join("bistre_vault.local.json"), legacy).is_ok());
 

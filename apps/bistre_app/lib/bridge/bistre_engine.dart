@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
+    show ExternalLibrary;
+
 import '../platform/vault_key_host.dart';
 import 'api.dart' as frb;
 import 'api/story.dart' as frb;
@@ -273,11 +276,17 @@ abstract interface class BistreEngineGateway {
 
 /// Production FFI gateway backed by `flutter_rust_bridge 2.13` Native Assets.
 class FrbBistreEngineGateway implements BistreEngineGateway {
+  /// [externalLibrary] overrides the default loader (tests that run outside a
+  /// bundled app, where the native library is not on the loader path).
+  FrbBistreEngineGateway({ExternalLibrary? externalLibrary})
+    : _externalLibrary = externalLibrary;
+
+  final ExternalLibrary? _externalLibrary;
   bool _libInitialized = false;
 
   Future<void> _ensureLib() async {
     if (_libInitialized) return;
-    await BistreRustLib.init();
+    await BistreRustLib.init(externalLibrary: _externalLibrary);
     _libInitialized = true;
   }
 
