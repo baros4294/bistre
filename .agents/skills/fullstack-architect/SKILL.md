@@ -23,11 +23,11 @@ Work as Bistre's principal engineer and design lead. `AGENTS.md` is the contract
 
 ## 3. Frontend: the Flutter UI
 ### 3.1 Design process (every UI change)
-1. **Brief**: name the screen's one job, its primary user action, and the Parchment `v2.6.0` behaviour it must match or beat.
+1. **Brief**: name the screen's one job, its primary user action, and the Parchment `v2.6.0` behaviour it must match or beat. Choose what is best for daily use; where `v2.6.0` and a Bistre rule conflict, ask the owner.
 2. **Plan**: list the tokens, type roles, spacing, and primitives you will use, all from `docs/design/DESIGN.md`. Sketch the layout as an ASCII wireframe with its alignment, including the RTL mirror.
 3. **Review the plan against the brief**: for each choice, ask whether it serves this screen or is a default that would appear anywhere. Revise any default and say why.
 4. **Build**: use only the 10 Ink Primitives and the declared controls. Everything else is composition.
-5. **Critique with pixels**: run `just ui-gallery` and look at the PNGs in light, dark, phone, desktop, 200% text, and RTL. Compare them with the Parchment `v2.6.0` render. Then remove one accessory: the least necessary border, label, icon, or tint.
+5. **Critique with pixels**: run `just ui-gallery` and look at the PNGs in light, dark, phone, desktop, 200% text, and RTL. Compare them with the Parchment `v2.6.0` render, and compare behaviour too: open the same screen in `v2.6.0` code (`composeApp/src/commonMain/kotlin/io/parchment/ai/ui`) and check every control, popover, hover, press, and transition, not just the pixels. Then remove one accessory: the least necessary border, label, icon, or tint.
 6. **Record**: update `docs/design/DESIGN.md` and Spec 08 in the same change. Close or add the matching row in Spec 08 §4.
 
 ### 3.2 Visual discipline
@@ -45,10 +45,10 @@ Work as Bistre's principal engineer and design lead. `AGENTS.md` is the contract
 - An empty state invites the next action.
 - Every string lives in `l10n/catalog/*.bistre-l10n.json` and is translated for every locale in the same change.
 
-### 3.4 Motion (frequency test first)
-- **No animation**: actions done 100+ times a day, and every keyboard action. That covers sending, message arrival, thread switching, scrolling back, and typing.
-- **140–220 ms**, `transform`/`opacity` only: occasional spatial changes such as opening a modal, sliding in the drawer, or showing a toast.
-- **Always**: honour reduced motion, including a change mid-animation. Fast input must be able to interrupt any animation without corrupting state or focus.
+### 3.4 Motion (DESIGN §6)
+- **Instant**: typing, sending, keyboard actions, thread switching, and message arrival.
+- **Animate**: pointer press/hover feedback on every clickable (in the shared primitives), disclosure height plus fade, overlays and pop-in pills, colour and value transitions, smooth desktop wheel scrolling, and paced streaming text.
+- **Always**: animation never delays the action, fast input interrupts it cleanly, and Reduce motion (including a change mid-animation) makes all of it instant.
 
 ### 3.5 Accessibility and input
 - Every tap target is focusable (`FocusableActionDetector`), has a semantic label, shows a hint on hover, and is at least `40 px` (`48 dp` on touch).

@@ -41,7 +41,7 @@ Verify crate/package versions, Flutter/Rust/Android APIs, LLM wire protocols, MC
   - Money is `MoneyMicros(i64)` (`1 USD = 1_000_000`), never `f32`/`f64`.
 - **`bistre-ffi`**: FRB v2 DTO mapping, runtime bootstrap, and 16 ms delta coalescing only. No domain logic, SQL, HTTP, retries, or prompt assembly.
 - **`apps/bistre_app`**:
-  - Forbidden: Material/Cupertino, `flutter_localizations`, `google_fonts`, third-party state/HTTP/SQL packages, hardcoded UI strings, layout-property animations, raw `Color(...)` outside `bistre_theme.dart`, and physical left/right geometry (5 `bistre_lints` rules).
+  - Forbidden: Material/Cupertino, `flutter_localizations`, `google_fonts`, third-party state/HTTP/SQL packages, hardcoded UI strings, layout animation outside disclosures, raw `Color(...)` outside `bistre_theme.dart`, and physical left/right geometry (5 `bistre_lints` rules).
   - State uses only `ChangeNotifier`/`ValueNotifier` + `InheritedNotifier` + `ListenableBuilder`, split by domain. The root `WidgetsApp` listens only to appearance and locale.
 
 ## 7. Runtime, Security & UI Invariants
@@ -60,7 +60,7 @@ Verify crate/package versions, Flutter/Rust/Android APIs, LLM wire protocols, MC
   - Plain everyday copy in every locale; never `Inscribe`, `Folio`, `Passage`, `Author`, `Parchment`, `Candlelight`, `Guided Craft`, `Unchained`, `Wax Seal`, or `Quill` in UI strings.
   - Typed `BistreUiIcon` only; icons compile offline to `.vec`, and provenance lives only in `docs/design/ICON-SOURCES.md` + `THIRD_PARTY_NOTICES.md`.
   - Streaming deltas reach only a leaf `ValueNotifier`. Parse committed messages once and cache the result.
-  - Motion: zero animation for actions done 100+ times a day and for keyboard actions. Otherwise animate `transform`/`opacity` only (140–220 ms). Honour `MediaQuery.maybeReduceMotionOf`.
+  - Motion (DESIGN §6): typing, sending, keyboard actions, thread switching, and message arrival are instant; pointer press/hover springs, disclosure height, overlays, smooth wheel scrolling, and paced streaming text animate; everything honours Reduce motion.
   - RTL via `EdgeInsetsDirectional`. Every tap target is focusable and labelled, `>= 40 px` (`48 dp` touch).
   - Never mutate `TextEditingController.text` while composing.
   - Windows uses the Win11 DWM frame (`apps/bistre_app/windows/runner/`). Android is edge-to-edge, distributed as a direct GitHub APK only.
