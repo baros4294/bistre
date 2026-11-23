@@ -135,6 +135,7 @@ pub struct FfiAppSettings {
     pub reasoning_effort: String,
     pub termux_bridge_enabled: bool,
     pub code_wrap_mode: String,
+    pub pricing_auto_refresh: bool,
 }
 
 /// Thin FFI DTO mirror of `ThreadSummary`.
@@ -963,6 +964,7 @@ pub async fn save_settings(settings: FfiAppSettings) -> Result<FfiAppSettings, S
             reasoning_effort: settings.reasoning_effort,
             termux_bridge_enabled: settings.termux_bridge_enabled,
             code_wrap_mode: settings.code_wrap_mode,
+            pricing_auto_refresh: settings.pricing_auto_refresh,
         })
         .await
         .map_err(crate::dto_mapping::ffi_err)?;
@@ -1183,6 +1185,15 @@ pub async fn resolve_indeterminate_run(
         .await
         .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_agent_run(run))
+}
+
+/// Starts a public price-list refresh now.
+#[frb]
+pub async fn refresh_prices() -> Result<(), String> {
+    current_engine()?
+        .refresh_prices()
+        .await
+        .map_err(crate::dto_mapping::ffi_err)
 }
 
 /// Cleanly shuts down the active engine and checkpoints SQLite WAL.

@@ -141,6 +141,7 @@ pub(crate) fn map_settings(s: AppSettings) -> FfiAppSettings {
         reasoning_effort: s.reasoning_effort,
         termux_bridge_enabled: s.termux_bridge_enabled,
         code_wrap_mode: s.code_wrap_mode,
+        pricing_auto_refresh: s.pricing_auto_refresh,
     }
 }
 

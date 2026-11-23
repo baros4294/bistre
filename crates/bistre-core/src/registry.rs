@@ -3,7 +3,9 @@
 //! - Single-flight, detached background sync: `OpenRouter` → Vercel AI Gateway → `LiteLLM` →
 //!   `models.dev`. Earlier sources win; later sources only fill gaps. Each source is published
 //!   incrementally through a `tokio::sync::watch` channel.
-//! - `30 min` freshness TTL, `60 s` cooldown after a sync that produced nothing.
+//! - `24 h` freshness TTL, `60 s` cooldown after a sync that produced nothing. Syncs start only
+//!   at engine start (when `pricing_auto_refresh` is on) or on an explicit refresh, never from
+//!   a run, and the merged table is cached on disk with a format version.
 //! - Callers may wait up to `2.5 s` for one model's rate; waiting never cancels the download.
 //! - Every price is converted once, with integer math only, into `MoneyMicros` per one million
 //!   tokens; JSON floats are re-read from their shortest decimal text, never multiplied as `f64`.
@@ -11,6 +13,7 @@
 
 use bistre_protocol::lock_or_recover;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -22,7 +25,9 @@ use tokio::sync::watch;
 use crate::ssrf::PublicWebTransport;
 
 /// Freshness window for a successful sync.
-pub const REGISTRY_TTL: Duration = Duration::from_mins(30);
+pub const REGISTRY_TTL: Duration = Duration::from_hours(24);
+/// Version of the on-disk price cache; a different version is ignored and rebuilt.
+pub const PRICE_CACHE_FORMAT: u32 = 1;
 /// Cooldown after a sync that yielded no rates.
 pub const REGISTRY_FAILURE_COOLDOWN: Duration = Duration::from_secs(60);
 /// Maximum wait for one model's rate.
@@ -271,6 +276,22 @@ pub struct PricingRegistry {
     table_tx: watch::Sender<Arc<RateTable>>,
     syncing: AtomicBool,
     clock: Mutex<SyncClock>,
+    /// Where the merged table is cached between launches (`None` in tests).
+    cache_path: Option<PathBuf>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct PriceCache {
+    format: u32,
+    fetched_at_ms: i64,
+    /// `id -> [input, output, cached_input or -1]` in micro-USD per million tokens.
+    rates: HashMap<String, [i64; 3]>,
+}
+
+fn unix_now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
 }
 
 impl Default for PricingRegistry {
@@ -286,6 +307,70 @@ impl PricingRegistry {
             table_tx,
             syncing: AtomicBool::new(false),
             clock: Mutex::new(SyncClock::default()),
+            cache_path: None,
+        }
+    }
+
+    /// A registry backed by an on-disk cache: a fresh cache (same format, under 24 h old)
+    /// is loaded immediately and counts as the last successful sync.
+    pub fn with_cache(path: PathBuf) -> Self {
+        let mut registry = Self::new();
+        if let Some(cache) = std::fs::read(&path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<PriceCache>(&bytes).ok())
+            .filter(|c| c.format == PRICE_CACHE_FORMAT)
+        {
+            let age_ms =
+                u64::try_from(unix_now_ms().saturating_sub(cache.fetched_at_ms)).unwrap_or(0);
+            let entries = cache
+                .rates
+                .into_iter()
+                .map(|(id, [input, output, cached])| {
+                    let rates = ModelRates {
+                        input_per_mtok: input,
+                        output_per_mtok: output,
+                        cached_input_per_mtok: (cached >= 0).then_some(cached),
+                    };
+                    (id, rates)
+                })
+                .collect();
+            registry.publish(entries);
+            lock_or_recover(&registry.clock, "clock").last_success =
+                Instant::now().checked_sub(Duration::from_millis(age_ms));
+        }
+        registry.cache_path = Some(path);
+        registry
+    }
+
+    fn save_cache(&self) {
+        let Some(path) = &self.cache_path else { return };
+        let table = self.snapshot();
+        let cache = PriceCache {
+            format: PRICE_CACHE_FORMAT,
+            fetched_at_ms: unix_now_ms(),
+            rates: table
+                .rates
+                .iter()
+                .map(|(id, r)| {
+                    let cached = r.cached_input_per_mtok.unwrap_or(-1);
+                    (id.clone(), [r.input_per_mtok, r.output_per_mtok, cached])
+                })
+                .collect(),
+        };
+        let written = serde_json::to_vec(&cache)
+            .map_err(std::io::Error::other)
+            .and_then(|bytes| {
+                use std::io::Write as _;
+                let tmp = path.with_extension("json.tmp");
+                let mut file = std::fs::File::create(&tmp)?;
+                file.write_all(&bytes)?;
+                // `sync_all` needs a writable handle on Windows.
+                file.sync_all()?;
+                drop(file);
+                std::fs::rename(&tmp, path)
+            });
+        if let Err(err) = written {
+            tracing::warn!(error = %err, "price cache write failed; prices refresh again next start");
         }
     }
 
@@ -314,17 +399,32 @@ impl PricingRegistry {
 
     /// Starts one detached background sync when stale (single-flight; returns immediately).
     pub fn ensure_fresh(self: &Arc<Self>, web: &PublicWebTransport) {
-        if !self.sync_due()
-            || self
-                .syncing
-                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-                .is_err()
+        if self.sync_due() {
+            self.start_sync(web);
+        }
+    }
+
+    /// Starts a sync now regardless of age (the user's "Update prices now").
+    pub fn force_refresh(self: &Arc<Self>, web: &PublicWebTransport) {
+        self.start_sync(web);
+    }
+
+    fn start_sync(self: &Arc<Self>, web: &PublicWebTransport) {
+        // Outside a Tokio runtime there is nothing to run the download on.
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+            tracing::warn!("price refresh skipped: no async runtime");
+            return;
+        };
+        if self
+            .syncing
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
         {
             return;
         }
         let registry = Arc::clone(self);
         let web = web.clone();
-        tokio::spawn(async move {
+        runtime.spawn(async move {
             let mut any = false;
             for (name, url) in PRICING_SOURCES {
                 let Ok(fetched) = web.get(url, MAX_CATALOG_BYTES).await else {
@@ -347,6 +447,9 @@ impl PricingRegistry {
                 } else {
                     clock.last_empty = Some(Instant::now());
                 }
+            }
+            if any {
+                registry.save_cache();
             }
             registry.syncing.store(false, Ordering::Release);
         });
@@ -454,5 +557,40 @@ mod tests {
         let started = Instant::now();
         assert!(registry.rates_for("nothing").await.is_none());
         assert!(started.elapsed() < Duration::from_millis(100));
+    }
+
+    #[test]
+    fn price_cache_round_trips_and_ignores_other_formats() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("pricing_cache.json");
+        let registry = PricingRegistry::with_cache(path.clone());
+        registry.publish(vec![(
+            "vendor/model-a".to_owned(),
+            ModelRates {
+                input_per_mtok: 1_000_000,
+                output_per_mtok: 2_000_000,
+                cached_input_per_mtok: Some(100_000),
+            },
+        )]);
+        registry.save_cache();
+
+        // A new process loads the cache and treats it as a fresh sync (no download needed).
+        let reloaded = PricingRegistry::with_cache(path.clone());
+        assert_eq!(
+            reloaded
+                .snapshot()
+                .lookup("model-a")
+                .map(|r| r.cached_input_per_mtok),
+            Some(Some(100_000))
+        );
+        assert!(!reloaded.sync_due());
+
+        // A cache written by another format version is ignored and rebuilt.
+        std::fs::write(&path, r#"{"format":999,"fetched_at_ms":0,"rates":{}}"#)?;
+        let other = PricingRegistry::with_cache(path);
+        assert!(other.snapshot().lookup("model-a").is_none());
+        assert!(other.sync_due());
+        Ok(())
     }
 }

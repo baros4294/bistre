@@ -340,7 +340,13 @@ void checkErrorSilencing(
     if (_isGenerated(rel)) continue;
     if (rel.startsWith('crates/') && rel.endsWith('.rs')) {
       final content = _read(root, rel);
-      final testStart = content.indexOf('#[cfg(test)]');
+      // Only an inline `#[cfg(test)] mod name {` starts test code; a `mod tests;` declaration
+      // near the top of a file must not hide the runtime code after it.
+      final testStart =
+          RegExp(r'#\[cfg\(test\)\]\s*(?:#\[[^\]]*\]\s*)*mod \w+ \{')
+              .firstMatch(content)
+              ?.start ??
+          -1;
       final prod = rel.endsWith('/tests.rs') || _isRustTestModule(root, rel)
           ? ''
           : (testStart < 0 ? content : content.substring(0, testStart));

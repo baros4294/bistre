@@ -143,11 +143,30 @@ impl InProcessEngine {
         let vault: Arc<dyn SecretVault> = Arc::new(LocalSecretVault::open(&dir, vault_key)?);
         let http = providers::build_http_client()?;
         let power = PowerCoordinator::new(power_backend);
-        if let Ok(settings) = storage.load_settings() {
+        // Unreadable settings must not block opening (the user can fix them in Settings); keep
+        // the default power policy and skip the automatic price refresh.
+        let settings = match storage.load_settings() {
+            Ok(settings) => Some(settings),
+            Err(err) => {
+                tracing::warn!(
+                    key = err.key.as_key(),
+                    "settings unreadable at engine start"
+                );
+                None
+            }
+        };
+        if let Some(settings) = &settings {
             power.update_policy(PowerLeasePolicy {
                 keep_awake_while_running: settings.keep_awake_while_running,
                 windows_keep_awake_on_battery: settings.windows_keep_awake_on_battery,
             });
+        }
+        let web = ssrf::PublicWebTransport::new();
+        let pricing = Arc::new(registry::PricingRegistry::with_cache(
+            dir.join("pricing_cache.json"),
+        ));
+        if settings.as_ref().is_some_and(|s| s.pricing_auto_refresh) {
+            pricing.ensure_fresh(&web);
         }
         let (events_tx, _) = broadcast::channel(EVENT_BUS_CAPACITY);
         Ok(Arc::new(Self {
@@ -155,9 +174,9 @@ impl InProcessEngine {
             storage,
             vault,
             http,
-            web: ssrf::PublicWebTransport::new(),
+            web,
             mcp_http: mcp::McpHttpTransport::new(),
-            pricing: Arc::new(registry::PricingRegistry::new()),
+            pricing,
             wakers: Arc::new(Mutex::new(HashMap::new())),
             read_ledger: tools::ReadLedger::default(),
             broker: approval::ToolApprovalBroker::new(),
@@ -384,7 +403,6 @@ impl InProcessEngine {
         let wakers = Arc::clone(&self.wakers);
         let services = StreamServices {
             http: self.http.clone(),
-            web: self.web.clone(),
             pricing: Arc::clone(&self.pricing),
             wake,
         };

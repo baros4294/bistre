@@ -611,6 +611,10 @@ pub struct AppSettings {
     /// Code-fence wrapping: `auto` (soft-wrap below 640 px), `on`, or `off`.
     #[serde(default = "default_code_wrap_mode")]
     pub code_wrap_mode: String,
+    /// Refresh public model prices automatically (at most once per 24 h). Off: prices update
+    /// only when the user asks, and unknown prices count as `$0` toward the daily limit.
+    #[serde(default = "default_true")]
+    pub pricing_auto_refresh: bool,
 }
 
 fn default_code_wrap_mode() -> String {
@@ -660,6 +664,7 @@ impl Default for AppSettings {
             reasoning_effort: default_reasoning_effort(),
             termux_bridge_enabled: false,
             code_wrap_mode: default_code_wrap_mode(),
+            pricing_auto_refresh: true,
         }
     }
 }

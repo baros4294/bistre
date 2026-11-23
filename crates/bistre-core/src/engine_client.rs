@@ -193,6 +193,8 @@ pub trait EngineClient: Send + Sync {
         limit: u32,
     ) -> BoxFuture<'_, BistreResult<Vec<CursorEventRecord>>>;
     fn latest_event_cursor(&self) -> BoxFuture<'_, BistreResult<u64>>;
+    /// Starts a public price-list refresh now (the user's "Update prices now").
+    fn refresh_prices(&self) -> BoxFuture<'_, BistreResult<()>>;
     /// Records the user's approval of one exact tool call; returns a one-use permit id.
     fn approve_tool_call(
         &self,

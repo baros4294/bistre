@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1777703805;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -830100756;
 
 // Section: executor
 
@@ -2482,6 +2482,41 @@ fn wire__crate__api__harness__prepare_subagent_sandbox_json_impl(
         },
     )
 }
+fn wire__crate__api__refresh_prices_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "refresh_prices",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok = crate::api::refresh_prices().await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__regenerate_reply_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -3798,6 +3833,7 @@ impl SseDecode for crate::api::FfiAppSettings {
         let mut var_reasoningEffort = <String>::sse_decode(deserializer);
         let mut var_termuxBridgeEnabled = <bool>::sse_decode(deserializer);
         let mut var_codeWrapMode = <String>::sse_decode(deserializer);
+        let mut var_pricingAutoRefresh = <bool>::sse_decode(deserializer);
         return crate::api::FfiAppSettings {
             theme: var_theme,
             layout_mode: var_layoutMode,
@@ -3835,6 +3871,7 @@ impl SseDecode for crate::api::FfiAppSettings {
             reasoning_effort: var_reasoningEffort,
             termux_bridge_enabled: var_termuxBridgeEnabled,
             code_wrap_mode: var_codeWrapMode,
+            pricing_auto_refresh: var_pricingAutoRefresh,
         };
     }
 }
@@ -4566,70 +4603,71 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        65 => wire__crate__api__regenerate_reply_impl(port, ptr, rust_vec_len, data_len),
-        66 => wire__crate__api__resolve_indeterminate_run_impl(port, ptr, rust_vec_len, data_len),
-        67 => wire__crate__api__retry_run_now_impl(port, ptr, rust_vec_len, data_len),
-        68 => wire__crate__api__harness__rewind_checkpoint_impl(port, ptr, rust_vec_len, data_len),
-        69 => wire__crate__api__save_draft_impl(port, ptr, rust_vec_len, data_len),
-        70 => wire__crate__api__save_settings_impl(port, ptr, rust_vec_len, data_len),
-        71 => wire__crate__api__story__save_story_thread_state_json_impl(
+        65 => wire__crate__api__refresh_prices_impl(port, ptr, rust_vec_len, data_len),
+        66 => wire__crate__api__regenerate_reply_impl(port, ptr, rust_vec_len, data_len),
+        67 => wire__crate__api__resolve_indeterminate_run_impl(port, ptr, rust_vec_len, data_len),
+        68 => wire__crate__api__retry_run_now_impl(port, ptr, rust_vec_len, data_len),
+        69 => wire__crate__api__harness__rewind_checkpoint_impl(port, ptr, rust_vec_len, data_len),
+        70 => wire__crate__api__save_draft_impl(port, ptr, rust_vec_len, data_len),
+        71 => wire__crate__api__save_settings_impl(port, ptr, rust_vec_len, data_len),
+        72 => wire__crate__api__story__save_story_thread_state_json_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        72 => wire__crate__api__search_nodes_impl(port, ptr, rust_vec_len, data_len),
-        73 => wire__crate__api__send_and_stream_reply_impl(port, ptr, rust_vec_len, data_len),
-        74 => wire__crate__api__set_android_power_state_impl(port, ptr, rust_vec_len, data_len),
-        75 => {
+        73 => wire__crate__api__search_nodes_impl(port, ptr, rust_vec_len, data_len),
+        74 => wire__crate__api__send_and_stream_reply_impl(port, ptr, rust_vec_len, data_len),
+        75 => wire__crate__api__set_android_power_state_impl(port, ptr, rust_vec_len, data_len),
+        76 => {
             wire__crate__api__harness__set_context_start_pin_impl(port, ptr, rust_vec_len, data_len)
         }
-        76 => wire__crate__api__harness__set_kv_meta_impl(port, ptr, rust_vec_len, data_len),
-        77 => wire__crate__api__set_provider_api_key_impl(port, ptr, rust_vec_len, data_len),
-        78 => wire__crate__api__shutdown_runtime_impl(port, ptr, rust_vec_len, data_len),
-        79 => wire__crate__api__stage_update_impl(port, ptr, rust_vec_len, data_len),
-        80 => wire__crate__api__subscribe_events_impl(port, ptr, rust_vec_len, data_len),
-        81 => wire__crate__api__harness__undo_compaction_impl(port, ptr, rust_vec_len, data_len),
-        82 => wire__crate__api__update_assistant_impl(port, ptr, rust_vec_len, data_len),
-        83 => wire__crate__api__update_provider_impl(port, ptr, rust_vec_len, data_len),
-        84 => wire__crate__api__update_thread_impl(port, ptr, rust_vec_len, data_len),
-        85 => wire__crate__api__story__upsert_character_card_json_impl(
+        77 => wire__crate__api__harness__set_kv_meta_impl(port, ptr, rust_vec_len, data_len),
+        78 => wire__crate__api__set_provider_api_key_impl(port, ptr, rust_vec_len, data_len),
+        79 => wire__crate__api__shutdown_runtime_impl(port, ptr, rust_vec_len, data_len),
+        80 => wire__crate__api__stage_update_impl(port, ptr, rust_vec_len, data_len),
+        81 => wire__crate__api__subscribe_events_impl(port, ptr, rust_vec_len, data_len),
+        82 => wire__crate__api__harness__undo_compaction_impl(port, ptr, rust_vec_len, data_len),
+        83 => wire__crate__api__update_assistant_impl(port, ptr, rust_vec_len, data_len),
+        84 => wire__crate__api__update_provider_impl(port, ptr, rust_vec_len, data_len),
+        85 => wire__crate__api__update_thread_impl(port, ptr, rust_vec_len, data_len),
+        86 => wire__crate__api__story__upsert_character_card_json_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        86 => {
+        87 => {
             wire__crate__api__harness__upsert_cron_job_json_impl(port, ptr, rust_vec_len, data_len)
         }
-        87 => wire__crate__api__harness__upsert_memory_entry_json_impl(
+        88 => wire__crate__api__harness__upsert_memory_entry_json_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        88 => {
+        89 => {
             wire__crate__api__story__upsert_regex_rule_json_impl(port, ptr, rust_vec_len, data_len)
         }
-        89 => wire__crate__api__story__upsert_story_chapter_json_impl(
+        90 => wire__crate__api__story__upsert_story_chapter_json_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        90 => {
+        91 => {
             wire__crate__api__story__upsert_story_entry_json_impl(port, ptr, rust_vec_len, data_len)
         }
-        91 => {
+        92 => {
             wire__crate__api__story__upsert_story_scene_json_impl(port, ptr, rust_vec_len, data_len)
         }
-        92 => wire__crate__api__story__upsert_user_persona_json_impl(
+        93 => wire__crate__api__story__upsert_user_persona_json_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        93 => wire__crate__api__verify_data_pack_impl(port, ptr, rust_vec_len, data_len),
+        94 => wire__crate__api__verify_data_pack_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -4728,6 +4766,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::FfiAppSettings {
             self.reasoning_effort.into_into_dart().into_dart(),
             self.termux_bridge_enabled.into_into_dart().into_dart(),
             self.code_wrap_mode.into_into_dart().into_dart(),
+            self.pricing_auto_refresh.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -5165,6 +5204,7 @@ impl SseEncode for crate::api::FfiAppSettings {
         <String>::sse_encode(self.reasoning_effort, serializer);
         <bool>::sse_encode(self.termux_bridge_enabled, serializer);
         <String>::sse_encode(self.code_wrap_mode, serializer);
+        <bool>::sse_encode(self.pricing_auto_refresh, serializer);
     }
 }
 

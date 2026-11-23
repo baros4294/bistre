@@ -767,6 +767,11 @@ flowchart LR
   final Map<String, String> _kvMeta = <String, String>{};
   final Map<String, String> _contextPins = <String, String>{};
 
+  int refreshPricesCalls = 0;
+
+  @override
+  Future<void> refreshPrices() async => refreshPricesCalls++;
+
   @override
   Future<String> approveToolCall({
     required String threadId,

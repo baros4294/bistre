@@ -179,6 +179,9 @@ abstract interface class BistreEngineGateway {
     required bool confirmCompleted,
   });
 
+  /// Starts a public price-list refresh now.
+  Future<void> refreshPrices();
+
   /// Records the user's approval of one exact call; returns a one-use permit id.
   Future<String> approveToolCall({
     required String threadId,
@@ -655,6 +658,7 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
             reasoningEffort: settings.reasoningEffort,
             termuxBridgeEnabled: settings.termuxBridgeEnabled,
             codeWrapMode: settings.codeWrapMode,
+            pricingAutoRefresh: settings.pricingAutoRefresh,
           ),
         ),
       );
@@ -775,6 +779,9 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
       confirmCompleted: confirmCompleted,
     ),
   );
+
+  @override
+  Future<void> refreshPrices() => frb.refreshPrices();
 
   @override
   Future<String> approveToolCall({
@@ -1297,6 +1304,7 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
     reasoningEffort: s.reasoningEffort,
     termuxBridgeEnabled: s.termuxBridgeEnabled,
     codeWrapMode: s.codeWrapMode,
+    pricingAutoRefresh: s.pricingAutoRefresh,
   );
 
   static EngineAgentRun _mapAgentRun(frb.FfiAgentRunRecord r) => EngineAgentRun(

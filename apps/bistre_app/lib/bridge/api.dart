@@ -436,6 +436,10 @@ Future<FfiAgentRunRecord> resolveIndeterminateRun({
   confirmCompleted: confirmCompleted,
 );
 
+/// Starts a public price-list refresh now.
+Future<void> refreshPrices() =>
+    BistreRustLib.instance.api.crateApiRefreshPrices();
+
 /// Cleanly shuts down the active engine and checkpoints SQLite WAL.
 Future<void> shutdownRuntime() =>
     BistreRustLib.instance.api.crateApiShutdownRuntime();
@@ -560,6 +564,7 @@ class FfiAppSettings {
   final String reasoningEffort;
   final bool termuxBridgeEnabled;
   final String codeWrapMode;
+  final bool pricingAutoRefresh;
 
   const FfiAppSettings({
     required this.theme,
@@ -598,6 +603,7 @@ class FfiAppSettings {
     required this.reasoningEffort,
     required this.termuxBridgeEnabled,
     required this.codeWrapMode,
+    required this.pricingAutoRefresh,
   });
 
   @override
@@ -637,7 +643,8 @@ class FfiAppSettings {
       retryWatchdogMaxWaitSecs.hashCode ^
       reasoningEffort.hashCode ^
       termuxBridgeEnabled.hashCode ^
-      codeWrapMode.hashCode;
+      codeWrapMode.hashCode ^
+      pricingAutoRefresh.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -679,7 +686,8 @@ class FfiAppSettings {
           retryWatchdogMaxWaitSecs == other.retryWatchdogMaxWaitSecs &&
           reasoningEffort == other.reasoningEffort &&
           termuxBridgeEnabled == other.termuxBridgeEnabled &&
-          codeWrapMode == other.codeWrapMode;
+          codeWrapMode == other.codeWrapMode &&
+          pricingAutoRefresh == other.pricingAutoRefresh;
 }
 
 /// Thin FFI DTO mirror of `AssistantRecord`.
