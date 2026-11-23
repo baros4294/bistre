@@ -50,6 +50,7 @@ Future<void> loadBundledFonts() async {
     source: Future<ByteData>.value(ByteData.sublistView(mathBytes)),
   );
 
+  var arabicLoaded = false;
   for (final candidate in const <String>[
     r'C:\Windows\Fonts\segoeui.ttf',
     r'C:\Windows\Fonts\tahoma.ttf',
@@ -61,8 +62,13 @@ Future<void> loadBundledFonts() async {
       final bytes = f.readAsBytesSync();
       loader.addFont(Future<ByteData>.value(ByteData.sublistView(bytes)));
       await loader.load();
+      arabicLoaded = true;
       break;
     }
+  }
+  // Baselines must never record missing-glyph boxes (Linux CI installs `fonts-noto-core`).
+  if (_compareGoldens && !arabicLoaded) {
+    throw StateError('no Arabic fallback font for the gallery goldens');
   }
 }
 
