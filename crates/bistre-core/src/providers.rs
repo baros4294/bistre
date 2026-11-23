@@ -372,7 +372,18 @@ where
         store_server_state,
     );
     let mut state = StreamState::default();
-    let mut resp = dispatch(client, wire, keys, &mut state.out.notices).await?;
+    // Stop must take effect while connecting and while waiting for the first token, not only
+    // between chunks (the first-token budget is 300 s).
+    let dispatched = tokio::select! {
+        biased;
+        () = until_cancelled(cancel_flag) => None,
+        r = dispatch(client, wire, keys, &mut state.out.notices) => Some(r),
+    };
+    let Some(dispatched) = dispatched else {
+        state.out.cancelled = true;
+        return Ok(state.out);
+    };
+    let mut resp = dispatched?;
 
     let mut sse = SseFramer::new();
     let mut received_any = false;
@@ -386,7 +397,16 @@ where
         } else {
             INITIAL_LINE_TIMEOUT
         };
-        let next_chunk = match tokio::time::timeout(idle, resp.chunk()).await {
+        let waited = tokio::select! {
+            biased;
+            () = until_cancelled(cancel_flag) => None,
+            r = tokio::time::timeout(idle, resp.chunk()) => Some(r),
+        };
+        let Some(waited) = waited else {
+            state.out.cancelled = true;
+            break;
+        };
+        let next_chunk = match waited {
             Ok(Ok(chunk)) => chunk,
             failure => {
                 let detail = if failure.is_err() {
@@ -439,6 +459,16 @@ where
         state.out.interrupted = true;
     }
     Ok(state.out)
+}
+
+/// How often an in-flight request re-checks its Stop flag (cancel latency bound).
+pub const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
+
+/// Resolves once `flag` is set. Only awaited while a request is in flight, never while idle.
+pub async fn until_cancelled(flag: &AtomicBool) {
+    while !flag.load(Ordering::SeqCst) {
+        tokio::time::sleep(CANCEL_POLL_INTERVAL).await;
+    }
 }
 
 /// Probes common local inference servers (Ollama, LM Studio, `llama.cpp`, `KoboldCPP`) on loopback (`$0` priority).

@@ -345,3 +345,72 @@ async fn a_stream_that_breaks_after_output_is_kept_not_retried()
     );
     Ok(())
 }
+
+#[tokio::test]
+async fn stop_interrupts_a_request_waiting_for_its_first_token()
+-> Result<(), Box<dyn std::error::Error>> {
+    use std::sync::Arc;
+    use tokio::io::AsyncReadExt;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let addr = listener.local_addr()?;
+    // Accepts and reads the request, then never answers (a provider stuck before headers).
+    let server = tokio::spawn(async move {
+        if let Ok((mut sock, _)) = listener.accept().await {
+            let mut buf = [0_u8; 8192];
+            let _read = sock.read(&mut buf).await;
+            tokio::time::sleep(Duration::from_secs(30)).await;
+        }
+    });
+    let http = build_http_client()?;
+    let provider = ProviderProfile {
+        id: "p".to_owned(),
+        name: "Local".to_owned(),
+        dialect: ProviderDialect::CustomOpenAi,
+        base_url: format!("http://{addr}/v1"),
+        default_model: "m".to_owned(),
+        key_hint: String::new(),
+        has_api_key: true,
+        is_enabled: true,
+        is_builtin: false,
+        use_server_state_cache: false,
+        icon_slug: String::new(),
+        custom_icon_path: String::new(),
+        created_at_ms: 0,
+        updated_at_ms: 0,
+    };
+    let ring = KeyRing::new(vec![zeroize::Zeroizing::new("k".to_owned())]);
+    let cancel = Arc::new(AtomicBool::new(false));
+    let history = vec![NodeRecord {
+        id: "u".to_owned(),
+        thread_id: "t".to_owned(),
+        parent_id: None,
+        role: NodeRole::User,
+        content: "hello".to_owned(),
+        provider_meta_json: None,
+        created_at_ms: 0,
+    }];
+    let stopper = Arc::clone(&cancel);
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        stopper.store(true, Ordering::SeqCst);
+    });
+    let started = std::time::Instant::now();
+    let outcome = stream_completion(
+        &http,
+        &provider,
+        &ring,
+        "m",
+        "",
+        &history,
+        GenerationParams::default(),
+        true,
+        &cancel,
+        |_| {},
+    )
+    .await?;
+    assert!(outcome.cancelled);
+    // Stop at 150 ms plus at most one poll interval, far below the 300 s first-token budget.
+    assert!(started.elapsed() < Duration::from_millis(150) + CANCEL_POLL_INTERVAL * 4);
+    server.abort();
+    Ok(())
+}
