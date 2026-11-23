@@ -50,9 +50,7 @@ jobs:
           persist-credentials: false
       - name: Install pinned Rust toolchain
         shell: bash
-        run: |
-          rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update
-          rustup default "$RUST_VERSION"
+        run: bash .github/scripts/install-rust.sh
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -147,9 +145,7 @@ jobs:
           java-version: "25"
       - name: Install pinned Rust toolchain
         shell: bash
-        run: |
-          rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update --target aarch64-linux-android
-          rustup default "$RUST_VERSION"
+        run: bash .github/scripts/install-rust.sh --target aarch64-linux-android
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -157,25 +153,7 @@ jobs:
           cache: false
       - name: Provision Android SDK API 36 and pinned NDK r30
         shell: bash
-        run: |
-          set -euo pipefail
-          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
-          sdkmanager_bin="${sdk_root}/cmdline-tools/latest/bin/sdkmanager"
-          sudo mkdir -p "${sdk_root}/ndk" "${sdk_root}/platforms" "${sdk_root}/build-tools" "${sdk_root}/licenses"
-          sudo chown -R "$(id -u):$(id -g)" "$sdk_root"
-          set +o pipefail
-          yes | "$sdkmanager_bin" --sdk_root="$sdk_root" --licenses >/dev/null
-          set -o pipefail
-          bash .github/scripts/with-download-retry.sh "$sdkmanager_bin" --sdk_root="$sdk_root" --install \
-            "platforms;android-${ANDROID_COMPILE_SDK}" \
-            "build-tools;${ANDROID_BUILD_TOOLS}" \
-            "ndk;${ANDROID_NDK_VERSION}"
-          ndk_dir="${sdk_root}/ndk/${ANDROID_NDK_VERSION}"
-          {
-            echo "ANDROID_HOME=${sdk_root}"
-            echo "ANDROID_SDK_ROOT=${sdk_root}"
-            echo "ANDROID_NDK_HOME=${ndk_dir}"
-          } >> "$GITHUB_ENV"
+        run: bash .github/scripts/provision-android-sdk.sh
       - name: Build Android arm64-v8a direct release APK
         working-directory: apps/bistre_app
         shell: bash
@@ -243,9 +221,7 @@ jobs:
           persist-credentials: false
       - name: Install pinned Rust toolchain
         shell: bash
-        run: |
-          rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update
-          rustup default "$RUST_VERSION"
+        run: bash .github/scripts/install-rust.sh
       - uses: taiki-e/install-action@25f51f6b1bf4e18876107cece836f4f77ac17c8c # v2
         with:
           tool: cargo-cyclonedx
