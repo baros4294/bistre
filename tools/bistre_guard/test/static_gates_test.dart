@@ -219,4 +219,18 @@ void main() {
     expect(joined, contains('nextest.toml configures nextest retries'));
     expect(errors, hasLength(2), reason: joined);
   });
+
+  test('Rust errors dropped into a silent early return are rejected', () {
+    final errors = _run(checkNoSilentRustSkips, <String, Object>{
+      'crates/a/src/lib.rs': 'fn t() {\n    let dir = tempdir().ok();\n    let Some(dir) = dir else { return };\n}\n',
+      'crates/b/src/lib.rs': 'fn t() -> R {\n    let s = open()\n        .ok();\n    let Some(mut s) = s else {\n        return Ok(());\n    };\n}\n',
+      'crates/c/src/lib.rs':
+          'fn t() -> R {\n    let dir = tempdir()?;\n    Ok(())\n}\n',
+      'crates/d/src/lib.rs': 'fn t() {\n    let x = a().ok();\n    let Some(y) = other else { return };\n}\n',
+    });
+    final joined = errors.join('\n');
+    expect(joined, contains('crates/a/src/lib.rs: `dir`'));
+    expect(joined, contains('crates/b/src/lib.rs: `s`'));
+    expect(errors, hasLength(2), reason: joined);
+  });
 }
