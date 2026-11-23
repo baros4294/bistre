@@ -81,6 +81,11 @@ class BistreDesktopHost {
     });
   }
 
+  /// Removes [callback] if it is the registered system-theme listener.
+  static void detachSystemThemeListener(VoidCallback callback) {
+    if (_onSystemThemeChanged == callback) _onSystemThemeChanged = null;
+  }
+
   /// Syncs Windows 11 native title bar colors cleanly to Bistre's active theme.
   static Future<void> syncWindowTheme({
     required bool isDark,

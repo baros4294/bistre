@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../app/app_appearance.dart';
 import '../../bridge/bistre_engine.dart';
 import '../../design/bistre_theme.dart';
 import '../../l10n/l10n_keys.g.dart';
@@ -144,8 +145,22 @@ class FolioController extends ChangeNotifier {
   @override
   void notifyListeners() {
     if (_disposed) return;
+    // The root app rebuilds only when this value actually changes (ValueNotifier equality).
+    appearance.value = _currentAppearance();
     super.notifyListeners();
   }
+
+  /// Theme and typography inputs for the root `WidgetsApp` (see [AppAppearance]).
+  late final ValueNotifier<AppAppearance> appearance =
+      ValueNotifier<AppAppearance>(_currentAppearance());
+
+  AppAppearance _currentAppearance() => AppAppearance(
+    isDark: isDark,
+    accentPreset: _settings.accentPreset,
+    customAccentHex: _settings.customAccentHex,
+    typography: resolvedTypography,
+    reducedEffects: _lowMemoryMode,
+  );
 
   /// Background refresh failures never interrupt the user; they are logged with their
   /// diagnostic key instead of being swallowed.
@@ -921,7 +936,9 @@ class FolioController extends ChangeNotifier {
     try {
       _threads = _withoutPendingDeletes(await _gateway.listThreads());
       if (_activeThread?.id == threadId) {
-        _nodes = await _gateway.listNodes(threadId);
+        final nodes = await _gateway.listNodes(threadId);
+        // The user may have switched chats while the list loaded.
+        if (_activeThread?.id == threadId) _nodes = nodes;
       }
       _walletSpendMicros = await _gateway.getWalletSpendMicros();
       _walletDailySpendMicros = await _gateway.getWalletDailySpendMicros();
@@ -930,7 +947,8 @@ class FolioController extends ChangeNotifier {
       _agentRuns = await _gateway.listAgentRuns(limit: 30);
       _powerStatus = await _gateway.powerGuardStatus();
       if (_activeThread?.id == threadId) {
-        _pendingSteering = await _gateway.listPendingSteering(threadId);
+        final steering = await _gateway.listPendingSteering(threadId);
+        if (_activeThread?.id == threadId) _pendingSteering = steering;
       }
       notifyListeners();
     } catch (e) {
@@ -1036,31 +1054,45 @@ class FolioController extends ChangeNotifier {
     }
   }
 
+  /// Bumped on every thread switch; async loads for an older switch are discarded so fast
+  /// switching can never show one chat's messages under another chat.
+  int _threadGeneration = 0;
+
+  /// Latest search request; older responses are dropped.
+  int _searchSeq = 0;
+
+  /// Pause after the last search keystroke before querying.
+  static const Duration searchDebounce = Duration(milliseconds: 150);
+
   Future<void> _activateThread(EngineThread thread) async {
+    final generation = ++_threadGeneration;
     _activeThread = thread;
     _activeAssistantId = thread.assistantId;
     _selectedChildIndex.clear();
     _quotedExcerpt = null;
-    _nodes = await _gateway.listNodes(thread.id);
-    _pendingSteering = await _gateway.listPendingSteering(thread.id);
-    _pinnedContextNodeId = await _gateway.getContextStartPin(thread.id);
-    _checkpoints = await _gateway.listCheckpoints(thread.id);
+    final nodes = await _gateway.listNodes(thread.id);
+    final steering = await _gateway.listPendingSteering(thread.id);
+    final pin = await _gateway.getContextStartPin(thread.id);
+    final checkpoints = await _gateway.listCheckpoints(thread.id);
+    final draft = await _gateway.loadDraft(thread.id);
+    final hits = _searchQuery.isNotEmpty && !_searchAllThreads
+        ? await _gateway.searchNodes(_searchQuery, threadId: thread.id)
+        : null;
+    if (generation != _threadGeneration || _disposed) return;
+    _nodes = nodes;
+    _pendingSteering = steering;
+    _pinnedContextNodeId = pin;
+    _checkpoints = checkpoints;
     _activeGreetingIndex = 0;
     if (thread.mode == 'write') {
       unawaited(refreshStoryStudio());
     } else {
       _manuscriptViewActive = false;
     }
-    final draft = await _gateway.loadDraft(thread.id);
     _restoredDraft = draft ?? '';
     _draftEpoch++;
     _draftSaved = _restoredDraft.isNotEmpty;
-    if (_searchQuery.isNotEmpty && !_searchAllThreads) {
-      _searchHits = await _gateway.searchNodes(
-        _searchQuery,
-        threadId: thread.id,
-      );
-    }
+    if (hits != null) _searchHits = hits;
   }
 
   Future<void> selectThread(String threadId) async {
@@ -1407,11 +1439,11 @@ class FolioController extends ChangeNotifier {
     _disposed = true;
     _draftDebounce?.cancel();
     _toastTimer?.cancel();
-    for (final timer in _pendingThreadDeletes.values) {
-      timer.cancel();
-    }
-    _pendingThreadDeletes.clear();
+    // The user deleted these chats; closing the app inside the Undo window must not bring
+    // them back.
+    unawaited(flushPendingDeletes());
     liveTurn.dispose();
+    appearance.dispose();
     unawaited(_eventSub?.cancel());
     super.dispose();
   }

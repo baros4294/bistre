@@ -159,7 +159,7 @@ class MarkdownFolioView extends StatelessWidget {
     if (!trimmed.contains('|') || !trimmed.contains('-')) return false;
     final cells = _splitTableRow(trimmed);
     if (cells.isEmpty) return false;
-    return cells.every((c) => RegExp(r'^:?-{2,}:?$').hasMatch(c));
+    return cells.every(_tableRulePattern.hasMatch);
   }
 
   static List<String> _splitTableRow(String line) {
@@ -185,6 +185,18 @@ class MarkdownFolioView extends StatelessWidget {
   /// and no new fence marker or `\r` arrives, the fence's code is simply the rest of the message,
   /// so the block list is extended without re-splitting the whole message on every delta.
   static final List<_OpenFenceMemo> _openFenceMemos = <_OpenFenceMemo>[];
+
+  /// Parsed blocks of recent messages, keyed by their exact text (LRU, bounded). Committed
+  /// messages are parsed once, not on every rebuild, hover, or scroll back into view.
+  static final Map<String, List<_MdBlock>> _parsedBlocks =
+      <String, List<_MdBlock>>{};
+  static const int _kParsedCacheEntries = 256;
+
+  static final RegExp _tableRulePattern = RegExp(r'^:?-{2,}:?$');
+  static final RegExp _headingPattern = RegExp(r'^(#{1,3})\s+(.*)$');
+  static final RegExp _bulletPattern = RegExp(r'^[-*]\s+(.*)$');
+  static final RegExp _numberedPattern = RegExp(r'^(\d+\.)\s+(.*)$');
+  static final RegExp _listStartPattern = RegExp(r'^([-*]|\d+\.)\s+');
 
   static List<_MdBlock> _parseBlocksStreaming(String source) {
     for (var i = 0; i < _openFenceMemos.length; i++) {
@@ -212,7 +224,17 @@ class MarkdownFolioView extends StatelessWidget {
       _openFenceMemos[i] = _OpenFenceMemo(source, blocks, memo.codeStart);
       return blocks;
     }
+    final cached = _parsedBlocks.remove(source);
+    if (cached != null) {
+      // Re-insert to mark it most recently used.
+      _parsedBlocks[source] = cached;
+      return cached;
+    }
     final blocks = _parseBlocks(source);
+    _parsedBlocks[source] = blocks;
+    if (_parsedBlocks.length > _kParsedCacheEntries) {
+      _parsedBlocks.remove(_parsedBlocks.keys.first);
+    }
     final codeStart = _openFenceCodeStart(source, blocks);
     if (codeStart >= 0) {
       if (_openFenceMemos.length >= 4) _openFenceMemos.removeAt(0);
@@ -317,7 +339,7 @@ class MarkdownFolioView extends StatelessWidget {
         continue;
       }
 
-      final headingMatch = RegExp(r'^(#{1,3})\s+(.*)$').firstMatch(trimmed);
+      final headingMatch = _headingPattern.firstMatch(trimmed);
       if (headingMatch != null) {
         blocks.add(
           _MdHeading(
@@ -339,14 +361,14 @@ class MarkdownFolioView extends StatelessWidget {
         continue;
       }
 
-      final bulletMatch = RegExp(r'^[-*]\s+(.*)$').firstMatch(trimmed);
+      final bulletMatch = _bulletPattern.firstMatch(trimmed);
       if (bulletMatch != null) {
         blocks.add(_MdListItem(marker: '•', text: bulletMatch.group(1)!));
         i++;
         continue;
       }
 
-      final numMatch = RegExp(r'^(\d+\.)\s+(.*)$').firstMatch(trimmed);
+      final numMatch = _numberedPattern.firstMatch(trimmed);
       if (numMatch != null) {
         blocks.add(
           _MdListItem(marker: numMatch.group(1)!, text: numMatch.group(2)!),
@@ -367,7 +389,7 @@ class MarkdownFolioView extends StatelessWidget {
             (next.contains('|') &&
                 i + 1 < lines.length &&
                 _isTableSeparatorLine(lines[i + 1])) ||
-            RegExp(r'^([-*]|\d+\.)\s+').hasMatch(next)) {
+            _listStartPattern.hasMatch(next)) {
           break;
         }
         paraLines.add(next);
