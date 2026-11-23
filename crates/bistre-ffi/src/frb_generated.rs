@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1652664230;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -2036359960;
 
 // Section: executor
 
@@ -1785,7 +1785,7 @@ fn wire__crate__api__harness__list_checkpoints_json_impl(
         },
     )
 }
-fn wire__crate__api__harness__list_cron_jobs_json_impl(
+fn wire__crate__api__harness__list_cron_jobs_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -1793,7 +1793,7 @@ fn wire__crate__api__harness__list_cron_jobs_json_impl(
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "list_cron_jobs_json",
+            debug_name: "list_cron_jobs",
             port: Some(port_),
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
@@ -1811,7 +1811,7 @@ fn wire__crate__api__harness__list_cron_jobs_json_impl(
             move |context| async move {
                 transform_result_sse::<_, String>(
                     (move || async move {
-                        let output_ok = crate::api::harness::list_cron_jobs_json().await?;
+                        let output_ok = crate::api::harness::list_cron_jobs().await?;
                         std::result::Result::Ok(output_ok)
                     })()
                     .await,
@@ -3476,7 +3476,7 @@ fn wire__crate__api__story__upsert_character_card_json_impl(
         },
     )
 }
-fn wire__crate__api__harness__upsert_cron_job_json_impl(
+fn wire__crate__api__harness__upsert_cron_job_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -3484,7 +3484,7 @@ fn wire__crate__api__harness__upsert_cron_job_json_impl(
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "upsert_cron_job_json",
+            debug_name: "upsert_cron_job",
             port: Some(port_),
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
@@ -3498,13 +3498,12 @@ fn wire__crate__api__harness__upsert_cron_job_json_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_job_json = <String>::sse_decode(&mut deserializer);
+            let api_job = <crate::api::harness::FfiCronJob>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
                 transform_result_sse::<_, String>(
                     (move || async move {
-                        let output_ok =
-                            crate::api::harness::upsert_cron_job_json(api_job_json).await?;
+                        let output_ok = crate::api::harness::upsert_cron_job(api_job).await?;
                         std::result::Result::Ok(output_ok)
                     })()
                     .await,
@@ -3986,6 +3985,40 @@ impl SseDecode for crate::api::FfiAssistantRecord {
     }
 }
 
+impl SseDecode for crate::api::harness::FfiCronJob {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_id = <String>::sse_decode(deserializer);
+        let mut var_name = <String>::sse_decode(deserializer);
+        let mut var_workspaceId = <String>::sse_decode(deserializer);
+        let mut var_assistantId = <String>::sse_decode(deserializer);
+        let mut var_scheduleExpr = <String>::sse_decode(deserializer);
+        let mut var_prompt = <String>::sse_decode(deserializer);
+        let mut var_mode = <String>::sse_decode(deserializer);
+        let mut var_unattendedPolicy = <String>::sse_decode(deserializer);
+        let mut var_useWorktree = <bool>::sse_decode(deserializer);
+        let mut var_enabled = <bool>::sse_decode(deserializer);
+        let mut var_nextRunMs = <i64>::sse_decode(deserializer);
+        let mut var_lastRunId = <Option<String>>::sse_decode(deserializer);
+        let mut var_lastStatus = <String>::sse_decode(deserializer);
+        return crate::api::harness::FfiCronJob {
+            id: var_id,
+            name: var_name,
+            workspace_id: var_workspaceId,
+            assistant_id: var_assistantId,
+            schedule_expr: var_scheduleExpr,
+            prompt: var_prompt,
+            mode: var_mode,
+            unattended_policy: var_unattendedPolicy,
+            use_worktree: var_useWorktree,
+            enabled: var_enabled,
+            next_run_ms: var_nextRunMs,
+            last_run_id: var_lastRunId,
+            last_status: var_lastStatus,
+        };
+    }
+}
+
 impl SseDecode for crate::api::FfiDraftRecord {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4315,6 +4348,18 @@ impl SseDecode for Vec<crate::api::FfiAssistantRecord> {
     }
 }
 
+impl SseDecode for Vec<crate::api::harness::FfiCronJob> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::harness::FfiCronJob>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<crate::api::FfiNodeRecord> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4618,9 +4663,7 @@ fn pde_ffi_dispatcher_primary_impl(
         45 => {
             wire__crate__api__harness__list_checkpoints_json_impl(port, ptr, rust_vec_len, data_len)
         }
-        46 => {
-            wire__crate__api__harness__list_cron_jobs_json_impl(port, ptr, rust_vec_len, data_len)
-        }
+        46 => wire__crate__api__harness__list_cron_jobs_impl(port, ptr, rust_vec_len, data_len),
         47 => wire__crate__api__harness__list_memory_entries_json_impl(
             port,
             ptr,
@@ -4713,9 +4756,7 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        89 => {
-            wire__crate__api__harness__upsert_cron_job_json_impl(port, ptr, rust_vec_len, data_len)
-        }
+        89 => wire__crate__api__harness__upsert_cron_job_impl(port, ptr, rust_vec_len, data_len),
         90 => wire__crate__api__harness__upsert_memory_entry_json_impl(
             port,
             ptr,
@@ -4883,6 +4924,38 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::FfiAssistantRecord>
     for crate::api::FfiAssistantRecord
 {
     fn into_into_dart(self) -> crate::api::FfiAssistantRecord {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::harness::FfiCronJob {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.id.into_into_dart().into_dart(),
+            self.name.into_into_dart().into_dart(),
+            self.workspace_id.into_into_dart().into_dart(),
+            self.assistant_id.into_into_dart().into_dart(),
+            self.schedule_expr.into_into_dart().into_dart(),
+            self.prompt.into_into_dart().into_dart(),
+            self.mode.into_into_dart().into_dart(),
+            self.unattended_policy.into_into_dart().into_dart(),
+            self.use_worktree.into_into_dart().into_dart(),
+            self.enabled.into_into_dart().into_dart(),
+            self.next_run_ms.into_into_dart().into_dart(),
+            self.last_run_id.into_into_dart().into_dart(),
+            self.last_status.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::harness::FfiCronJob
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::harness::FfiCronJob>
+    for crate::api::harness::FfiCronJob
+{
+    fn into_into_dart(self) -> crate::api::harness::FfiCronJob {
         self
     }
 }
@@ -5304,6 +5377,25 @@ impl SseEncode for crate::api::FfiAssistantRecord {
     }
 }
 
+impl SseEncode for crate::api::harness::FfiCronJob {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.id, serializer);
+        <String>::sse_encode(self.name, serializer);
+        <String>::sse_encode(self.workspace_id, serializer);
+        <String>::sse_encode(self.assistant_id, serializer);
+        <String>::sse_encode(self.schedule_expr, serializer);
+        <String>::sse_encode(self.prompt, serializer);
+        <String>::sse_encode(self.mode, serializer);
+        <String>::sse_encode(self.unattended_policy, serializer);
+        <bool>::sse_encode(self.use_worktree, serializer);
+        <bool>::sse_encode(self.enabled, serializer);
+        <i64>::sse_encode(self.next_run_ms, serializer);
+        <Option<String>>::sse_encode(self.last_run_id, serializer);
+        <String>::sse_encode(self.last_status, serializer);
+    }
+}
+
 impl SseEncode for crate::api::FfiDraftRecord {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -5500,6 +5592,16 @@ impl SseEncode for Vec<crate::api::FfiAssistantRecord> {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <crate::api::FfiAssistantRecord>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::harness::FfiCronJob> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::harness::FfiCronJob>::sse_encode(item, serializer);
         }
     }
 }

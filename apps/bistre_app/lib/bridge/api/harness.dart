@@ -8,6 +8,8 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `fmt`, `from`, `from`
+
 /// Records the user's approval of one exact tool call and returns its one-use permit id.
 Future<String> approveToolCall({
   required String threadId,
@@ -162,14 +164,12 @@ Future<String> loadSkillBody({
 );
 
 /// Lists all scheduled cron/timer automation jobs as JSON.
-Future<String> listCronJobsJson() =>
-    BistreRustLib.instance.api.crateApiHarnessListCronJobsJson();
+Future<List<FfiCronJob>> listCronJobs() =>
+    BistreRustLib.instance.api.crateApiHarnessListCronJobs();
 
-/// Creates or updates a scheduled cron/timer automation job from JSON and returns the saved JSON.
-Future<String> upsertCronJobJson({required String jobJson}) => BistreRustLib
-    .instance
-    .api
-    .crateApiHarnessUpsertCronJobJson(jobJson: jobJson);
+/// Creates or updates a scheduled cron/timer automation job and returns the saved job.
+Future<FfiCronJob> upsertCronJob({required FfiCronJob job}) =>
+    BistreRustLib.instance.api.crateApiHarnessUpsertCronJob(job: job);
 
 /// Deletes a scheduled cron/timer automation job by ID.
 Future<void> deleteCronJob({required String jobId}) =>
@@ -180,3 +180,71 @@ Future<String> prepareSubagentSandboxJson({required String workspaceRoot}) =>
     BistreRustLib.instance.api.crateApiHarnessPrepareSubagentSandboxJson(
       workspaceRoot: workspaceRoot,
     );
+
+/// Scheduled automation job (`CronJobRecord`); enums travel as their stable keys.
+class FfiCronJob {
+  final String id;
+  final String name;
+  final String workspaceId;
+  final String assistantId;
+  final String scheduleExpr;
+  final String prompt;
+  final String mode;
+  final String unattendedPolicy;
+  final bool useWorktree;
+  final bool enabled;
+  final PlatformInt64 nextRunMs;
+  final String? lastRunId;
+  final String lastStatus;
+
+  const FfiCronJob({
+    required this.id,
+    required this.name,
+    required this.workspaceId,
+    required this.assistantId,
+    required this.scheduleExpr,
+    required this.prompt,
+    required this.mode,
+    required this.unattendedPolicy,
+    required this.useWorktree,
+    required this.enabled,
+    required this.nextRunMs,
+    this.lastRunId,
+    required this.lastStatus,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      name.hashCode ^
+      workspaceId.hashCode ^
+      assistantId.hashCode ^
+      scheduleExpr.hashCode ^
+      prompt.hashCode ^
+      mode.hashCode ^
+      unattendedPolicy.hashCode ^
+      useWorktree.hashCode ^
+      enabled.hashCode ^
+      nextRunMs.hashCode ^
+      lastRunId.hashCode ^
+      lastStatus.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FfiCronJob &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          name == other.name &&
+          workspaceId == other.workspaceId &&
+          assistantId == other.assistantId &&
+          scheduleExpr == other.scheduleExpr &&
+          prompt == other.prompt &&
+          mode == other.mode &&
+          unattendedPolicy == other.unattendedPolicy &&
+          useWorktree == other.useWorktree &&
+          enabled == other.enabled &&
+          nextRunMs == other.nextRunMs &&
+          lastRunId == other.lastRunId &&
+          lastStatus == other.lastStatus;
+}
