@@ -966,10 +966,8 @@ mod tests {
 
         // Edit verifies hash, saves pre-image checkpoint, writes atomically, produces unified diff.
         let storage = StorageHandle::open(dir.path().join("tools.sqlite"))?;
-        let thread = storage
-            .create_thread(None, "Tools", bistre_protocol::ThreadMode::Code, None, None)
-            .ok();
-        let Some(thread) = thread else { return Ok(()) };
+        let thread =
+            storage.create_thread(None, "Tools", bistre_protocol::ThreadMode::Code, None, None)?;
 
         let target = "    let x = 1;";
         let bad_edit = tool_edit(
@@ -1042,26 +1040,21 @@ mod tests {
     }
 
     #[test]
-    fn stale_read_guard_near_miss_hints_crlf_edits_and_truncation_footer() {
-        let dir = tempdir().ok();
-        let Some(dir) = dir else { return };
+    fn stale_read_guard_near_miss_hints_crlf_edits_and_truncation_footer() -> TestResult {
+        let dir = tempdir()?;
         let ws = dir.path().join("ws");
         assert!(std::fs::create_dir_all(&ws).is_ok());
         assert!(
             std::fs::write(ws.join("win.txt"), "alpha\r\n    beta  gamma\r\nomega\r\n").is_ok()
         );
-        let storage = StorageHandle::open(dir.path().join("t.sqlite")).ok();
-        let Some(storage) = storage else { return };
-        let thread = storage
-            .create_thread(
-                None,
-                "Harness",
-                bistre_protocol::ThreadMode::Code,
-                None,
-                None,
-            )
-            .ok();
-        let Some(thread) = thread else { return };
+        let storage = StorageHandle::open(dir.path().join("t.sqlite"))?;
+        let thread = storage.create_thread(
+            None,
+            "Harness",
+            bistre_protocol::ThreadMode::Code,
+            None,
+            None,
+        )?;
         let tid = thread.id.as_str();
 
         // Run-scoped stale-read guard.
@@ -1126,6 +1119,7 @@ mod tests {
             .map_or_else(|_| String::new(), |o| o.output_text);
         assert!(read.contains(TRUNCATED_READ_FOOTER));
         assert!(read.contains("start_line=251"));
+        Ok(())
     }
 
     #[test]

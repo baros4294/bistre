@@ -245,16 +245,9 @@ mod tests {
 
     #[test]
     fn reversible_compaction_and_fixed_context_start_pin_preserve_original_dag() -> TestResult {
-        let dir = tempdir().ok();
-        let Some(dir) = dir else { return Ok(()) };
-        let storage = StorageHandle::open(dir.path().join("compact.sqlite")).ok();
-        let Some(storage) = storage else {
-            return Ok(());
-        };
-        let thread = storage
-            .create_thread(None, "Compaction", ThreadMode::Chat, None, None)
-            .ok();
-        let Some(thread) = thread else { return Ok(()) };
+        let dir = tempdir()?;
+        let storage = StorageHandle::open(dir.path().join("compact.sqlite"))?;
+        let thread = storage.create_thread(None, "Compaction", ThreadMode::Chat, None, None)?;
 
         let mut parent = None;
         let mut created = Vec::new();
@@ -264,16 +257,13 @@ mod tests {
             } else {
                 NodeRole::Assistant
             };
-            let n = storage
-                .append_node(
-                    thread.id.clone(),
-                    parent.clone(),
-                    role,
-                    format!("Turn message #{idx}"),
-                    None,
-                )
-                .ok();
-            let Some(n) = n else { return Ok(()) };
+            let n = storage.append_node(
+                thread.id.clone(),
+                parent.clone(),
+                role,
+                format!("Turn message #{idx}"),
+                None,
+            )?;
             parent = Some(n.id.clone());
             created.push(n);
         }

@@ -1229,6 +1229,8 @@ fn map_cron_job_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CronJobRecord> 
 mod spill_tests {
     use super::*;
 
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
     #[test]
     fn oversized_step_output_spills_to_overflow_blob_and_hydrates_lazily() {
         let small = "{\"ok\":true}".to_owned();
@@ -1244,43 +1246,32 @@ mod spill_tests {
     }
 
     #[test]
-    fn spilled_step_output_round_trips_through_v8_schema() {
-        let dir = tempfile::tempdir().ok();
-        let Some(dir) = dir else { return };
-        let storage = StorageHandle::open(dir.path().join("v8.sqlite")).ok();
-        let Some(storage) = storage else { return };
-        let thread = storage
-            .create_thread(None, "Spill", ThreadMode::Code, None, None)
-            .ok();
-        let Some(thread) = thread else { return };
-        let run = storage
-            .create_agent_run(CreateAgentRunParams {
-                thread_id: thread.id,
-                parent_run_id: None,
-                root_node_id: None,
-                mode: ThreadMode::Code,
-                max_steps: 4,
-                unattended_policy: UnattendedPolicy::PauseAndNotify,
-                worktree_path: None,
-            })
-            .ok();
-        let Some(run) = run else { return };
-        let step = storage
-            .record_run_step(
-                run.id.clone(),
-                0,
-                RunStepKind::ToolCall,
-                "shell".to_owned(),
-                ToolRiskTier::Tier2ExternalSideEffect,
-                "k0".to_owned(),
-                "running".to_owned(),
-                "{}".to_owned(),
-                "{}".to_owned(),
-                0,
-                None,
-            )
-            .ok();
-        let Some(step) = step else { return };
+    fn spilled_step_output_round_trips_through_v8_schema() -> TestResult {
+        let dir = tempfile::tempdir()?;
+        let storage = StorageHandle::open(dir.path().join("v8.sqlite"))?;
+        let thread = storage.create_thread(None, "Spill", ThreadMode::Code, None, None)?;
+        let run = storage.create_agent_run(CreateAgentRunParams {
+            thread_id: thread.id,
+            parent_run_id: None,
+            root_node_id: None,
+            mode: ThreadMode::Code,
+            max_steps: 4,
+            unattended_policy: UnattendedPolicy::PauseAndNotify,
+            worktree_path: None,
+        })?;
+        let step = storage.record_run_step(
+            run.id.clone(),
+            0,
+            RunStepKind::ToolCall,
+            "shell".to_owned(),
+            ToolRiskTier::Tier2ExternalSideEffect,
+            "k0".to_owned(),
+            "running".to_owned(),
+            "{}".to_owned(),
+            "{}".to_owned(),
+            0,
+            None,
+        )?;
         let big = format!(
             "{{\"stdout\":\"{}\"}}",
             "y".repeat(MAX_INLINE_STEP_OUTPUT_BYTES * 2)
@@ -1300,5 +1291,6 @@ mod spill_tests {
             storage.load_run_step_output(&step.id).ok().flatten(),
             Some(big)
         );
+        Ok(())
     }
 }

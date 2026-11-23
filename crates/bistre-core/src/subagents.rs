@@ -157,8 +157,7 @@ mod tests {
 
     #[tokio::test]
     async fn copy_sandbox_fallback_isolates_workspace_and_skips_secrets() -> TestResult {
-        let dir = tempdir().ok();
-        let Some(dir) = dir else { return Ok(()) };
+        let dir = tempdir()?;
         let src = dir.path().join("project");
         let scratch = dir.path().join("sandboxes");
         assert!(std::fs::create_dir_all(&src).is_ok());

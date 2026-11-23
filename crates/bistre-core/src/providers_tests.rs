@@ -5,6 +5,8 @@
 )]
 use super::*;
 
+type TestResult = Result<(), Box<dyn std::error::Error>>;
+
 #[test]
 fn terminal_events_per_dialect() {
     assert!(is_terminal_event(
@@ -178,12 +180,11 @@ fn extracts_thinking_deltas_across_all_dialects() {
 }
 
 #[tokio::test]
-async fn dispatch_fails_over_keys_then_heals_http_400_once_per_step() {
+async fn dispatch_fails_over_keys_then_heals_http_400_once_per_step() -> TestResult {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.ok();
-    let Some(listener) = listener else { return };
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let Ok(addr) = listener.local_addr() else {
-        return;
+        return Ok(());
     };
     let server = tokio::spawn(async move {
         let mut seen = Vec::new();
@@ -217,8 +218,7 @@ async fn dispatch_fails_over_keys_then_heals_http_400_once_per_step() {
         seen
     });
 
-    let http = build_http_client().ok();
-    let Some(http) = http else { return };
+    let http = build_http_client()?;
     let provider = ProviderProfile {
         id: "p".to_owned(),
         name: "Local".to_owned(),
@@ -276,6 +276,7 @@ async fn dispatch_fails_over_keys_then_heals_http_400_once_per_step() {
         !seen.last().is_some_and(|r| r.contains("stream_options")),
         "healed resend must drop stream_options"
     );
+    Ok(())
 }
 
 #[tokio::test]

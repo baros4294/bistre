@@ -130,10 +130,11 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
     #[test]
-    fn discovers_skill_frontmatter_and_loads_body_on_demand() {
-        let dir = tempdir().ok();
-        let Some(dir) = dir else { return };
+    fn discovers_skill_frontmatter_and_loads_body_on_demand() -> TestResult {
+        let dir = tempdir()?;
         let skill_dir = dir.path().join(".agents").join("skills").join("review");
         assert!(std::fs::create_dir_all(&skill_dir).is_ok());
         assert!(
@@ -158,5 +159,6 @@ mod tests {
 
         let agents = discover_agents_md(dir.path());
         assert!(agents.is_some());
+        Ok(())
     }
 }

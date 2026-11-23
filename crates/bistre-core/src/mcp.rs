@@ -383,6 +383,8 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
     #[test]
     fn tools_sort_deterministically_and_skip_nameless_entries() {
         let sorted = normalize_and_sort_tools(
@@ -401,11 +403,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mcp_dual_negotiation_supports_2026_discover_and_2025_fallback() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.ok();
-        let Some(listener) = listener else { return };
+    async fn mcp_dual_negotiation_supports_2026_discover_and_2025_fallback() -> TestResult {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
         let Ok(addr) = listener.local_addr() else {
-            return;
+            return Ok(());
         };
 
         // Server rejects `server/discover` (HTTP 404) and responds to legacy `initialize` + `tools/list`.
@@ -457,6 +458,7 @@ mod tests {
             Some(MCP_PROTOCOL_2025)
         );
         assert_eq!(report.as_ref().map(|r| r.tools.len()), Some(1));
+        Ok(())
     }
 
     #[test]
