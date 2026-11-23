@@ -1,0 +1,44 @@
+# Spec 01 — Canonical Local History & SQLite WAL Storage
+
+## 1. Canonical Local-First Sovereignty & Dev/Prod Isolation
+Bistre owns the master conversation graph locally in `<data_dir>/bistre.sqlite`. Provider-side state IDs (`previous_response_id`, `previous_interaction_id`) are strictly optional disposable cache pointers stored in `provider_meta_json` and never required to read, branch, export, or replay history (`ADR-0004`, `ADR-0005`).
+- **Dev vs Production Data Directory Separation**: Production builds store SQLite and OS-encrypted `SecretVault` data under `%LOCALAPPDATA%\Bistre` (Windows) / `$XDG_DATA_HOME/bistre` (Linux) / app private data dir (Android). Debug builds (`kDebugMode`) automatically isolate both SQLite and `SecretVault` inside `<repo>/.bistre-dev/` (gitignored) so local development never collides with real user data; `BISTRE_DATA_DIR` overrides either mode explicitly.
+- **WAL-Safe Backups & Conversation Export**: `backup_database(dest_path)` performs an atomic `VACUUM INTO` hot snapshot without stalling readers, and `export_thread(thread_id, format)` renders full conversation history to Markdown or JSON.
+
+## 2. Concurrency & WAL Configuration
+- **Single-Writer Actor**: Exactly one dedicated thread (`bistre-sqlite-writer`) holds the `READ_WRITE` SQLite connection behind a bounded `SyncSender` (`cap=256`). Write transactions are strictly short and never span `.await` or network I/O, eliminating write-write `SQLITE_BUSY`.
+- **Short-Lived Readers**: Read queries open read-only connections and immediately drop statements after mapping rows so long-lived snapshots never starve WAL checkpoints.
+- **Required PRAGMAs**:
+  - `PRAGMA journal_mode = WAL;` (writer)
+  - `PRAGMA synchronous = NORMAL;` (writer)
+  - `PRAGMA busy_timeout = 5000;`
+  - `PRAGMA foreign_keys = ON;`
+  - `PRAGMA journal_size_limit = 8388608;` (8 MiB cap, Spec 11 §3)
+  - `PRAGMA wal_autocheckpoint = 1000;` (writer)
+  - `PRAGMA temp_store = MEMORY;`
+- **Checkpointing & Reclaim**: Clean shutdown runs `reclaim_storage()` = `PRAGMA wal_checkpoint(TRUNCATE)` + `PRAGMA optimize` and logs `(busy, log_frames, checkpointed_frames)`.
+
+## 3. Schema v8 DDL (`PRAGMA user_version = 8`, Additive Expand over v5 → v6 → v7 → v8)
+- `workspaces(id TEXT PRIMARY KEY, name TEXT NOT NULL, root_path TEXT, created_at_ms INTEGER NOT NULL)`
+- `assistants(id TEXT PRIMARY KEY, name TEXT NOT NULL, role_subtitle TEXT NOT NULL, system_prompt TEXT NOT NULL, default_mode TEXT NOT NULL, badge_code TEXT NOT NULL, icon_slug TEXT NOT NULL DEFAULT '', default_provider_id TEXT NOT NULL DEFAULT '', default_model_id TEXT NOT NULL DEFAULT '', temperature_milli INTEGER, max_output_tokens INTEGER, top_p_milli INTEGER, is_builtin INTEGER NOT NULL DEFAULT 0, created_at_ms INTEGER NOT NULL)` — zero hardcoded preset personas or forced mode pills; fresh installations seed strictly a single neutral `Default` assistant (`default_assistant`) ONLY when the `assistants` table is empty, with full user CRUD (`create_assistant`, `update_assistant`, `delete_assistant` keeping at least one assistant).
+- `providers(id TEXT PRIMARY KEY, name TEXT NOT NULL, dialect TEXT NOT NULL, base_url TEXT NOT NULL, default_model TEXT NOT NULL DEFAULT '', key_hint TEXT NOT NULL DEFAULT '', icon_slug TEXT NOT NULL DEFAULT '', custom_icon_path TEXT NOT NULL DEFAULT '', is_enabled INTEGER NOT NULL DEFAULT 1, is_builtin INTEGER NOT NULL DEFAULT 0, use_server_state_cache INTEGER NOT NULL DEFAULT 0, created_at_ms INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL)` — seeded **once** on fresh databases (`kv_meta['providers_seeded_v1']`) with the Big 3 starters (`openai`, `google_gemini`, `anthropic`). Every provider (including starters) is freely editable and **deletable** (`delete_provider` removes the row + clears its vault key; deleted starters are never silently resurrected on relaunch). API keys are NEVER stored in SQLite; only an optional masked `key_hint` lives in `providers` while secrets stay inside the node-local OS `SecretVault` (`bistre-crypto`).
+- `threads(id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, title TEXT NOT NULL, mode TEXT NOT NULL, topic TEXT NOT NULL DEFAULT 'general', assistant_id TEXT NOT NULL DEFAULT 'default_assistant', is_pinned INTEGER NOT NULL DEFAULT 0, active_head_node_id TEXT, provider_id_override TEXT, model_id_override TEXT, system_prompt_override TEXT, temperature_milli INTEGER, max_output_tokens INTEGER, top_p_milli INTEGER, created_at_ms INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL)` — indexed by `idx_threads_pinned_updated(is_pinned DESC, updated_at_ms DESC)`.
+- `nodes(rowid INTEGER PRIMARY KEY, id TEXT UNIQUE NOT NULL, thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE, parent_id TEXT REFERENCES nodes(id), role TEXT NOT NULL, content TEXT NOT NULL, provider_meta_json TEXT, created_at_ms INTEGER NOT NULL)` — supports single-node deletion (`delete_node`, reparenting children cleanly), reversible `compaction_summary` nodes, and user prompt edit-and-branch (`edit_user_node_and_stream`).
+- `drafts(thread_id TEXT PRIMARY KEY REFERENCES threads(id) ON DELETE CASCADE, text TEXT NOT NULL, updated_at_ms INTEGER NOT NULL)`
+- `wallet_ledger(id TEXT PRIMARY KEY, thread_id TEXT, job_id TEXT, provider_id TEXT NOT NULL, model_id TEXT NOT NULL, cost_micros INTEGER NOT NULL, input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, created_at_ms INTEGER NOT NULL)`
+- `ota_state(slot TEXT PRIMARY KEY, active_version TEXT NOT NULL, last_healthy_version TEXT, boot_attempts INTEGER NOT NULL DEFAULT 0, updated_at_ms INTEGER NOT NULL)`
+- `kv_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)` — stores persisted `AppSettings` JSON (`app.settings.v1`, including typography, local font paths, accent hex, nullable Unlimited budget ceiling, OTA feed/channel, sleep-guard/battery/daemon/Termux preferences, window bounds, and custom shortcuts), `providers_seeded_v1`, `thread_context_start:<id>`, and provider custom header/body overrides.
+- `nodes_fts`: `VIRTUAL TABLE nodes_fts USING fts5(content, content='nodes', content_rowid='rowid', tokenize='unicode61')` maintained atomically via `AFTER INSERT`, `AFTER UPDATE OF content`, and `AFTER DELETE` triggers.
+- **Schema v6 Durable Harness Tables (`ADR-0013`)**: `agent_runs`, `run_steps` (with `idempotency_key` & `risk_tier`), `steering_queue`, `workspace_checkpoints` (blake3 pre/post hashes + pre-image content for 1-click Rewind), `attachments`, `memory_entries` (cross-chat pinned/global/workspace memory), `cron_jobs` (scheduled interval & 5-field UTC automations), and `engine_events_log` (monotonic cursor replay log for daemon reconnects).
+- **Schema v7 Writing & Roleplay Studio Tables (`ADR-0015`)**: `character_cards` (CCv3/V2 cards + alt-greetings), `user_personas`, `story_books`, `story_entries` (unified Codex + Lorebook V3 keys/secondary keys/decorators/sticky/cooldown/delay), `story_progressions` (chronological chapter-gated updates), `story_chapters` (with Continuity Librarian `era_summary`), `story_scenes` (`beats_text` + `prose_text` + word count), `story_thread_state` (active cast, Author's Note `@D`, Story Memory, creative samplers, dialogue styling), `regex_rules` (scoped linear-time rules), and `story_snapshots` (automatic Time Machine revision history).
+
+## 4. Expand-Contract Migrations & Disk-Full Resilience
+- Every schema change runs inside `BEGIN IMMEDIATE ... PRAGMA user_version = N; COMMIT;` followed by `PRAGMA foreign_key_check;` and `PRAGMA quick_check;`.
+- All migrations MUST be **additive-only** for ≥1 full release cycle (Expand phase) so an `N-1` binary rolling back after an OTA crash-loop can open and read an `N` database cleanly. Pre-migration backups write `<db>.pre-vN.bak` (verified for `v1 -> v2`, `v2 -> v3`, `v3 -> v4`, `v4 -> v5`, `v5 -> v6`, and `v6 -> v7`).
+- `SQLITE_FULL` maps to `DiagnosticKey::StorageDiskFull` (never panics), pausing cache/compaction writes while retaining in-memory unsent drafts.
+
+## 5. Schema v8 Expand (`harness::SCHEMA_V8_EXPAND_SQL`)
+- `idx_threads_pinned_recent ON threads (updated_at_ms DESC) WHERE is_pinned = 1` — partial index so pinned lists never scan unpinned chats.
+- `run_steps.result_overflow BLOB` — step output above `64 KiB` is spilled here; `output_json` keeps a `{ "overflow": true, "bytes", "preview" }` stub (first 4 KiB) so run lists never load large tool results; `load_run_step_output(step_id)` hydrates lazily.
+- Pre-migration backup `<db>.pre-v8.bak`; `N-1` (v7) binaries ignore the new column and index.
+- Spend accounting is fork-safe by construction: each streamed reply writes exactly one `wallet_ledger` row, so branching never re-sums earlier usage; unpriced replies record `cost_known: false` in `provider_meta_json` (a conservative lower bound for the spending limit, never a guess).
