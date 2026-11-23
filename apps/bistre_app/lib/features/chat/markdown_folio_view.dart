@@ -854,8 +854,10 @@ class _FencedCodeCardState extends State<_FencedCodeCard> {
   }
 }
 
-/// Lines per independently built, laid-out, and painted code-fence chunk (Spec 08).
-const int kCodeChunkLines = 32;
+/// Lines per independently built, laid-out, and painted code-fence chunk (Spec 08). While a fence
+/// streams, only the growing tail chunk is re-shaped each frame, so this bounds per-frame text
+/// layout: 8 lines cut it from ~4.0 to ~0.85 ms per slow frame in the profile trace (Spec 11).
+const int kCodeChunkLines = 8;
 
 /// Zero-dependency Sepia token syntax highlighter using strictly WCAG-verified theme tokens.
 /// Preserves every source character verbatim so text selection and `toPlainText()` stay exact.
