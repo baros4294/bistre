@@ -163,28 +163,32 @@ class _FolioSidebarState extends State<FolioSidebar> {
                 ),
               ),
             Expanded(
-              child: switch (ctrl.sidebarTab) {
-                SidebarTab.assistant => SingleChildScrollView(
-                  padding: _kListPadding,
-                  child: _buildAssistantsList(theme, l10n, ctrl),
-                ),
-                SidebarTab.chat => _buildGroupedChatsList(
-                  theme,
-                  l10n,
-                  ctrl,
-                  ctrl.filteredThreads,
-                  emptyText: l10n.t(L10nKey.sidebarEmptyFiltered),
-                ),
-                SidebarTab.pinned => _buildGroupedChatsList(
-                  theme,
-                  l10n,
-                  ctrl,
-                  ctrl.pinnedThreads,
-                  emptyText: l10n.t(L10nKey.sidebarPinnedEmpty),
-                  isPinnedEmpty: true,
-                  groupByDate: false,
-                ),
-              },
+              // Filter keystrokes rebuild only this list.
+              child: ListenableBuilder(
+                listenable: ctrl.sidebarFilterQuery,
+                builder: (context, _) => switch (ctrl.sidebarTab) {
+                  SidebarTab.assistant => SingleChildScrollView(
+                    padding: _kListPadding,
+                    child: _buildAssistantsList(theme, l10n, ctrl),
+                  ),
+                  SidebarTab.chat => _buildGroupedChatsList(
+                    theme,
+                    l10n,
+                    ctrl,
+                    ctrl.filteredThreads,
+                    emptyText: l10n.t(L10nKey.sidebarEmptyFiltered),
+                  ),
+                  SidebarTab.pinned => _buildGroupedChatsList(
+                    theme,
+                    l10n,
+                    ctrl,
+                    ctrl.pinnedThreads,
+                    emptyText: l10n.t(L10nKey.sidebarPinnedEmpty),
+                    isPinnedEmpty: true,
+                    groupByDate: false,
+                  ),
+                },
+              ),
             ),
             const FolioDivider(),
             _buildQuietFooter(theme, l10n, ctrl),

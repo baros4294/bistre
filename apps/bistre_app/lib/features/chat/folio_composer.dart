@@ -621,14 +621,22 @@ class _FolioComposerState extends State<FolioComposer> {
                                 ),
                               ),
                             ),
-                          if (ctrl.draftSaved) ...[
-                            const SizedBox(width: BistreSpacing.s8),
-                            InkText(
-                              l10n.t(L10nKey.shellComposerDraftSaved),
-                              role: InkTextRole.captionMeta,
-                              color: theme.statusOk,
-                            ),
-                          ],
+                          // Only this label rebuilds when a draft save lands.
+                          ValueListenableBuilder<bool>(
+                            valueListenable: ctrl.draftSavedState,
+                            builder: (context, saved, _) => saved
+                                ? Padding(
+                                    padding: const EdgeInsetsDirectional.only(
+                                      start: BistreSpacing.s8,
+                                    ),
+                                    child: InkText(
+                                      l10n.t(L10nKey.shellComposerDraftSaved),
+                                      role: InkTextRole.captionMeta,
+                                      color: theme.statusOk,
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
                         ],
                         trailing: <Widget>[
                           if (ctrl.isStreaming) ...[
