@@ -129,7 +129,7 @@ void main() {
     await gateway.saveSettings(
       EngineSettings(
         theme: 'night',
-        layoutMode: 'bubbles',
+        layoutMode: 'open_folio',
         locale: 'vi',
         trustPreset: 'parchment_safe',
         walletDailyCeilingMicros: null,
