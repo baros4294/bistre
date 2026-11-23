@@ -436,6 +436,10 @@ Future<FfiAgentRunRecord> resolveIndeterminateRun({
   confirmCompleted: confirmCompleted,
 );
 
+/// The model's conversation limit in tokens (`None` when no public list reports it).
+Future<int?> modelContextTokens({required String model}) =>
+    BistreRustLib.instance.api.crateApiModelContextTokens(model: model);
+
 /// Starts a public price-list refresh now.
 Future<void> refreshPrices() =>
     BistreRustLib.instance.api.crateApiRefreshPrices();

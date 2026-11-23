@@ -1187,6 +1187,15 @@ pub async fn resolve_indeterminate_run(
     Ok(map_agent_run(run))
 }
 
+/// The model's conversation limit in tokens (`None` when no public list reports it).
+#[frb]
+pub async fn model_context_tokens(model: String) -> Result<Option<u32>, String> {
+    current_engine()?
+        .model_context_tokens(model)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)
+}
+
 /// Starts a public price-list refresh now.
 #[frb]
 pub async fn refresh_prices() -> Result<(), String> {

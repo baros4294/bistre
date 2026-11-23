@@ -687,6 +687,36 @@ class FolioController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Conversation limit of the active model (tokens), when a public model list reports it.
+  /// [activeContextLimit], starting the lookup for a newly selected model.
+  int? get activeContextLimitOrFetch {
+    _ensureContextLimit();
+    return activeContextLimit;
+  }
+
+  int? get activeContextLimit =>
+      _contextLimitModel == activeModelId ? _contextLimit : null;
+  int? _contextLimit;
+  String _contextLimitModel = '';
+
+  /// Looks up the active model's conversation limit once per model.
+  void _ensureContextLimit() {
+    final model = activeModelId;
+    if (model.isEmpty || model == _contextLimitModel) return;
+    _contextLimitModel = model;
+    _contextLimit = null;
+    unawaited(
+      _gateway
+          .modelContextTokens(model)
+          .then((limit) {
+            if (_contextLimitModel != model) return;
+            _contextLimit = limit;
+            notifyListeners();
+          })
+          .catchError((Object e) => _noteNonFatal('context_limit', e)),
+    );
+  }
+
   /// Starts a public price-list refresh now (Settings → Safety & Budget).
   Future<void> refreshPrices() async {
     try {

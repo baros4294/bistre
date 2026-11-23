@@ -3675,6 +3675,26 @@
           "example": "2"
         }
       }
+    },
+    "chat.context_gauge.short": {
+      "message": "{used}/{limit} ({percent}%)",
+      "context": "Composer conversation-limit ring label: tokens used, limit, percent",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {
+        "used": {
+          "type": "string",
+          "example": "217"
+        },
+        "limit": {
+          "type": "string",
+          "example": "128k"
+        },
+        "percent": {
+          "type": "int",
+          "example": "0"
+        }
+      }
     }
   }
 }

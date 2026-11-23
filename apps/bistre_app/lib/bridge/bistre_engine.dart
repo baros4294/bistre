@@ -182,6 +182,9 @@ abstract interface class BistreEngineGateway {
   /// Starts a public price-list refresh now.
   Future<void> refreshPrices();
 
+  /// The model's conversation limit in tokens, or null when unknown.
+  Future<int?> modelContextTokens(String model);
+
   /// Records the user's approval of one exact call; returns a one-use permit id.
   Future<String> approveToolCall({
     required String threadId,
@@ -782,6 +785,10 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
 
   @override
   Future<void> refreshPrices() => frb.refreshPrices();
+
+  @override
+  Future<int?> modelContextTokens(String model) =>
+      frb.modelContextTokens(model: model);
 
   @override
   Future<String> approveToolCall({

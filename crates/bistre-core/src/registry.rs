@@ -27,7 +27,7 @@ use crate::ssrf::PublicWebTransport;
 /// Freshness window for a successful sync.
 pub const REGISTRY_TTL: Duration = Duration::from_hours(24);
 /// Version of the on-disk price cache; a different version is ignored and rebuilt.
-pub const PRICE_CACHE_FORMAT: u32 = 1;
+pub const PRICE_CACHE_FORMAT: u32 = 2;
 /// Cooldown after a sync that yielded no rates.
 pub const REGISTRY_FAILURE_COOLDOWN: Duration = Duration::from_secs(60);
 /// Maximum wait for one model's rate.
@@ -52,6 +52,8 @@ pub struct ModelRates {
     pub output_per_mtok: i64,
     /// Cached-input rate when the source reports one.
     pub cached_input_per_mtok: Option<i64>,
+    /// The model's conversation limit (context window) in tokens, when the source reports one.
+    pub context_tokens: Option<u32>,
 }
 
 impl ModelRates {
@@ -166,6 +168,13 @@ pub fn parse_source(source: &str, doc: &Value) -> Vec<(String, ModelRates)> {
                             cached_input_per_mtok: pricing
                                 .get(cache_key)
                                 .and_then(per_token_to_mtok),
+                            context_tokens: item
+                                .get(if source == "openrouter" {
+                                    "context_length"
+                                } else {
+                                    "context_window"
+                                })
+                                .and_then(json_u32),
                         },
                     ));
                 }
@@ -186,6 +195,10 @@ pub fn parse_source(source: &str, doc: &Value) -> Vec<(String, ModelRates)> {
                             cached_input_per_mtok: spec
                                 .get("cache_read_input_token_cost")
                                 .and_then(per_token_to_mtok),
+                            context_tokens: spec
+                                .get("max_input_tokens")
+                                .or_else(|| spec.get("max_tokens"))
+                                .and_then(json_u32),
                         },
                     ));
                 }
@@ -214,6 +227,10 @@ pub fn parse_source(source: &str, doc: &Value) -> Vec<(String, ModelRates)> {
                                 cached_input_per_mtok: cost
                                     .get("cache_read")
                                     .and_then(per_mtok_to_mtok),
+                                context_tokens: model
+                                    .get("limit")
+                                    .and_then(|l| l.get("context"))
+                                    .and_then(json_u32),
                             },
                         ));
                     }
@@ -223,6 +240,11 @@ pub fn parse_source(source: &str, doc: &Value) -> Vec<(String, ModelRates)> {
         _ => {}
     }
     out
+}
+
+/// A non-negative JSON integer that fits `u32` (context limits).
+fn json_u32(v: &Value) -> Option<u32> {
+    v.as_u64().and_then(|n| u32::try_from(n).ok())
 }
 
 fn normalize_id(id: &str) -> String {
@@ -284,8 +306,9 @@ pub struct PricingRegistry {
 struct PriceCache {
     format: u32,
     fetched_at_ms: i64,
-    /// `id -> [input, output, cached_input or -1]` in micro-USD per million tokens.
-    rates: HashMap<String, [i64; 3]>,
+    /// `id -> [input, output, cached_input or -1, context tokens or -1]` (micro-USD per million
+    /// tokens for the first three).
+    rates: HashMap<String, [i64; 4]>,
 }
 
 fn unix_now_ms() -> i64 {
@@ -325,11 +348,12 @@ impl PricingRegistry {
             let entries = cache
                 .rates
                 .into_iter()
-                .map(|(id, [input, output, cached])| {
+                .map(|(id, [input, output, cached, context])| {
                     let rates = ModelRates {
                         input_per_mtok: input,
                         output_per_mtok: output,
                         cached_input_per_mtok: (cached >= 0).then_some(cached),
+                        context_tokens: u32::try_from(context).ok(),
                     };
                     (id, rates)
                 })
@@ -353,7 +377,11 @@ impl PricingRegistry {
                 .iter()
                 .map(|(id, r)| {
                     let cached = r.cached_input_per_mtok.unwrap_or(-1);
-                    (id.clone(), [r.input_per_mtok, r.output_per_mtok, cached])
+                    let context = r.context_tokens.map_or(-1, i64::from);
+                    (
+                        id.clone(),
+                        [r.input_per_mtok, r.output_per_mtok, cached, context],
+                    )
                 })
                 .collect(),
         };
@@ -545,6 +573,7 @@ mod tests {
             input_per_mtok: 3_000_000,
             output_per_mtok: 15_000_000,
             cached_input_per_mtok: Some(300_000),
+            context_tokens: None,
         };
         // 1M fresh input = $3, 1M cached = $0.30, 100k output = $1.50.
         let cost = rates.cost(2_000_000, 1_000_000, 100_000);
@@ -571,6 +600,7 @@ mod tests {
                 input_per_mtok: 1_000_000,
                 output_per_mtok: 2_000_000,
                 cached_input_per_mtok: Some(100_000),
+                context_tokens: None,
             },
         )]);
         registry.save_cache();
@@ -592,5 +622,20 @@ mod tests {
         assert!(other.snapshot().lookup("model-a").is_none());
         assert!(other.sync_due());
         Ok(())
+    }
+
+    #[test]
+    fn context_limits_come_from_each_source_shape() {
+        let openrouter = json!({"data": [{"id": "v/a", "context_length": 128_000, "pricing": {"prompt": "0.000001", "completion": "0.000002"}}]});
+        let litellm = json!({"b": {"input_cost_per_token": 0.000_001, "output_cost_per_token": 0.000_002, "max_input_tokens": 200_000}});
+        let models_dev = json!({"p": {"models": {"c": {"cost": {"input": 1, "output": 2}, "limit": {"context": 64000}}}}});
+        let ctx = |src: &str, doc: &Value| {
+            parse_source(src, doc)
+                .first()
+                .and_then(|(_, r)| r.context_tokens)
+        };
+        assert_eq!(ctx("openrouter", &openrouter), Some(128_000));
+        assert_eq!(ctx("litellm", &litellm), Some(200_000));
+        assert_eq!(ctx("models_dev", &models_dev), Some(64_000));
     }
 }
