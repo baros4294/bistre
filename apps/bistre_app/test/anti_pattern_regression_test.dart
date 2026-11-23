@@ -445,4 +445,29 @@ void main() {
       await gw.shutdown();
     },
   );
+
+  test(
+    'the conversation gauge shows core\'s estimate for the visible branch',
+    () async {
+      final (ctrl, gw, _) = await boot();
+      await pumpEventQueue();
+      final thread = ctrl.activeThread!.id;
+      final leaf = ctrl.visibleBranchNodes.last.id;
+      final expected = await gw.contextUsage(thread, leaf);
+      expect(expected, greaterThan(0));
+      expect(ctrl.contextUsedTokens.value, expected);
+
+      // A different chat asks core again and shows that chat's number.
+      final other = ctrl.threads.firstWhere((t) => t.id != thread).id;
+      await ctrl.selectThread(other);
+      await pumpEventQueue();
+      final otherLeaf = ctrl.visibleBranchNodes.lastOrNull?.id;
+      expect(
+        ctrl.contextUsedTokens.value,
+        otherLeaf == null ? 0 : await gw.contextUsage(other, otherLeaf),
+      );
+      ctrl.dispose();
+      await gw.shutdown();
+    },
+  );
 }

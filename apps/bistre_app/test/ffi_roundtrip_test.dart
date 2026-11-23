@@ -162,6 +162,11 @@ void main() {
     expect(nodesAfterStream.last.content, 'Streamed over real Rust HTTP');
     expect(nodesAfterStream.last.usageMeta?.inputTokens, 42);
     expect(nodesAfterStream.last.usageMeta?.outputTokens, 18);
+    // Core's conversation-limit estimate for the branch (the gauge's number).
+    expect(
+      await gateway.contextUsage(thread.id, nodesAfterStream.last.id),
+      greaterThan(0),
+    );
 
     // Export conversation as Markdown and JSON, and run WAL-safe VACUUM INTO backup.
     final mdExport = await gateway.exportThread(

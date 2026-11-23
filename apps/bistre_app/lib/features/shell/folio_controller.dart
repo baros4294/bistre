@@ -152,7 +152,45 @@ class FolioController extends ChangeNotifier {
     if (_disposed) return;
     // The root app rebuilds only when this value actually changes (ValueNotifier equality).
     appearance.value = _currentAppearance();
+    _syncContextUsage();
     super.notifyListeners();
+  }
+
+  /// Estimated tokens the next request sends for the visible branch, from core. Only the
+  /// composer's gauge listens.
+  final ValueNotifier<int> contextUsedTokens = ValueNotifier<int>(0);
+  String? _contextUsageKey;
+  int _contextUsageSeq = 0;
+
+  /// Asks core again when the chat, the visible branch's newest node, or the context pin
+  /// changed; an older answer never replaces a newer one.
+  void _syncContextUsage() {
+    final thread = _activeThread?.id;
+    final leaf = visibleBranchNodes.lastOrNull?.id;
+    final key = '$thread|$leaf|$_pinnedContextNodeId';
+    if (key == _contextUsageKey) return;
+    _contextUsageKey = key;
+    final seq = ++_contextUsageSeq;
+    if (thread == null || leaf == null) {
+      contextUsedTokens.value = 0;
+      return;
+    }
+    unawaited(
+      _gateway
+          .contextUsage(thread, leaf)
+          .then(
+            (tokens) {
+              if (seq != _contextUsageSeq || _disposed) return;
+              contextUsedTokens.value = tokens;
+            },
+            onError: (Object e) {
+              if (seq != _contextUsageSeq || _disposed) return;
+              // Ask again on the next change instead of keeping a failed key.
+              _contextUsageKey = null;
+              _noteNonFatal('context_usage', e);
+            },
+          ),
+    );
   }
 
   /// Theme and typography inputs for the root `WidgetsApp` (see [AppAppearance]).
@@ -459,10 +497,6 @@ class FolioController extends ChangeNotifier {
     liveTurn.minInterval = enabled ? kLowMemoryFrameInterval : Duration.zero;
     notifyListeners();
   }
-
-  /// Text the composer's conversation-limit gauge counts (visible branch of the active chat).
-  String get contextGaugeText =>
-      visibleBranchNodes.map((n) => n.content).join('\n');
 
   /// When the current run's automatic retry fires (null when not backing off).
   DateTime? get backoffRetryAt => _backoffRetryAt;
@@ -1447,6 +1481,7 @@ class FolioController extends ChangeNotifier {
     toast.dispose();
     search.dispose();
     sidebarFilterQuery.dispose();
+    contextUsedTokens.dispose();
     draftSavedState.dispose();
     // The user deleted these chats; closing the app inside the Undo window must not bring
     // them back.
