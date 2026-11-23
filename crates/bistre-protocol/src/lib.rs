@@ -477,7 +477,7 @@ fn default_ota_feed_url() -> String {
     "https://github.com/baros4294/bistre/releases/latest/download/manifest.json".to_owned()
 }
 fn default_reasoning_effort() -> String {
-    "medium".to_owned()
+    "default".to_owned()
 }
 const fn default_retry_watchdog_max_wait_secs() -> u32 {
     1800
@@ -603,7 +603,8 @@ pub struct AppSettings {
     /// Maximum total seconds to wait across 429/529 rate-limit backoffs before pausing a long-horizon run.
     #[serde(default = "default_retry_watchdog_max_wait_secs")]
     pub retry_watchdog_max_wait_secs: u32,
-    /// Default reasoning effort level (`off` | `low` | `medium` | `high`).
+    /// Default reasoning effort (`default` | `off` | `low` | `medium` | `high` | `xhigh` | `max`;
+    /// see [`ReasoningEffort`]). `default` lets the model decide.
     #[serde(default = "default_reasoning_effort")]
     pub reasoning_effort: String,
     /// Optional Android Termux `RUN_COMMAND` shell bridge toggle (off by default).
@@ -734,6 +735,52 @@ pub struct GenerationParams {
     pub max_output_tokens: Option<u32>,
     /// Fixed-point nucleus sampling top-p in thousandths (`0..=1000`, e.g., `950` = `0.95`).
     pub top_p_milli: Option<u32>,
+    /// Thinking effort to request; [`ReasoningEffort::ModelDefault`] sends nothing.
+    pub reasoning_effort: ReasoningEffort,
+}
+
+/// How hard a reasoning model should think. Parsed once from the stored setting; providers
+/// map it to their own wire field (`OpenAI` `reasoning.effort`, Anthropic `output_config.effort`,
+/// Gemini `thinking_level`). Only sent to models the registry marks as reasoning-capable.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ReasoningEffort {
+    /// Send no effort field; the provider decides.
+    #[default]
+    ModelDefault,
+    Off,
+    Low,
+    Medium,
+    High,
+    ExtraHigh,
+    Max,
+}
+
+impl ReasoningEffort {
+    /// Stable setting key (also the OpenAI/Anthropic wire value where one exists).
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ModelDefault => "default",
+            Self::Off => "off",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::ExtraHigh => "xhigh",
+            Self::Max => "max",
+        }
+    }
+
+    /// Lenient parse of a stored value; unknown text means the model default.
+    pub fn parse(raw: &str) -> Self {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "off" | "none" => Self::Off,
+            "low" | "minimal" => Self::Low,
+            "medium" => Self::Medium,
+            "high" => Self::High,
+            "xhigh" | "extra" | "extra_high" => Self::ExtraHigh,
+            "max" => Self::Max,
+            _ => Self::ModelDefault,
+        }
+    }
 }
 
 /// Exact integer token usage and estimated micro-USD spend captured from provider SSE streams.

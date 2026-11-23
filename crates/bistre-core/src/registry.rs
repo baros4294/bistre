@@ -28,7 +28,7 @@ use crate::ssrf::PublicWebTransport;
 /// Freshness window for a successful sync.
 pub const REGISTRY_TTL: Duration = Duration::from_hours(24);
 /// Version of the on-disk price cache; a different version is ignored and rebuilt.
-pub const PRICE_CACHE_FORMAT: u32 = 2;
+pub const PRICE_CACHE_FORMAT: u32 = 3;
 /// Cooldown after a sync that yielded no rates.
 pub const REGISTRY_FAILURE_COOLDOWN: Duration = Duration::from_secs(60);
 /// Maximum wait for one model's rate.
@@ -55,6 +55,8 @@ pub struct ModelRates {
     pub cached_input_per_mtok: Option<i64>,
     /// The model's conversation limit (context window) in tokens, when the source reports one.
     pub context_tokens: Option<u32>,
+    /// Whether the model accepts a reasoning/thinking effort, when the source reports it.
+    pub reasoning: Option<bool>,
 }
 
 impl ModelRates {
@@ -189,6 +191,10 @@ struct ListItem {
     pricing: Field<ListPricing>,
     context_length: Field<u64>,
     context_window: Field<u64>,
+    /// `OpenRouter`: request parameters the model accepts (`"reasoning"` when it can think).
+    supported_parameters: Field<Vec<String>>,
+    /// Vercel AI Gateway: capability tags (`"reasoning"`).
+    tags: Field<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -207,6 +213,7 @@ struct LiteSpec {
     cache_read_input_token_cost: Field<Decimal>,
     max_input_tokens: Field<u64>,
     max_tokens: Field<u64>,
+    supports_reasoning: Field<bool>,
 }
 
 #[derive(Deserialize)]
@@ -218,6 +225,7 @@ struct DevProvider {
 struct DevModel {
     cost: Field<DevCost>,
     limit: Field<DevLimit>,
+    reasoning: Field<bool>,
 }
 
 #[derive(Deserialize)]
@@ -264,6 +272,12 @@ fn parse_list(openrouter: bool, body: &[u8]) -> serde_json::Result<Vec<(String, 
             } else {
                 item.context_window
             };
+            let flags = if openrouter {
+                field(item.supported_parameters)
+            } else {
+                field(item.tags)
+            };
+            let reasoning = flags.map(|f| f.iter().any(|t| t == "reasoning"));
             Some((
                 item.id,
                 ModelRates {
@@ -271,6 +285,7 @@ fn parse_list(openrouter: bool, body: &[u8]) -> serde_json::Result<Vec<(String, 
                     output_per_mtok: output,
                     cached_input_per_mtok: per_token(p.input_cache_read),
                     context_tokens: count(context),
+                    reasoning,
                 },
             ))
         })
@@ -290,6 +305,7 @@ fn parse_litellm(body: &[u8]) -> serde_json::Result<Vec<(String, ModelRates)>> {
                     output_per_mtok: per_token(spec.output_cost_per_token)?,
                     cached_input_per_mtok: per_token(spec.cache_read_input_token_cost),
                     context_tokens: count(spec.max_input_tokens).or(count(spec.max_tokens)),
+                    reasoning: field(spec.supports_reasoning),
                 },
             ))
         })
@@ -313,6 +329,7 @@ fn parse_models_dev(body: &[u8]) -> serde_json::Result<Vec<(String, ModelRates)>
                     output_per_mtok: per_mtok(cost.output)?,
                     cached_input_per_mtok: per_mtok(cost.cache_read),
                     context_tokens: field(model.limit).and_then(|l| count(l.context)),
+                    reasoning: field(model.reasoning),
                 },
             ))
         })
@@ -343,18 +360,40 @@ impl RateTable {
         for (id, rates) in entries {
             let full = normalize_id(&id);
             let short = full.rsplit('/').next().unwrap_or(&full).to_owned();
-            self.rates.entry(full).or_insert(rates);
-            self.rates.entry(short).or_insert(rates);
+            for key in [full, short] {
+                self.rates
+                    .entry(key)
+                    .and_modify(|known| {
+                        known.cached_input_per_mtok =
+                            known.cached_input_per_mtok.or(rates.cached_input_per_mtok);
+                        known.context_tokens = known.context_tokens.or(rates.context_tokens);
+                        known.reasoning = known.reasoning.or(rates.reasoning);
+                    })
+                    .or_insert(rates);
+            }
         }
     }
 
     /// Exact id first, then the id without its `vendor/` prefix.
     pub fn lookup(&self, model: &str) -> Option<ModelRates> {
         let full = normalize_id(model);
-        self.rates.get(&full).copied().or_else(|| {
-            let short = full.rsplit('/').next().unwrap_or(&full);
-            self.rates.get(short).copied()
-        })
+        let short = full.rsplit('/').next().unwrap_or(&full);
+        let by_short = self.rates.get(short).copied();
+        // A vendor-prefixed entry keeps its own prices; fields it lacks come from the plain id
+        // (sources disagree on prefixes, e.g. `openai/gpt-x` vs `gpt-x`).
+        self.rates
+            .get(&full)
+            .copied()
+            .map(|mut known| {
+                if let Some(other) = by_short {
+                    known.cached_input_per_mtok =
+                        known.cached_input_per_mtok.or(other.cached_input_per_mtok);
+                    known.context_tokens = known.context_tokens.or(other.context_tokens);
+                    known.reasoning = known.reasoning.or(other.reasoning);
+                }
+                known
+            })
+            .or(by_short)
     }
 }
 
@@ -378,9 +417,9 @@ pub struct PricingRegistry {
 struct PriceCache {
     format: u32,
     fetched_at_ms: i64,
-    /// `id -> [input, output, cached_input or -1, context tokens or -1]` (micro-USD per million
-    /// tokens for the first three).
-    rates: HashMap<String, [i64; 4]>,
+    /// `id -> [input, output, cached_input or -1, context tokens or -1, reasoning 1/0/-1]`
+    /// (micro-USD per million tokens for the first three).
+    rates: HashMap<String, [i64; 5]>,
 }
 
 fn unix_now_ms() -> i64 {
@@ -420,12 +459,13 @@ impl PricingRegistry {
             let entries = cache
                 .rates
                 .into_iter()
-                .map(|(id, [input, output, cached, context])| {
+                .map(|(id, [input, output, cached, context, reasoning])| {
                     let rates = ModelRates {
                         input_per_mtok: input,
                         output_per_mtok: output,
                         cached_input_per_mtok: (cached >= 0).then_some(cached),
                         context_tokens: u32::try_from(context).ok(),
+                        reasoning: (reasoning >= 0).then_some(reasoning == 1),
                     };
                     (id, rates)
                 })
@@ -450,9 +490,16 @@ impl PricingRegistry {
                 .map(|(id, r)| {
                     let cached = r.cached_input_per_mtok.unwrap_or(-1);
                     let context = r.context_tokens.map_or(-1, i64::from);
+                    let reasoning = r.reasoning.map_or(-1, i64::from);
                     (
                         id.clone(),
-                        [r.input_per_mtok, r.output_per_mtok, cached, context],
+                        [
+                            r.input_per_mtok,
+                            r.output_per_mtok,
+                            cached,
+                            context,
+                            reasoning,
+                        ],
                     )
                 })
                 .collect(),
@@ -647,6 +694,7 @@ mod tests {
             output_per_mtok: 15_000_000,
             cached_input_per_mtok: Some(300_000),
             context_tokens: None,
+            reasoning: None,
         };
         // 1M fresh input = $3, 1M cached = $0.30, 100k output = $1.50.
         let cost = rates.cost(2_000_000, 1_000_000, 100_000);
@@ -674,6 +722,7 @@ mod tests {
                 output_per_mtok: 2_000_000,
                 cached_input_per_mtok: Some(100_000),
                 context_tokens: None,
+                reasoning: None,
             },
         )]);
         registry.save_cache();
@@ -724,5 +773,33 @@ mod tests {
         assert_eq!(ids(dev.clone()), vec!["m2"]);
         assert_eq!(dev.first().and_then(|(_, r)| r.context_tokens), None);
         assert_eq!(parse_source("openrouter", b"not json"), Vec::new());
+    }
+
+    #[test]
+    fn reasoning_capability_comes_from_each_source_shape() {
+        let openrouter = json!({"data": [{"id": "v/think", "supported_parameters": ["reasoning", "tools"], "pricing": {"prompt": "0.000001", "completion": "0.000002"}}, {"id": "v/plain", "supported_parameters": ["tools"], "pricing": {"prompt": "0.000001", "completion": "0.000002"}}]});
+        let vercel = json!({"data": [{"id": "v/tag", "tags": ["reasoning"], "pricing": {"input": "0.000001", "output": "0.000002"}}]});
+        let litellm = json!({"lite": {"input_cost_per_token": 0.000_001, "output_cost_per_token": 0.000_002, "supports_reasoning": true}});
+        let models_dev = json!({"p": {"models": {"dev": {"cost": {"input": 1, "output": 2}, "reasoning": false}}}});
+        let flag = |src: &str, doc: &Value, id: &str| {
+            parse(src, doc)
+                .into_iter()
+                .find(|(i, _)| i == id)
+                .and_then(|(_, r)| r.reasoning)
+        };
+        assert_eq!(flag("openrouter", &openrouter, "v/think"), Some(true));
+        assert_eq!(flag("openrouter", &openrouter, "v/plain"), Some(false));
+        assert_eq!(flag("vercel", &vercel, "v/tag"), Some(true));
+        assert_eq!(flag("litellm", &litellm, "lite"), Some(true));
+        assert_eq!(flag("models_dev", &models_dev, "dev"), Some(false));
+
+        // A later source fills a field the earlier one lacked, but never overrides it.
+        let registry = PricingRegistry::new();
+        registry.publish(parse("openrouter", &json!({"data": [{"id": "x/m", "pricing": {"prompt": "0.000001", "completion": "0.000002"}}]})));
+        registry.publish(parse("models_dev", &json!({"p": {"models": {"m": {"cost": {"input": 9, "output": 9}, "reasoning": true, "limit": {"context": 1000}}}}})));
+        let merged = registry.snapshot().lookup("x/m");
+        assert_eq!(merged.map(|r| r.input_per_mtok), Some(1_000_000));
+        assert_eq!(merged.and_then(|r| r.reasoning), Some(true));
+        assert_eq!(merged.and_then(|r| r.context_tokens), Some(1000));
     }
 }

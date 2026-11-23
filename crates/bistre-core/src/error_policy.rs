@@ -286,6 +286,20 @@ impl Http400Heal {
             Self::StepDownReasoningEffort => {
                 let slot = if obj.get("reasoning").and_then(|r| r.get("effort")).is_some() {
                     obj.get_mut("reasoning").and_then(|r| r.get_mut("effort"))
+                } else if obj
+                    .get("output_config")
+                    .and_then(|r| r.get("effort"))
+                    .is_some()
+                {
+                    obj.get_mut("output_config")
+                        .and_then(|r| r.get_mut("effort"))
+                } else if obj
+                    .get("generation_config")
+                    .and_then(|r| r.get("thinking_level"))
+                    .is_some()
+                {
+                    obj.get_mut("generation_config")
+                        .and_then(|r| r.get_mut("thinking_level"))
                 } else {
                     obj.get_mut("reasoning_effort")
                 };
@@ -339,12 +353,14 @@ impl Http400Heal {
             }
             Self::DropReasoning => {
                 let mut changed = false;
-                for k in ["reasoning", "reasoning_effort", "thinking"] {
+                for k in ["reasoning", "reasoning_effort", "thinking", "output_config"] {
                     changed |= obj.remove(k).is_some();
                 }
                 for cfg_key in ["generationConfig", "generation_config"] {
                     if let Some(cfg) = obj.get_mut(cfg_key).and_then(Value::as_object_mut) {
-                        changed |= cfg.remove("thinkingConfig").is_some();
+                        for k in ["thinkingConfig", "thinking_level", "thinking_summaries"] {
+                            changed |= cfg.remove(k).is_some();
+                        }
                     }
                 }
                 changed
@@ -482,5 +498,31 @@ mod tests {
         );
         assert!(may_retry_stream("", 0));
         assert!(!may_retry_stream("partial", 0));
+    }
+
+    #[test]
+    fn effort_heals_cover_anthropic_and_gemini_interactions_fields() {
+        let mut anthropic = json!({
+            "thinking": {"type": "adaptive"},
+            "output_config": {"effort": "max"}
+        });
+        assert!(Http400Heal::StepDownReasoningEffort.apply(&mut anthropic));
+        assert_eq!(anthropic["output_config"]["effort"], "xhigh");
+        assert!(Http400Heal::DropReasoning.apply(&mut anthropic));
+        assert!(anthropic.get("output_config").is_none() && anthropic.get("thinking").is_none());
+
+        let mut gemini = json!({
+            "generation_config": {"thinking_level": "xhigh", "thinking_summaries": "auto", "temperature": 1}
+        });
+        assert!(Http400Heal::StepDownReasoningEffort.apply(&mut gemini));
+        assert_eq!(gemini["generation_config"]["thinking_level"], "high");
+        assert!(Http400Heal::DropReasoning.apply(&mut gemini));
+        assert!(gemini["generation_config"].get("thinking_level").is_none());
+        assert!(
+            gemini["generation_config"]
+                .get("thinking_summaries")
+                .is_none()
+        );
+        assert_eq!(gemini["generation_config"]["temperature"], 1);
     }
 }

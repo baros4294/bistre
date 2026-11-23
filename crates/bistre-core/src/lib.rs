@@ -59,11 +59,11 @@ use bistre_protocol::{
     BistreResult, CharacterCardRecord, CronJobRecord, CursorEventRecord, DiagnosticKey,
     DraftRecord, EngineEvent, GenerationParams, MemoryEntryRecord, MoneyMicros, NodeRecord,
     NodeRole, PowerGuardStatus, ProviderDialect, ProviderModelInfo, ProviderPatch, ProviderProfile,
-    RegexRuleRecord, RunStatus, RunStepKind, RunStepRecord, SearchHit, SignedPackManifest,
-    SteeringMessage, StorageStats, StoryChapterRecord, StoryEntryRecord, StoryProgressionRecord,
-    StorySceneRecord, StorySnapshotRecord, StoryThreadStateRecord, StreamChunk, SystemPowerEvent,
-    ThreadMode, ThreadPatch, ThreadSummary, ToolRiskTier, UpdateCheckResult, UserPersonaRecord,
-    WorkspaceCheckpointRecord, WorkspaceSummary,
+    ReasoningEffort, RegexRuleRecord, RunStatus, RunStepKind, RunStepRecord, SearchHit,
+    SignedPackManifest, SteeringMessage, StorageStats, StoryChapterRecord, StoryEntryRecord,
+    StoryProgressionRecord, StorySceneRecord, StorySnapshotRecord, StoryThreadStateRecord,
+    StreamChunk, SystemPowerEvent, ThreadMode, ThreadPatch, ThreadSummary, ToolRiskTier,
+    UpdateCheckResult, UserPersonaRecord, WorkspaceCheckpointRecord, WorkspaceSummary,
 };
 use bistre_storage::{AgentRunUpdate, CreateAgentRunParams, StorageHandle};
 use credentials::KeyRing;
@@ -348,6 +348,19 @@ impl InProcessEngine {
             return Err(BistreError::new(DiagnosticKey::ProviderModelRequired));
         }
 
+        // Only models the public lists mark as reasoning-capable get an effort field: a model that
+        // cannot think rejects it with a 400, which would cost a failed request on every message.
+        let capable = self
+            .pricing
+            .snapshot()
+            .lookup(&model)
+            .and_then(|r| r.reasoning)
+            == Some(true);
+        let reasoning_effort = if capable {
+            ReasoningEffort::parse(&settings.reasoning_effort)
+        } else {
+            ReasoningEffort::ModelDefault
+        };
         let gen_params = GenerationParams {
             temperature_milli: thread
                 .temperature_milli
@@ -358,6 +371,7 @@ impl InProcessEngine {
             top_p_milli: thread
                 .top_p_milli
                 .or_else(|| assistant.and_then(|a| a.top_p_milli)),
+            reasoning_effort,
         };
 
         Ok((selected, api_key, model, gen_params))
