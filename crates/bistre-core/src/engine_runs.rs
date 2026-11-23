@@ -719,13 +719,7 @@ fn load_turn_context(
     parent_id: &str,
     system_prompt: &str,
 ) -> BistreResult<(Vec<NodeRecord>, bool, String)> {
-    let all_nodes = storage.list_nodes(thread_id)?;
-    let raw_history = collect_branch_ancestry(&all_nodes, parent_id);
-    let pinned_start = storage.get_kv_meta(&format!("thread_context_start:{thread_id}"))?;
-    let history = compaction::enforce_role_alternation(compaction::project_effective_history(
-        &raw_history,
-        pinned_start.as_deref(),
-    ));
+    let history = project_turn_history(storage, thread_id, parent_id)?;
     let is_write_mode = storage
         .get_thread(thread_id)?
         .is_some_and(|t| t.mode == ThreadMode::Write);
@@ -735,6 +729,33 @@ fn load_turn_context(
         system_prompt.to_owned()
     };
     Ok((history, is_write_mode, prompt))
+}
+
+/// The history the next request sends for the branch ending at `leaf_id`: its ancestry from
+/// the context-start pin or the latest compaction summary onward, with roles alternating.
+fn project_turn_history(
+    storage: &StorageHandle,
+    thread_id: &str,
+    leaf_id: &str,
+) -> BistreResult<Vec<NodeRecord>> {
+    let all_nodes = storage.list_nodes(thread_id)?;
+    let raw_history = collect_branch_ancestry(&all_nodes, leaf_id);
+    let pinned_start = storage.get_kv_meta(&format!("thread_context_start:{thread_id}"))?;
+    Ok(compaction::enforce_role_alternation(
+        compaction::project_effective_history(&raw_history, pinned_start.as_deref()),
+    ))
+}
+
+/// Estimated tokens of the history the next request sends for this branch (the composer's
+/// conversation-limit gauge). Uses the same projection as a run, so a compaction or a context
+/// pin lowers it exactly as it lowers the real request.
+pub(crate) fn branch_context_tokens(
+    storage: &StorageHandle,
+    thread_id: &str,
+    leaf_id: &str,
+) -> BistreResult<u64> {
+    let history = project_turn_history(storage, thread_id, leaf_id)?;
+    Ok(compaction::estimate_branch_tokens("", &history))
 }
 
 /// Reserves Wallet Shield spend for one paid request. The estimate prices the prompt's input

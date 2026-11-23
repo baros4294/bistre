@@ -1196,6 +1196,17 @@ pub async fn model_context_tokens(model: String) -> Result<Option<u32>, String> 
         .map_err(crate::dto_mapping::ffi_err)
 }
 
+/// Estimated tokens the next request sends for the branch ending at `leaf_node_id`
+/// (saturates at `u32::MAX`).
+#[frb]
+pub async fn context_usage(thread_id: String, leaf_node_id: String) -> Result<u32, String> {
+    let tokens = current_engine()?
+        .context_usage(thread_id, leaf_node_id)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)?;
+    Ok(u32::try_from(tokens).unwrap_or(u32::MAX))
+}
+
 /// Starts a public price-list refresh now.
 #[frb]
 pub async fn refresh_prices() -> Result<(), String> {
