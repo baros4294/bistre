@@ -1,6 +1,6 @@
 # ADR-0006: MCP `2026-07-28` Stateless Core via `rmcp` with Legacy Dual-Negotiation
 
-- **Status**: Accepted
+- **Status**: Accepted; §Decision 1 (`rmcp`) superseded by `ADR-0018` (2026-11-23)
 - **Date**: 2026-11-21
 - **Deciders**: Bistre Principal Architecture
 

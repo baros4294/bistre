@@ -1,9 +1,8 @@
 //! MCP Client supporting Spec `2026-07-28` (`server/discover`, `Mcp-Method`/`Mcp-Name`,
 //! `ttlMs`/`cacheScope`) with seamless legacy `2025-11-25` / `2025-03-26` negotiation,
 //! noisy `stdout` banner quarantine, 64 KiB `stderr` ring buffering, and deterministic
-//! prompt-cache-stable tool ordering (`ADR-0006`, `rmcp 3.11.0`).
+//! prompt-cache-stable tool ordering (`ADR-0006`, `ADR-0018`: Streamable HTTP, no SDK).
 
-use std::collections::VecDeque;
 use std::time::Duration;
 
 use bistre_protocol::{BistreError, BistreResult, DiagnosticKey};
@@ -16,8 +15,6 @@ use crate::ssrf::PublicWebTransport;
 
 /// Hard cap on per-tool MCP output payloads (`256 KiB`, ADR-0006).
 pub const MAX_MCP_TOOL_RESULT_BYTES: usize = 256 * 1024;
-/// Bounded `stderr` ring buffer capacity (`64 KiB`, ADR-0006).
-pub const MAX_MCP_STDERR_RING_BYTES: usize = 64 * 1024;
 /// Primary MCP 2026 stateless protocol revision.
 pub const MCP_PROTOCOL_2026: &str = "2026-07-28";
 /// Fallback legacy MCP protocol revision.
@@ -121,7 +118,7 @@ pub struct McpServerConfig {
     pub enabled: bool,
 }
 
-/// Discovered MCP tool descriptor normalized onto `rmcp::model::Tool` fields.
+/// Discovered MCP tool descriptor (the MCP `Tool` fields Bistre uses).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct McpDiscoveredTool {
     pub server_id: String,
@@ -139,90 +136,42 @@ pub struct McpDiscoveryReport {
     pub quarantined_stdout_lines: Vec<String>,
 }
 
-/// Bounded 64 KiB ring buffer draining noisy stdio MCP server `stderr` without unbounded RAM growth.
-#[derive(Debug, Default)]
-pub struct StderrRingBuffer {
-    bytes: VecDeque<u8>,
+/// The subset of an MCP `Tool` object Bistre reads (spec field names).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WireTool {
+    name: String,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    input_schema: Option<Value>,
+    #[serde(default)]
+    ttl_ms: Option<u64>,
+    #[serde(default, rename = "_meta")]
+    meta: Option<Value>,
 }
 
-impl StderrRingBuffer {
-    pub fn push_bytes(&mut self, chunk: &[u8]) {
-        for &b in chunk {
-            if self.bytes.len() >= MAX_MCP_STDERR_RING_BYTES {
-                self.bytes.pop_front();
-            }
-            self.bytes.push_back(b);
-        }
-    }
-
-    pub fn snapshot_lossy(&self) -> String {
-        let slice: Vec<u8> = self.bytes.iter().copied().collect();
-        String::from_utf8_lossy(&slice).into_owned()
-    }
-}
-
-/// Splits raw stdio server output into valid JSON-RPC frames while quarantining non-JSON banner noise.
-pub fn split_stdio_jsonrpc_and_quarantine(raw_stdout: &str) -> (Vec<Value>, Vec<String>) {
-    let mut frames = Vec::new();
-    let mut quarantined = Vec::new();
-    for line in raw_stdout.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if trimmed.starts_with('{')
-            && let Ok(val) = serde_json::from_str::<Value>(trimmed)
-            && val.get("jsonrpc").and_then(Value::as_str) == Some("2.0")
-        {
-            frames.push(val);
-            continue;
-        }
-        quarantined.push(trimmed.to_owned());
-    }
-    (frames, quarantined)
-}
-
-/// Normalizes and deterministically sorts MCP tools (using `rmcp::model::Tool` compatibility)
-/// so LLM prompt-cache prefixes never churn across reconnects.
+/// Normalizes and deterministically sorts MCP tools so LLM prompt-cache prefixes never churn
+/// across reconnects. Entries without a string `name` are skipped.
 pub fn normalize_and_sort_tools(server_id: &str, raw_tools: &[Value]) -> Vec<McpDiscoveredTool> {
-    let mut out = Vec::new();
-    for raw in raw_tools {
-        // Validate against official `rmcp 3.11.0` `Tool` schema when present, with graceful fallback.
-        if let Ok(rmcp_tool) = serde_json::from_value::<rmcp::model::Tool>(raw.clone()) {
-            let schema_val = serde_json::to_value(rmcp_tool.input_schema.as_ref())
-                .unwrap_or_else(|_| json!({ "type": "object" }));
-            let ttl_ms = raw
-                .get("ttlMs")
-                .or_else(|| raw.get("_meta").and_then(|m| m.get("ttlMs")))
-                .and_then(Value::as_u64);
-            out.push(McpDiscoveredTool {
-                server_id: server_id.to_owned(),
-                name: rmcp_tool.name.into_owned(),
-                description: rmcp_tool
-                    .description
-                    .map_or_default(std::borrow::Cow::into_owned),
-                input_schema: schema_val,
-                cache_ttl_ms: ttl_ms,
-            });
-            continue;
-        }
-        if let Some(name) = raw.get("name").and_then(Value::as_str) {
-            out.push(McpDiscoveredTool {
-                server_id: server_id.to_owned(),
-                name: name.to_owned(),
-                description: raw
-                    .get("description")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_owned(),
-                input_schema: raw
-                    .get("inputSchema")
-                    .cloned()
-                    .unwrap_or_else(|| json!({ "type": "object" })),
-                cache_ttl_ms: raw.get("ttlMs").and_then(Value::as_u64),
-            });
-        }
-    }
+    let mut out: Vec<McpDiscoveredTool> = raw_tools
+        .iter()
+        .filter_map(|raw| serde_json::from_value::<WireTool>(raw.clone()).ok())
+        .map(|tool| McpDiscoveredTool {
+            server_id: server_id.to_owned(),
+            cache_ttl_ms: tool.ttl_ms.or_else(|| {
+                tool.meta
+                    .as_ref()
+                    .and_then(|m| m.get("ttlMs"))
+                    .and_then(Value::as_u64)
+            }),
+            name: tool.name,
+            description: tool.description.unwrap_or_default(),
+            input_schema: tool
+                .input_schema
+                .unwrap_or_else(|| json!({ "type": "object" })),
+        })
+        .collect();
     out.sort_by(|a, b| a.name.cmp(&b.name));
     out.dedup_by(|a, b| a.name == b.name);
     out
@@ -435,25 +384,20 @@ mod tests {
     use tokio::net::TcpListener;
 
     #[test]
-    fn noisy_stdout_quarantine_stderr_ring_and_deterministic_tool_sort() {
-        let noisy = "Banner: booting server...\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}\nWARN debug line\n";
-        let (frames, quarantined) = split_stdio_jsonrpc_and_quarantine(noisy);
-        assert_eq!(frames.len(), 1);
-        assert_eq!(quarantined.len(), 2);
-
-        let mut ring = StderrRingBuffer::default();
-        ring.push_bytes(&vec![b'x'; MAX_MCP_STDERR_RING_BYTES + 100]);
-        assert_eq!(ring.snapshot_lossy().len(), MAX_MCP_STDERR_RING_BYTES);
-
+    fn tools_sort_deterministically_and_skip_nameless_entries() {
         let sorted = normalize_and_sort_tools(
             "srv1",
             &[
                 json!({"name": "z_tool", "description": "Z", "inputSchema": {"type": "object"}}),
                 json!({"name": "a_tool", "description": "A", "inputSchema": {"type": "object"}}),
+                json!({"description": "no name"}),
+                json!({"name": "m_tool", "_meta": {"ttlMs": 5000}}),
             ],
         );
-        assert_eq!(sorted[0].name, "a_tool");
-        assert_eq!(sorted[1].name, "z_tool");
+        let names: Vec<&str> = sorted.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, ["a_tool", "m_tool", "z_tool"]);
+        assert_eq!(sorted[1].cache_ttl_ms, Some(5000));
+        assert_eq!(sorted[1].input_schema, json!({ "type": "object" }));
     }
 
     #[tokio::test]
