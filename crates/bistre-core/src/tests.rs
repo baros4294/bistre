@@ -45,7 +45,7 @@ fn spawn_mock_sse_server(listener: TcpListener) -> tokio::task::JoinHandle<()> {
 async fn unconfigured_provider_returns_diagnostic_and_local_sse_streams_real_http() -> TestResult {
     let dir = tempdir()?;
 
-    let engine = InProcessEngine::open(dir.path(), VaultKey::generate().ok())?;
+    let engine = InProcessEngine::open(dir.path(), Some(VaultKey::generate()?))?;
 
     let thread = engine
         .create_thread(
@@ -69,19 +69,17 @@ async fn unconfigured_provider_returns_diagnostic_and_local_sse_streams_real_htt
     // Verify Big 3 built-in providers exist and API keys store safely in SecretVault.
     let providers = engine.list_providers().await?;
     assert_eq!(providers.len(), 3);
-    let saved_openai = engine
-        .set_provider_api_key("openai".to_owned(), "sk-test-1234567890abcd".to_owned())
-        .await
-        .ok();
+    let saved_openai = Some(
+        engine
+            .set_provider_api_key("openai".to_owned(), "sk-test-1234567890abcd".to_owned())
+            .await?,
+    );
     assert_eq!(saved_openai.as_ref().map(|p| p.has_api_key), Some(true));
     assert_eq!(
         saved_openai.as_ref().map(|p| p.key_hint.as_str()),
         Some("••••abcd")
     );
-    let cleared = engine
-        .clear_provider_api_key("openai".to_owned())
-        .await
-        .ok();
+    let cleared = Some(engine.clear_provider_api_key("openai".to_owned()).await?);
     assert_eq!(cleared.as_ref().map(|p| p.has_api_key), Some(false));
 
     // Spin up a real local loopback HTTP/SSE server to verify reqwest streaming + DAG commit.
@@ -99,7 +97,7 @@ async fn unconfigured_provider_returns_diagnostic_and_local_sse_streams_real_htt
         .await?;
 
     // Test live GET /models discovery.
-    let models = engine.fetch_provider_models(custom.id.clone()).await.ok();
+    let models = Some(engine.fetch_provider_models(custom.id.clone()).await?);
     assert_eq!(
         models
             .as_ref()
@@ -114,10 +112,11 @@ async fn unconfigured_provider_returns_diagnostic_and_local_sse_streams_real_htt
     assert!(engine.save_settings(settings).await.is_ok());
 
     let mut rx = engine.subscribe_events();
-    let user_node = engine
-        .send_and_stream_reply(thread.id.clone(), None, "Ping loopback".to_owned())
-        .await
-        .ok();
+    let user_node = Some(
+        engine
+            .send_and_stream_reply(thread.id.clone(), None, "Ping loopback".to_owned())
+            .await?,
+    );
     assert!(user_node.is_some());
 
     let mut saw_delta = false;
@@ -151,7 +150,7 @@ async fn unconfigured_provider_returns_diagnostic_and_local_sse_streams_real_htt
 async fn wallet_shield_enforces_daily_cap_and_unlimited_bypasses_and_ota_checks_loopback()
 -> TestResult {
     let dir = tempdir()?;
-    let engine = InProcessEngine::open(dir.path(), VaultKey::generate().ok())?;
+    let engine = InProcessEngine::open(dir.path(), Some(VaultKey::generate()?))?;
 
     // Save a key on OpenAI (non-loopback) and set daily ceiling to $0.00 to verify Wallet Shield hard block.
     assert!(
@@ -176,7 +175,7 @@ async fn wallet_shield_enforces_daily_cap_and_unlimited_bypasses_and_ota_checks_
         .create_thread(None, "Budget test".to_owned(), ThreadMode::Chat, None, None)
         .await?;
 
-    let mut settings = engine.load_settings().await.ok().unwrap_or_default();
+    let mut settings = engine.load_settings().await?;
     settings.active_provider_id = "openai".to_owned();
     settings.active_model_id = "gpt-4.1".to_owned();
     settings.wallet_daily_ceiling_micros = Some(MoneyMicros::ZERO);
@@ -194,22 +193,19 @@ async fn wallet_shield_enforces_daily_cap_and_unlimited_bypasses_and_ota_checks_
     settings.wallet_daily_ceiling_micros = None;
     assert!(engine.save_settings(settings).await.is_ok());
     assert_eq!(
-        engine
-            .load_settings()
-            .await
-            .ok()
-            .and_then(|s| s.wallet_daily_ceiling_micros),
+        engine.load_settings().await?.wallet_daily_ceiling_micros,
         None
     );
 
     // Verify the zero-telemetry OTA check against a signed local loopback feed.
-    let feed = ota::tests::serve_feed(
-        ota::tests::FIXTURE_MANIFEST,
-        Some(ota::tests::FIXTURE_SIG),
-        2,
-    )
-    .await
-    .ok();
+    let feed = Some(
+        ota::tests::serve_feed(
+            ota::tests::FIXTURE_MANIFEST,
+            Some(ota::tests::FIXTURE_SIG),
+            2,
+        )
+        .await?,
+    );
     assert!(feed.is_some());
     let Some((addr, ota_server)) = feed else {
         return Ok(());
@@ -221,10 +217,11 @@ async fn wallet_shield_enforces_daily_cap_and_unlimited_bypasses_and_ota_checks_
             .is_ok()
     );
 
-    let check = engine
-        .check_for_updates(Some(format!("http://{addr}/manifest.json")))
-        .await
-        .ok();
+    let check = Some(
+        engine
+            .check_for_updates(Some(format!("http://{addr}/manifest.json")))
+            .await?,
+    );
     assert!(ota_server.await.is_ok());
     assert_eq!(check.as_ref().map(|c| c.update_available), Some(true));
     assert_eq!(
@@ -243,7 +240,7 @@ async fn wallet_shield_enforces_daily_cap_and_unlimited_bypasses_and_ota_checks_
         );
     }
 
-    let stats = engine.storage_stats().await.ok();
+    let stats = Some(engine.storage_stats().await?);
     assert_eq!(
         stats.as_ref().map(|s| s.schema_version),
         Some(bistre_storage::CURRENT_SCHEMA_VERSION)
@@ -256,7 +253,7 @@ async fn wallet_shield_enforces_daily_cap_and_unlimited_bypasses_and_ota_checks_
 async fn suspend_resume_reconciles_tier2_indeterminate_halt_and_wallet_shield_precedence()
 -> TestResult {
     let dir = tempdir()?;
-    let engine = InProcessEngine::open(dir.path(), VaultKey::generate().ok())?;
+    let engine = InProcessEngine::open(dir.path(), Some(VaultKey::generate()?))?;
 
     let thread = engine
         .create_thread(
@@ -268,40 +265,29 @@ async fn suspend_resume_reconciles_tier2_indeterminate_halt_and_wallet_shield_pr
         )
         .await?;
 
-    let run1 = engine
-        .storage()
-        .create_agent_run(CreateAgentRunParams {
-            thread_id: thread.id.clone(),
-            parent_run_id: None,
-            root_node_id: None,
-            mode: ThreadMode::Code,
-            max_steps: 20,
-            unattended_policy: bistre_protocol::UnattendedPolicy::PauseAndNotify,
-            worktree_path: None,
-        })
-        .ok();
-    let run2 = engine
-        .storage()
-        .create_agent_run(CreateAgentRunParams {
-            thread_id: thread.id.clone(),
-            parent_run_id: None,
-            root_node_id: None,
-            mode: ThreadMode::Code,
-            max_steps: 20,
-            unattended_policy: bistre_protocol::UnattendedPolicy::PauseAndNotify,
-            worktree_path: None,
-        })
-        .ok();
+    let run1 = Some(engine.storage().create_agent_run(CreateAgentRunParams {
+        thread_id: thread.id.clone(),
+        parent_run_id: None,
+        root_node_id: None,
+        mode: ThreadMode::Code,
+        max_steps: 20,
+        unattended_policy: bistre_protocol::UnattendedPolicy::PauseAndNotify,
+        worktree_path: None,
+    })?);
+    let run2 = Some(engine.storage().create_agent_run(CreateAgentRunParams {
+        thread_id: thread.id.clone(),
+        parent_run_id: None,
+        root_node_id: None,
+        mode: ThreadMode::Code,
+        max_steps: 20,
+        unattended_policy: bistre_protocol::UnattendedPolicy::PauseAndNotify,
+        worktree_path: None,
+    })?);
     let (Some(run1), Some(run2)) = (run1, run2) else {
         return Ok(());
     };
-    let status_of = |id: &str| {
-        engine
-            .storage()
-            .get_agent_run(id)
-            .ok()
-            .flatten()
-            .map(|r| r.status)
+    let status_of = |id: &str| -> BistreResult<Option<RunStatus>> {
+        Ok(engine.storage().get_agent_run(id)?.map(|r| r.status))
     };
 
     assert!(
@@ -329,26 +315,26 @@ async fn suspend_resume_reconciles_tier2_indeterminate_halt_and_wallet_shield_pr
             .await
             .is_ok()
     );
-    assert_eq!(status_of(&run1.id), Some(RunStatus::SleepPaused));
-    assert_eq!(status_of(&run2.id), Some(RunStatus::SleepPaused));
+    assert_eq!(status_of(&run1.id)?, Some(RunStatus::SleepPaused));
+    assert_eq!(status_of(&run2.id)?, Some(RunStatus::SleepPaused));
 
     assert_eq!(
         engine
             .notify_power_event(SystemPowerEvent::DidResume)
-            .await
-            .ok(),
-        Some(2)
+            .await?,
+        2
     );
-    assert_eq!(status_of(&run1.id), Some(RunStatus::Running));
-    assert_eq!(status_of(&run2.id), Some(RunStatus::IndeterminateHalt));
+    assert_eq!(status_of(&run1.id)?, Some(RunStatus::Running));
+    assert_eq!(status_of(&run2.id)?, Some(RunStatus::IndeterminateHalt));
 
-    let reconciled = engine
-        .resolve_indeterminate_run(run2.id.clone(), true)
-        .await
-        .ok();
+    let reconciled = Some(
+        engine
+            .resolve_indeterminate_run(run2.id.clone(), true)
+            .await?,
+    );
     assert_eq!(reconciled.map(|r| r.status), Some(RunStatus::Running));
 
-    let mut settings = engine.load_settings().await.ok().unwrap_or_default();
+    let mut settings = engine.load_settings().await?;
     settings.wallet_daily_ceiling_micros = Some(MoneyMicros::ZERO);
     assert!(engine.save_settings(settings).await.is_ok());
     assert!(
@@ -363,7 +349,7 @@ async fn suspend_resume_reconciles_tier2_indeterminate_halt_and_wallet_shield_pr
             .await
             .is_ok()
     );
-    assert_eq!(status_of(&run1.id), Some(RunStatus::Failed));
+    assert_eq!(status_of(&run1.id)?, Some(RunStatus::Failed));
 
     // Verify backoff watchdog respects Retry-After and stops once total budget expires.
     assert!(agent::compute_backoff_wait_ms(0, Some(12), 0, 60).is_some_and(|ms| ms >= 12_000));
@@ -375,7 +361,7 @@ async fn suspend_resume_reconciles_tier2_indeterminate_halt_and_wallet_shield_pr
 #[tokio::test]
 async fn mid_stream_steering_queue_drives_follow_up_turn_without_cancel() -> TestResult {
     let dir = tempdir()?;
-    let engine = InProcessEngine::open(dir.path(), VaultKey::generate().ok())?;
+    let engine = InProcessEngine::open(dir.path(), Some(VaultKey::generate()?))?;
 
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;
@@ -454,17 +440,13 @@ async fn mid_stream_steering_queue_drives_follow_up_turn_without_cancel() -> Tes
     assert!(finished);
 
     // Expect 4 nodes: User(initial) -> Assistant(turn 0) -> User(steered) -> Assistant(turn 1).
-    let nodes = engine
-        .list_nodes(thread.id.clone())
-        .await
-        .ok()
-        .unwrap_or_default();
+    let nodes = engine.list_nodes(thread.id.clone()).await?;
     assert_eq!(nodes.len(), 4);
     assert_eq!(nodes[2].content, "Also make it concise");
     assert_eq!(nodes[3].content, "Turn 1 complete");
 
     // Verify power lease returned cleanly to idle (`active_run_count == 0`).
-    let pstatus = engine.power_guard_status().await.ok();
+    let pstatus = Some(engine.power_guard_status().await?);
     assert_eq!(
         pstatus.map(|p| (p.active_run_count, p.keep_awake_active)),
         Some((0, false))
@@ -476,7 +458,7 @@ async fn mid_stream_steering_queue_drives_follow_up_turn_without_cancel() -> Tes
 #[tokio::test]
 async fn non_read_only_tools_require_an_exact_user_approval() -> BistreResult<()> {
     let dir = tempdir().map_err(|_| BistreError::new(DiagnosticKey::InternalError))?;
-    let engine = InProcessEngine::open(dir.path(), VaultKey::generate().ok())?;
+    let engine = InProcessEngine::open(dir.path(), Some(VaultKey::generate()?))?;
     let ws = dir.path().join("ws");
     std::fs::create_dir_all(&ws).map_err(|_| BistreError::new(DiagnosticKey::InternalError))?;
     std::fs::write(ws.join("a.txt"), "one\n")
@@ -515,8 +497,9 @@ async fn non_read_only_tools_require_an_exact_user_approval() -> BistreResult<()
         Some(DiagnosticKey::ToolApprovalRequired)
     );
     assert_eq!(
-        std::fs::read_to_string(ws.join("a.txt")).ok().as_deref(),
-        Some("one\n")
+        std::fs::read_to_string(ws.join("a.txt"))
+            .map_err(|_| BistreError::new(DiagnosticKey::InternalError))?,
+        "one\n"
     );
     engine.shutdown().await
 }

@@ -163,10 +163,10 @@ mod tests {
     fn evaluates_intervals_and_five_field_cron_and_polls_due_jobs() -> TestResult {
         let base_ms = 1_700_000_000_000_i64;
         assert_eq!(
-            compute_next_run_unix_ms("every 15m", base_ms).ok(),
-            Some(base_ms + 15 * 60_000)
+            compute_next_run_unix_ms("every 15m", base_ms)?,
+            base_ms + 15 * 60_000
         );
-        let next_cron = compute_next_run_unix_ms("*/5 * * * *", base_ms).ok();
+        let next_cron = Some(compute_next_run_unix_ms("*/5 * * * *", base_ms)?);
         assert!(next_cron.is_some_and(|t| t > base_ms && ((t / 60_000) % 5 == 0)));
         assert!(compute_next_run_unix_ms("bad expr", base_ms).is_err());
 
@@ -190,17 +190,13 @@ mod tests {
         };
         assert!(storage.upsert_cron_job(job).is_ok());
 
-        let due = poll_due_cron_jobs(&storage, base_ms)
-            .ok()
-            .unwrap_or_default();
+        let due = poll_due_cron_jobs(&storage, base_ms)?;
         assert_eq!(due.len(), 1);
         assert_eq!(due[0].next_run_ms, base_ms + 30 * 60_000);
         assert_eq!(due[0].last_status, "triggered");
 
         // Second poll at the same timestamp must NOT double-fire.
-        let due_again = poll_due_cron_jobs(&storage, base_ms)
-            .ok()
-            .unwrap_or_default();
+        let due_again = poll_due_cron_jobs(&storage, base_ms)?;
         assert_eq!(due_again.len(), 0);
         Ok(())
     }

@@ -446,6 +446,8 @@ fn ieee_crc32(bytes: &[u8]) -> u32 {
 mod tests {
     use super::*;
 
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
     fn minimal_valid_png() -> Vec<u8> {
         // Minimal 1x1 PNG header + IHDR + IEND for chunk round-trip testing.
         let mut png = Vec::new();
@@ -464,7 +466,7 @@ mod tests {
     }
 
     #[test]
-    fn ccv3_json_png_and_charx_round_trip_and_zip_slip_blocked() {
+    fn ccv3_json_png_and_charx_round_trip_and_zip_slip_blocked() -> TestResult {
         let card = CharacterCardRecord {
             name: "Captain Aria".to_owned(),
             description: "Navigator of the brass dirigible.".to_owned(),
@@ -480,7 +482,7 @@ mod tests {
 
         // 1. JSON round-trip.
         let json_str = export_card_ccv3_json(&card, &lore);
-        let from_json = import_card_json(&json_str).ok();
+        let from_json = Some(import_card_json(&json_str)?);
         assert_eq!(
             from_json.as_ref().map(|b| b.card.name.as_str()),
             Some("Captain Aria")
@@ -488,10 +490,10 @@ mod tests {
         assert_eq!(from_json.as_ref().map(|b| b.lore_entries.len()), Some(1));
 
         // 2. PNG tEXt (ccv3 + chara) round-trip.
-        let png_with_card = export_card_png(&minimal_valid_png(), &card, &lore).ok();
+        let png_with_card = Some(export_card_png(&minimal_valid_png(), &card, &lore)?);
         assert!(png_with_card.is_some());
         if let Some(bytes) = png_with_card {
-            let decoded = import_card_png(&bytes).ok();
+            let decoded = Some(import_card_png(&bytes)?);
             assert_eq!(
                 decoded.as_ref().map(|b| b.card.name.as_str()),
                 Some("Captain Aria")
@@ -499,10 +501,10 @@ mod tests {
         }
 
         // 3. `.charx` ZIP round-trip.
-        let charx = export_card_charx(&card, &lore).ok();
+        let charx = Some(export_card_charx(&card, &lore)?);
         assert!(charx.is_some());
         if let Some(zbytes) = charx {
-            let decoded = import_card_charx(&zbytes).ok();
+            let decoded = Some(import_card_charx(&zbytes)?);
             assert_eq!(
                 decoded.as_ref().map(|b| b.card.name.as_str()),
                 Some("Captain Aria")
@@ -520,5 +522,6 @@ mod tests {
         }
         let blocked = import_card_charx(&bad_zip.into_inner());
         assert!(blocked.is_err());
+        Ok(())
     }
 }

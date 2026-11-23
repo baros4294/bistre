@@ -151,7 +151,7 @@ mod tests {
         assert_eq!(indexed[0].name, "code-review");
         assert_eq!(indexed[0].description, "Rigorous security & diff audit");
 
-        let body = load_skill_body(dir.path(), Path::new(&indexed[0].path)).ok();
+        let body = Some(load_skill_body(dir.path(), Path::new(&indexed[0].path))?);
         assert!(
             body.as_deref()
                 .is_some_and(|b| b.contains("Check every edge case"))

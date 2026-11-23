@@ -15,7 +15,7 @@ fn dag_branching_draft_persistence_fts5_latency_and_checkpoint() -> TestResult {
 
     let storage = StorageHandle::open(&db_path)?;
 
-    let health = storage.health().ok();
+    let health = Some(storage.health()?);
     assert_eq!(
         health.map(|h| (h.schema_version, h.wal_mode_active)),
         Some((CURRENT_SCHEMA_VERSION, true))
@@ -70,24 +70,22 @@ fn dag_branching_draft_persistence_fts5_latency_and_checkpoint() -> TestResult {
             .is_ok()
     );
 
-    let stats = storage.shutdown().ok();
+    let stats = Some(storage.shutdown()?);
     assert_eq!(stats.map(|s| s.busy), Some(0));
     drop(storage);
 
     let reopened = StorageHandle::open(&db_path)?;
 
-    let restored_draft = reopened.load_draft(&thread.id).ok().flatten();
+    let restored_draft = reopened.load_draft(&thread.id)?;
     assert_eq!(restored_draft.map(|d| d.text), Some(draft_text.to_owned()));
 
     let started = Instant::now();
-    let hits = reopened
-        .search_nodes("tiếng Việt #499", Some(&thread.id), 10)
-        .ok();
+    let hits = Some(reopened.search_nodes("tiếng Việt #499", Some(&thread.id), 10)?);
     let elapsed_ms = started.elapsed().as_millis();
     assert!(elapsed_ms < 50, "FTS5 query took {elapsed_ms}ms");
     assert!(hits.as_ref().is_some_and(|list| !list.is_empty()));
 
-    let nodes = reopened.list_nodes(&thread.id).ok();
+    let nodes = Some(reopened.list_nodes(&thread.id)?);
     assert_eq!(nodes.map(|n| n.len()), Some(1001));
     Ok(())
 }
@@ -117,7 +115,7 @@ fn v1_expand_migration_pinning_assistants_settings_and_delete_cascade() -> TestR
 
     let storage = StorageHandle::open(&db_path)?;
     assert!(PathBuf::from(format!("{}.pre-v2.bak", db_path.display())).exists());
-    assert_eq!(storage.list_assistants().ok().map(|v| v.len()), Some(1));
+    assert_eq!(storage.list_assistants()?.len(), 1);
 
     let newer = storage.create_thread(
         None,
@@ -128,16 +126,14 @@ fn v1_expand_migration_pinning_assistants_settings_and_delete_cascade() -> TestR
     )?;
 
     // Pin legacy thread and verify it sorts above newer thread.
-    let pinned = storage
-        .update_thread(
-            "t-legacy".to_owned(),
-            ThreadPatch {
-                is_pinned: Some(true),
-                topic: Some("research".to_owned()),
-                ..ThreadPatch::default()
-            },
-        )
-        .ok();
+    let pinned = Some(storage.update_thread(
+        "t-legacy".to_owned(),
+        ThreadPatch {
+            is_pinned: Some(true),
+            topic: Some("research".to_owned()),
+            ..ThreadPatch::default()
+        },
+    )?);
     assert!(pinned.is_some());
 
     let ordered = storage.list_threads(None)?;
@@ -145,18 +141,16 @@ fn v1_expand_migration_pinning_assistants_settings_and_delete_cascade() -> TestR
     assert_eq!(ordered.first().map(|t| t.is_pinned), Some(true));
 
     // Round-trip settings in kv_meta including Unlimited spending (None) & continuous typography.
-    let saved = storage
-        .save_settings(AppSettings {
-            theme: "night".to_owned(),
-            trust_preset: TrustPreset::Parchment,
-            wallet_daily_ceiling_micros: None,
-            font_size_px: 18,
-            prose_font_family: "Georgia".to_owned(),
-            ..AppSettings::default()
-        })
-        .ok();
+    let saved = Some(storage.save_settings(AppSettings {
+        theme: "night".to_owned(),
+        trust_preset: TrustPreset::Parchment,
+        wallet_daily_ceiling_micros: None,
+        font_size_px: 18,
+        prose_font_family: "Georgia".to_owned(),
+        ..AppSettings::default()
+    })?);
     assert!(saved.is_some());
-    let loaded = storage.load_settings().ok();
+    let loaded = Some(storage.load_settings()?);
     assert_eq!(loaded.as_ref().map(|s| s.theme.as_str()), Some("night"));
     assert_eq!(
         loaded.as_ref().map(|s| s.trust_preset),
@@ -169,7 +163,7 @@ fn v1_expand_migration_pinning_assistants_settings_and_delete_cascade() -> TestR
     assert_eq!(loaded.as_ref().map(|s| s.font_size_px), Some(18));
 
     assert!(storage.delete_thread(newer.id).is_ok());
-    assert_eq!(storage.list_threads(None).ok().map(|v| v.len()), Some(1));
+    assert_eq!(storage.list_threads(None)?.len(), 1);
 
     // Verify ALL providers (including initial Big 3 starters) are freely deletable and do NOT return on reopen.
     let providers = storage.list_providers()?;
@@ -185,17 +179,17 @@ fn v1_expand_migration_pinning_assistants_settings_and_delete_cascade() -> TestR
     {
         assert_eq!(cp.base_url, "http://127.0.0.1:11434/v1");
         assert_eq!(cp.icon_slug, "ollama");
-        assert_eq!(storage.list_providers().ok().map(|v| v.len()), Some(4));
+        assert_eq!(storage.list_providers()?.len(), 4);
         assert!(storage.delete_provider(cp.id).is_ok());
     }
     assert!(storage.delete_provider("openai".to_owned()).is_ok());
-    assert_eq!(storage.list_providers().ok().map(|v| v.len()), Some(2));
+    assert_eq!(storage.list_providers()?.len(), 2);
     assert!(storage.shutdown().is_ok());
     drop(storage);
 
     let reopened = StorageHandle::open(&db_path)?;
     {
-        assert_eq!(reopened.list_providers().ok().map(|v| v.len()), Some(2));
+        assert_eq!(reopened.list_providers()?.len(), 2);
         let backup_file = dir.path().join("snapshot.sqlite");
         assert!(reopened.backup_database(&backup_file).is_ok());
         assert!(backup_file.exists());
@@ -233,19 +227,16 @@ fn node_delete_export_and_daily_wallet_spend_work_atomically() -> TestResult {
         None,
     )?;
 
-    let md = storage.export_thread(&thread.id, "markdown").ok();
+    let md = Some(storage.export_thread(&thread.id, "markdown")?);
     assert!(
         md.as_deref()
             .is_some_and(|s| s.contains("# Architecture notes") && s.contains("Hi there!"))
     );
-    let js = storage.export_thread(&thread.id, "json").ok();
+    let js = Some(storage.export_thread(&thread.id, "json")?);
     assert!(js.as_deref().is_some_and(|s| s.contains("\"title\"")));
 
     assert!(storage.delete_node(thread.id.clone(), n2.id).is_ok());
-    assert_eq!(
-        storage.list_nodes(&thread.id).ok().map(|v| v.len()),
-        Some(1)
-    );
+    assert_eq!(storage.list_nodes(&thread.id)?.len(), 1);
 
     assert!(
         storage
@@ -260,9 +251,9 @@ fn node_delete_export_and_daily_wallet_spend_work_atomically() -> TestResult {
             )
             .is_ok()
     );
-    let since_zero = storage.sum_wallet_spend_since_micros(0).ok();
+    let since_zero = Some(storage.sum_wallet_spend_since_micros(0)?);
     assert_eq!(since_zero, Some(MoneyMicros::from_micros(250_000)));
-    let future = storage.sum_wallet_spend_since_micros(i64::MAX).ok();
+    let future = Some(storage.sum_wallet_spend_since_micros(i64::MAX)?);
     assert_eq!(future, Some(MoneyMicros::ZERO));
     Ok(())
 }
@@ -289,22 +280,20 @@ fn default_assistant_and_crud_invariants() -> TestResult {
         "AR",
     )?;
     {
-        let edited = storage
-            .update_assistant(
-                a.id.clone(),
-                AssistantPatch {
-                    name: Some("Staff Architect".to_owned()),
-                    system_prompt: Some("Review invariants strictly.".to_owned()),
-                    ..AssistantPatch::default()
-                },
-            )
-            .ok();
+        let edited = Some(storage.update_assistant(
+            a.id.clone(),
+            AssistantPatch {
+                name: Some("Staff Architect".to_owned()),
+                system_prompt: Some("Review invariants strictly.".to_owned()),
+                ..AssistantPatch::default()
+            },
+        )?);
         assert_eq!(
             edited.as_ref().map(|e| e.name.as_str()),
             Some("Staff Architect")
         );
         assert!(storage.delete_assistant(a.id).is_ok());
-        assert_eq!(storage.list_assistants().ok().map(|v| v.len()), Some(1));
+        assert_eq!(storage.list_assistants()?.len(), 1);
     }
     Ok(())
 }
@@ -347,13 +336,9 @@ fn schema_v6_durable_runs_and_steering_queue() -> TestResult {
             .is_ok()
     );
 
-    assert_eq!(storage.mark_active_runs_sleep_paused().ok(), Some(1));
+    assert_eq!(storage.mark_active_runs_sleep_paused()?, 1);
     assert_eq!(
-        storage
-            .get_agent_run(&run.id)
-            .ok()
-            .flatten()
-            .map(|r| r.status),
+        storage.get_agent_run(&run.id)?.map(|r| r.status),
         Some(RunStatus::SleepPaused)
     );
 
@@ -367,27 +352,9 @@ fn schema_v6_durable_runs_and_steering_queue() -> TestResult {
             )
             .is_ok()
     );
-    assert_eq!(
-        storage
-            .list_pending_steering(&thread.id)
-            .ok()
-            .map(|v| v.len()),
-        Some(1)
-    );
-    assert_eq!(
-        storage
-            .drain_pending_steering(thread.id.clone())
-            .ok()
-            .map(|v| v.len()),
-        Some(1)
-    );
-    assert_eq!(
-        storage
-            .list_pending_steering(&thread.id)
-            .ok()
-            .map(|v| v.len()),
-        Some(0)
-    );
+    assert_eq!(storage.list_pending_steering(&thread.id)?.len(), 1);
+    assert_eq!(storage.drain_pending_steering(thread.id.clone())?.len(), 1);
+    assert_eq!(storage.list_pending_steering(&thread.id)?.len(), 0);
     Ok(())
 }
 
@@ -413,13 +380,7 @@ fn schema_v6_checkpoints_memory_cron_and_event_cursor_replay() -> TestResult {
             )
             .is_ok()
     );
-    assert_eq!(
-        storage
-            .list_workspace_checkpoints(&thread.id)
-            .ok()
-            .map(|v| v.len()),
-        Some(1)
-    );
+    assert_eq!(storage.list_workspace_checkpoints(&thread.id)?.len(), 1);
 
     assert!(
         storage
@@ -454,37 +415,25 @@ fn schema_v6_checkpoints_memory_cron_and_event_cursor_replay() -> TestResult {
             })
             .is_ok()
     );
-    assert_eq!(storage.count_enabled_cron_jobs().ok(), Some(1));
+    assert_eq!(storage.count_enabled_cron_jobs()?, 1);
 
-    let c1 = storage
-        .append_engine_event_log(
-            Some(thread.id.clone()),
-            &EngineEvent::RunStarted {
-                thread_id: thread.id.clone(),
-                node_id: "n1".to_owned(),
-            },
-        )
-        .ok()
-        .unwrap_or(0);
-    let c2 = storage
-        .append_engine_event_log(
-            Some(thread.id.clone()),
-            &EngineEvent::RunFinished {
-                thread_id: thread.id,
-                node_id: "n1".to_owned(),
-                cancelled: false,
-            },
-        )
-        .ok()
-        .unwrap_or(0);
+    let c1 = storage.append_engine_event_log(
+        Some(thread.id.clone()),
+        &EngineEvent::RunStarted {
+            thread_id: thread.id.clone(),
+            node_id: "n1".to_owned(),
+        },
+    )?;
+    let c2 = storage.append_engine_event_log(
+        Some(thread.id.clone()),
+        &EngineEvent::RunFinished {
+            thread_id: thread.id,
+            node_id: "n1".to_owned(),
+            cancelled: false,
+        },
+    )?;
     assert!(c2 > c1);
-    assert_eq!(
-        storage
-            .read_engine_events_after(c1, 10)
-            .ok()
-            .map(|v| v.len()),
-        Some(1)
-    );
+    assert_eq!(storage.read_engine_events_after(c1, 10)?.len(), 1);
     Ok(())
 }
 
@@ -492,10 +441,7 @@ fn schema_v6_checkpoints_memory_cron_and_event_cursor_replay() -> TestResult {
 fn schema_v7_story_bible_progressions_manuscript_and_time_machine() -> TestResult {
     let dir = tempdir()?;
     let storage = StorageHandle::open(dir.path().join("v7.sqlite"))?;
-    assert_eq!(
-        storage.health().ok().map(|h| h.schema_version),
-        Some(CURRENT_SCHEMA_VERSION)
-    );
+    assert_eq!(storage.health()?.schema_version, CURRENT_SCHEMA_VERSION);
 
     let thread = storage.create_thread(None, "Novel Draft", ThreadMode::Write, None, None)?;
 
@@ -507,10 +453,9 @@ fn schema_v7_story_bible_progressions_manuscript_and_time_machine() -> TestResul
     })?;
     assert_eq!(
         storage
-            .list_story_snapshots("character_card", &card.id, 10)
-            .ok()
-            .map(|s| s.len()),
-        Some(1)
+            .list_story_snapshots("character_card", &card.id, 10)?
+            .len(),
+        1
     );
 
     let entry = storage.upsert_story_entry(bistre_protocol::StoryEntryRecord {
@@ -531,13 +476,7 @@ fn schema_v7_story_bible_progressions_manuscript_and_time_machine() -> TestResul
             })
             .is_ok()
     );
-    assert_eq!(
-        storage
-            .list_story_progressions(Some(&entry.id))
-            .ok()
-            .map(|p| p.len()),
-        Some(1)
-    );
+    assert_eq!(storage.list_story_progressions(Some(&entry.id))?.len(), 1);
 
     let ch = storage.upsert_story_chapter(bistre_protocol::StoryChapterRecord {
         thread_id: thread.id,
@@ -545,16 +484,16 @@ fn schema_v7_story_bible_progressions_manuscript_and_time_machine() -> TestResul
         title: "Chapter 1: Salt and Ink".to_owned(),
         ..bistre_protocol::StoryChapterRecord::default()
     })?;
-    let scene = storage
-        .upsert_story_scene(bistre_protocol::StorySceneRecord {
+    let scene = Some(
+        storage.upsert_story_scene(bistre_protocol::StorySceneRecord {
             chapter_id: ch.id,
             order_index: 1,
             title: "Opening".to_owned(),
             beats_text: "- Lyra inspects the lantern.".to_owned(),
             prose_text: "The brass lantern hissed softly.".to_owned(),
             ..bistre_protocol::StorySceneRecord::default()
-        })
-        .ok();
+        })?,
+    );
     assert_eq!(scene.map(|s| s.word_count), Some(5));
     Ok(())
 }

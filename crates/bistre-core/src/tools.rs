@@ -957,7 +957,7 @@ mod tests {
         assert!(tool_read(&workspace, ".env", None, None).is_err());
 
         // Read produces blake3 line-hash anchors.
-        let read_out = tool_read(&workspace, "hello.rs", Some(1), Some(3)).ok();
+        let read_out = Some(tool_read(&workspace, "hello.rs", Some(1), Some(3))?);
         assert!(
             read_out
                 .as_ref()
@@ -995,33 +995,28 @@ mod tests {
             target,
             "    let x = 42;",
             Some(&anchor),
-        )
-        .ok();
-        assert!(
-            edit_out
-                .as_ref()
-                .is_some_and(|e| e.ok && e.diff_text.is_some())
-        );
+        )?;
+        assert!(edit_out.ok && edit_out.diff_text.is_some());
         assert_eq!(
-            std::fs::read_to_string(&file).ok().as_deref(),
-            Some("fn main() {\n    let x = 42;\n}\n")
+            std::fs::read_to_string(&file)?,
+            "fn main() {\n    let x = 42;\n}\n"
         );
 
         // 1-click Rewind restores exact original bytes!
-        let cp_id = edit_out.and_then(|e| e.checkpoint_id).unwrap_or_default();
+        let cp_id = edit_out.checkpoint_id.ok_or("edit made no checkpoint")?;
         assert!(tool_rewind_checkpoint(&storage, &workspace, &cp_id).is_ok());
         assert_eq!(
-            std::fs::read_to_string(&file).ok().as_deref(),
-            Some("fn main() {\n    let x = 1;\n}\n")
+            std::fs::read_to_string(&file)?,
+            "fn main() {\n    let x = 1;\n}\n"
         );
 
         // Grep & Glob run zero-fork in-process.
-        let g = tool_grep(&workspace, "let x = 1", None).ok();
+        let g = Some(tool_grep(&workspace, "let x = 1", None)?);
         assert!(
             g.as_ref()
                 .is_some_and(|r| r.output_text.contains("hello.rs:2:"))
         );
-        let gl = tool_glob(&workspace, "*.rs").ok();
+        let gl = Some(tool_glob(&workspace, "*.rs")?);
         assert!(
             gl.as_ref()
                 .is_some_and(|r| r.output_text.contains("hello.rs"))
