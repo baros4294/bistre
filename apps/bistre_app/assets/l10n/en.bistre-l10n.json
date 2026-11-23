@@ -797,7 +797,7 @@
       "placeholders": {}
     },
     "provider.field.base_url": {
-      "message": "API base URL",
+      "message": "Server URL",
       "context": "Form label for provider endpoint URL",
       "tone": "calm_editorial",
       "max_chars": 28,
@@ -1750,7 +1750,7 @@
       "placeholders": {}
     },
     "provider.empty_body": {
-      "message": "Add OpenAI, Google Gemini, Anthropic, Ollama, or any custom endpoint to start chatting.",
+      "message": "Add OpenAI, Google Gemini, Anthropic, Ollama, or any compatible server to start chatting.",
       "context": "Empty state body when provider list is empty",
       "tone": "calm_editorial",
       "max_chars": 140,
@@ -2312,7 +2312,7 @@
       "placeholders": {}
     },
     "composer.steer_placeholder": {
-      "message": "Type a follow-up to steer the active run...",
+      "message": "Add to the reply in progress...",
       "context": "Composer placeholder while AI is actively streaming",
       "tone": "calm_editorial",
       "max_chars": 68,
@@ -2435,7 +2435,7 @@
       "placeholders": {}
     },
     "toast.steering_queued": {
-      "message": "Steering message queued",
+      "message": "Your message will be sent next",
       "context": "Toast after queuing a mid-stream steering message",
       "tone": "calm_editorial",
       "max_chars": 40,
@@ -2488,7 +2488,7 @@
       "placeholders": {}
     },
     "chat.reasoning_effort": {
-      "message": "Reasoning effort",
+      "message": "Thinking",
       "context": "Label for reasoning depth control",
       "tone": "calm_editorial",
       "max_chars": 28,
@@ -2586,7 +2586,7 @@
       "placeholders": {}
     },
     "chat.compact_action": {
-      "message": "Compact context",
+      "message": "Shorten the conversation",
       "context": "Action summarizing earlier chat history into a reversible node",
       "tone": "concise_action",
       "max_chars": 28,
@@ -2600,7 +2600,7 @@
       "placeholders": {}
     },
     "chat.undo_compaction": {
-      "message": "Undo compaction",
+      "message": "Undo shortening",
       "context": "Button reverting a compaction summary node back to full history",
       "tone": "concise_action",
       "max_chars": 26,
@@ -2983,7 +2983,7 @@
       "placeholders": {}
     },
     "story.author_note": {
-      "message": "Author's Note",
+      "message": "Story notes",
       "context": "Floating guidance note injected at configurable depth",
       "tone": "calm_editorial",
       "max_chars": 32,

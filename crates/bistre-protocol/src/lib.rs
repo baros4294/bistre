@@ -445,8 +445,9 @@ impl TrustPreset {
 fn default_theme() -> String {
     "system".to_owned()
 }
+/// Messenger bubbles by default (Parchment v2.6.0); the page view stays one tap away.
 fn default_layout_mode() -> String {
-    "open_folio".to_owned()
+    "bubbles".to_owned()
 }
 fn default_locale() -> String {
     "en".to_owned()

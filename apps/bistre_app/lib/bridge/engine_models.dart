@@ -222,7 +222,7 @@ class EngineAssistant {
 class EngineSettings {
   const EngineSettings({
     this.theme = 'system',
-    this.layoutMode = 'open_folio',
+    this.layoutMode = 'bubbles',
     this.locale = 'en',
     this.trustPreset = 'guided_craft',
     this.walletDailyCeilingMicros = 5000000,
