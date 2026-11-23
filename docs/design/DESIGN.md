@@ -100,6 +100,7 @@ Every screen in `apps/bistre_app` composes exclusively from these 10 reusable wi
 - **`200%` text scale**: fixed-width columns (sidebar, settings nav) scale with `textScaledWidth` up to `1.6x`; when the effective width (width ÷ text scale) is below 600 px the composer splits into 2 rows while streaming or at `>= 130%` text and the header stacks (and wraps) secondary actions at `>= 135%` text; setting rows stack below 480 px effective width; every model/provider/assistant pill uses `Flexible` + ellipsis. The UI gallery renders `phone-text200` and `desktop-text200`.
 - Modals and drawers trap focus (`FocusScope`) and wrap occluded background UI in `ExcludeSemantics` + `ExcludeFocus`; every input keeps its accessible field name; toasts and errors are `liveRegion`s.
 - All directional spacing/alignment uses `EdgeInsetsDirectional`, `AlignmentDirectional`, and `TextDirection` resolved from active `BistreLocalizations`.
+- **Message direction follows the message**: chat content takes its direction from its first strong character (`contentDirection`, `apps/bistre_app/lib/features/chat/content_direction.dart`), so an English reply inside the Arabic UI reads left to right with its punctuation in place, and an Arabic reply inside the English UI reads right to left; text with no strong character keeps the UI direction.
 - Never alter `TextEditingController.text` during active IME composition (`value.composing.isValid`); never set `enableSuggestions: false` on general text inputs (`flutter#192714`).
 
 ## 8. Hot-Path UI, Viewport & Low-Memory Invariants

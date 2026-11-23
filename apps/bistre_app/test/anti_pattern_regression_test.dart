@@ -5,6 +5,7 @@ import 'package:bistre_app/design/bistre_icons.dart';
 import 'package:bistre_app/design/bistre_theme.dart';
 import 'package:bistre_app/design/ink_primitives.dart';
 import 'package:bistre_app/features/chat/code_wrap_scope.dart';
+import 'package:bistre_app/features/chat/content_direction.dart';
 import 'package:bistre_app/features/chat/folio_message_feed.dart';
 import 'package:bistre_app/features/chat/markdown_folio_view.dart';
 import 'package:bistre_app/features/chat/tool_timeline_view.dart';
@@ -470,4 +471,35 @@ void main() {
       await gw.shutdown();
     },
   );
+
+  test('a message takes its direction from its first strong character', () {
+    expect(contentDirection('How should we keep WAL fast?'), TextDirection.ltr);
+    expect(contentDirection('**Tiếng Việt** trước'), TextDirection.ltr);
+    expect(contentDirection('## مرحبا بالعالم'), TextDirection.rtl);
+    expect(contentDirection('42 — שלום'), TextDirection.rtl);
+    expect(contentDirection('123 ... !'), isNull);
+  });
+
+  testWidgets('an English reply inside the Arabic UI lays out left to right', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.rtl,
+        child: BistreTheme(
+          data: BistreThemeData.resolve(isDark: false),
+          child: MarkdownFolioView(
+            markdown: 'Readers run concurrently:',
+            onCopyCode: (_) {},
+          ),
+        ),
+      ),
+    );
+    final text = find.textContaining(
+      'Readers run concurrently',
+      findRichText: true,
+    );
+    expect(text, findsOneWidget);
+    expect(Directionality.of(tester.element(text)), TextDirection.ltr);
+  });
 }

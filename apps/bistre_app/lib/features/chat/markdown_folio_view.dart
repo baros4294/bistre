@@ -10,6 +10,7 @@ import '../../design/math_font_gate.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import 'code_wrap_scope.dart';
+import 'content_direction.dart';
 import 'math_folio_view.dart';
 import 'mermaid_canvas_view.dart';
 
@@ -33,12 +34,20 @@ class MarkdownFolioView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!markdown.contains(r'$')) return _buildBlocks(context);
+    // A message reads in its own direction, not the app's (see [contentDirection]).
+    final direction = contentDirection(markdown);
+    Widget blocks(BuildContext context) => direction == null
+        ? _buildBlocks(context)
+        : Directionality(
+            textDirection: direction,
+            child: Builder(builder: _buildBlocks),
+          );
+    if (!markdown.contains(r'$')) return blocks(context);
     // Inline math: load the math face on demand and repaint once it is registered.
     unawaited(MathFontGate.ensureLoaded());
     return ValueListenableBuilder<bool>(
       valueListenable: MathFontGate.ready,
-      builder: (context, _, _) => _buildBlocks(context),
+      builder: (context, _, _) => blocks(context),
     );
   }
 
