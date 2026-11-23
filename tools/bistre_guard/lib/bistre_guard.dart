@@ -169,6 +169,16 @@ void checkDocPathsAndIndexes(Directory repoRoot, List<String> errors) {
     }
   }
 
+  // Spec 00 must keep the implementation-status table (specs describe the target; this table
+  // records what the code does today).
+  final spec00 = File('${repoRoot.path}/docs/specs/00-architecture.md');
+  if (spec00.existsSync() &&
+      !spec00.readAsStringSync().contains('## 6. Implementation Status')) {
+    errors.add(
+      '[doc-status] docs/specs/00-architecture.md must keep "## 6. Implementation Status".',
+    );
+  }
+
   // Verify AGENTS.md explicitly requires documentation sync for latest changes.
   if (!agentsText.toLowerCase().contains('documentation') ||
       !agentsText.toLowerCase().contains('same change')) {

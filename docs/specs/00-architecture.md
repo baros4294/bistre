@@ -33,3 +33,27 @@ All AIO, performance, i18n, and two-track OTA abstractions are locked from Day 1
 - **`bistre-ffi`**: `api/mod.rs` (FRB entrypoints + DTOs: runtime, providers, assistants, threads, settings, runs, events), `api/harness.rs` (tool approval and execution, checkpoints, compaction, MCP, memory, skills, cron), `api/story.rs` (character cards, personas, story bible), `dto_mapping.rs` (domain → DTO mapping, 16 ms delta coalescing helpers, and `ffi_err`, which returns `diag.<key>` or `diag.<key>:<detail_code>` so the detail code is never dropped).
 - **Flutter app**: `bridge/bistre_engine.dart` (`BistreEngineGateway` + FRB implementation) re-exports `bridge/engine_models.dart` and `bridge/engine_story_models.dart`; `FolioController` (`features/shell/folio_controller.dart`) keeps all state and core flows, with actions in `part` extensions (`folio_controller_catalog.dart`, `folio_controller_threads.dart`, `folio_controller_studio.dart`) that notify through the private `_notify()`; widget tests share `test/support/fake_engine_gateway.dart`.
 - Split-out Rust unit tests live in `src/tests.rs` declared by `#[cfg(test)] mod tests;` and are exempt from the hardcoded-model gate like inline test modules.
+
+## 6. Implementation Status
+The specs describe the target. This table records what the code does today; update the row in the same change that moves a feature (`just guard` requires this section). **Implemented**: wired end to end and tested. **Partial**: works with the gap named. **Built, not wired**: tested Rust code with no production caller yet. **Planned**: spec only.
+
+| Feature | Status | Where / gap |
+|---|---|---|
+| SQLite WAL single writer, Expand-Contract migrations, FTS5 | Implemented | `crates/bistre-storage`; readers open a fresh read-only connection per query (no pool yet) |
+| Provider streaming, `SseFramer`, 400 heal ladder, multi-key failover, retry hints, one-shot 413 compaction | Implemented | `providers.rs`, `sse.rs`, `error_policy.rs`, `engine_runs.rs` |
+| No retry after partial output; Stop within 50 ms | Implemented | `providers.rs` |
+| Wallet Shield with spend reservations (fail closed), parsed loopback | Implemented | `wallet.rs`, `net.rs` |
+| Tool approval: one-use permits from `approve_tool_call` | Implemented (core + FFI) | no approval card calls it yet; the UI does not run workspace tools |
+| Workspace tools (`cap-std`, blake3 line hashes, stale-read guard, Rewind) | Partial | `grep`/`glob` walk without a time bound; no `> 64 KiB` blob spill (256 KiB truncation) |
+| Native model tool calls (`builtin_tool_schemas`, `heal_and_dedup_tool_calls`) | Built, not wired | requests send no tools; tools run only through FFI |
+| MCP over Streamable HTTP, `2026-07-28` → `2025-11-25` | Partial | no stdio transport, restart budget, bearer tokens, or deferred `mcp_schema`; new session per call (`ADR-0018`) |
+| `PublicWebTransport` (public-IP pinning, validated redirects) | Implemented | `ssrf.rs` |
+| OTA: streamed SHA-256, mandatory minisign, `VerifiedManifest` | Implemented | disabled until a release key is embedded (`OFFICIAL_RELEASE_PUBKEY_B64`) |
+| Updater crash-loop rollback | Built, not wired | `bistre-updater` only runs `--verify-manifest`; `plan_next_boot` is test-only |
+| Pricing registry: daily cached refresh, Settings toggle | Implemented | `registry.rs` |
+| Usage dedupe by `request_id` | Planned | |
+| Compaction: reversible, role alternation | Partial | no 16-step quantized tool compaction, no 8,000-char cross-provider reasoning handoff; `should_auto_compact` is test-only |
+| Daemon: health, IPC RPC, event-driven housekeeping | Partial | cron jobs are found due and logged, not executed; app-side IPC client (`ipc_client::send_daemon_rpc`) has no caller |
+| Sub-agent worktree sandboxes | Built, not wired | `prepare_subagent_sandbox` has no UI caller; `cleanup_worktree_sandbox` is test-only |
+| Writing Studio agents (prewriter, librarian, laser edit), card PNG export | Built, not wired | `story/writer_agents.rs`, `card_io::export_card_png` |
+| Remote Bridge / mTLS / tray | Planned | Spec 07 |
