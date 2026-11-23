@@ -179,7 +179,12 @@ Future<List<PerfMetric>> runDesktopColdStart(Directory repoRoot) async {
           if (probe.containsKey(waitFor)) break;
         }
       }
-      if (run == 0 && Platform.isLinux) printRssByMapping(proc.pid);
+      if (run == 0) {
+        stdout.writeln(
+          'rss at first frame: ${probe['first_frame_rss_bytes']} bytes; after 10 s idle: ${probe['idle_rss_bytes']} bytes',
+        );
+        if (Platform.isLinux) printRssByMapping(proc.pid);
+      }
       proc.kill();
       await proc.exitCode.timeout(
         const Duration(seconds: 10),
@@ -257,6 +262,30 @@ void printRssByMapping(int pid) {
       '  ${(e.value / 1024).toStringAsFixed(1).padLeft(7)} MB  ${e.key}',
     );
   }
+  // Threads by name: each allocating thread gets its own glibc malloc arena (`[anon]`).
+  final byName = <String, int>{};
+  try {
+    for (final t in Directory('/proc/$pid/task').listSync()) {
+      final comm = File('${t.path}/comm').readAsStringSync().trim();
+      final key = comm.replaceAll(RegExp(r'[0-9]+$'), '#');
+      byName[key] = (byName[key] ?? 0) + 1;
+    }
+    final status = File('/proc/$pid/status')
+        .readAsLinesSync()
+        .where(
+          (l) =>
+              RegExp(r'^(VmRSS|RssAnon|RssFile|RssShmem|Threads):').hasMatch(l),
+        )
+        .map((l) => l.replaceAll(RegExp(r'\s+'), ' '));
+    stdout.writeln('status: ${status.join('; ')}');
+  } on FileSystemException catch (e) {
+    stderr.writeln('note: task list unavailable for $pid: ${e.message}');
+  }
+  final threads = byName.entries.toList()
+    ..sort((a, b) => b.value.compareTo(a.value));
+  stdout.writeln(
+    'threads: ${threads.map((e) => '${e.key}x${e.value}').join(', ')}',
+  );
 }
 
 /// Android cold start (`am start -W`) and PSS (`dumpsys meminfo`) on an installed APK.
