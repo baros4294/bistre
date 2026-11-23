@@ -12,7 +12,7 @@ pub async fn list_character_cards_json() -> Result<String, String> {
     let cards = engine
         .list_character_cards()
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&cards).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
@@ -25,7 +25,7 @@ pub async fn upsert_character_card_json(card_json: String) -> Result<String, Str
     let saved = engine
         .upsert_character_card(parsed)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&saved).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
@@ -36,7 +36,7 @@ pub async fn delete_character_card(card_id: String) -> Result<(), String> {
     engine
         .delete_character_card(card_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())
+        .map_err(crate::dto_mapping::ffi_err)
 }
 
 /// Imports a CCv3/V2 PNG, JSON, or `.charx` file from disk and returns the saved card JSON.
@@ -46,7 +46,7 @@ pub async fn import_character_card_file_json(file_path: String) -> Result<String
     let card = engine
         .import_character_card_file(file_path)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&card).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
@@ -57,7 +57,7 @@ pub async fn export_character_card_ccv3(card_id: String) -> Result<String, Strin
     engine
         .export_character_card_ccv3(card_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())
+        .map_err(crate::dto_mapping::ffi_err)
 }
 
 /// Lists saved User Personas as JSON.
@@ -67,7 +67,7 @@ pub async fn list_user_personas_json() -> Result<String, String> {
     let items = engine
         .list_user_personas()
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&items).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
@@ -80,7 +80,7 @@ pub async fn upsert_user_persona_json(persona_json: String) -> Result<String, St
     let saved = engine
         .upsert_user_persona(parsed)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&saved).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
@@ -91,7 +91,7 @@ pub async fn list_story_entries_json(book_id: Option<String>) -> Result<String, 
     let items = engine
         .list_story_entries(book_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&items).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
@@ -104,7 +104,7 @@ pub async fn upsert_story_entry_json(entry_json: String) -> Result<String, Strin
     let saved = engine
         .upsert_story_entry(parsed)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&saved).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
@@ -115,7 +115,7 @@ pub async fn delete_story_entry(entry_id: String) -> Result<(), String> {
     engine
         .delete_story_entry(entry_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())
+        .map_err(crate::dto_mapping::ffi_err)
 }
 
 /// Lists Chronological Progressions as JSON.
@@ -125,7 +125,7 @@ pub async fn list_story_progressions_json(entry_id: Option<String>) -> Result<St
     let items = engine
         .list_story_progressions(entry_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&items).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
@@ -138,7 +138,7 @@ pub async fn add_story_progression_json(prog_json: String) -> Result<String, Str
     let saved = engine
         .add_story_progression(parsed)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&saved).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
@@ -149,7 +149,7 @@ pub async fn list_story_chapters_json(thread_id: String) -> Result<String, Strin
     let items = engine
         .list_story_chapters(thread_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&items).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
@@ -162,7 +162,7 @@ pub async fn upsert_story_chapter_json(chapter_json: String) -> Result<String, S
     let saved = engine
         .upsert_story_chapter(parsed)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&saved).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
@@ -173,7 +173,7 @@ pub async fn list_story_scenes_json(chapter_id: String) -> Result<String, String
     let items = engine
         .list_story_scenes(chapter_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&items).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
@@ -186,7 +186,7 @@ pub async fn upsert_story_scene_json(scene_json: String) -> Result<String, Strin
     let saved = engine
         .upsert_story_scene(parsed)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&saved).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
@@ -197,7 +197,7 @@ pub async fn load_story_thread_state_json(thread_id: String) -> Result<String, S
     let st = engine
         .load_story_thread_state(thread_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&st).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
@@ -210,7 +210,7 @@ pub async fn save_story_thread_state_json(state_json: String) -> Result<String, 
     let saved = engine
         .save_story_thread_state(parsed)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&saved).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
@@ -221,7 +221,7 @@ pub async fn list_regex_rules_json() -> Result<String, String> {
     let rules = engine
         .list_regex_rules()
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&rules).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
@@ -234,7 +234,7 @@ pub async fn upsert_regex_rule_json(rule_json: String) -> Result<String, String>
     let saved = engine
         .upsert_regex_rule(parsed)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&saved).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
@@ -249,7 +249,7 @@ pub async fn list_story_snapshots_json(
     let snaps = engine
         .list_story_snapshots(entity_type, entity_id, limit)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&snaps).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
@@ -263,6 +263,6 @@ pub async fn inspect_story_prompt_json(
     let report = engine
         .inspect_story_prompt(thread_id, active_scene_beats)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&report).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }

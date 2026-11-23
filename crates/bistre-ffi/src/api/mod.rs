@@ -18,6 +18,7 @@ use crate::dto_mapping::{
 };
 use crate::frb_generated::StreamSink;
 
+pub mod harness;
 pub mod story;
 
 static ENGINE: LazyLock<RwLock<Option<Arc<dyn EngineClient>>>> =
@@ -334,7 +335,7 @@ pub async fn init_runtime(
 ) -> Result<FfiHealthSnapshot, String> {
     // Android hands over its Keystore-unwrapped data key; other platforms resolve their own.
     let key = match vault_key.map(zeroize::Zeroizing::new) {
-        Some(bytes) => Some(VaultKey::from_slice(&bytes).map_err(|e| e.key.as_key().to_owned())?),
+        Some(bytes) => Some(VaultKey::from_slice(&bytes).map_err(crate::dto_mapping::ffi_err)?),
         None => bistre_core::vault_key::resolve_vault_key(std::path::Path::new(&data_dir)).await,
     };
     // Re-initialising (hot restart, data-dir switch) must never leave two engines, and so two
@@ -344,21 +345,16 @@ pub async fn init_runtime(
         .map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())?
         .take();
     if let Some(old) = previous {
-        old.shutdown()
-            .await
-            .map_err(|e| e.key.as_key().to_owned())?;
+        old.shutdown().await.map_err(crate::dto_mapping::ffi_err)?;
     }
-    let engine = InProcessEngine::open(data_dir, key).map_err(|e| e.key.as_key().to_owned())?;
+    let engine = InProcessEngine::open(data_dir, key).map_err(crate::dto_mapping::ffi_err)?;
     {
         let mut guard = ENGINE
             .write()
             .map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())?;
         *guard = Some(engine.clone());
     }
-    let snap = engine
-        .health()
-        .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+    let snap = engine.health().await.map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_health(snap))
 }
 
@@ -366,10 +362,7 @@ pub async fn init_runtime(
 #[frb]
 pub async fn get_health() -> Result<FfiHealthSnapshot, String> {
     let engine = current_engine()?;
-    let snap = engine
-        .health()
-        .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+    let snap = engine.health().await.map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_health(snap))
 }
 
@@ -380,7 +373,7 @@ pub async fn list_providers() -> Result<Vec<FfiProviderProfile>, String> {
     let list = engine
         .list_providers()
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(list.into_iter().map(map_provider).collect())
 }
 
@@ -416,7 +409,7 @@ pub async fn update_provider(
             },
         )
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_provider(updated))
 }
 
@@ -430,7 +423,7 @@ pub async fn set_provider_api_key(
     let updated = engine
         .set_provider_api_key(provider_id, api_key)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_provider(updated))
 }
 
@@ -441,7 +434,7 @@ pub async fn clear_provider_api_key(provider_id: String) -> Result<FfiProviderPr
     let updated = engine
         .clear_provider_api_key(provider_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_provider(updated))
 }
 
@@ -468,7 +461,7 @@ pub async fn create_provider(
             api_key,
         )
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_provider(created))
 }
 
@@ -484,7 +477,7 @@ pub async fn create_custom_provider(
     let created = engine
         .create_custom_provider(name, base_url, default_model, api_key)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_provider(created))
 }
 
@@ -495,7 +488,7 @@ pub async fn delete_provider(provider_id: String) -> Result<(), String> {
     engine
         .delete_provider(provider_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())
+        .map_err(crate::dto_mapping::ffi_err)
 }
 
 /// Queries live models from the provider's `/models` endpoint (zero hardcoded model list).
@@ -507,7 +500,7 @@ pub async fn fetch_provider_models(
     let list = engine
         .fetch_provider_models(provider_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(list
         .into_iter()
         .map(|m| FfiProviderModelInfo {
@@ -524,7 +517,7 @@ pub async fn list_assistants() -> Result<Vec<FfiAssistantRecord>, String> {
     let list = engine
         .list_assistants()
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(list.into_iter().map(map_assistant).collect())
 }
 
@@ -547,7 +540,7 @@ pub async fn create_assistant(
             badge_code,
         )
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_assistant(created))
 }
 
@@ -605,7 +598,7 @@ pub async fn update_assistant(
             },
         )
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_assistant(updated))
 }
 
@@ -616,7 +609,7 @@ pub async fn delete_assistant(assistant_id: String) -> Result<(), String> {
     engine
         .delete_assistant(assistant_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())
+        .map_err(crate::dto_mapping::ffi_err)
 }
 
 /// Creates a new conversation thread with optional topic and assistant binding.
@@ -631,7 +624,7 @@ pub async fn create_thread(
     let thread = engine
         .create_thread(None, title, ThreadMode::parse(&mode), topic, assistant_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_thread(thread))
 }
 
@@ -704,7 +697,7 @@ pub async fn update_thread(
             },
         )
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_thread(updated))
 }
 
@@ -715,7 +708,7 @@ pub async fn delete_thread(thread_id: String) -> Result<(), String> {
     engine
         .delete_thread(thread_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())
+        .map_err(crate::dto_mapping::ffi_err)
 }
 
 /// Lists all persisted conversation threads ordered pinned first then newest-updated.
@@ -725,7 +718,7 @@ pub async fn list_threads() -> Result<Vec<FfiThreadSummary>, String> {
     let list = engine
         .list_threads(None)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(list.into_iter().map(map_thread).collect())
 }
 
@@ -741,7 +734,7 @@ pub async fn append_node(
     let node = engine
         .append_node(thread_id, parent_id, NodeRole::parse(&role), content, None)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_node(node))
 }
 
@@ -756,7 +749,7 @@ pub async fn send_and_stream_reply(
     let user_node = engine
         .send_and_stream_reply(thread_id, parent_id, user_content)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_node(user_node))
 }
 
@@ -767,7 +760,7 @@ pub async fn regenerate_reply(thread_id: String, user_node_id: String) -> Result
     engine
         .regenerate_reply(thread_id, user_node_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())
+        .map_err(crate::dto_mapping::ffi_err)
 }
 
 /// Edits a user message by creating a clean sibling DAG branch and streaming a fresh assistant reply.
@@ -781,7 +774,7 @@ pub async fn edit_user_node_and_stream(
     let node = engine
         .edit_user_node_and_stream(thread_id, node_id, new_content)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_node(node))
 }
 
@@ -792,7 +785,7 @@ pub async fn delete_node(thread_id: String, node_id: String) -> Result<(), Strin
     engine
         .delete_node(thread_id, node_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())
+        .map_err(crate::dto_mapping::ffi_err)
 }
 
 /// Exports a thread cleanly as Markdown (`"markdown"`) or JSON (`"json"`).
@@ -802,7 +795,7 @@ pub async fn export_thread(thread_id: String, format: String) -> Result<String, 
     engine
         .export_thread(thread_id, format)
         .await
-        .map_err(|e| e.key.as_key().to_owned())
+        .map_err(crate::dto_mapping::ffi_err)
 }
 
 /// Writes an atomic WAL-consistent SQLite backup snapshot to `dest_path`.
@@ -812,7 +805,7 @@ pub async fn backup_database(dest_path: String) -> Result<(), String> {
     engine
         .backup_database(dest_path)
         .await
-        .map_err(|e| e.key.as_key().to_owned())
+        .map_err(crate::dto_mapping::ffi_err)
 }
 
 /// Returns active storage path, on-disk DB size, schema version, and WAL metrics.
@@ -822,7 +815,7 @@ pub async fn get_storage_stats() -> Result<FfiStorageStats, String> {
     let stats = engine
         .storage_stats()
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_storage_stats(stats))
 }
 
@@ -835,7 +828,7 @@ pub async fn check_for_updates(
     let res = engine
         .check_for_updates(feed_url_override)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_update_check(res))
 }
 
@@ -859,7 +852,7 @@ pub async fn stage_update(check: FfiUpdateCheckResult) -> Result<String, String>
             checked_at_ms: check.checked_at_ms,
         })
         .await
-        .map_err(|e| e.key.as_key().to_owned())
+        .map_err(crate::dto_mapping::ffi_err)
 }
 
 /// Cancels any active streaming reply for `thread_id`.
@@ -869,7 +862,7 @@ pub async fn cancel_active_run(thread_id: String) -> Result<bool, String> {
     engine
         .cancel_active_run(thread_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())
+        .map_err(crate::dto_mapping::ffi_err)
 }
 
 /// Ends a run's backoff wait immediately (`Retry now`); `false` when nothing is waiting.
@@ -879,7 +872,7 @@ pub async fn retry_run_now(thread_id: String) -> Result<bool, String> {
     engine
         .retry_run_now(thread_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())
+        .map_err(crate::dto_mapping::ffi_err)
 }
 
 /// Lists chronological DAG nodes for `thread_id`.
@@ -889,7 +882,7 @@ pub async fn list_nodes(thread_id: String) -> Result<Vec<FfiNodeRecord>, String>
     let nodes = engine
         .list_nodes(thread_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(nodes.into_iter().map(map_node).collect())
 }
 
@@ -900,7 +893,7 @@ pub async fn save_draft(thread_id: String, text: String) -> Result<FfiDraftRecor
     let draft = engine
         .save_draft(thread_id, text)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_draft(draft))
 }
 
@@ -911,7 +904,7 @@ pub async fn load_draft(thread_id: String) -> Result<Option<FfiDraftRecord>, Str
     let draft = engine
         .load_draft(thread_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(draft.map(map_draft))
 }
 
@@ -922,7 +915,7 @@ pub async fn load_settings() -> Result<FfiAppSettings, String> {
     let settings = engine
         .load_settings()
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_settings(settings))
 }
 
@@ -972,7 +965,7 @@ pub async fn save_settings(settings: FfiAppSettings) -> Result<FfiAppSettings, S
             code_wrap_mode: settings.code_wrap_mode,
         })
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_settings(saved))
 }
 
@@ -983,7 +976,7 @@ pub async fn get_wallet_spend_micros() -> Result<i64, String> {
     let spent = engine
         .wallet_spend_micros()
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(spent.as_micros())
 }
 
@@ -994,7 +987,7 @@ pub async fn get_wallet_daily_spend_micros() -> Result<i64, String> {
     let spent = engine
         .wallet_daily_spend_micros()
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(spent.as_micros())
 }
 
@@ -1009,7 +1002,7 @@ pub async fn search_nodes(
     let hits = engine
         .search_nodes(query, thread_id, limit)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(hits.into_iter().map(map_hit).collect())
 }
 
@@ -1030,7 +1023,7 @@ pub async fn verify_data_pack(
             pack_payload,
         )
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(manifest.semver)
 }
 
@@ -1093,7 +1086,7 @@ pub async fn list_agent_runs(
     let runs = engine
         .list_agent_runs(thread_id, only_active, limit)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(runs.into_iter().map(map_agent_run).collect())
 }
 
@@ -1107,7 +1100,7 @@ pub async fn enqueue_steering(
     let msg = engine
         .enqueue_steering(thread_id, content)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_steering(msg))
 }
 
@@ -1118,7 +1111,7 @@ pub async fn list_pending_steering(thread_id: String) -> Result<Vec<FfiSteeringM
     let items = engine
         .list_pending_steering(thread_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(items.into_iter().map(map_steering).collect())
 }
 
@@ -1129,7 +1122,7 @@ pub async fn delete_steering(steering_id: String) -> Result<(), String> {
     engine
         .delete_steering(steering_id)
         .await
-        .map_err(|e| e.key.as_key().to_owned())
+        .map_err(crate::dto_mapping::ffi_err)
 }
 
 /// Returns live OS sleep-guard, daemon connection, and Android FGS status.
@@ -1139,7 +1132,7 @@ pub async fn power_guard_status() -> Result<FfiPowerGuardStatus, String> {
     let status = engine
         .power_guard_status()
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_power_status(status))
 }
 
@@ -1161,7 +1154,7 @@ pub async fn notify_power_event(event_kind: String, on_ac: Option<bool>) -> Resu
     engine
         .notify_power_event(parsed)
         .await
-        .map_err(|e| e.key.as_key().to_owned())
+        .map_err(crate::dto_mapping::ffi_err)
 }
 
 /// Updates Android run-scoped `specialUse` FGS & battery exemption telemetry from Kotlin platform channel.
@@ -1174,7 +1167,7 @@ pub async fn set_android_power_state(
     let status = engine
         .set_android_power_state(fgs_active, battery_unrestricted)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_power_status(status))
 }
 
@@ -1188,283 +1181,8 @@ pub async fn resolve_indeterminate_run(
     let run = engine
         .resolve_indeterminate_run(run_id, confirm_completed)
         .await
-        .map_err(|e| e.key.as_key().to_owned())?;
+        .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_agent_run(run))
-}
-
-/// Records the user's approval of one exact tool call and returns its one-use permit id.
-#[frb]
-pub async fn approve_tool_call(
-    thread_id: String,
-    tool_name: String,
-    arguments_json: String,
-) -> Result<String, String> {
-    let engine = current_engine()?;
-    engine
-        .approve_tool_call(thread_id, tool_name, arguments_json)
-        .await
-        .map_err(|e| e.key.as_key().to_owned())
-}
-
-/// Executes a capability-scoped built-in workspace or web tool and returns a JSON `ToolExecutionOutput`.
-/// Non-read-only tools need the `permit_id` returned by `approve_tool_call`.
-#[frb]
-pub async fn execute_workspace_tool_json(
-    workspace_root: String,
-    thread_id: String,
-    tool_name: String,
-    arguments_json: String,
-    permit_id: Option<String>,
-) -> Result<String, String> {
-    let engine = current_engine()?;
-    let output = engine
-        .execute_workspace_tool(
-            workspace_root,
-            thread_id,
-            tool_name,
-            arguments_json,
-            permit_id,
-        )
-        .await
-        .map_err(|e| e.key.as_key().to_owned())?;
-    serde_json::to_string(&output).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
-}
-
-/// Rewinds a single file edit cleanly from a persisted SQLite pre-image checkpoint.
-#[frb]
-pub async fn rewind_checkpoint(
-    workspace_root: String,
-    checkpoint_id: String,
-) -> Result<String, String> {
-    let engine = current_engine()?;
-    engine
-        .rewind_checkpoint(workspace_root, checkpoint_id)
-        .await
-        .map_err(|e| e.key.as_key().to_owned())
-}
-
-/// Lists persisted file-edit pre-image checkpoints for `thread_id` as JSON.
-#[frb]
-pub async fn list_checkpoints_json(thread_id: String, limit: u32) -> Result<String, String> {
-    let engine = current_engine()?;
-    let cps = engine
-        .list_checkpoints(thread_id, limit)
-        .await
-        .map_err(|e| e.key.as_key().to_owned())?;
-    serde_json::to_string(&cps).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
-}
-
-/// Inserts a reversible `CompactionSummary` DAG node without deleting original history.
-#[frb]
-pub async fn compact_thread(
-    thread_id: String,
-    keep_recent_turns: u32,
-    custom_summary: Option<String>,
-) -> Result<FfiNodeRecord, String> {
-    let engine = current_engine()?;
-    let node = engine
-        .compact_thread(thread_id, keep_recent_turns, custom_summary)
-        .await
-        .map_err(|e| e.key.as_key().to_owned())?;
-    Ok(map_node(node))
-}
-
-/// Reverts a reversible `CompactionSummary` node, restoring 100% of prior verbatim turns.
-#[frb]
-pub async fn undo_compaction(thread_id: String, compaction_node_id: String) -> Result<(), String> {
-    let engine = current_engine()?;
-    engine
-        .undo_compaction(thread_id, compaction_node_id)
-        .await
-        .map_err(|e| e.key.as_key().to_owned())
-}
-
-/// Pins (or clears with `None`) a Fixed Context Start node for `thread_id`.
-#[frb]
-pub async fn set_context_start_pin(
-    thread_id: String,
-    node_id: Option<String>,
-) -> Result<Option<String>, String> {
-    let engine = current_engine()?;
-    engine
-        .set_context_start_pin(thread_id, node_id)
-        .await
-        .map_err(|e| e.key.as_key().to_owned())
-}
-
-/// Returns the current Fixed Context Start pin for `thread_id`, if set.
-#[frb]
-pub async fn get_context_start_pin(thread_id: String) -> Result<Option<String>, String> {
-    let engine = current_engine()?;
-    engine
-        .get_context_start_pin(thread_id)
-        .await
-        .map_err(|e| e.key.as_key().to_owned())
-}
-
-/// Probes loopback Ollama, LM Studio, llama.cpp, and KoboldCPP servers (`$0` local priority).
-#[frb]
-pub async fn discover_local_servers_json() -> Result<String, String> {
-    let engine = current_engine()?;
-    let found = engine
-        .discover_local_servers()
-        .await
-        .map_err(|e| e.key.as_key().to_owned())?;
-    serde_json::to_string(&found).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
-}
-
-/// Discovers tools from a Streamable HTTP MCP server (`2026-07-28` primary -> `2025-11-25` fallback).
-#[frb]
-pub async fn discover_mcp_server_json(server_config_json: String) -> Result<String, String> {
-    let engine = current_engine()?;
-    let cfg: bistre_core::mcp::McpServerConfig = serde_json::from_str(&server_config_json)
-        .map_err(|_| DiagnosticKey::InvalidInput.as_key().to_owned())?;
-    let report = engine
-        .discover_mcp_server(cfg)
-        .await
-        .map_err(|e| e.key.as_key().to_owned())?;
-    serde_json::to_string(&report).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
-}
-
-/// Invokes a tool on a configured Streamable HTTP MCP server with 256 KiB output capping.
-#[frb]
-pub async fn call_mcp_tool_json(
-    server_config_json: String,
-    tool_name: String,
-    arguments_json: String,
-) -> Result<String, String> {
-    let engine = current_engine()?;
-    let cfg: bistre_core::mcp::McpServerConfig = serde_json::from_str(&server_config_json)
-        .map_err(|_| DiagnosticKey::InvalidInput.as_key().to_owned())?;
-    engine
-        .call_mcp_tool(cfg, tool_name, arguments_json)
-        .await
-        .map_err(|e| e.key.as_key().to_owned())
-}
-
-/// Reads an arbitrary JSON/text configuration key from local SQLite `kv_meta`.
-#[frb]
-pub async fn get_kv_meta(key: String) -> Result<Option<String>, String> {
-    let engine = current_engine()?;
-    engine
-        .get_kv_meta(key)
-        .await
-        .map_err(|e| e.key.as_key().to_owned())
-}
-
-/// Writes an arbitrary JSON/text configuration key into local SQLite `kv_meta`.
-#[frb]
-pub async fn set_kv_meta(key: String, value: String) -> Result<(), String> {
-    let engine = current_engine()?;
-    engine
-        .set_kv_meta(key, value)
-        .await
-        .map_err(|e| e.key.as_key().to_owned())
-}
-
-/// Lists persistent cross-chat SQLite memory entries as JSON.
-#[frb]
-pub async fn list_memory_entries_json(scope: Option<String>) -> Result<String, String> {
-    let engine = current_engine()?;
-    let items = engine
-        .list_memory_entries(scope)
-        .await
-        .map_err(|e| e.key.as_key().to_owned())?;
-    serde_json::to_string(&items).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
-}
-
-/// Upserts a persistent cross-chat SQLite memory entry and returns it as JSON.
-#[frb]
-pub async fn upsert_memory_entry_json(
-    id: Option<String>,
-    scope: String,
-    scope_id: String,
-    key: String,
-    content: String,
-    pinned: bool,
-) -> Result<String, String> {
-    let engine = current_engine()?;
-    let item = engine
-        .upsert_memory_entry(id, scope, scope_id, key, content, pinned)
-        .await
-        .map_err(|e| e.key.as_key().to_owned())?;
-    serde_json::to_string(&item).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
-}
-
-/// Deletes a persistent memory entry by ID.
-#[frb]
-pub async fn delete_memory_entry(entry_id: String) -> Result<(), String> {
-    let engine = current_engine()?;
-    engine
-        .delete_memory_entry(entry_id)
-        .await
-        .map_err(|e| e.key.as_key().to_owned())
-}
-
-/// Scans `workspace_root` for progressive-disclosure `SKILL.md` frontmatter entries as JSON.
-#[frb]
-pub async fn discover_workspace_skills_json(workspace_root: String) -> Result<String, String> {
-    let engine = current_engine()?;
-    let skills = engine
-        .discover_workspace_skills(workspace_root)
-        .await
-        .map_err(|e| e.key.as_key().to_owned())?;
-    serde_json::to_string(&skills).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
-}
-
-/// Loads a specific `SKILL.md` instruction body on demand.
-#[frb]
-pub async fn load_skill_body(workspace_root: String, skill_path: String) -> Result<String, String> {
-    let engine = current_engine()?;
-    engine
-        .load_skill_body(workspace_root, skill_path)
-        .await
-        .map_err(|e| e.key.as_key().to_owned())
-}
-
-/// Lists all scheduled cron/timer automation jobs as JSON.
-#[frb]
-pub async fn list_cron_jobs_json() -> Result<String, String> {
-    let engine = current_engine()?;
-    let jobs = engine
-        .list_cron_jobs()
-        .await
-        .map_err(|e| e.key.as_key().to_owned())?;
-    serde_json::to_string(&jobs).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
-}
-
-/// Creates or updates a scheduled cron/timer automation job from JSON and returns the saved JSON.
-#[frb]
-pub async fn upsert_cron_job_json(job_json: String) -> Result<String, String> {
-    let engine = current_engine()?;
-    let parsed: bistre_protocol::CronJobRecord = serde_json::from_str(&job_json)
-        .map_err(|_| DiagnosticKey::InvalidInput.as_key().to_owned())?;
-    let saved = engine
-        .upsert_cron_job(parsed)
-        .await
-        .map_err(|e| e.key.as_key().to_owned())?;
-    serde_json::to_string(&saved).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
-}
-
-/// Deletes a scheduled cron/timer automation job by ID.
-#[frb]
-pub async fn delete_cron_job(job_id: String) -> Result<(), String> {
-    let engine = current_engine()?;
-    engine
-        .delete_cron_job(job_id)
-        .await
-        .map_err(|e| e.key.as_key().to_owned())
-}
-
-/// Prepares an isolated `git worktree` (or copy-sandbox fallback) for a background subagent.
-#[frb]
-pub async fn prepare_subagent_sandbox_json(workspace_root: String) -> Result<String, String> {
-    let engine = current_engine()?;
-    let sb = engine
-        .prepare_subagent_sandbox(workspace_root)
-        .await
-        .map_err(|e| e.key.as_key().to_owned())?;
-    serde_json::to_string(&sb).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
 /// Cleanly shuts down the active engine and checkpoints SQLite WAL.
@@ -1480,7 +1198,7 @@ pub async fn shutdown_runtime() -> Result<(), String> {
         engine
             .shutdown()
             .await
-            .map_err(|e| e.key.as_key().to_owned())?;
+            .map_err(crate::dto_mapping::ffi_err)?;
     }
     Ok(())
 }
