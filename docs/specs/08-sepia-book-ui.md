@@ -34,17 +34,31 @@
 - **Unavailable cost**: `NodeUsageMeta.costKnown` reads the node's `cost_known`. An unpriced reply shows no price, only a quiet `BistreUiIcon.info` button (`apps/bistre_app/lib/features/chat/cost_unavailable_button.dart`) whose popover explains that the reply counts as `$0` toward the daily limit and lists the model and token counts (Spec 06). Tests: `apps/bistre_app/test/diff_and_cost_test.dart`.
 
 ## 4. Parchment v2.6.0 UX Parity (Open)
-Parchment `v2.6.0` (Kotlin/Compose) is the UX benchmark (`docs/design/DESIGN.md` §1.1). The full side-by-side audit is pending: compare every Parchment `v2.6.0` UI gallery render (phone and desktop, light and dark, 200% text) with `just ui-gallery`; each gap becomes a row below. M4 is done when no row is `Open`. Gaps already confirmed from the 2026-11-23 gallery (`01`, `03`, `18`, `20`):
+Parchment `v2.6.0` (Kotlin/Compose) is the UX benchmark (`docs/design/DESIGN.md` §1.1). Its committed `docs/images/*.png` predate the release, so compare against renders of the tagged code:
 
-| Screen | v2.6.0 principle | Bistre gap | Status |
+```powershell
+git clone --depth 1 --branch v2.6.0 https://github.com/baros4294/parchment.git parchment-v260
+cd parchment-v260
+.\gradlew.bat :composeApp:desktopTest --tests "*UiGalleryTest*" "-Pparchment.gallery=true"
+```
+
+Renders land in `parchment-v260/.parchment-local/verification/gallery/` (38 screens: desktop and phone, light and dark, 200% text, empty, key error, retry, settings pages, icon sheet). Compare each with `just ui-gallery`. M4 is done when no row is `Open`. Rows below come from the 2026-11-23 renders (`desktop-chat`, `desktop-empty`, `desktop-thought`, `desktop-key-error`, `desktop-settings`, `phone-chat`) against Bistre's gallery.
+
+| Screen | Parchment v2.6.0 (rendered) | Bistre gap | Status |
 |---|---|---|---|
-| Header | Single bar: sidebar toggle, title, interactive model subtitle; workspace + settings trailing | Mode segment, run pill, model pill, and 6 unlabeled icons share the bar; header controls are mouse-only (`folio_shell_screen.dart`) | Open |
-| Header | Status only when it matters | `1 running · Awake` with a warning triangle shows on an empty new chat | Open |
-| Pickers | One model picker | Model (header), assistant (composer), and mode (header) compete | Open |
-| Welcome | One bold mark | Rubric bar on both the intro and the `Connect an AI provider` card; three intro lines | Open |
-| Thinking | Hairline surfaces | Solid ink border on the Thinking disclosure | Open |
-| Code card | Quiet icon buttons | `Wrap lines` is a heavy text pill beside the copy icon | Open |
-| Composer | Explain on hover | Unlabeled `170` counter ring | Open |
+| Header | Leading: sidebar toggle, chat title with `model on Provider ▾` subtitle. Trailing: workspace folder count, new chat, settings. Nothing else | Mode segment, run pill, model pill, and 6 unlabeled icons share the bar; header controls are mouse-only | Open |
+| Header status | No run or sleep status in the header | `1 running · Awake` with a warning triangle shows on every chat | Open |
+| Pickers | One model picker (the header subtitle); the composer's chips set thinking (`None`) and tools | Model (header pill), assistant (composer), and mode (header) compete | Open |
+| Chat tabs | Open chats show as tabs under the header with `N Tabs` overflow | No chat tabs | Open |
+| Empty chat | One `rubricMark` line, "Start with a question, a draft or a file.", with the model name beneath; nothing else when a key exists | Three intro lines, a second rubric bar on the setup card, starter rows | Open |
+| Messages | Messenger bubbles: yours a tinted right-aligned pill; replies a hairline-bordered card; model name and time above the bubble; actions on hover (touch: under the newest turns) | Speaker header with six always-visible actions; no bubble shape by default | Open |
+| Thinking | Collapsed `> Thought 4s, 2 tools` on the trailing edge above the reply; expanded as a tinted panel "Thinking and tool steps (21 words • 2 tools)" | Full-width disclosure box with a solid ink border | Open |
+| Code card | `kotlin (2 lines)` plus four equal icon buttons: wrap, fold, download, copy | `Wrap lines` text pill beside one copy icon; no line count, fold, or download | Open |
+| Composer | Placeholder `Message <assistant>...`; chips attach, voice, thinking level, Tools; context ring labelled `217/128k (0%)`; `Send ↵` as a quiet secondary button | Placeholder `Type a message...`; unlabeled `170` ring; loud filled red Send; assistant picker in the composer | Open |
+| Errors | Floating notice: plain sentence + one fix button (`Check API key`) + dismiss | Banner above the composer | Open |
+| Scroll | `↓ Latest` pill when scrolled up | No jump-to-latest | Open |
+| Sidebar | Search field + `+` new chat; `Assistants · Chats · Pinned`; chats grouped by assistant with count and `Clear all`; title + relative time | Date groups; no new-chat button beside search; no relative time | Open |
+| Settings | Left nav with icons and `← Chat`; searchable ("Search all settings..."); content in titled cards; theme presets as preview swatches | Nine tabs, no settings search | Open |
 | Feed | 0 ms motion for 100+/day actions | `FolioFadeSlide` replayed on scroll-back and thread switch | Closed (2026-11-23) |
 | Copy | Plain-words glossary | `Author's Note`, `API base URL`, `Reasoning effort`, `Compact context`, `steer`, `endpoint`; RTL-unsafe `' · '` joins | Open |
-| Targets | 40 px desktop / 48 dp touch | About 30 targets at 26–36 px | Open |
+| Targets | 48 dp touch; 34/38 dp control heights on one row | About 30 targets at 26–36 px | Open |
