@@ -102,275 +102,267 @@ class _BudgetSafetySettingsViewState extends State<BudgetSafetySettingsView> {
 
     return SingleChildScrollView(
       padding: const EdgeInsetsDirectional.fromSTEB(28, 22, 28, 40),
-      child: Align(
-        alignment: AlignmentDirectional.topStart,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 700),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Live Wallet Shield Spend Card
-              FolioSurface(
-                tone: FolioTone.elevated,
-                padding: const EdgeInsetsDirectional.all(20),
-                borderRadius: 14,
-                boxShadow: theme.cardShadow,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Live Wallet Shield Spend Card
+          FolioSurface(
+            tone: FolioTone.elevated,
+            padding: const EdgeInsetsDirectional.all(20),
+            borderRadius: 14,
+            boxShadow: theme.cardShadow,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        BistreIcon(
-                          BistreUiIcon.shield,
-                          size: 16,
-                          color: theme.accentBrass,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: InkText(
-                            l10n.t(L10nKey.settingsBudgetTodaySpend),
-                            role: InkTextRole.titleMedium,
-                          ),
-                        ),
-                        WaxSealBadge(
-                          label: spendBadgeLabel,
-                          status: isUnlimited
-                              ? WaxSealStatus.ok
-                              : (ratio >= 0.9
-                                    ? WaxSealStatus.error
-                                    : WaxSealStatus.ok),
-                        ),
-                      ],
+                    BistreIcon(
+                      BistreUiIcon.shield,
+                      size: 16,
+                      color: theme.accentBrass,
                     ),
-                    const SizedBox(height: 10),
-                    if (isUnlimited)
-                      InkText(
-                        unlimitedSummary,
-                        role: InkTextRole.bodyCompact,
-                        color: theme.inkSecondary,
-                      )
-                    else ...[
-                      SizedBox(
-                        height: 6,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(999),
-                          child: ColoredBox(
-                            color: theme.bgSurface,
-                            child: Align(
-                              alignment: AlignmentDirectional.centerStart,
-                              child: FractionallySizedBox(
-                                widthFactor: ratio,
-                                heightFactor: 1,
-                                child: SizedBox.expand(
-                                  child: ColoredBox(
-                                    color: ratio >= 0.9
-                                        ? theme.statusErr
-                                        : theme.accentBrass,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: InkText(
+                        l10n.t(L10nKey.settingsBudgetTodaySpend),
+                        role: InkTextRole.titleMedium,
                       ),
-                      const SizedBox(height: 8),
-                      InkText(
-                        l10n.t(
-                          L10nKey.settingsTrustSpendToday,
-                          <String, Object?>{'spent': spentStr, 'limit': capStr},
-                        ),
-                        role: InkTextRole.captionMeta,
-                        color: theme.inkMuted,
-                      ),
-                    ],
+                    ),
+                    WaxSealBadge(
+                      label: spendBadgeLabel,
+                      status: isUnlimited
+                          ? WaxSealStatus.ok
+                          : (ratio >= 0.9
+                                ? WaxSealStatus.error
+                                : WaxSealStatus.ok),
+                    ),
                   ],
                 ),
-              ),
-              const SizedBox(height: BistreSpacing.s24),
-
-              // Daily Spending Limit Controls
-              BistreSettingsSection(
-                title: l10n.t(L10nKey.settingsTrustCeilingHeading),
-                children: [
-                  BistreSettingRow(
-                    label: l10n.t(L10nKey.settingsBudgetUnlimitedToggle),
-                    description: l10n.t(L10nKey.settingsBudgetUnlimitedBadge),
-                    trailing: BistreSwitch(
-                      value: isUnlimited,
-                      semanticsLabel: l10n.t(
-                        L10nKey.settingsBudgetUnlimitedToggle,
+                const SizedBox(height: 10),
+                if (isUnlimited)
+                  InkText(
+                    unlimitedSummary,
+                    role: InkTextRole.bodyCompact,
+                    color: theme.inkSecondary,
+                  )
+                else ...[
+                  SizedBox(
+                    height: 6,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: ColoredBox(
+                        color: theme.bgSurface,
+                        child: Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: FractionallySizedBox(
+                            widthFactor: ratio,
+                            heightFactor: 1,
+                            child: SizedBox.expand(
+                              child: ColoredBox(
+                                color: ratio >= 0.9
+                                    ? theme.statusErr
+                                    : theme.accentBrass,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
-                      reduceMotionOverride: ctrl.reduceMotionOverride,
-                      onChanged: (unlimited) {
-                        if (unlimited) {
-                          unawaited(
-                            ctrl.updateSettings(
-                              s.copyWith(setWalletUnlimited: true),
-                            ),
-                          );
-                        } else {
-                          final parsed =
-                              FolioController.parseUsdToMicros(
-                                _customAmountCtrl.text,
-                              ) ??
-                              10000000;
-                          final safeCap = parsed > 0 ? parsed : 10000000;
-                          _customAmountCtrl.text =
-                              FolioController.formatMicrosUsd(safeCap)
-                                  .replaceFirst(r'$', '');
-                          unawaited(
-                            ctrl.updateSettings(
-                              s.copyWith(walletDailyCeilingMicros: safeCap),
-                            ),
-                          );
-                        }
-                      },
                     ),
                   ),
-                  if (!isUnlimited)
-                    BistreSettingRow(
-                      label: l10n.t(L10nKey.settingsBudgetCustomAmount),
-                      bottom: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                  const SizedBox(height: 8),
+                  InkText(
+                    l10n.t(L10nKey.settingsTrustSpendToday, <String, Object?>{
+                      'spent': spentStr,
+                      'limit': capStr,
+                    }),
+                    role: InkTextRole.captionMeta,
+                    color: theme.inkMuted,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: BistreSpacing.s24),
+
+          // Daily Spending Limit Controls
+          BistreSettingsSection(
+            title: l10n.t(L10nKey.settingsTrustCeilingHeading),
+            children: [
+              BistreSettingRow(
+                label: l10n.t(L10nKey.settingsBudgetUnlimitedToggle),
+                description: l10n.t(L10nKey.settingsBudgetUnlimitedBadge),
+                trailing: BistreSwitch(
+                  value: isUnlimited,
+                  semanticsLabel: l10n.t(L10nKey.settingsBudgetUnlimitedToggle),
+                  reduceMotionOverride: ctrl.reduceMotionOverride,
+                  onChanged: (unlimited) {
+                    if (unlimited) {
+                      unawaited(
+                        ctrl.updateSettings(
+                          s.copyWith(setWalletUnlimited: true),
+                        ),
+                      );
+                    } else {
+                      final parsed =
+                          FolioController.parseUsdToMicros(
+                            _customAmountCtrl.text,
+                          ) ??
+                          10000000;
+                      final safeCap = parsed > 0 ? parsed : 10000000;
+                      _customAmountCtrl.text = FolioController.formatMicrosUsd(
+                        safeCap,
+                      ).replaceFirst(r'$', '');
+                      unawaited(
+                        ctrl.updateSettings(
+                          s.copyWith(walletDailyCeilingMicros: safeCap),
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ),
+              if (!isUnlimited)
+                BistreSettingRow(
+                  label: l10n.t(L10nKey.settingsBudgetCustomAmount),
+                  bottom: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
                         children: [
-                          Row(
-                            children: [
-                              SizedBox(
-                                width: 156,
-                                child: QuillInput(
-                                  controller: _customAmountCtrl,
-                                  focusNode: _customAmountFocus,
-                                  placeholder: _kDefaultAmountHint,
-                                  maxLines: 1,
-                                  submitOnEnter: false,
-                                  onSubmitted: _applyCustomAmount,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              EngravedButton(
-                                label: l10n.t(
-                                  L10nKey.settingsBudgetApplyAmount,
-                                ),
-                                primary: true,
-                                compact: true,
-                                onPressed: _applyCustomAmount,
-                              ),
-                            ],
+                          SizedBox(
+                            width: 156,
+                            child: QuillInput(
+                              controller: _customAmountCtrl,
+                              focusNode: _customAmountFocus,
+                              placeholder: _kDefaultAmountHint,
+                              maxLines: 1,
+                              submitOnEnter: false,
+                              onSubmitted: _applyCustomAmount,
+                            ),
                           ),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: [
-                              for (final preset in _quickCaps)
-                                InkChip(
-                                  label: preset.$2,
-                                  selected: capMicros == preset.$1,
-                                  onSelected: () {
-                                    _customAmountCtrl.text = preset.$2
-                                        .replaceFirst(r'$', '');
-                                    unawaited(
-                                      ctrl.updateSettings(
-                                        s.copyWith(
-                                          walletDailyCeilingMicros: preset.$1,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                            ],
+                          const SizedBox(width: 8),
+                          EngravedButton(
+                            label: l10n.t(L10nKey.settingsBudgetApplyAmount),
+                            primary: true,
+                            compact: true,
+                            onPressed: _applyCustomAmount,
                           ),
                         ],
                       ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: BistreSpacing.s24),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final preset in _quickCaps)
+                            InkChip(
+                              label: preset.$2,
+                              selected: capMicros == preset.$1,
+                              onSelected: () {
+                                _customAmountCtrl.text = preset.$2.replaceFirst(
+                                  r'$',
+                                  '',
+                                );
+                                unawaited(
+                                  ctrl.updateSettings(
+                                    s.copyWith(
+                                      walletDailyCeilingMicros: preset.$1,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: BistreSpacing.s24),
 
-              // Model prices (public price lists; Spec 06)
-              BistreSettingsSection(
-                title: l10n.t(L10nKey.settingsPricesHeading),
-                children: [
-                  BistreSettingRow(
-                    label: l10n.t(L10nKey.settingsPricesAutoRefresh),
-                    description: l10n.t(L10nKey.settingsPricesAutoRefreshHint),
-                    trailing: BistreSwitch(
-                      value: s.pricingAutoRefresh,
-                      semanticsLabel: l10n.t(L10nKey.settingsPricesAutoRefresh),
-                      reduceMotionOverride: ctrl.reduceMotionOverride,
-                      onChanged: (on) => unawaited(
-                        ctrl.updateSettings(s.copyWith(pricingAutoRefresh: on)),
-                      ),
-                    ),
+          // Model prices (public price lists; Spec 06)
+          BistreSettingsSection(
+            title: l10n.t(L10nKey.settingsPricesHeading),
+            children: [
+              BistreSettingRow(
+                label: l10n.t(L10nKey.settingsPricesAutoRefresh),
+                description: l10n.t(L10nKey.settingsPricesAutoRefreshHint),
+                trailing: BistreSwitch(
+                  value: s.pricingAutoRefresh,
+                  semanticsLabel: l10n.t(L10nKey.settingsPricesAutoRefresh),
+                  reduceMotionOverride: ctrl.reduceMotionOverride,
+                  onChanged: (on) => unawaited(
+                    ctrl.updateSettings(s.copyWith(pricingAutoRefresh: on)),
                   ),
-                  BistreSettingRow(
-                    label: l10n.t(L10nKey.settingsPricesRefreshNow),
-                    trailing: EngravedButton(
-                      label: l10n.t(L10nKey.settingsPricesRefreshNow),
-                      compact: true,
-                      onPressed: () => unawaited(ctrl.refreshPrices()),
-                    ),
-                  ),
-                ],
+                ),
               ),
-              const SizedBox(height: BistreSpacing.s24),
-
-              // Permissions & Privacy
-              BistreSettingsSection(
-                title: l10n.t(L10nKey.settingsTrustPresetHeading),
-                children: [
-                  BistreSettingRow(
-                    label: l10n.t(L10nKey.settingsTrustPresetHeading),
-                    trailing: BistreSegmentedControl<String>(
-                      selected: s.trustPreset,
-                      onSelected: (v) => unawaited(
-                        ctrl.updateSettings(s.copyWith(trustPreset: v)),
-                      ),
-                      options: <BistreSegmentedOption<String>>[
-                        BistreSegmentedOption<String>(
-                          value: 'parchment_safe',
-                          label: l10n.t(L10nKey.settingsTrustParchment),
-                        ),
-                        BistreSegmentedOption<String>(
-                          value: 'guided_craft',
-                          label: l10n.t(L10nKey.settingsTrustGuided),
-                        ),
-                        BistreSegmentedOption<String>(
-                          value: 'unchained_sandbox',
-                          label: l10n.t(L10nKey.settingsTrustUnchained),
-                        ),
-                      ],
-                    ),
-                  ),
-                  BistreSettingRow(
-                    label: l10n.t(L10nKey.settingsTrustLocalFirst),
-                    trailing: BistreSwitch(
-                      value: s.walletLocalFirst,
-                      semanticsLabel: l10n.t(L10nKey.settingsTrustLocalFirst),
-                      reduceMotionOverride: ctrl.reduceMotionOverride,
-                      onChanged: (v) => unawaited(
-                        ctrl.updateSettings(s.copyWith(walletLocalFirst: v)),
-                      ),
-                    ),
-                  ),
-                  BistreSettingRow(
-                    label: l10n.t(L10nKey.settingsTrustStateless),
-                    trailing: BistreSwitch(
-                      value: s.providerStatelessDefault,
-                      semanticsLabel: l10n.t(L10nKey.settingsTrustStateless),
-                      reduceMotionOverride: ctrl.reduceMotionOverride,
-                      onChanged: (v) => unawaited(
-                        ctrl.updateSettings(
-                          s.copyWith(providerStatelessDefault: v),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+              BistreSettingRow(
+                label: l10n.t(L10nKey.settingsPricesRefreshNow),
+                trailing: EngravedButton(
+                  label: l10n.t(L10nKey.settingsPricesRefreshNow),
+                  compact: true,
+                  onPressed: () => unawaited(ctrl.refreshPrices()),
+                ),
               ),
             ],
           ),
-        ),
+          const SizedBox(height: BistreSpacing.s24),
+
+          // Permissions & Privacy
+          BistreSettingsSection(
+            title: l10n.t(L10nKey.settingsTrustPresetHeading),
+            children: [
+              BistreSettingRow(
+                label: l10n.t(L10nKey.settingsTrustPresetHeading),
+                trailing: BistreSegmentedControl<String>(
+                  selected: s.trustPreset,
+                  onSelected: (v) => unawaited(
+                    ctrl.updateSettings(s.copyWith(trustPreset: v)),
+                  ),
+                  options: <BistreSegmentedOption<String>>[
+                    BistreSegmentedOption<String>(
+                      value: 'parchment_safe',
+                      label: l10n.t(L10nKey.settingsTrustParchment),
+                    ),
+                    BistreSegmentedOption<String>(
+                      value: 'guided_craft',
+                      label: l10n.t(L10nKey.settingsTrustGuided),
+                    ),
+                    BistreSegmentedOption<String>(
+                      value: 'unchained_sandbox',
+                      label: l10n.t(L10nKey.settingsTrustUnchained),
+                    ),
+                  ],
+                ),
+              ),
+              BistreSettingRow(
+                label: l10n.t(L10nKey.settingsTrustLocalFirst),
+                trailing: BistreSwitch(
+                  value: s.walletLocalFirst,
+                  semanticsLabel: l10n.t(L10nKey.settingsTrustLocalFirst),
+                  reduceMotionOverride: ctrl.reduceMotionOverride,
+                  onChanged: (v) => unawaited(
+                    ctrl.updateSettings(s.copyWith(walletLocalFirst: v)),
+                  ),
+                ),
+              ),
+              BistreSettingRow(
+                label: l10n.t(L10nKey.settingsTrustStateless),
+                trailing: BistreSwitch(
+                  value: s.providerStatelessDefault,
+                  semanticsLabel: l10n.t(L10nKey.settingsTrustStateless),
+                  reduceMotionOverride: ctrl.reduceMotionOverride,
+                  onChanged: (v) => unawaited(
+                    ctrl.updateSettings(
+                      s.copyWith(providerStatelessDefault: v),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
