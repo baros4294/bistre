@@ -333,6 +333,11 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                           _isTouchPlatform && index + 2 >= itemCount,
                       onCopy: () => unawaited(ctrl.copyText(node.content)),
                       onCopyCode: (code) => unawaited(ctrl.copyText(code)),
+                      onSaveCode: (code, language) => ctrl.saveCodeBlock(
+                        code,
+                        language,
+                        saveTitle: l10n.t(L10nKey.chatCodeSave),
+                      ),
                       onReply: () => widget.onReplyToPassage(node.content),
                       onQuoteThinking: widget.onReplyToPassage,
                       onToggleContextPin: !ctrl.isStreaming
@@ -607,6 +612,7 @@ class _PassageItem extends StatefulWidget {
     this.showActionsAtRest = false,
     required this.onCopy,
     required this.onCopyCode,
+    required this.onSaveCode,
     required this.onReply,
     required this.onQuoteThinking,
     required this.onToggleContextPin,
@@ -631,6 +637,7 @@ class _PassageItem extends StatefulWidget {
   final bool showActionsAtRest;
   final VoidCallback onCopy;
   final ValueChanged<String> onCopyCode;
+  final Future<void> Function(String code, String language) onSaveCode;
   final VoidCallback onReply;
   final ValueChanged<String> onQuoteThinking;
   final VoidCallback? onToggleContextPin;
@@ -697,6 +704,8 @@ class _PassageItemState extends State<_PassageItem> {
                   onQuoteIntoComposer: widget.onQuoteThinking,
                 ),
               MarkdownFolioView(
+                onSaveCode: (code, language) =>
+                    unawaited(widget.onSaveCode(code, language)),
                 markdown: widget.node.content,
                 onCopyCode: widget.onCopyCode,
                 editorialDialogueStyling: widget.editorialDialogueStyling,
