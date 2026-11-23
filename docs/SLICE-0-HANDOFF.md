@@ -222,3 +222,24 @@ Recorded **2026-11-21** after completing Commit-1 Repo Fortress, Spec Pack, Day-
 - **Rust tests** (`baros4294/bistre#20`): zero `.ok()` in test code.
 - **Needs the owner**: (1) the minisign release key; (2) whether to install Visual Studio Build Tools for RSS attribution, or how to restate the RSS budget; (3) whether to pursue 120 Hz now; (4) the native tool calling slice, which unblocks the tool count, tool timeline, quantized compaction, and reasoning handoff.
 
+## 22. v2.6.0 Parity Reopened; Owner Decisions (2026-11-24)
+- **Parity is not done.** Spec 08 §4 compared screenshots, not behaviour. A code audit of v2.6.0 (`composeApp/src/commonMain/kotlin/io/parchment/ai/ui`, composable inventory plus greps) found these gaps in Bistre:
+  - **Composer**: the clickable context-ring breakdown (7 categories, stacked bar, compact/summarize/pricing actions), a real o200k tokenizer, the thinking/effort step slider (Off to Max plus custom), the tools drawer, and media controls.
+  - **Motion and scrolling**: press/hover spring feedback on every clickable, disclosure height animation, smooth wheel scrolling, the streaming text pacer, and colour/value transitions.
+  - **Settings**: full-width content, nine theme presets, profile name and picture, a per-chat spend limit, and per-setting search results.
+  - **Messages**: the usage pill, web sources drawer, raw wire drawer, attachment viewer, generated media, drag-and-drop, pinned replies, chat notes, SVG preview, context menu, and tooltips.
+  - **Navigation**: the mobile tab switcher, and a searchable model picker with privacy badges.
+  - **Agent and MCP**: the permission editor, user question panel, and MCP registry browser.
+  - **Platform**: a GPU resource cache cap (v2.6.0 caps Skia GPU resources at 48 MiB because Intel UMA grew past 250 MB).
+  A commit-by-commit UI audit is still owed.
+- **Owner decisions**:
+  1. Animate disclosure heights like v2.6.0 (lift the layout-animation ban for disclosures).
+  2. Spring press-scale and hover-lift on every clickable.
+  3. Smooth wheel scrolling on desktop.
+  4. A streaming text pacer (~92 chars/s with elastic catch-up).
+  5. Settings content fills the window width (the 740 px reading measure is for chat prose only).
+  6. Desktop idle memory is budgeted as app-owned memory (PR #25).
+  7. When a v2.6.0 behaviour conflicts with a Bistre rule, ask the owner; do not assume the rule wins.
+  Decisions 1-5 still need AGENTS.md §6-§7, DESIGN.md §6, and the `bistre_lints` layout-animation rule updated alongside their implementation.
+- **Performance**: 8-line code chunks cut per-frame text layout from 4.03 to 0.85 ms (PR #24). Idle memory is attributed to the graphics stack, and the app's own share is about 25 MB (Spec 11 §5).
+

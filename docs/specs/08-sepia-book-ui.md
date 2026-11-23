@@ -34,6 +34,8 @@
 - **Unavailable cost**: `NodeUsageMeta.costKnown` reads the node's `cost_known`. An unpriced reply shows no price, only a quiet `BistreUiIcon.info` button (`apps/bistre_app/lib/features/chat/cost_unavailable_button.dart`) whose popover explains that the reply counts as `$0` toward the daily limit and lists the model and token counts (Spec 06). Tests: `apps/bistre_app/test/diff_and_cost_test.dart`.
 
 ## 4. Parchment v2.6.0 UX Parity (Open)
+
+> **Reopened 2026-11-24 (owner review)**: the rows below compared static gallery screenshots only. A code audit of v2.6.0 found many missing behaviours: the clickable context-ring breakdown, the thinking/effort slider, the tools drawer, press/hover feedback, disclosure animation, smooth wheel scrolling, the streaming pacer, full-width settings, theme presets, the profile, and more. Until this table is rebuilt from that audit, treat every "Closed" as unverified. The audit is in `docs/SLICE-0-HANDOFF.md` §22.
 Parchment `v2.6.0` (Kotlin/Compose) is the UX benchmark (`docs/design/DESIGN.md` §1.1). Its committed `docs/images/*.png` predate the release, so compare against renders of the tagged code:
 
 ```powershell
