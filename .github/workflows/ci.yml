@@ -330,6 +330,15 @@ jobs:
         working-directory: apps/bistre_app
         shell: bash
         run: flutter build windows --release
+      - name: Launch the Windows release build and report Spec 11 budgets
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Idle RSS outside xvfb's software GL (handoff 18): measured here, reported only until
+          # the number is known; launch, first paint, and the streaming probe still fail the job.
+          cargo build --locked --release -p bistre-daemon
+          dart run tools/bistre_guard/bin/bistre_guard.dart perf --strict --rss-report-only
 
   android-arm64-16kb:
     name: android-arm64-16kb
