@@ -429,6 +429,9 @@ void main() {
       await ctrl.flushDraftNow('a draft');
       await tester.pump();
       expect(ctrl.draftSaved, isTrue);
+      // The engine echoes every save; the echo changes nothing and must not rebuild.
+      gw.emit(DraftSavedEvent(threadId: ctrl.activeThread!.id, updatedAtMs: 0));
+      await tester.pump();
       expect(sidebarBuilds, 0);
 
       feedBuilds = 0;
