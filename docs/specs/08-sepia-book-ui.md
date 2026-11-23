@@ -62,4 +62,4 @@ Renders land in `parchment-v260/.parchment-local/verification/gallery/` (38 scre
 | Feed | 0 ms motion for 100+/day actions | `FolioFadeSlide` replayed on scroll-back and thread switch | Closed (2026-11-23) |
 | Motion | 150 ms arriving, 110 leaving, 180 travelling, 250 overlay exit, bounce-free size springs; instant under Reduce motion | Same timings (`BistreMotion.arriving/leaving/travelling`); overlays close instantly and sizes snap with a content fade (no layout animation) | Closed (2026-11-23) |
 | Copy | Plain-words glossary | Glossary terms fixed (Server URL, Thinking, Shorten the conversation, Story notes; no steer/endpoint); RTL-unsafe `' · '` meta joins remain | Partial |
-| Targets | 48 dp touch; 34/38 dp control heights on one row | About 30 targets at 26–36 px | Open |
+| Targets | 48 dp touch; 34/38 dp control heights on one row | Every `BistreIconButton` accepts taps across 40 px (48 dp on touch) via `TapTargetExpander` without growing its row; compact `EngravedButton` (34) and `InkChip` (36) still tap at their visual size | Partial |

@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -141,61 +143,69 @@ class _BistreIconButtonState extends State<BistreIconButton> {
             ? theme.inkPrimary
             : theme.inkSecondary);
 
-    return Semantics(
-      button: true,
-      enabled: enabled,
-      label: widget.semanticsLabel,
-      child: FocusableActionDetector(
+    // Taps up to the minimum target land on this button without changing layout (DESIGN §7).
+    return TapTargetExpander(
+      minSize: minTapTarget,
+      child: Semantics(
+        button: true,
         enabled: enabled,
-        onShowHoverHighlight: (v) => setState(() => _hovered = v),
-        onShowFocusHighlight: (v) => setState(() => _focused = v),
-        shortcuts: const <ShortcutActivator, Intent>{
-          SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
-          SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
-        },
-        actions: <Type, Action<Intent>>{
-          ActivateIntent: CallbackAction<ActivateIntent>(
-            onInvoke: (_) {
-              widget.onPressed?.call();
-              return null;
-            },
-          ),
-        },
-        child: MouseRegion(
-          cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
-            onTapUp: enabled
-                ? (_) {
-                    setState(() => _pressed = false);
-                    widget.onPressed?.call();
-                  }
-                : null,
-            onTapCancel: () => setState(() => _pressed = false),
-            child: Opacity(
-              opacity: !enabled
-                  ? 0.40
-                  : _pressed
-                  ? 0.72
-                  : 1.0,
-              child: SizedBox.square(
-                dimension: widget.dimension,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: widget.active
-                        ? theme.hoverTint
-                        : (_hovered ? theme.hoverTint : null),
-                    borderRadius: BorderRadius.circular(8),
-                    border: _focused
-                        ? Border.all(color: theme.accentBrass, width: 1.6)
-                        : null,
-                  ),
-                  child: Center(
-                    child: BistreIcon(
-                      widget.icon,
-                      size: widget.size,
-                      color: fg,
+        label: widget.semanticsLabel,
+        child: FocusableActionDetector(
+          enabled: enabled,
+          onShowHoverHighlight: (v) => setState(() => _hovered = v),
+          onShowFocusHighlight: (v) => setState(() => _focused = v),
+          shortcuts: const <ShortcutActivator, Intent>{
+            SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+            SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+          },
+          actions: <Type, Action<Intent>>{
+            ActivateIntent: CallbackAction<ActivateIntent>(
+              onInvoke: (_) {
+                widget.onPressed?.call();
+                return null;
+              },
+            ),
+          },
+          child: MouseRegion(
+            cursor: enabled
+                ? SystemMouseCursors.click
+                : SystemMouseCursors.basic,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: enabled
+                  ? (_) => setState(() => _pressed = true)
+                  : null,
+              onTapUp: enabled
+                  ? (_) {
+                      setState(() => _pressed = false);
+                      widget.onPressed?.call();
+                    }
+                  : null,
+              onTapCancel: () => setState(() => _pressed = false),
+              child: Opacity(
+                opacity: !enabled
+                    ? 0.40
+                    : _pressed
+                    ? 0.72
+                    : 1.0,
+                child: SizedBox.square(
+                  dimension: widget.dimension,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: widget.active
+                          ? theme.hoverTint
+                          : (_hovered ? theme.hoverTint : null),
+                      borderRadius: BorderRadius.circular(8),
+                      border: _focused
+                          ? Border.all(color: theme.accentBrass, width: 1.6)
+                          : null,
+                    ),
+                    child: Center(
+                      child: BistreIcon(
+                        widget.icon,
+                        size: widget.size,
+                        color: fg,
+                      ),
                     ),
                   ),
                 ),
@@ -205,6 +215,62 @@ class _BistreIconButtonState extends State<BistreIconButton> {
         ),
       ),
     );
+  }
+}
+
+/// Smallest tap area for a control: 48 dp on touch screens, 40 px with a pointer.
+double get minTapTarget =>
+    defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS
+    ? 48
+    : 40;
+
+/// Accepts taps within a [minSize] square centred on its child, while laying out and painting
+/// at the child's own size, so small icons get a full tap area without growing their rows.
+class TapTargetExpander extends SingleChildRenderObjectWidget {
+  const TapTargetExpander({super.key, required this.minSize, super.child});
+
+  final double minSize;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderTapTargetExpander(minSize);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderTapTargetExpander renderObject,
+  ) {
+    renderObject.minSize = minSize;
+  }
+}
+
+class _RenderTapTargetExpander extends RenderProxyBox {
+  _RenderTapTargetExpander(this.minSize);
+
+  double minSize;
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    final extraX = ((minSize - size.width) / 2).clamp(0.0, double.infinity);
+    final extraY = ((minSize - size.height) / 2).clamp(0.0, double.infinity);
+    final area = Rect.fromLTRB(
+      -extraX,
+      -extraY,
+      size.width + extraX,
+      size.height + extraY,
+    );
+    if (!area.contains(position)) return false;
+    // Route the tap to the child's nearest point so its gesture handlers fire.
+    final inside = Offset(
+      position.dx.clamp(0.0, size.width - 0.01),
+      position.dy.clamp(0.0, size.height - 0.01),
+    );
+    if (hitTestChildren(result, position: inside) || hitTestSelf(inside)) {
+      result.add(BoxHitTestEntry(this, inside));
+      return true;
+    }
+    return false;
   }
 }
 
