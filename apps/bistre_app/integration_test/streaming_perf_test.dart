@@ -65,7 +65,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 16));
     }
     // The engine reports timings in batches (about once a second); let the last one arrive.
-    await tester.pumpAndSettle();
+    // No pumpAndSettle here: the streaming cursor keeps animating until the run finishes.
+    await tester.pump(const Duration(milliseconds: 100));
     await Future<void>.delayed(const Duration(seconds: 2));
     WidgetsBinding.instance.removeTimingsCallback(collect);
 
