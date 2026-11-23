@@ -227,10 +227,13 @@ void main() {
       'crates/c/src/lib.rs':
           'fn t() -> R {\n    let dir = tempdir()?;\n    Ok(())\n}\n',
       'crates/d/src/lib.rs': 'fn t() {\n    let x = a().ok();\n    let Some(y) = other else { return };\n}\n',
+      'crates/e/src/lib.rs': 'fn t() {\n    let key = gen();\n    assert!(key.is_ok());\n    let Ok(key) = key else { return };\n}\n',
+      'crates/f/src/lib.rs': 'fn t() {\n    let Ok(h) = h else {\n        warn();\n        return;\n    };\n}\n',
     });
     final joined = errors.join('\n');
     expect(joined, contains('crates/a/src/lib.rs: `dir`'));
     expect(joined, contains('crates/b/src/lib.rs: `s`'));
-    expect(errors, hasLength(2), reason: joined);
+    expect(joined, contains('crates/e/src/lib.rs: `key`'));
+    expect(errors, hasLength(3), reason: joined);
   });
 }
