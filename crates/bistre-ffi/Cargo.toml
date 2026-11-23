@@ -1,0 +1,22 @@
+[package]
+name = "bistre-ffi"
+version.workspace = true
+edition = "2021"
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "bistre_ffi"
+crate-type = ["staticlib", "cdylib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+bistre-protocol.workspace = true
+bistre-core.workspace = true
+zeroize.workspace = true
+flutter_rust_bridge.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
