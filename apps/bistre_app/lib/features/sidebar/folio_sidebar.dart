@@ -163,32 +163,28 @@ class _FolioSidebarState extends State<FolioSidebar> {
                 ),
               ),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsetsDirectional.fromSTEB(10, 2, 10, 12),
-                child: switch (ctrl.sidebarTab) {
-                  SidebarTab.assistant => _buildAssistantsList(
-                    theme,
-                    l10n,
-                    ctrl,
-                  ),
-                  SidebarTab.chat => _buildGroupedChatsList(
-                    theme,
-                    l10n,
-                    ctrl,
-                    ctrl.filteredThreads,
-                    emptyText: l10n.t(L10nKey.sidebarEmptyFiltered),
-                  ),
-                  SidebarTab.pinned => _buildGroupedChatsList(
-                    theme,
-                    l10n,
-                    ctrl,
-                    ctrl.pinnedThreads,
-                    emptyText: l10n.t(L10nKey.sidebarPinnedEmpty),
-                    isPinnedEmpty: true,
-                    groupByDate: false,
-                  ),
-                },
-              ),
+              child: switch (ctrl.sidebarTab) {
+                SidebarTab.assistant => SingleChildScrollView(
+                  padding: _kListPadding,
+                  child: _buildAssistantsList(theme, l10n, ctrl),
+                ),
+                SidebarTab.chat => _buildGroupedChatsList(
+                  theme,
+                  l10n,
+                  ctrl,
+                  ctrl.filteredThreads,
+                  emptyText: l10n.t(L10nKey.sidebarEmptyFiltered),
+                ),
+                SidebarTab.pinned => _buildGroupedChatsList(
+                  theme,
+                  l10n,
+                  ctrl,
+                  ctrl.pinnedThreads,
+                  emptyText: l10n.t(L10nKey.sidebarPinnedEmpty),
+                  isPinnedEmpty: true,
+                  groupByDate: false,
+                ),
+              },
             ),
             const FolioDivider(),
             _buildQuietFooter(theme, l10n, ctrl),
@@ -287,35 +283,39 @@ class _FolioSidebarState extends State<FolioSidebar> {
     bool groupByDate = true,
   }) {
     if (threads.isEmpty) {
-      return Padding(
-        padding: const EdgeInsetsDirectional.symmetric(
-          horizontal: 14,
-          vertical: 36,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            BistreIcon(
-              isPinnedEmpty ? BistreUiIcon.pin : BistreUiIcon.chat,
-              size: 20,
-              color: theme.inkMuted.withValues(alpha: 0.6),
-            ),
-            const SizedBox(height: 8),
-            InkText(
-              emptyText,
-              role: InkTextRole.captionMeta,
-              color: theme.inkMuted,
-              textAlign: TextAlign.center,
-            ),
-          ],
+      return SingleChildScrollView(
+        padding: _kListPadding,
+        child: Padding(
+          padding: const EdgeInsetsDirectional.symmetric(
+            horizontal: 14,
+            vertical: 36,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              BistreIcon(
+                isPinnedEmpty ? BistreUiIcon.pin : BistreUiIcon.chat,
+                size: 20,
+                color: theme.inkMuted.withValues(alpha: 0.6),
+              ),
+              const SizedBox(height: 8),
+              InkText(
+                emptyText,
+                role: InkTextRole.captionMeta,
+                color: theme.inkMuted,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       );
     }
 
     final showAssistantSubtitle = ctrl.assistants.length > 1;
+    // Lazily laid out: with hundreds of chats only the visible rows are built.
     if (!groupByDate) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      return ListView(
+        padding: _kListPadding,
         children: [
           for (final t in threads)
             _buildThreadRow(
@@ -380,10 +380,7 @@ class _FolioSidebarState extends State<FolioSidebar> {
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: widgets,
-    );
+    return ListView(padding: _kListPadding, children: widgets);
   }
 
   Widget _buildThreadRow(
@@ -911,3 +908,10 @@ class _QuietSidebarActionState extends State<_QuietSidebarAction> {
     );
   }
 }
+
+const EdgeInsetsDirectional _kListPadding = EdgeInsetsDirectional.fromSTEB(
+  10,
+  2,
+  10,
+  12,
+);

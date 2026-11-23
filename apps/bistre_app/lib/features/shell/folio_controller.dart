@@ -1313,13 +1313,47 @@ class FolioController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Latest settings change; an older save's response never overwrites a newer value.
+  int _settingsSeq = 0;
+
+  /// Quiet changes (sliders, toggles) are applied at once and saved after this pause, so a
+  /// drag writes once instead of on every tick.
+  static const Duration settingsSaveDebounce = Duration(milliseconds: 200);
+
+  Timer? _settingsSaveTimer;
+  EngineSettings? _pendingQuietSettings;
+
+  /// Applies [next] at once. Quiet changes (sliders, toggles) are saved after
+  /// [settingsSaveDebounce] so a drag writes once; other changes save immediately.
   Future<void> updateSettings(EngineSettings next, {bool quiet = false}) async {
+    final seq = ++_settingsSeq;
     _settings = next;
     _sidebarOpen = next.sidebarOpen;
     _onLocaleSynced?.call(next.locale);
     notifyListeners();
+    _settingsSaveTimer?.cancel();
+    if (quiet) {
+      _pendingQuietSettings = next;
+      _settingsSaveTimer = Timer(settingsSaveDebounce, () {
+        _pendingQuietSettings = null;
+        unawaited(_persistSettings(seq, next, quiet: true));
+      });
+      return;
+    }
+    _pendingQuietSettings = null;
+    await _persistSettings(seq, next, quiet: false);
+  }
+
+  Future<void> _persistSettings(
+    int seq,
+    EngineSettings next, {
+    required bool quiet,
+  }) async {
     try {
-      _settings = await _gateway.saveSettings(next);
+      final saved = await _gateway.saveSettings(next);
+      // An older save's response never overwrites a newer value.
+      if (seq != _settingsSeq) return;
+      _settings = saved;
       if (!quiet) {
         showToast(L10nKey.toastSettingsSaved);
       }
@@ -1358,6 +1392,9 @@ class FolioController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _draftDebounce?.cancel();
+    _settingsSaveTimer?.cancel();
+    final unsaved = _pendingQuietSettings;
+    if (unsaved != null) unawaited(_gateway.saveSettings(unsaved));
     _toastTimer?.cancel();
     // The user deleted these chats; closing the app inside the Undo window must not bring
     // them back.

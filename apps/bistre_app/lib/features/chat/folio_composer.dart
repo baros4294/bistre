@@ -140,11 +140,28 @@ class _FolioComposerState extends State<FolioComposer> {
     }
   }
 
+  /// Removes exactly the text that was sent. Anything typed while the message was being sent
+  /// stays, and the field is never edited during IME composition.
+  void _clearSentText(String sent) {
+    final value = _textController.value;
+    if (value.composing.isValid) return;
+    final current = value.text;
+    if (current == sent) {
+      _textController.clear();
+    } else if (current.startsWith(sent)) {
+      final rest = current.substring(sent.length).trimLeft();
+      _textController.value = TextEditingValue(
+        text: rest,
+        selection: TextSelection.collapsed(offset: rest.length),
+      );
+    }
+  }
+
   Future<void> _submit() async {
     final text = _textController.text;
     final ok = await widget.controller.submitPassage(text);
     if (ok && mounted) {
-      _textController.clear();
+      _clearSentText(text);
     }
   }
 
