@@ -37,12 +37,15 @@ jobs:
           rustup default "$RUST_VERSION"
       - uses: taiki-e/install-action@25f51f6b1bf4e18876107cece836f4f77ac17c8c # v2
         with:
-          tool: cargo-nextest,cargo-deny,zizmor,actionlint
+          tool: cargo-nextest,cargo-deny,zizmor
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: false
+      - name: Install pinned actionlint (checksum-verified)
+        shell: bash
+        run: bash .github/scripts/install-actionlint.sh
       - name: Run full release pre-flight verification gates
         shell: bash
         run: |

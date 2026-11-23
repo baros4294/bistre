@@ -98,7 +98,10 @@ jobs:
           persist-credentials: false
       - uses: taiki-e/install-action@25f51f6b1bf4e18876107cece836f4f77ac17c8c # v2
         with:
-          tool: zizmor,actionlint
+          tool: zizmor
+      - name: Install pinned actionlint (checksum-verified)
+        shell: bash
+        run: bash .github/scripts/install-actionlint.sh
       - name: Lint GitHub Actions workflows and embedded shell scripts (actionlint + shellcheck)
         shell: bash
         run: actionlint
