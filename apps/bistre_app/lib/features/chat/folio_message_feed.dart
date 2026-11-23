@@ -189,49 +189,53 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
     // `StackFit.expand` gives the feed tight constraints, which makes its `LayoutBuilder` a
     // relayout boundary: a streaming delta then re-lays out only the feed, not the whole shell
     // and composer (Spec 11 §5).
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        LayoutBuilder(
-          builder: (context, constraints) => CodeWrapScope(
-            wrapByDefault: ctrl.codeWrapFor(constraints.maxWidth),
-            overrides: _codeWrapOverrides,
-            child: SelectableRegion(
-              selectionControls: _selectionControls,
-              child: NotificationListener<UserScrollNotification>(
-                onNotification: _handleUserScroll,
-                child: RawScrollbar(
-                  controller: _scrollController,
-                  thumbColor: theme.inkMuted.withValues(alpha: 0.22),
-                  radius: const Radius.circular(999),
-                  thickness: 4,
-                  child: _buildFeedContent(context, theme, l10n, ctrl),
+    // Search keystrokes and results rebuild the feed (results replace the chat), not the shell.
+    return ListenableBuilder(
+      listenable: ctrl.search,
+      builder: (context, _) => Stack(
+        fit: StackFit.expand,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) => CodeWrapScope(
+              wrapByDefault: ctrl.codeWrapFor(constraints.maxWidth),
+              overrides: _codeWrapOverrides,
+              child: SelectableRegion(
+                selectionControls: _selectionControls,
+                child: NotificationListener<UserScrollNotification>(
+                  onNotification: _handleUserScroll,
+                  child: RawScrollbar(
+                    controller: _scrollController,
+                    thumbColor: theme.inkMuted.withValues(alpha: 0.22),
+                    radius: const Radius.circular(999),
+                    thickness: 4,
+                    child: _buildFeedContent(context, theme, l10n, ctrl),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-        if (_showJumpToLatest &&
-            ctrl.searchQuery.isEmpty &&
-            ctrl.visibleBranchNodes.isNotEmpty)
-          Align(
-            alignment: AlignmentDirectional.bottomCenter,
-            child: Padding(
-              padding: const EdgeInsetsDirectional.only(
-                bottom: BistreSpacing.s12,
-              ),
-              child: FolioFadeSlide(
-                beginOffset: const Offset(0, 0.25),
-                reduceMotionOverride: ctrl.reduceMotionOverride,
-                child: EngravedButton(
-                  label: l10n.t(L10nKey.chatActionJumpLatest),
-                  compact: true,
-                  onPressed: _jumpToLatest,
+          if (_showJumpToLatest &&
+              ctrl.searchQuery.isEmpty &&
+              ctrl.visibleBranchNodes.isNotEmpty)
+            Align(
+              alignment: AlignmentDirectional.bottomCenter,
+              child: Padding(
+                padding: const EdgeInsetsDirectional.only(
+                  bottom: BistreSpacing.s12,
+                ),
+                child: FolioFadeSlide(
+                  beginOffset: const Offset(0, 0.25),
+                  reduceMotionOverride: ctrl.reduceMotionOverride,
+                  child: EngravedButton(
+                    label: l10n.t(L10nKey.chatActionJumpLatest),
+                    compact: true,
+                    onPressed: _jumpToLatest,
+                  ),
                 ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 

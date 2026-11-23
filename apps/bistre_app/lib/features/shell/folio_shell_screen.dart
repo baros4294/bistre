@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../app/shell_notifiers.dart';
 import '../../bridge/bistre_engine.dart';
 import '../../design/bistre_decorations.dart';
 import '../../design/bistre_icons.dart';
@@ -491,16 +492,21 @@ class _FolioShellScreenState extends State<FolioShellScreen> {
                           onlyUserPrompts: ctrl.sessionTreePromptsOnly,
                           onClose: ctrl.closeSessionTree,
                         ),
-                      if (ctrl.toastKey != null)
-                        FolioToastBanner(
-                          key: ValueKey<L10nKey>(ctrl.toastKey!),
-                          message: l10n.t(ctrl.toastKey!),
-                          reduceMotionOverride: ctrl.reduceMotionOverride,
-                          actionLabel: ctrl.toastActionKey == null
-                              ? null
-                              : l10n.t(ctrl.toastActionKey!),
-                          onAction: ctrl.toastAction,
-                        ),
+                      // Only the toast rebuilds when a notice shows or hides.
+                      ValueListenableBuilder<ToastMessage?>(
+                        valueListenable: ctrl.toast,
+                        builder: (context, toast, _) => toast == null
+                            ? const SizedBox.shrink()
+                            : FolioToastBanner(
+                                key: ValueKey<L10nKey>(toast.key),
+                                message: l10n.t(toast.key),
+                                reduceMotionOverride: ctrl.reduceMotionOverride,
+                                actionLabel: toast.actionKey == null
+                                    ? null
+                                    : l10n.t(toast.actionKey!),
+                                onAction: toast.onAction,
+                              ),
+                      ),
                     ],
                   );
                 },
@@ -728,55 +734,64 @@ class _FolioShellScreenState extends State<FolioShellScreen> {
               child: FolioFadeSlide(
                 beginOffset: const Offset(0, -0.15),
                 reduceMotionOverride: ctrl.reduceMotionOverride,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: QuillInput(
-                            controller: _searchController,
-                            focusNode: _searchFocus,
-                            placeholder: l10n.t(L10nKey.shellSearchPlaceholder),
-                            maxLines: 1,
-                            submitOnEnter: false,
-                            onSubmitted: () {},
-                            onChanged: (q) => unawaited(ctrl.updateSearch(q)),
+                child: ListenableBuilder(
+                  // Search keystrokes and results rebuild only this bar (and the feed).
+                  listenable: ctrl.search,
+                  builder: (context, _) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: QuillInput(
+                              controller: _searchController,
+                              focusNode: _searchFocus,
+                              placeholder: l10n.t(
+                                L10nKey.shellSearchPlaceholder,
+                              ),
+                              maxLines: 1,
+                              submitOnEnter: false,
+                              onSubmitted: () {},
+                              onChanged: (q) => unawaited(ctrl.updateSearch(q)),
+                            ),
+                          ),
+                          const SizedBox(width: BistreSpacing.s8),
+                          InkChip(
+                            label: l10n.t(L10nKey.chatSearchThreadScope),
+                            selected: !ctrl.searchAllThreads,
+                            onSelected: () => ctrl.setSearchAllThreads(false),
+                          ),
+                          const SizedBox(width: 6),
+                          InkChip(
+                            label: l10n.t(L10nKey.chatSearchAllScope),
+                            selected: ctrl.searchAllThreads,
+                            onSelected: () => ctrl.setSearchAllThreads(true),
+                          ),
+                          const SizedBox(width: 4),
+                          BistreIconButton(
+                            icon: BistreUiIcon.close,
+                            size: 14,
+                            dimension: 30,
+                            semanticsLabel: l10n.t(L10nKey.threadCancel),
+                            onPressed: _toggleSearch,
+                          ),
+                        ],
+                      ),
+                      if (ctrl.searchQuery.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(top: 6),
+                          child: InkText(
+                            l10n.t(
+                              L10nKey.shellSearchResults,
+                              <String, Object?>{
+                                'count': ctrl.searchHits.length,
+                              },
+                            ),
+                            role: InkTextRole.captionMeta,
                           ),
                         ),
-                        const SizedBox(width: BistreSpacing.s8),
-                        InkChip(
-                          label: l10n.t(L10nKey.chatSearchThreadScope),
-                          selected: !ctrl.searchAllThreads,
-                          onSelected: () => ctrl.setSearchAllThreads(false),
-                        ),
-                        const SizedBox(width: 6),
-                        InkChip(
-                          label: l10n.t(L10nKey.chatSearchAllScope),
-                          selected: ctrl.searchAllThreads,
-                          onSelected: () => ctrl.setSearchAllThreads(true),
-                        ),
-                        const SizedBox(width: 4),
-                        BistreIconButton(
-                          icon: BistreUiIcon.close,
-                          size: 14,
-                          dimension: 30,
-                          semanticsLabel: l10n.t(L10nKey.threadCancel),
-                          onPressed: _toggleSearch,
-                        ),
-                      ],
-                    ),
-                    if (ctrl.searchQuery.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsetsDirectional.only(top: 6),
-                        child: InkText(
-                          l10n.t(L10nKey.shellSearchResults, <String, Object?>{
-                            'count': ctrl.searchHits.length,
-                          }),
-                          role: InkTextRole.captionMeta,
-                        ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

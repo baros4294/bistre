@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:bistre_app/bridge/bistre_engine.dart';
 import 'package:bistre_app/design/bistre_icons.dart';
 import 'package:bistre_app/design/bistre_theme.dart';
@@ -7,6 +9,7 @@ import 'package:bistre_app/features/chat/folio_message_feed.dart';
 import 'package:bistre_app/features/chat/markdown_folio_view.dart';
 import 'package:bistre_app/features/chat/tool_timeline_view.dart';
 import 'package:bistre_app/features/shell/folio_controller.dart';
+import 'package:bistre_app/features/sidebar/folio_sidebar.dart';
 import 'package:bistre_app/l10n/bistre_localizations.dart';
 import 'package:bistre_app/l10n/l10n_keys.g.dart';
 import 'package:bistre_app/main.dart';
@@ -384,6 +387,45 @@ void main() {
     await ctrl.closeTab(second);
     expect(ctrl.activeThread?.id, first);
     expect(ctrl.openTabs.map((t) => t.id), <String>[first]);
+    ctrl.dispose();
+    await gw.shutdown();
+  });
+
+  testWidgets('toasts and search keystrokes never rebuild the sidebar', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1320, 820);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final (ctrl, gw, l10n) = await boot();
+    await tester.pumpWidget(
+      BistreApp(l10nController: l10n, folioController: ctrl),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(FolioSidebar), findsOneWidget);
+
+    var sidebarBuilds = 0;
+    final previous = debugOnRebuildDirtyWidget;
+    debugOnRebuildDirtyWidget = (element, builtOnce) {
+      if (element.widget is FolioSidebar) sidebarBuilds++;
+    };
+    addTearDown(() => debugOnRebuildDirtyWidget = previous);
+
+    ctrl.showToast(L10nKey.toastCopied);
+    await tester.pump();
+    expect(find.text(l10n.t(L10nKey.toastCopied)), findsOneWidget);
+    ctrl.dismissToast();
+    await tester.pump();
+    for (final q in <String>['h', 'he', 'hel']) {
+      unawaited(ctrl.updateSearch(q));
+      await tester.pump();
+    }
+    await tester.pump(FolioController.searchDebounce);
+    await tester.pumpAndSettle();
+    expect(ctrl.searchQuery, 'hel');
+    expect(sidebarBuilds, 0);
+
     ctrl.dispose();
     await gw.shutdown();
   });
