@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../app/app_appearance.dart';
+import '../../app/shell_notifiers.dart';
 import '../../bridge/bistre_engine.dart';
 import '../../design/bistre_theme.dart';
 import '../../l10n/l10n_keys.g.dart';
@@ -287,18 +288,17 @@ class FolioController extends ChangeNotifier {
   String _activeAssistantId = 'default_assistant';
 
   bool _searchPanelOpen = false;
-  bool _searchAllThreads = false;
-  String _searchQuery = '';
-  List<EngineSearchHit> _searchHits = const <EngineSearchHit>[];
+
+  /// Search query, scope, and results; listened to only by the search bar and the feed.
+  final SearchNotifier search = SearchNotifier();
   String? _quotedExcerpt;
   bool _settingsOpen = false;
   SettingsTab _settingsTab = SettingsTab.providers;
   String? _editingAssistantId;
   bool _commandPaletteOpen = false;
-  L10nKey? _toastKey;
-  L10nKey? _toastActionKey;
-  VoidCallback? _toastAction;
-  Timer? _toastTimer;
+
+  /// The current toast; listened to only by the toast overlay.
+  final ToastNotifier toast = ToastNotifier();
 
   // Draft & diagnostics.
   String _restoredDraft = '';
@@ -433,18 +433,18 @@ class FolioController extends ChangeNotifier {
   String get sidebarFilter => _sidebarFilter;
 
   bool get searchPanelOpen => _searchPanelOpen;
-  bool get searchAllThreads => _searchAllThreads;
-  String get searchQuery => _searchQuery;
-  List<EngineSearchHit> get searchHits => _searchHits;
+  bool get searchAllThreads => search.allThreads;
+  String get searchQuery => search.query;
+  List<EngineSearchHit> get searchHits => search.hits;
   String? get quotedExcerpt => _quotedExcerpt;
 
   bool get settingsOpen => _settingsOpen;
   SettingsTab get settingsTab => _settingsTab;
   String? get editingAssistantId => _editingAssistantId;
   bool get commandPaletteOpen => _commandPaletteOpen;
-  L10nKey? get toastKey => _toastKey;
-  L10nKey? get toastActionKey => _toastActionKey;
-  VoidCallback? get toastAction => _toastAction;
+  L10nKey? get toastKey => toast.value?.key;
+  L10nKey? get toastActionKey => toast.value?.actionKey;
+  VoidCallback? get toastAction => toast.value?.onAction;
 
   /// `true` on low-memory hardware: no overlay shadows, 30 fps streaming redraw.
   bool get lowMemoryMode => _lowMemoryMode;
@@ -1033,8 +1033,9 @@ class FolioController extends ChangeNotifier {
     final pin = await _gateway.getContextStartPin(thread.id);
     final checkpoints = await _gateway.listCheckpoints(thread.id);
     final draft = await _gateway.loadDraft(thread.id);
-    final hits = _searchQuery.isNotEmpty && !_searchAllThreads
-        ? await _gateway.searchNodes(_searchQuery, threadId: thread.id)
+    final query = search.query;
+    final hits = query.isNotEmpty && !search.allThreads
+        ? await _gateway.searchNodes(query, threadId: thread.id)
         : null;
     if (generation != _threadGeneration || _disposed) return;
     _nodes = nodes;
@@ -1050,7 +1051,7 @@ class FolioController extends ChangeNotifier {
     _restoredDraft = draft ?? '';
     _draftEpoch++;
     _draftSaved = _restoredDraft.isNotEmpty;
-    if (hits != null) _searchHits = hits;
+    if (hits != null && search.query == query) search.update(hits: hits);
   }
 
   /// Open chats as tabs (Parchment v2.6.0), skipping deleted ones.
@@ -1239,20 +1240,13 @@ class FolioController extends ChangeNotifier {
 
   void toggleSearchPanel() {
     _searchPanelOpen = !_searchPanelOpen;
-    if (!_searchPanelOpen) {
-      _searchQuery = '';
-      _searchHits = const <EngineSearchHit>[];
-    }
+    if (!_searchPanelOpen) search.clear();
     notifyListeners();
   }
 
   void setSearchAllThreads(bool allThreads) {
-    _searchAllThreads = allThreads;
-    if (_searchQuery.isNotEmpty) {
-      unawaited(updateSearch(_searchQuery));
-    } else {
-      notifyListeners();
-    }
+    search.update(allThreads: allThreads);
+    if (search.query.isNotEmpty) unawaited(updateSearch(search.query));
   }
 
   void openSettings([SettingsTab tab = SettingsTab.providers]) {
@@ -1353,20 +1347,16 @@ class FolioController extends ChangeNotifier {
     VoidCallback? onAction,
     Duration duration = const Duration(milliseconds: 2200),
   }) {
-    _toastTimer?.cancel();
-    _toastKey = key;
-    _toastActionKey = actionKey;
-    _toastAction = onAction;
-    notifyListeners();
-    _toastTimer = Timer(duration, dismissToast);
+    if (_disposed) return;
+    toast.show(
+      ToastMessage(key, actionKey: actionKey, onAction: onAction),
+      duration,
+    );
   }
 
   void dismissToast() {
-    _toastTimer?.cancel();
-    _toastKey = null;
-    _toastActionKey = null;
-    _toastAction = null;
-    notifyListeners();
+    if (_disposed) return;
+    toast.dismiss();
   }
 
   /// Latest settings change; an older save's response never overwrites a newer value.
@@ -1451,7 +1441,8 @@ class FolioController extends ChangeNotifier {
     _settingsSaveTimer?.cancel();
     final unsaved = _pendingQuietSettings;
     if (unsaved != null) unawaited(_gateway.saveSettings(unsaved));
-    _toastTimer?.cancel();
+    toast.dispose();
+    search.dispose();
     // The user deleted these chats; closing the app inside the Undo window must not bring
     // them back.
     unawaited(flushPendingDeletes());

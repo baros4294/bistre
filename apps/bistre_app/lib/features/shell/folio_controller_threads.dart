@@ -157,24 +157,23 @@ extension FolioThreadActions on FolioController {
 
   Future<void> updateSearch(String query) async {
     final seq = ++_searchSeq;
-    _searchQuery = query.trim();
+    final trimmed = query.trim();
     final tid = _activeThread?.id;
-    if (_searchQuery.isEmpty) {
-      _searchHits = const <EngineSearchHit>[];
-      _notify();
+    if (trimmed.isEmpty) {
+      search.clear();
       return;
     }
+    search.update(query: trimmed);
     // Debounce keystrokes; only the newest query may publish results.
     await Future<void>.delayed(FolioController.searchDebounce);
-    if (seq != _searchSeq) return;
+    if (seq != _searchSeq || _disposed) return;
     try {
       final hits = await _gateway.searchNodes(
-        _searchQuery,
-        threadId: _searchAllThreads ? null : tid,
+        trimmed,
+        threadId: search.allThreads ? null : tid,
       );
-      if (seq != _searchSeq) return;
-      _searchHits = hits;
-      _notify();
+      if (seq != _searchSeq || _disposed) return;
+      search.update(hits: hits);
     } catch (e) {
       _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
       _notify();
