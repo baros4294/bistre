@@ -1014,8 +1014,16 @@ class FolioController extends ChangeNotifier {
   /// Pause after the last search keystroke before querying.
   static const Duration searchDebounce = Duration(milliseconds: 150);
 
+  /// Open chat tabs, most recently opened last (bounded to [_kMaxOpenTabs]).
+  final List<String> _openTabIds = <String>[];
+  static const int _kMaxOpenTabs = 8;
+
   Future<void> _activateThread(EngineThread thread) async {
     final generation = ++_threadGeneration;
+    if (!_openTabIds.contains(thread.id)) {
+      _openTabIds.add(thread.id);
+      if (_openTabIds.length > _kMaxOpenTabs) _openTabIds.removeAt(0);
+    }
     _activeThread = thread;
     _activeAssistantId = thread.assistantId;
     _selectedChildIndex.clear();
@@ -1043,6 +1051,24 @@ class FolioController extends ChangeNotifier {
     _draftEpoch++;
     _draftSaved = _restoredDraft.isNotEmpty;
     if (hits != null) _searchHits = hits;
+  }
+
+  /// Open chats as tabs (Parchment v2.6.0), skipping deleted ones.
+  List<EngineThread> get openTabs => <EngineThread>[
+    for (final id in _openTabIds)
+      if (_threads.where((t) => t.id == id).firstOrNull case final t?) t,
+  ];
+
+  /// Closes a tab; closing the current one switches to its neighbour.
+  Future<void> closeTab(String threadId) async {
+    final index = _openTabIds.indexOf(threadId);
+    if (index < 0) return;
+    _openTabIds.removeAt(index);
+    if (_activeThread?.id == threadId && _openTabIds.isNotEmpty) {
+      await selectThread(_openTabIds[index.clamp(0, _openTabIds.length - 1)]);
+      return;
+    }
+    notifyListeners();
   }
 
   Future<void> selectThread(String threadId) async {

@@ -201,7 +201,9 @@ void main() {
       expect(horizontalScroll, findsNothing);
 
       // The per-fence toggle switches this fence to horizontal scrolling.
-      await tester.tap(find.bySemanticsLabel(l10n.t(L10nKey.chatCodeNoWrap)).first);
+      await tester.tap(
+        find.bySemanticsLabel(l10n.t(L10nKey.chatCodeNoWrap)).first,
+      );
       await tester.pump();
       expect(horizontalScroll, findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -359,4 +361,17 @@ void main() {
       expect(taps, 1);
     },
   );
+
+  test('opened chats become tabs; closing the current tab switches to its neighbour', () async {
+    final (ctrl, gw, _) = await boot();
+    final first = ctrl.activeThread!.id;
+    final second = ctrl.threads.firstWhere((t) => t.id != first).id;
+    await ctrl.selectThread(second);
+    expect(ctrl.openTabs.map((t) => t.id), <String>[first, second]);
+    await ctrl.closeTab(second);
+    expect(ctrl.activeThread?.id, first);
+    expect(ctrl.openTabs.map((t) => t.id), <String>[first]);
+    ctrl.dispose();
+    await gw.shutdown();
+  });
 }

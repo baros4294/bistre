@@ -3716,6 +3716,13 @@
       "tone": "concise_action",
       "max_chars": 28,
       "placeholders": {}
+    },
+    "shell.close_tab": {
+      "message": "Đóng thẻ",
+      "context": "Closes one open chat tab",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
     }
   }
 }
