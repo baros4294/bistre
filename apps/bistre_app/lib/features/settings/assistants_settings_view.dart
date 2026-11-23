@@ -196,13 +196,7 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsetsDirectional.fromSTEB(28, 22, 28, 36),
-                child: Align(
-                  alignment: AlignmentDirectional.topStart,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 660),
-                    child: editorPane,
-                  ),
-                ),
+                child: editorPane,
               ),
             ),
           ],

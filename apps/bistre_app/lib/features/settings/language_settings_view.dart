@@ -28,27 +28,18 @@ class LanguageSettingsView extends StatelessWidget {
 
     return SingleChildScrollView(
       padding: const EdgeInsetsDirectional.fromSTEB(28, 22, 28, 40),
-      child: Align(
-        alignment: AlignmentDirectional.topStart,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 640),
-          child: BistreSettingsSection(
-            title: l10n.t(L10nKey.settingsLanguageHeading),
-            subtitle: l10n.t(L10nKey.settingsLanguageNote),
-            children: [
-              for (final loc in _locales)
-                _LanguageChoiceRow(
-                  name: loc.$2,
-                  codeBadge: l10n.joinMeta(<String>[
-                    loc.$1.toUpperCase(),
-                    loc.$3,
-                  ]),
-                  selected: currentLocale == loc.$1,
-                  onTap: () => controller.syncLocale(loc.$1),
-                ),
-            ],
-          ),
-        ),
+      child: BistreSettingsSection(
+        title: l10n.t(L10nKey.settingsLanguageHeading),
+        subtitle: l10n.t(L10nKey.settingsLanguageNote),
+        children: [
+          for (final loc in _locales)
+            _LanguageChoiceRow(
+              name: loc.$2,
+              codeBadge: l10n.joinMeta(<String>[loc.$1.toUpperCase(), loc.$3]),
+              selected: currentLocale == loc.$1,
+              onTap: () => controller.syncLocale(loc.$1),
+            ),
+        ],
       ),
     );
   }

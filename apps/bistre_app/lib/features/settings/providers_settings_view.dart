@@ -210,13 +210,7 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsetsDirectional.fromSTEB(28, 22, 28, 36),
-                child: Align(
-                  alignment: AlignmentDirectional.topStart,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 680),
-                    child: detailPane,
-                  ),
-                ),
+                child: detailPane,
               ),
             ),
           ],

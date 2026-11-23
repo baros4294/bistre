@@ -143,335 +143,323 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
 
     return SingleChildScrollView(
       padding: const EdgeInsetsDirectional.fromSTEB(28, 22, 28, 32),
-      child: Align(
-        alignment: AlignmentDirectional.topStart,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 1. Workspace Folder Binding
-              FolioSurface(
-                tone: FolioTone.elevated,
-                padding: const EdgeInsetsDirectional.all(18),
-                boxShadow: theme.cardShadow,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 1. Workspace Folder Binding
+          FolioSurface(
+            tone: FolioTone.elevated,
+            padding: const EdgeInsetsDirectional.all(18),
+            boxShadow: theme.cardShadow,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        BistreIcon(
-                          BistreUiIcon.folder,
-                          size: 16,
-                          color: theme.accentBrass,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: InkText(
-                            l10n.t(L10nKey.settingsAgentWorkspaceDir),
-                            role: InkTextRole.titleMedium,
-                          ),
-                        ),
-                      ],
+                    BistreIcon(
+                      BistreUiIcon.folder,
+                      size: 16,
+                      color: theme.accentBrass,
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: QuillInput(
-                            controller: _workspaceCtrl,
-                            focusNode: _workspaceFocus,
-                            placeholder: l10n.t(
-                              L10nKey.settingsAgentWorkspacePick,
-                            ),
-                            maxLines: 1,
-                            onSubmitted: () => unawaited(
-                              ctrl.setWorkspaceRootPath(_workspaceCtrl.text),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        EngravedButton(
-                          label: l10n.t(L10nKey.threadSave),
-                          primary: true,
-                          compact: true,
-                          onPressed: () => unawaited(
-                            ctrl.setWorkspaceRootPath(_workspaceCtrl.text),
-                          ),
-                        ),
-                      ],
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: InkText(
+                        l10n.t(L10nKey.settingsAgentWorkspaceDir),
+                        role: InkTextRole.titleMedium,
+                      ),
                     ),
-                    const SizedBox(height: 16),
-                    const FolioDivider(),
-                    const SizedBox(height: 14),
-                    InkText(
-                      l10n.t(L10nKey.chatReasoningEffort),
-                      role: InkTextRole.labelStrong,
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: QuillInput(
+                        controller: _workspaceCtrl,
+                        focusNode: _workspaceFocus,
+                        placeholder: l10n.t(L10nKey.settingsAgentWorkspacePick),
+                        maxLines: 1,
+                        onSubmitted: () => unawaited(
+                          ctrl.setWorkspaceRootPath(_workspaceCtrl.text),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    EngravedButton(
+                      label: l10n.t(L10nKey.threadSave),
+                      primary: true,
+                      compact: true,
+                      onPressed: () => unawaited(
+                        ctrl.setWorkspaceRootPath(_workspaceCtrl.text),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const FolioDivider(),
+                const SizedBox(height: 14),
+                InkText(
+                  l10n.t(L10nKey.chatReasoningEffort),
+                  role: InkTextRole.labelStrong,
+                ),
+                const SizedBox(height: 8),
+                ReasoningEffortSelector(
+                  value: ctrl.settings.reasoningEffort,
+                  onChanged: (effort) =>
+                      unawaited(ctrl.setReasoningEffort(effort)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // 2. MCP Server Manager (2026-07-28 + 2025-11-25 fallback)
+          FolioSurface(
+            tone: FolioTone.elevated,
+            padding: const EdgeInsetsDirectional.all(18),
+            boxShadow: theme.cardShadow,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    BistreIcon(
+                      BistreUiIcon.server,
+                      size: 16,
+                      color: theme.accentBrass,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: InkText(
+                        l10n.t(L10nKey.settingsAgentMcpTitle),
+                        role: InkTextRole.titleMedium,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (servers.isNotEmpty) ...[
+                  for (final srv in servers) ...[
+                    FolioSurface(
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                InkText(
+                                  srv.name,
+                                  role: InkTextRole.labelStrong,
+                                ),
+                                const SizedBox(height: 2),
+                                InkText(
+                                  _formatMcpMeta(
+                                    l10n,
+                                    srv,
+                                    _mcpReports[srv.id],
+                                  ),
+                                  role: InkTextRole.captionMeta,
+                                  color: theme.inkMuted,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          if (srv.transport == 'http')
+                            EngravedButton(
+                              label: l10n.t(L10nKey.providerActionLoadModels),
+                              compact: true,
+                              onPressed: _discoveringIdBusy
+                                  ? null
+                                  : () => unawaited(_discoverServer(srv)),
+                            ),
+                          const SizedBox(width: 6),
+                          BistreIconButton(
+                            icon: BistreUiIcon.trash,
+                            size: 14,
+                            dimension: 28,
+                            semanticsLabel: l10n.t(L10nKey.threadDelete),
+                            onPressed: () =>
+                                unawaited(ctrl.removeMcpServer(srv.id)),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 8),
-                    ReasoningEffortSelector(
-                      value: ctrl.settings.reasoningEffort,
-                      onChanged: (effort) =>
-                          unawaited(ctrl.setReasoningEffort(effort)),
-                    ),
                   ],
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // 2. MCP Server Manager (2026-07-28 + 2025-11-25 fallback)
-              FolioSurface(
-                tone: FolioTone.elevated,
-                padding: const EdgeInsetsDirectional.all(18),
-                boxShadow: theme.cardShadow,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(height: 6),
+                ],
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        BistreIcon(
-                          BistreUiIcon.server,
-                          size: 16,
-                          color: theme.accentBrass,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: InkText(
-                            l10n.t(L10nKey.settingsAgentMcpTitle),
-                            role: InkTextRole.titleMedium,
-                          ),
-                        ),
-                      ],
+                    InkChip(
+                      label: _kMcpTransportHttp,
+                      selected: _mcpTransport == 'http',
+                      onSelected: () => setState(() => _mcpTransport = 'http'),
                     ),
-                    const SizedBox(height: 12),
-                    if (servers.isNotEmpty) ...[
-                      for (final srv in servers) ...[
-                        FolioSurface(
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    InkText(
-                                      srv.name,
-                                      role: InkTextRole.labelStrong,
-                                    ),
-                                    const SizedBox(height: 2),
-                                    InkText(
-                                      _formatMcpMeta(
-                                        l10n,
-                                        srv,
-                                        _mcpReports[srv.id],
-                                      ),
-                                      role: InkTextRole.captionMeta,
-                                      color: theme.inkMuted,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              if (srv.transport == 'http')
-                                EngravedButton(
-                                  label: l10n.t(
-                                    L10nKey.providerActionLoadModels,
-                                  ),
-                                  compact: true,
-                                  onPressed: _discoveringIdBusy
-                                      ? null
-                                      : () => unawaited(_discoverServer(srv)),
-                                ),
-                              const SizedBox(width: 6),
-                              BistreIconButton(
-                                icon: BistreUiIcon.trash,
-                                size: 14,
-                                dimension: 28,
-                                semanticsLabel: l10n.t(L10nKey.threadDelete),
-                                onPressed: () =>
-                                    unawaited(ctrl.removeMcpServer(srv.id)),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
-                      const SizedBox(height: 6),
-                    ],
-                    Row(
-                      children: [
-                        InkChip(
-                          label: _kMcpTransportHttp,
-                          selected: _mcpTransport == 'http',
-                          onSelected: () =>
-                              setState(() => _mcpTransport = 'http'),
-                        ),
-                        const SizedBox(width: 6),
-                        InkChip(
-                          label: _kMcpTransportStdio,
-                          selected: _mcpTransport == 'stdio',
-                          onSelected: () =>
-                              setState(() => _mcpTransport = 'stdio'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: QuillInput(
-                            controller: _mcpNameCtrl,
-                            focusNode: _mcpNameFocus,
-                            placeholder: l10n.t(
-                              L10nKey.settingsAgentMcpServerPlaceholder,
-                            ),
-                            maxLines: 1,
-                            onSubmitted: () => unawaited(_addMcpServer()),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          flex: 3,
-                          child: QuillInput(
-                            controller: _mcpUrlCtrl,
-                            focusNode: _mcpUrlFocus,
-                            placeholder: _mcpTransport == 'http'
-                                ? l10n.t(L10nKey.providerFieldBaseUrl)
-                                : _kMcpCommandPlaceholder,
-                            maxLines: 1,
-                            onSubmitted: () => unawaited(_addMcpServer()),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        EngravedButton(
-                          label: l10n.t(L10nKey.settingsAgentMcpAdd),
-                          primary: true,
-                          compact: true,
-                          onPressed: () => unawaited(_addMcpServer()),
-                        ),
-                      ],
+                    const SizedBox(width: 6),
+                    InkChip(
+                      label: _kMcpTransportStdio,
+                      selected: _mcpTransport == 'stdio',
+                      onSelected: () => setState(() => _mcpTransport = 'stdio'),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 16),
-
-              // 3. Web Search Endpoint
-              FolioSurface(
-                tone: FolioTone.elevated,
-                padding: const EdgeInsetsDirectional.all(18),
-                boxShadow: theme.cardShadow,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 10),
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        BistreIcon(
-                          BistreUiIcon.globe,
-                          size: 16,
-                          color: theme.accentBrass,
+                    Expanded(
+                      flex: 2,
+                      child: QuillInput(
+                        controller: _mcpNameCtrl,
+                        focusNode: _mcpNameFocus,
+                        placeholder: l10n.t(
+                          L10nKey.settingsAgentMcpServerPlaceholder,
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: InkText(
-                            l10n.t(L10nKey.settingsAgentWebSearch),
-                            role: InkTextRole.titleMedium,
-                          ),
-                        ),
-                      ],
+                        maxLines: 1,
+                        onSubmitted: () => unawaited(_addMcpServer()),
+                      ),
                     ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: QuillInput(
-                            controller: _webSearchCtrl,
-                            focusNode: _webSearchFocus,
-                            placeholder: l10n.t(L10nKey.providerFieldBaseUrl),
-                            maxLines: 1,
-                            onSubmitted: () => unawaited(
-                              ctrl.setWebSearchEndpoint(_webSearchCtrl.text),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        EngravedButton(
-                          label: l10n.t(L10nKey.threadSave),
-                          compact: true,
-                          onPressed: () => unawaited(
-                            ctrl.setWebSearchEndpoint(_webSearchCtrl.text),
-                          ),
-                        ),
-                      ],
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 3,
+                      child: QuillInput(
+                        controller: _mcpUrlCtrl,
+                        focusNode: _mcpUrlFocus,
+                        placeholder: _mcpTransport == 'http'
+                            ? l10n.t(L10nKey.providerFieldBaseUrl)
+                            : _kMcpCommandPlaceholder,
+                        maxLines: 1,
+                        onSubmitted: () => unawaited(_addMcpServer()),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    EngravedButton(
+                      label: l10n.t(L10nKey.settingsAgentMcpAdd),
+                      primary: true,
+                      compact: true,
+                      onPressed: () => unawaited(_addMcpServer()),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 16),
-
-              // 4. Optional Android Termux Bridge
-              FolioSurface(
-                tone: FolioTone.elevated,
-                padding: const EdgeInsetsDirectional.all(18),
-                boxShadow: theme.cardShadow,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        BistreIcon(
-                          BistreUiIcon.code,
-                          size: 16,
-                          color: theme.accentBrass,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: InkText(
-                            l10n.t(L10nKey.settingsAgentTermuxTitle),
-                            role: InkTextRole.titleMedium,
-                          ),
-                        ),
-                        if (_termuxStatus case final status?)
-                          WaxSealBadge(
-                            label: _formatTermuxBadge(l10n, status),
-                            status: status.installed && status.permissionGranted
-                                ? WaxSealStatus.ok
-                                : WaxSealStatus.neutral,
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    InkText(
-                      l10n.t(L10nKey.settingsAgentTermuxDesc),
-                      role: InkTextRole.bodyCompact,
-                      color: theme.inkSecondary,
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        InkChip(
-                          label: l10n.t(L10nKey.settingsAppearanceOn),
-                          selected: ctrl.settings.termuxBridgeEnabled,
-                          onSelected: () =>
-                              unawaited(ctrl.setTermuxBridgeEnabled(true)),
-                        ),
-                        const SizedBox(width: 6),
-                        InkChip(
-                          label: l10n.t(L10nKey.settingsAppearanceOff),
-                          selected: !ctrl.settings.termuxBridgeEnabled,
-                          onSelected: () =>
-                              unawaited(ctrl.setTermuxBridgeEnabled(false)),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+          const SizedBox(height: 16),
+
+          // 3. Web Search Endpoint
+          FolioSurface(
+            tone: FolioTone.elevated,
+            padding: const EdgeInsetsDirectional.all(18),
+            boxShadow: theme.cardShadow,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    BistreIcon(
+                      BistreUiIcon.globe,
+                      size: 16,
+                      color: theme.accentBrass,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: InkText(
+                        l10n.t(L10nKey.settingsAgentWebSearch),
+                        role: InkTextRole.titleMedium,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: QuillInput(
+                        controller: _webSearchCtrl,
+                        focusNode: _webSearchFocus,
+                        placeholder: l10n.t(L10nKey.providerFieldBaseUrl),
+                        maxLines: 1,
+                        onSubmitted: () => unawaited(
+                          ctrl.setWebSearchEndpoint(_webSearchCtrl.text),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    EngravedButton(
+                      label: l10n.t(L10nKey.threadSave),
+                      compact: true,
+                      onPressed: () => unawaited(
+                        ctrl.setWebSearchEndpoint(_webSearchCtrl.text),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // 4. Optional Android Termux Bridge
+          FolioSurface(
+            tone: FolioTone.elevated,
+            padding: const EdgeInsetsDirectional.all(18),
+            boxShadow: theme.cardShadow,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    BistreIcon(
+                      BistreUiIcon.code,
+                      size: 16,
+                      color: theme.accentBrass,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: InkText(
+                        l10n.t(L10nKey.settingsAgentTermuxTitle),
+                        role: InkTextRole.titleMedium,
+                      ),
+                    ),
+                    if (_termuxStatus case final status?)
+                      WaxSealBadge(
+                        label: _formatTermuxBadge(l10n, status),
+                        status: status.installed && status.permissionGranted
+                            ? WaxSealStatus.ok
+                            : WaxSealStatus.neutral,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                InkText(
+                  l10n.t(L10nKey.settingsAgentTermuxDesc),
+                  role: InkTextRole.bodyCompact,
+                  color: theme.inkSecondary,
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    InkChip(
+                      label: l10n.t(L10nKey.settingsAppearanceOn),
+                      selected: ctrl.settings.termuxBridgeEnabled,
+                      onSelected: () =>
+                          unawaited(ctrl.setTermuxBridgeEnabled(true)),
+                    ),
+                    const SizedBox(width: 6),
+                    InkChip(
+                      label: l10n.t(L10nKey.settingsAppearanceOff),
+                      selected: !ctrl.settings.termuxBridgeEnabled,
+                      onSelected: () =>
+                          unawaited(ctrl.setTermuxBridgeEnabled(false)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

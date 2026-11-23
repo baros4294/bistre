@@ -102,58 +102,52 @@ class _ShortcutsSettingsViewState extends State<ShortcutsSettingsView> {
       onKeyEvent: _handleKeyCapture,
       child: SingleChildScrollView(
         padding: const EdgeInsetsDirectional.fromSTEB(28, 22, 28, 40),
-        child: Align(
-          alignment: AlignmentDirectional.topStart,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 680),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            BistreSettingsSection(
+              title: l10n.t(L10nKey.settingsTabShortcuts),
               children: [
-                BistreSettingsSection(
-                  title: l10n.t(L10nKey.settingsTabShortcuts),
-                  children: [
-                    for (final spec in ShortcutActionSpec.defaults)
-                      _ShortcutRow(
-                        label: l10n.t(spec.labelKey),
-                        combo: ctrl.shortcutFor(spec.id),
-                        recording: _recordingActionId == spec.id,
-                        recordHint: l10n.t(L10nKey.shortcutsRecordHint),
-                        onTap: () => _startRecording(spec.id),
+                for (final spec in ShortcutActionSpec.defaults)
+                  _ShortcutRow(
+                    label: l10n.t(spec.labelKey),
+                    combo: ctrl.shortcutFor(spec.id),
+                    recording: _recordingActionId == spec.id,
+                    recordHint: l10n.t(L10nKey.shortcutsRecordHint),
+                    onTap: () => _startRecording(spec.id),
+                  ),
+                Padding(
+                  padding: const EdgeInsetsDirectional.symmetric(
+                    horizontal: BistreSpacing.s16,
+                    vertical: 14,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: InkText(
+                          l10n.t(L10nKey.shortcutEscape),
+                          role: InkTextRole.bodyCompact,
+                          color: theme.inkSecondary,
+                        ),
                       ),
-                    Padding(
-                      padding: const EdgeInsetsDirectional.symmetric(
-                        horizontal: BistreSpacing.s16,
-                        vertical: 14,
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: InkText(
-                              l10n.t(L10nKey.shortcutEscape),
-                              role: InkTextRole.bodyCompact,
-                              color: theme.inkSecondary,
-                            ),
-                          ),
-                          const _KeycapStrip(combo: _kEscCombo),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: BistreSpacing.s16),
-                Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: EngravedButton(
-                    label: l10n.t(L10nKey.shortcutsResetDefaults),
-                    onPressed: () {
-                      setState(() => _recordingActionId = null);
-                      unawaited(ctrl.resetShortcuts());
-                    },
+                      const _KeycapStrip(combo: _kEscCombo),
+                    ],
                   ),
                 ),
               ],
             ),
-          ),
+            const SizedBox(height: BistreSpacing.s16),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: EngravedButton(
+                label: l10n.t(L10nKey.shortcutsResetDefaults),
+                onPressed: () {
+                  setState(() => _recordingActionId = null);
+                  unawaited(ctrl.resetShortcuts());
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
