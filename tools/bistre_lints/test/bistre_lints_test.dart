@@ -38,6 +38,13 @@ class _TestAstCollector extends RecursiveAstVisitor<void> {
       if (ForbidRawColorsRule.isRawColorCall(name)) {
         rawColors.add(node);
       }
+      if (ForbidNonDirectionalGeometryRule.isForbiddenEdgeInsetsCall(
+        name,
+        null,
+        node.argumentList,
+      )) {
+        nonDirectionalGeometry.add(node);
+      }
     } else if (target is SimpleIdentifier) {
       if (ForbidRawColorsRule.isRawColorCall(target.name)) {
         rawColors.add(node);
@@ -206,4 +213,27 @@ const good3 = AlignmentDirectional.centerStart;
 
     expect(collector.nonDirectionalGeometry.length, 3);
   });
+
+  test(
+    'flags Positioned left/right, TextAlign left/right, and size transitions',
+    () {
+      const source = '''
+import 'package:flutter/widgets.dart';
+Widget a() => Positioned(left: 4, child: SizedBox());
+Widget b() => PositionedDirectional(start: 4, child: SizedBox());
+Widget c() => Text('x', textAlign: TextAlign.left);
+Widget d() => Text('x', textAlign: TextAlign.start);
+Widget e(Animation<double> t) => SizeTransition(sizeFactor: t, child: SizedBox());
+Widget f() => AnimatedCrossFade(firstChild: SizedBox(), secondChild: SizedBox());
+''';
+      final unit = parseString(content: source).unit;
+      final collector = _TestAstCollector();
+      unit.accept(collector);
+      expect(collector.nonDirectionalGeometry, hasLength(2));
+      expect(collector.layoutAnimations, <String>[
+        'SizeTransition',
+        'AnimatedCrossFade',
+      ]);
+    },
+  );
 }

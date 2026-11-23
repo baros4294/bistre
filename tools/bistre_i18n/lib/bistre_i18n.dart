@@ -224,6 +224,7 @@ void _validateEntry(
   if (context is! String || context.trim().length < 4) {
     errors.add('[$locale][$key] "context" must be >= 4 chars');
   }
+  _validatePlainWords(locale, key, message, errors);
   if (tone != 'calm_editorial' &&
       tone != 'concise_action' &&
       tone != 'diagnostic') {
@@ -412,4 +413,50 @@ String _toCamelCase(String dotKey) {
     out.write(p.substring(1).toLowerCase());
   }
   return out.toString();
+}
+
+/// Internal or literary words that must never appear in UI copy, in any locale (AGENTS.md §7).
+const List<String> bannedUiWords = <String>[
+  'Inscribe',
+  'Folio',
+  'Passage',
+  'Author',
+  'Parchment',
+  'Candlelight',
+  'Guided Craft',
+  'Unchained',
+  'Wax Seal',
+  'Quill',
+];
+
+/// English technical terms with a plain replacement (`docs/design/DESIGN.md` §9).
+const Map<String, String> plainWordGlossary = <String, String>{
+  'base url': 'Server URL',
+  'endpoint': 'Server URL',
+  'compaction': 'Shorten the conversation',
+  'compact context': 'Shorten the conversation',
+  'context window': 'Conversation limit',
+  'steer': 'Send now',
+  'reasoning effort': 'Thinking',
+  'auto-retrying': 'Trying again',
+};
+
+void _validatePlainWords(
+  String locale,
+  String key,
+  String message,
+  List<String> errors,
+) {
+  for (final word in bannedUiWords) {
+    if (RegExp('\\b${RegExp.escape(word)}\\b').hasMatch(message)) {
+      errors.add('[$locale][$key] uses the banned UI word "$word"');
+    }
+  }
+  if (locale != 'en') return;
+  final lower = message.toLowerCase();
+  plainWordGlossary.forEach((term, plain) {
+    if (RegExp('\\b${RegExp.escape(term)}\\b').hasMatch(lower)) {
+      errors.add('[$locale][$key] uses "$term"; say "$plain" (DESIGN.md §9)');
+    }
+  });
 }

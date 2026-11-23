@@ -207,4 +207,16 @@ void main() {
       '35-offline-vector-iconography',
     );
   });
+
+  test('test retries are rejected', () {
+    final errors = _run(checkNoTestRetries, <String, Object>{
+      'apps/bistre_app/test/a_test.dart': "test('x', () {}, retry: 3);\n",
+      'apps/bistre_app/test/b_test.dart': "test('y', () {});\n",
+      '.config/nextest.toml': '[profile.default]\nretries = 2\n',
+    });
+    final joined = errors.join('\n');
+    expect(joined, contains('a_test.dart retries a test'));
+    expect(joined, contains('nextest.toml configures nextest retries'));
+    expect(errors, hasLength(2), reason: joined);
+  });
 }

@@ -86,4 +86,25 @@ void main() {
     expect(joined, contains('type mismatch'));
     expect(joined, contains('diag.missing.key'));
   });
+
+  test('banned UI words and glossary terms are rejected', () {
+    final tmp = Directory.systemTemp.createTempSync('bistre_i18n_words_');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    File('${tmp.path}/en.bistre-l10n.json').writeAsStringSync('''
+{
+  "locale": "en",
+  "direction": "ltr",
+  "entries": {
+    "demo.a": { "message": "Open Folio", "context": "Button label", "tone": "concise_action", "max_chars": 20, "placeholders": {} },
+    "demo.b": { "message": "API endpoint", "context": "Field label", "tone": "calm_editorial", "max_chars": 20, "placeholders": {} },
+    "demo.c": { "message": "Server URL", "context": "Field label", "tone": "calm_editorial", "max_chars": 20, "placeholders": {} }
+  }
+}
+''');
+    final result = validateCatalogDirectory(tmp);
+    final joined = result.errors.join('\n');
+    expect(joined, contains('[en][demo.a] uses the banned UI word "Folio"'));
+    expect(joined, contains('[en][demo.b] uses "endpoint"'));
+    expect(joined, isNot(contains('demo.c')));
+  });
 }
