@@ -23,6 +23,7 @@ import '../story/prompt_inspector_panel.dart';
 import '../story/roleplay_controls.dart';
 import '../story/story_bible_panel.dart';
 import '../studio/runs_dock_panel.dart';
+import 'chat_tab_strip.dart';
 import 'folio_controller.dart';
 
 class _TogglePaletteIntent extends Intent {
@@ -717,6 +718,10 @@ class _FolioShellScreenState extends State<FolioShellScreen> {
               );
             },
           ),
+          if (isWide) ...[
+            const SizedBox(height: BistreSpacing.s4),
+            ChatTabStrip(controller: ctrl),
+          ],
           if (ctrl.searchPanelOpen)
             Padding(
               padding: const EdgeInsetsDirectional.only(top: BistreSpacing.s8),

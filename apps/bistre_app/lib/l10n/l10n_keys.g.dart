@@ -344,6 +344,7 @@ enum L10nKey {
   settingsTrustSpendToday('settings.trust.spend_today'),
   settingsTrustStateless('settings.trust.stateless'),
   settingsTrustUnchained('settings.trust.unchained'),
+  shellCloseTab('shell.close_tab'),
   shellComposerDraftSaved('shell.composer.draft_saved'),
   shellComposerPlaceholder('shell.composer.placeholder'),
   shellComposerSend('shell.composer.send'),
