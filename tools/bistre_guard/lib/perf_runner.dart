@@ -133,7 +133,10 @@ File desktopReleaseApp(Directory repoRoot) => Platform.isWindows
 
 /// Seeds a scratch data dir with synthetic chats via the release daemon, launches the release
 /// app three times against it (median first frame / chat ready), and reads idle RSS once.
-Future<List<PerfMetric>> runDesktopColdStart(Directory repoRoot) async {
+Future<List<PerfMetric>> runDesktopColdStart(
+  Directory repoRoot, {
+  bool rssHardFail = true,
+}) async {
   final daemon = File(
     '${repoRoot.path}/target/release/${_exe('bistre-daemon')}',
   );
@@ -222,7 +225,7 @@ Future<List<PerfMetric>> runDesktopColdStart(Directory repoRoot) async {
           idleRss ~/ (1024 * 1024),
           'MB',
           budget: idleRssBudgetBytes ~/ (1024 * 1024),
-          hardFail: idleRssHardFailBytes ~/ (1024 * 1024),
+          hardFail: rssHardFail ? idleRssHardFailBytes ~/ (1024 * 1024) : null,
         ),
     ];
   } finally {

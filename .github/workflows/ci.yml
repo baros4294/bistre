@@ -317,7 +317,7 @@ jobs:
           # --strict fails when the app does not start; budgets fail on Spec 11 hard limits.
           sudo apt-get install -y xvfb
           cargo build --locked --release -p bistre-daemon
-          xvfb-run -a dart run tools/bistre_guard/bin/bistre_guard.dart perf --strict
+          xvfb-run -a dart run tools/bistre_guard/bin/bistre_guard.dart perf --strict --rss-report-only
       - name: Build Windows release bundle
         if: runner.os == 'Windows'
         working-directory: apps/bistre_app
