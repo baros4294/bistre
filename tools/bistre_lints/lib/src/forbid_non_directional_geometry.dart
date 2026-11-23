@@ -51,6 +51,14 @@ class ForbidNonDirectionalGeometryRule extends AnalysisRule {
     String? constructorName,
     ArgumentList args,
   ) {
+    // `Positioned(left:/right:)` pins physical sides; use `PositionedDirectional`.
+    if (typeName == 'Positioned' && constructorName == null) {
+      return args.arguments.any(
+        (arg) =>
+            arg is NamedArgument &&
+            (arg.name.lexeme == 'left' || arg.name.lexeme == 'right'),
+      );
+    }
     if (typeName != 'EdgeInsets') return false;
     if (constructorName == 'fromLTRB') return true;
     if (constructorName == 'only') {
@@ -66,6 +74,10 @@ class ForbidNonDirectionalGeometryRule extends AnalysisRule {
 
   /// Pure helper for checking `Alignment.<constant>` in both plugin and unit tests.
   static bool isForbiddenAlignmentMember(String targetName, String memberName) {
+    if (targetName == 'TextAlign') {
+      // `start`/`end` follow the text direction; `left`/`right` do not.
+      return memberName == 'left' || memberName == 'right';
+    }
     return targetName == 'Alignment' &&
         forbiddenAlignmentConstants.contains(memberName);
   }
@@ -95,12 +107,20 @@ class _DirectionalGeometryVisitor extends SimpleAstVisitor<void> {
   void visitMethodInvocation(MethodInvocation node) {
     if (!_shouldCheck()) return;
     final target = node.target;
-    if (target is SimpleIdentifier &&
-        ForbidNonDirectionalGeometryRule.isForbiddenEdgeInsetsCall(
-          target.name,
-          node.methodName.name,
-          node.argumentList,
-        )) {
+    // `Positioned(left: …)` parses as a method call when the type is not resolved yet.
+    final forbidden = target == null
+        ? ForbidNonDirectionalGeometryRule.isForbiddenEdgeInsetsCall(
+            node.methodName.name,
+            null,
+            node.argumentList,
+          )
+        : target is SimpleIdentifier &&
+              ForbidNonDirectionalGeometryRule.isForbiddenEdgeInsetsCall(
+                target.name,
+                node.methodName.name,
+                node.argumentList,
+              );
+    if (forbidden) {
       rule.reportAtNode(node);
     }
   }

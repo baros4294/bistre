@@ -87,6 +87,7 @@ void runStaticGates(
   checkHardcodedModelsAndBrands(repoRoot, workspaceFiles, errors);
   checkSourceLineCap(repoRoot, workspaceFiles, errors);
   checkErrorSilencing(repoRoot, workspaceFiles, errors);
+  checkNoTestRetries(repoRoot, workspaceFiles, errors);
   checkAgentsBudget(repoRoot, errors);
   checkMarkdownAnchors(repoRoot, workspaceFiles, errors);
   checkSingleVersionSource(repoRoot, errors);
@@ -580,3 +581,31 @@ bool _isBinaryAsset(String ext) => const <String>{
   '.png', '.jpg', '.jpeg', '.webp', '.gif', '.ico', '.icns', '.ttf', '.otf', //
   '.woff2', '.vec', '.zip', '.gz', '.wav', '.mp3', '.mp4',
 }.contains(ext);
+
+/// 7c. Never retry flaky tests (Parchment `3247bf0d`: a retry hid a real crash). Rejects Dart
+/// `retry:` test arguments and nextest `retries` settings.
+void checkNoTestRetries(
+  Directory root,
+  List<String> files,
+  List<String> errors,
+) {
+  final dartRetry = RegExp(r'\bretry:\s*\d');
+  final nextestRetry = RegExp(r'^\s*retries\s*=', multiLine: true);
+  for (final rel in files) {
+    final isDartTest =
+        rel.endsWith('_test.dart') &&
+        // The guard's own tests embed offending snippets as fixtures.
+        !rel.startsWith('tools/bistre_guard/test/');
+    if (isDartTest && dartRetry.hasMatch(_read(root, rel))) {
+      errors.add(
+        '[test-retry] $rel retries a test; find and fix the root cause instead.',
+      );
+    }
+    if (rel.endsWith('nextest.toml') &&
+        nextestRetry.hasMatch(_read(root, rel))) {
+      errors.add(
+        '[test-retry] $rel configures nextest retries; find and fix the root cause instead.',
+      );
+    }
+  }
+}

@@ -23,6 +23,11 @@ class ForbidLayoutAnimationsRule extends AnalysisRule {
     'AnimatedPositionedDirectional',
     'AnimatedAlign',
     'AnimatedPhysicalModel',
+    // Size and layout tweens in other clothes.
+    'SizeTransition',
+    'AnimatedCrossFade',
+    'AnimatedDefaultTextStyle',
+    'AnimatedFractionallySizedBox',
   };
 
   ForbidLayoutAnimationsRule()
