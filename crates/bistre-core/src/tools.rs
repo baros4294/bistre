@@ -2,6 +2,7 @@
 //! `imara-diff` unified diffs, pre-image SQLite checkpoints for 1-click Rewind, guarded shell
 //! execution, web fetch/search, and Unsloth-style malformed tool-call self-healing (Spec 04 & 06).
 
+use bistre_protocol::lock_or_recover;
 use std::collections::{HashSet, VecDeque};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
@@ -46,9 +47,7 @@ pub struct ReadLedger {
 impl ReadLedger {
     /// Records the digest a scope observed for `rel_path` (bounded, oldest evicted).
     pub fn record(&self, scope: &str, rel_path: &str, digest: &str) {
-        let Ok(mut entries) = self.entries.lock() else {
-            return;
-        };
+        let mut entries = lock_or_recover(&self.entries, "read_ledger");
         let key = normalize_rel(rel_path);
         entries.retain(|(s, p, _)| !(s == scope && *p == key));
         if entries.len() >= MAX_READ_LEDGER_ENTRIES {
@@ -65,11 +64,9 @@ impl ReadLedger {
         current_digest: &str,
     ) -> BistreResult<()> {
         let key = normalize_rel(rel_path);
-        let stale = self.entries.lock().is_ok_and(|entries| {
-            entries
-                .iter()
-                .any(|(s, p, d)| s == scope && *p == key && d != current_digest)
-        });
+        let stale = lock_or_recover(&self.entries, "read_ledger")
+            .iter()
+            .any(|(s, p, d)| s == scope && *p == key && d != current_digest);
         if stale {
             Err(BistreError::with_detail(
                 DiagnosticKey::ToolStaleRead,
@@ -568,6 +565,10 @@ fn atomic_write_in_dir(dir: &Dir, rel_path: &str, bytes: &[u8]) -> BistreResult<
         match dir.rename(&tmp_rel, dir, target) {
             Ok(()) => return Ok(()),
             Err(_) if attempt < 2 => {
+                #[expect(
+                    clippy::disallowed_methods,
+                    reason = "bounded Windows sharing-violation retry (at most 75 ms in total) inside a synchronous file write"
+                )]
                 std::thread::sleep(Duration::from_millis(25 * (attempt + 1)));
             }
             Err(_) => {
@@ -926,6 +927,10 @@ pub fn heal_and_dedup_tool_calls(
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "tests map errors to empty values that the following assertions reject"
+)]
 mod tests {
     use super::*;
     use tempfile::tempdir;

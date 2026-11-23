@@ -7,6 +7,7 @@
 //! - `RunActivity` measures active run time on a monotonic clock, skipping gaps longer than
 //!   5 s (OS sleep / suspended app) so elapsed-time budgets never jump after a laptop wakes.
 
+use bistre_protocol::lock_or_recover;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -95,7 +96,7 @@ impl ToolApprovalBroker {
     pub fn approve(&self, scope: &str, tool: &str, args: &Value) -> BistreResult<String> {
         let id = uuid::Uuid::now_v7().to_string();
         let permit = self.issue(scope, tool, args);
-        let mut map = self.lock_approved()?;
+        let mut map = self.lock_approved();
         let now = Instant::now();
         map.retain(|_, (at, _)| now.duration_since(*at) < APPROVAL_TTL);
         while map.len() >= MAX_PENDING_APPROVALS {
@@ -112,7 +113,7 @@ impl ToolApprovalBroker {
 
     /// Removes and returns an approved, unexpired permit. Each id works at most once.
     pub fn take_approved(&self, permit_id: &str) -> BistreResult<ToolExecutionPermit> {
-        let (at, permit) = self.lock_approved()?.remove(permit_id).ok_or_else(|| {
+        let (at, permit) = self.lock_approved().remove(permit_id).ok_or_else(|| {
             BistreError::with_detail(DiagnosticKey::ToolApprovalRequired, "permit_missing")
         })?;
         if at.elapsed() >= APPROVAL_TTL {
@@ -126,12 +127,8 @@ impl ToolApprovalBroker {
 
     fn lock_approved(
         &self,
-    ) -> BistreResult<std::sync::MutexGuard<'_, HashMap<String, (Instant, ToolExecutionPermit)>>>
-    {
-        // A poisoned store denies (fail closed) instead of silently approving.
-        self.approved
-            .lock()
-            .map_err(|_| BistreError::with_detail(DiagnosticKey::InternalError, "approval_lock"))
+    ) -> std::sync::MutexGuard<'_, HashMap<String, (Instant, ToolExecutionPermit)>> {
+        lock_or_recover(&self.approved, "approved")
     }
 
     /// Synchronously revokes every outstanding permit (permission, mode, or workspace change).

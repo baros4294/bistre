@@ -46,13 +46,7 @@ impl Default for McpHttpTransport {
 
 impl McpHttpTransport {
     pub fn new() -> Self {
-        crate::providers::ensure_tls_provider();
-        let local = reqwest::Client::builder()
-            .no_proxy()
-            .redirect(reqwest::redirect::Policy::none())
-            .connect_timeout(Duration::from_secs(5))
-            .timeout(MCP_CALL_TIMEOUT)
-            .build()
+        let local = crate::http_clients::loopback_client(Duration::from_secs(5), MCP_CALL_TIMEOUT)
             .map_err(|_| BistreError::with_detail(DiagnosticKey::InternalError, "mcp_client_init"));
         Self {
             local,

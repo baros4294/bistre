@@ -44,13 +44,22 @@ pub struct HookExecutionResult {
     pub output: String,
 }
 
-/// Reads `.bistre/hooks.json` from `workspace_root` if present.
-pub fn load_workspace_hooks(workspace_root: &Path) -> Vec<WorkspaceHookConfig> {
+/// Reads `.bistre/hooks.json` from `workspace_root`. A missing file means no hooks; an
+/// unreadable or malformed one is an error, so a broken config never silently disables hooks.
+pub fn load_workspace_hooks(workspace_root: &Path) -> BistreResult<Vec<WorkspaceHookConfig>> {
     let path = workspace_root.join(".bistre").join("hooks.json");
-    let Ok(raw) = std::fs::read_to_string(path) else {
-        return Vec::new();
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(_) => {
+            return Err(BistreError::with_detail(
+                DiagnosticKey::InvalidInput,
+                "hooks_json_read",
+            ));
+        }
     };
-    serde_json::from_str::<Vec<WorkspaceHookConfig>>(&raw).unwrap_or_default()
+    serde_json::from_str::<Vec<WorkspaceHookConfig>>(&raw)
+        .map_err(|_| BistreError::with_detail(DiagnosticKey::InvalidInput, "hooks_json_parse"))
 }
 
 /// Runs matching workspace lifecycle hooks with `kill_on_drop(true)` and stripped provider keys.
@@ -59,7 +68,7 @@ pub async fn run_lifecycle_hooks(
     event: HookEventKind,
     tool_name: Option<&str>,
 ) -> BistreResult<Vec<HookExecutionResult>> {
-    let hooks = load_workspace_hooks(workspace_root);
+    let hooks = load_workspace_hooks(workspace_root)?;
     let mut results = Vec::new();
 
     for hook in hooks {

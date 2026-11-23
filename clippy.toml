@@ -20,4 +20,10 @@ disallowed-methods = [
   { path = "tokio::process::Command::spawn", reason = "Spawn via bistre_core::process_util::spawn_contained (kill-on-close Job Object)." },
   { path = "tokio::process::Command::output", reason = "Use bistre_core::process_util::run_bounded (contained, bounded, tree-kill on timeout)." },
   { path = "tokio::process::Command::status", reason = "Use bistre_core::process_util::run_bounded (contained, bounded, tree-kill on timeout)." },
+  { path = "core::result::Result::unwrap_or_default", reason = "Silences the error. Propagate it, or #[expect] with the reason the error does not matter." },
+  { path = "std::sync::Mutex::lock", reason = "Use bistre_protocol::lock_or_recover so a poisoned lock is logged and recovered explicitly." },
+  { path = "reqwest::Client::builder", reason = "Build HTTP clients only in bistre_core::http_clients." },
+  { path = "reqwest::ClientBuilder::new", reason = "Build HTTP clients only in bistre_core::http_clients." },
+  { path = "std::thread::sleep", reason = "Blocks a runtime thread; use tokio::time::sleep or a bounded wait." },
+  { path = "tokio::sync::mpsc::unbounded_channel", reason = "Channels must be bounded (AGENTS.md section 7)." },
 ]

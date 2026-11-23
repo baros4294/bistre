@@ -14,6 +14,7 @@ pub mod cron;
 pub mod error_policy;
 mod events;
 pub mod hooks;
+pub mod http_clients;
 pub mod import_policy;
 pub mod ipc_client;
 pub mod mcp;
@@ -39,6 +40,7 @@ mod engine_runs;
 mod tests;
 
 pub use bistre_crypto::VaultKey;
+use bistre_protocol::lock_or_recover;
 pub use engine_client::EngineClient;
 use engine_runs::{StreamServices, execute_durable_stream_loop, utc_day_start_unix_ms};
 
@@ -185,10 +187,9 @@ impl InProcessEngine {
 
     /// Wakes a run waiting in backoff for `thread_id`.
     fn wake_run(&self, thread_id: &str) -> bool {
-        self.wakers
-            .lock()
-            .ok()
-            .and_then(|g| g.get(thread_id).cloned())
+        lock_or_recover(&self.wakers, "wakers")
+            .get(thread_id)
+            .cloned()
             .is_some_and(|wake| {
                 wake.notify_one();
                 true
@@ -354,7 +355,7 @@ impl InProcessEngine {
         gen_params: GenerationParams,
         stateless_default: bool,
     ) -> BistreResult<String> {
-        let settings = self.storage.load_settings().unwrap_or_default();
+        let settings = self.storage.load_settings()?;
         let durable_run = self.storage.create_agent_run(CreateAgentRunParams {
             thread_id: thread.id.clone(),
             parent_run_id: None,
@@ -367,14 +368,14 @@ impl InProcessEngine {
 
         let pending_id = Uuid::now_v7().to_string();
         let cancel_flag = Arc::new(AtomicBool::new(false));
-        if let Ok(mut guard) = self.cancellations.lock()
-            && let Some(prev) = guard.insert(thread.id.clone(), Arc::clone(&cancel_flag))
-        {
+        let mut guard = lock_or_recover(&self.cancellations, "cancellations");
+        if let Some(prev) = guard.insert(thread.id.clone(), Arc::clone(&cancel_flag)) {
             prev.store(true, Ordering::SeqCst);
         }
 
         let wake = Arc::new(Notify::new());
-        if let Ok(mut guard) = self.wakers.lock() {
+        {
+            let mut guard = lock_or_recover(&self.wakers, "wakers");
             guard.insert(thread.id.clone(), Arc::clone(&wake));
         }
         let wakers = Arc::clone(&self.wakers);
@@ -429,10 +430,12 @@ impl InProcessEngine {
             )
             .await;
 
-            if let Ok(mut guard) = cancellations.lock() {
+            {
+                let mut guard = lock_or_recover(&cancellations, "cancellations");
                 guard.remove(&thread_id);
             }
-            if let Ok(mut guard) = wakers.lock() {
+            {
+                let mut guard = lock_or_recover(&wakers, "wakers");
                 guard.remove(&thread_id);
             }
             active_runs.fetch_sub(1, Ordering::SeqCst);

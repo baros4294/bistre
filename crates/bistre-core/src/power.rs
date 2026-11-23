@@ -5,6 +5,7 @@
 //!   inhibitors plug into the `PowerGuardBackend` trait from `bistre-daemon` or platform shims.
 //! - Sleep inhibition leases are strictly run-scoped (`active_runs > 0` acquires, `0` releases).
 
+use bistre_protocol::lock_or_recover;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -114,7 +115,8 @@ impl PowerCoordinator {
             acquired && policy.windows_keep_awake_on_battery,
             Ordering::SeqCst,
         );
-        if let Ok(mut failure) = self.last_failure.lock() {
+        {
+            let mut failure = lock_or_recover(&self.last_failure, "last_failure");
             *failure = if acquired { None } else { Some(Instant::now()) };
         }
     }
@@ -122,42 +124,38 @@ impl PowerCoordinator {
     /// `true` while runs want sleep inhibition but the OS refused it (UI shows "Unavailable").
     pub fn is_unavailable(&self) -> bool {
         self.active_leases.load(Ordering::SeqCst) > 0
-            && self.policy.lock().is_ok_and(|p| p.keep_awake_while_running)
+            && lock_or_recover(&self.policy, "policy").keep_awake_while_running
             && !self.keep_awake_active.load(Ordering::SeqCst)
-            && self.last_failure.lock().is_ok_and(|f| f.is_some())
+            && lock_or_recover(&self.last_failure, "last_failure").is_some()
     }
 
     /// Re-attempts a failed inhibitor once [`POWER_RETRY_BACKOFF`] has elapsed. Event-driven:
     /// called from run steps, never from a timer. Returns `true` when a retry was attempted.
     pub fn retry_if_due(&self) -> bool {
-        let due = self
-            .last_failure
-            .lock()
-            .is_ok_and(|f| f.is_some_and(|at| at.elapsed() >= POWER_RETRY_BACKOFF));
+        let due = lock_or_recover(&self.last_failure, "last_failure")
+            .is_some_and(|at| at.elapsed() >= POWER_RETRY_BACKOFF);
         if !due || self.active_leases.load(Ordering::SeqCst) == 0 {
             return false;
         }
-        let policy = self.policy.lock().map_or_default(|g| *g);
+        let policy = *lock_or_recover(&self.policy, "policy");
         if !policy.keep_awake_while_running {
             return false;
         }
-        let reason = self.reason.lock().map_or_default(|g| g.clone());
+        let reason = lock_or_recover(&self.reason, "reason").clone();
         self.try_acquire(policy, &reason);
         true
     }
 
     /// Updates active sleep-guard preferences and re-applies immediately if runs are in flight.
     pub fn update_policy(&self, next: PowerLeasePolicy) -> PowerGuardStatus {
-        if let Ok(mut guard) = self.policy.lock() {
+        {
+            let mut guard = lock_or_recover(&self.policy, "policy");
             *guard = next;
         }
         let count = self.active_leases.load(Ordering::SeqCst);
         if count > 0 {
             if next.keep_awake_while_running {
-                let reason = self
-                    .reason
-                    .lock()
-                    .map_or_else(|_| "Active Bistre agent run".to_owned(), |g| g.clone());
+                let reason = lock_or_recover(&self.reason, "reason").clone();
                 self.try_acquire(next, &reason);
             } else {
                 self.backend.release();
@@ -172,11 +170,12 @@ impl PowerCoordinator {
     pub fn acquire_run_lease(self: &Arc<Self>, reason: impl Into<String>) -> PowerRunLease {
         let prev = self.active_leases.fetch_add(1, Ordering::SeqCst);
         let reason_str = reason.into();
-        if let Ok(mut guard) = self.reason.lock() {
+        {
+            let mut guard = lock_or_recover(&self.reason, "reason");
             guard.clone_from(&reason_str);
         }
         if prev == 0 {
-            let policy = self.policy.lock().map_or_default(|g| *g);
+            let policy = *lock_or_recover(&self.policy, "policy");
             if policy.keep_awake_while_running {
                 self.try_acquire(policy, &reason_str);
             }
@@ -194,10 +193,12 @@ impl PowerCoordinator {
             self.backend.release();
             self.keep_awake_active.store(false, Ordering::SeqCst);
             self.battery_override_active.store(false, Ordering::SeqCst);
-            if let Ok(mut guard) = self.reason.lock() {
+            {
+                let mut guard = lock_or_recover(&self.reason, "reason");
                 guard.clear();
             }
-            if let Ok(mut failure) = self.last_failure.lock() {
+            {
+                let mut failure = lock_or_recover(&self.last_failure, "last_failure");
                 *failure = None;
             }
         }
@@ -232,7 +233,7 @@ impl PowerCoordinator {
 
     /// Returns a live status snapshot for UI telemetry-free indicators.
     pub fn status(&self) -> PowerGuardStatus {
-        let reason = self.reason.lock().map_or_default(|g| g.clone());
+        let reason = lock_or_recover(&self.reason, "reason").clone();
         PowerGuardStatus {
             platform: self.backend.platform_name().to_owned(),
             keep_awake_active: self.keep_awake_active.load(Ordering::SeqCst),
@@ -295,7 +296,8 @@ mod tests {
         assert!(!coord.retry_if_due(), "must wait for the 5 s backoff");
         assert_eq!(backend.attempts.load(Ordering::SeqCst), 1);
 
-        if let Ok(mut f) = coord.last_failure.lock() {
+        {
+            let mut f = lock_or_recover(&coord.last_failure, "last_failure");
             *f = Instant::now().checked_sub(POWER_RETRY_BACKOFF);
         }
         assert!(coord.retry_if_due());

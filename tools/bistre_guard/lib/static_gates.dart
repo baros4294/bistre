@@ -107,8 +107,16 @@ String _rustRuntimePart(String content) {
   return idx == -1 ? content : content.substring(0, idx);
 }
 
-/// `src/**/tests.rs` declared by a sibling `#[cfg(test)] mod tests;` (split-out unit tests).
+/// Split-out unit tests: `src/**/tests.rs` declared by a sibling `#[cfg(test)] mod tests;`,
+/// or `src/**/<name>_tests.rs` declared by `<name>.rs` via `#[path = "<name>_tests.rs"]`.
 bool _isRustTestModule(Directory root, String rel) {
+  if (rel.endsWith('_tests.rs')) {
+    final slash = rel.lastIndexOf('/');
+    final name = rel.substring(slash + 1, rel.length - '_tests.rs'.length);
+    final parent = File('${root.path}/${rel.substring(0, slash + 1)}$name.rs');
+    return parent.existsSync() &&
+        parent.readAsStringSync().contains('#[path = "${name}_tests.rs"]');
+  }
   if (!rel.endsWith('/tests.rs')) return false;
   final dir = rel.substring(0, rel.length - 'tests.rs'.length);
   final decl = RegExp(r'#\[cfg\(test\)\]\s*mod tests;');
@@ -322,10 +330,27 @@ void checkErrorSilencing(
 ) {
   final rustDiscard = RegExp(r'\blet _\s*=');
   final dartCatch = RegExp(r'catch\s*\([^)]*\)\s*\{');
+  // Storage and vault results whose error is dropped (`.ok()` or `if let Ok(..)`) in
+  // non-test Rust: the failure mode behind empty histories and lost run states.
+  final silencedStore = RegExp(
+    r'((storage|vault)\s*\.\s*\w+\([^;]*?\)\s*\.ok\(\))|(if let Ok\([^)]*\)\s*=\s*(self\.)?(storage|vault)\s*\.)',
+    dotAll: true,
+  );
   for (final rel in files) {
     if (_isGenerated(rel)) continue;
     if (rel.startsWith('crates/') && rel.endsWith('.rs')) {
-      final lines = _read(root, rel).split('\n');
+      final content = _read(root, rel);
+      final testStart = content.indexOf('#[cfg(test)]');
+      final prod = rel.endsWith('/tests.rs') || _isRustTestModule(root, rel)
+          ? ''
+          : (testStart < 0 ? content : content.substring(0, testStart));
+      for (final m in silencedStore.allMatches(prod)) {
+        final line = '\n'.allMatches(prod.substring(0, m.start)).length + 1;
+        errors.add(
+          '[error-silencing] $rel:$line drops a storage/vault error (`.ok()` or `if let Ok`); propagate it or log it with its key.',
+        );
+      }
+      final lines = content.split('\n');
       for (var i = 0; i < lines.length; i++) {
         final line = lines[i].trimLeft();
         if (!line.startsWith('//') && rustDiscard.hasMatch(line)) {

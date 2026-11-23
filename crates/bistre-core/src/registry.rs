@@ -9,6 +9,7 @@
 //!   tokens; JSON floats are re-read from their shortest decimal text, never multiplied as `f64`.
 //! - Catalog GETs carry no identifiers and go through `PublicWebTransport`.
 
+use bistre_protocol::lock_or_recover;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -301,9 +302,7 @@ impl PricingRegistry {
     }
 
     fn sync_due(&self) -> bool {
-        let Ok(clock) = self.clock.lock() else {
-            return false;
-        };
+        let clock = lock_or_recover(&self.clock, "clock");
         let fresh = clock
             .last_success
             .is_some_and(|t| t.elapsed() < REGISTRY_TTL);
@@ -341,7 +340,8 @@ impl PricingRegistry {
                 any |= !entries.is_empty();
                 registry.publish(entries);
             }
-            if let Ok(mut clock) = registry.clock.lock() {
+            {
+                let mut clock = lock_or_recover(&registry.clock, "clock");
                 if any {
                     clock.last_success = Some(Instant::now());
                 } else {

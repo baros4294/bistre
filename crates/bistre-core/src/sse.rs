@@ -219,6 +219,10 @@ impl StreamingTextBuffer {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "tests map errors to empty values that the following assertions reject"
+)]
 mod tests {
     use super::*;
 

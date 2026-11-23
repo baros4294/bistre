@@ -9,6 +9,7 @@
 pub mod containment;
 pub mod sealed;
 
+use bistre_protocol::lock_or_recover;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, RwLock};
@@ -303,10 +304,8 @@ impl LocalSecretVault {
         write_atomic_restricted(&self.vault_path, encoded.as_bytes())
     }
 
-    fn lock(&self) -> BistreResult<std::sync::MutexGuard<'_, ()>> {
-        self.lock
-            .lock()
-            .map_err(|_| BistreError::new(DiagnosticKey::CryptoVaultUnavailable))
+    fn lock(&self) -> std::sync::MutexGuard<'_, ()> {
+        lock_or_recover(&self.lock, "vault")
     }
 }
 
@@ -323,7 +322,7 @@ fn reject_reserved(key: &str) -> BistreResult<()> {
 impl SecretVault for LocalSecretVault {
     fn put(&self, key: &str, secret: &[u8]) -> BistreResult<()> {
         reject_reserved(key)?;
-        let _guard = self.lock()?;
+        let _guard = self.lock();
         let value = match &self.protection {
             #[cfg(windows)]
             VaultProtection::Dpapi => hex::encode(protect_bytes(secret)?),
@@ -342,7 +341,7 @@ impl SecretVault for LocalSecretVault {
 
     fn get(&self, key: &str) -> BistreResult<Option<Zeroizing<Vec<u8>>>> {
         reject_reserved(key)?;
-        let _guard = self.lock()?;
+        let _guard = self.lock();
         let map = self.read_map()?;
         let Some(value) = map.get(key) else {
             return Ok(None);
@@ -373,7 +372,7 @@ impl SecretVault for LocalSecretVault {
 
     fn delete(&self, key: &str) -> BistreResult<()> {
         reject_reserved(key)?;
-        let _guard = self.lock()?;
+        let _guard = self.lock();
         let mut map = self.read_map()?;
         if map.remove(key).is_some() {
             self.write_map(&map)?;
@@ -383,7 +382,7 @@ impl SecretVault for LocalSecretVault {
 
     fn contains(&self, key: &str) -> BistreResult<bool> {
         reject_reserved(key)?;
-        let _guard = self.lock()?;
+        let _guard = self.lock();
         Ok(self.read_map()?.contains_key(key))
     }
 }

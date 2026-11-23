@@ -70,24 +70,23 @@ pub(crate) async fn execute_durable_stream_loop(
     let is_local = crate::net::is_loopback_url(&provider.base_url);
 
     loop {
-        let all_nodes = storage.list_nodes(thread_id).unwrap_or_default();
-        let raw_history = collect_branch_ancestry(&all_nodes, &current_parent_id);
-        let pin_key = format!("thread_context_start:{thread_id}");
-        let pinned_start = storage.get_kv_meta(&pin_key).ok().flatten();
-        let history = compaction::enforce_role_alternation(compaction::project_effective_history(
-            &raw_history,
-            pinned_start.as_deref(),
-        ));
-        let is_write_mode = storage
-            .get_thread(thread_id)
-            .ok()
-            .flatten()
-            .is_some_and(|t| t.mode == ThreadMode::Write);
-        let effective_system_prompt = if is_write_mode {
-            compile_write_mode_system_prompt(storage, thread_id, system_prompt, &history)
-        } else {
-            system_prompt.to_owned()
-        };
+        // A storage failure here stops the run before any request: never send a paid request
+        // with a silently empty or partial history.
+        let (history, is_write_mode, effective_system_prompt) =
+            match load_turn_context(storage, thread_id, &current_parent_id, system_prompt) {
+                Ok(ctx) => ctx,
+                Err(err) => {
+                    failed_key = Some(err.key.as_key().to_owned());
+                    emit(
+                        events_tx,
+                        EngineEvent::DiagnosticRaised {
+                            key: err.key,
+                            detail_code: err.detail_code,
+                        },
+                    );
+                    break;
+                }
+            };
         // Wallet Shield: reserve spend for this paid request before it is sent (fail closed).
         let mut reservation = if is_local {
             None
@@ -118,8 +117,9 @@ pub(crate) async fn execute_durable_stream_loop(
             }
         };
         let mut activity = approval::RunActivity::start();
-        let step_rec = storage
-            .record_run_step(
+        let step_rec = note_write(
+            "run_step_record",
+            storage.record_run_step(
                 run_id.to_owned(),
                 step_index,
                 RunStepKind::LlmCall,
@@ -131,8 +131,8 @@ pub(crate) async fn execute_durable_stream_loop(
                 "{}".to_owned(),
                 0,
                 None,
-            )
-            .ok();
+            ),
+        );
 
         let delta_tx = events_tx.clone();
         let delta_thread = thread_id.to_owned();
@@ -273,7 +273,20 @@ pub(crate) async fn execute_durable_stream_loop(
                     }
                     let meta = meta_obj.to_string();
                     let final_text = if is_write_mode {
-                        let rules = storage.list_regex_rules().unwrap_or_default();
+                        let rules = match storage.list_regex_rules() {
+                            Ok(rules) => rules,
+                            Err(err) => {
+                                // Commit the unfiltered reply rather than lose it; say so.
+                                emit(
+                                    events_tx,
+                                    EngineEvent::DiagnosticRaised {
+                                        key: err.key,
+                                        detail_code: Some("regex_rules_unavailable".to_owned()),
+                                    },
+                                );
+                                Vec::new()
+                            }
+                        };
                         story::regex_pipeline::apply_regex_pipeline(
                             &res.full_text,
                             &rules,
@@ -360,10 +373,20 @@ pub(crate) async fn execute_durable_stream_loop(
                         ),
                     );
                 }
-                let branch = collect_branch_ancestry(
-                    &storage.list_nodes(thread_id).unwrap_or_default(),
-                    &current_parent_id,
-                );
+                let branch = match storage.list_nodes(thread_id) {
+                    Ok(nodes) => collect_branch_ancestry(&nodes, &current_parent_id),
+                    Err(read_err) => {
+                        failed_key = Some(read_err.key.as_key().to_owned());
+                        emit(
+                            events_tx,
+                            EngineEvent::DiagnosticRaised {
+                                key: read_err.key,
+                                detail_code: read_err.detail_code,
+                            },
+                        );
+                        break;
+                    }
+                };
                 if let Ok(summary) =
                     compaction::create_reversible_compaction(storage, thread_id, &branch, 4, None)
                 {
@@ -454,9 +477,20 @@ pub(crate) async fn execute_durable_stream_loop(
             break;
         }
 
-        let pending_steers = storage
-            .drain_pending_steering(thread_id.to_owned())
-            .unwrap_or_default();
+        let pending_steers = match storage.drain_pending_steering(thread_id.to_owned()) {
+            Ok(steers) => steers,
+            Err(err) => {
+                // The reply is committed; the queued follow-up could not be read. Surface it.
+                emit(
+                    events_tx,
+                    EngineEvent::DiagnosticRaised {
+                        key: err.key,
+                        detail_code: Some("steering_queue_unavailable".to_owned()),
+                    },
+                );
+                break;
+            }
+        };
         if pending_steers.is_empty() {
             break;
         }
@@ -473,13 +507,29 @@ pub(crate) async fn execute_durable_stream_loop(
                 pending_count: 0,
             },
         );
-        if let Ok(steer_user_node) = storage.append_node(
+        let appended = storage.append_node(
             thread_id.to_owned(),
             committed_assistant_id.or(Some(current_parent_id.clone())),
             NodeRole::User,
             steer_text.clone(),
             Some(serde_json::json!({ "steered_mid_run": true, "run_id": run_id }).to_string()),
-        ) {
+        );
+        let steer_user_node = match appended {
+            Ok(node) => node,
+            Err(err) => {
+                // The queued message was drained but could not be saved: stop and say so.
+                failed_key = Some(err.key.as_key().to_owned());
+                emit(
+                    events_tx,
+                    EngineEvent::DiagnosticRaised {
+                        key: err.key,
+                        detail_code: Some("steering_append_failed".to_owned()),
+                    },
+                );
+                break;
+            }
+        };
+        {
             step_index = step_index.saturating_add(1);
             note_write(
                 "run_step_record",
@@ -515,8 +565,6 @@ pub(crate) async fn execute_durable_stream_loop(
                     },
                 ),
             );
-        } else {
-            break;
         }
     }
 
@@ -527,7 +575,7 @@ pub(crate) async fn execute_durable_stream_loop(
     } else {
         RunStatus::Completed
     };
-    if let Ok(final_run) = storage.update_agent_run(
+    let final_update = storage.update_agent_run(
         run_id.to_owned(),
         AgentRunUpdate {
             status: Some(final_status),
@@ -537,9 +585,23 @@ pub(crate) async fn execute_durable_stream_loop(
             error_key: Some(failed_key),
             ..AgentRunUpdate::default()
         },
-    ) {
-        let ev = EngineEvent::RunStateChanged { run: final_run };
-        emit_logged(storage, events_tx, Some(thread_id.to_owned()), ev);
+    );
+    match final_update {
+        Ok(final_run) => {
+            let ev = EngineEvent::RunStateChanged { run: final_run };
+            emit_logged(storage, events_tx, Some(thread_id.to_owned()), ev);
+        }
+        Err(err) => {
+            // The run's final state was not saved; startup reconciliation will repair it.
+            tracing::error!(key = err.key.as_key(), "final run state write failed");
+            emit(
+                events_tx,
+                EngineEvent::DiagnosticRaised {
+                    key: err.key,
+                    detail_code: Some("run_final_state_write_failed".to_owned()),
+                },
+            );
+        }
     }
 
     (current_stream_node_id, cancelled)
@@ -550,11 +612,9 @@ pub(crate) fn compile_write_mode_system_prompt(
     thread_id: &str,
     base_system_prompt: &str,
     history: &[NodeRecord],
-) -> String {
-    let state = storage
-        .load_story_thread_state(thread_id)
-        .unwrap_or_default();
-    let all_cards = storage.list_character_cards().unwrap_or_default();
+) -> BistreResult<String> {
+    let state = storage.load_story_thread_state(thread_id)?;
+    let all_cards = storage.list_character_cards()?;
     let active_cards: Vec<_> = if state.active_character_ids.is_empty() {
         all_cards.into_iter().take(1).collect()
     } else {
@@ -563,15 +623,15 @@ pub(crate) fn compile_write_mode_system_prompt(
             .filter(|c| state.active_character_ids.contains(&c.id))
             .collect()
     };
-    let personas = storage.list_user_personas().unwrap_or_default();
+    let personas = storage.list_user_personas()?;
     let active_persona = state
         .user_persona_id
         .as_deref()
         .and_then(|pid| personas.iter().find(|p| p.id == pid))
         .or_else(|| personas.iter().find(|p| p.is_default));
-    let entries = storage.list_story_entries(None).unwrap_or_default();
-    let progressions = storage.list_story_progressions(None).unwrap_or_default();
-    let chapters = storage.list_story_chapters(thread_id).unwrap_or_default();
+    let entries = storage.list_story_entries(None)?;
+    let progressions = storage.list_story_progressions(None)?;
+    let chapters = storage.list_story_chapters(thread_id)?;
     let report = story::prompt_assembler::assemble_story_prompt(
         base_system_prompt,
         &state,
@@ -590,12 +650,12 @@ pub(crate) fn compile_write_mode_system_prompt(
         .map(|b| format!("[{}]\n{}", b.label, b.content))
         .collect::<Vec<_>>()
         .join("\n\n");
-    let rules = storage.list_regex_rules().unwrap_or_default();
-    if combined.trim().is_empty() {
+    let rules = storage.list_regex_rules()?;
+    Ok(if combined.trim().is_empty() {
         base_system_prompt.to_owned()
     } else {
         story::regex_pipeline::apply_regex_pipeline(&combined, &rules, "prompt_outgoing")
-    }
+    })
 }
 
 /// Returns the current Unix timestamp in milliseconds.
@@ -616,6 +676,32 @@ pub(crate) fn utc_day_start_unix_ms() -> i64 {
 
 /// Walks parent pointers backward from `leaf_id` to root so branching threads send
 /// only the active conversation branch (never sibling branches) to the LLM provider.
+/// Loads everything one model turn needs: the branch history (respecting the context pin),
+/// whether the thread is in Write mode, and the effective system prompt.
+fn load_turn_context(
+    storage: &Arc<StorageHandle>,
+    thread_id: &str,
+    parent_id: &str,
+    system_prompt: &str,
+) -> BistreResult<(Vec<NodeRecord>, bool, String)> {
+    let all_nodes = storage.list_nodes(thread_id)?;
+    let raw_history = collect_branch_ancestry(&all_nodes, parent_id);
+    let pinned_start = storage.get_kv_meta(&format!("thread_context_start:{thread_id}"))?;
+    let history = compaction::enforce_role_alternation(compaction::project_effective_history(
+        &raw_history,
+        pinned_start.as_deref(),
+    ));
+    let is_write_mode = storage
+        .get_thread(thread_id)?
+        .is_some_and(|t| t.mode == ThreadMode::Write);
+    let prompt = if is_write_mode {
+        compile_write_mode_system_prompt(storage, thread_id, system_prompt, &history)?
+    } else {
+        system_prompt.to_owned()
+    };
+    Ok((history, is_write_mode, prompt))
+}
+
 /// Reserves Wallet Shield spend for one paid request. The estimate prices the prompt's input
 /// tokens (about 4 characters each) when live rates are known; output is settled afterwards.
 async fn reserve_paid_request(

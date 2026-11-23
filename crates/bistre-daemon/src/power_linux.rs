@@ -6,6 +6,7 @@
 
 #![cfg(target_os = "linux")]
 
+use bistre_protocol::lock_or_recover;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 
@@ -63,14 +64,15 @@ impl PowerGuardBackend for LinuxPowerGuard {
             .spawn()
             .map_err(|_| BistreError::new(DiagnosticKey::PowerGuardDegraded))?;
 
-        if let Ok(mut guard) = self.holder.lock() {
+        {
+            let mut guard = lock_or_recover(&self.holder, "holder");
             *guard = Some(child);
         }
         Ok(true)
     }
 
     fn release(&self) {
-        let taken = self.holder.lock().ok().and_then(|mut g| g.take());
+        let taken = lock_or_recover(&self.holder, "holder").take();
         if let Some(mut child) = taken {
             // `kill` fails only when the inhibitor already exited; `wait` then reaps it.
             if child.kill().is_err() {

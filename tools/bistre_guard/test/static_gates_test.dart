@@ -143,6 +143,18 @@ void main() {
     expect(errors, hasLength(2));
   });
 
+  test('dropped storage and vault errors are rejected outside tests', () {
+    final errors = _run(checkErrorSilencing, <String, Object>{
+      'crates/a/src/run.rs': 'fn f() {\n    let x = storage\n        .list_nodes(id)\n        .ok();\n    if let Ok(n) = storage.append_node(a) {}\n    let y = storage.list_nodes(id)?;\n}\n#[cfg(test)]\nmod tests { fn t() { let z = storage.list_nodes(id).ok(); } }\n',
+      'crates/a/src/tests.rs':
+          'fn t() { let z = storage.list_nodes(id).ok(); }\n',
+    });
+    final joined = errors.join('\n');
+    expect(joined, contains('run.rs:2 drops a storage/vault error'));
+    expect(joined, contains('run.rs:5 drops a storage/vault error'));
+    expect(errors, hasLength(2), reason: joined);
+  });
+
   test('AGENTS.md budget and markdown anchors are enforced', () {
     final (root, rels) = _repo(<String, Object>{
       'AGENTS.md': 'x' * (maxAgentsChars + 1),

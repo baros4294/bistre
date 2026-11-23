@@ -9,6 +9,7 @@
 
 #![cfg(windows)]
 
+use bistre_protocol::lock_or_recover;
 use std::sync::{Arc, Mutex};
 
 use bistre_core::power::{PowerCoordinator, PowerGuardBackend, PowerLeasePolicy};
@@ -106,7 +107,8 @@ impl PowerGuardBackend for Win32PowerGuard {
             return Err(BistreError::new(DiagnosticKey::PowerGuardDegraded));
         }
 
-        if let Ok(mut guard) = self.active.lock() {
+        {
+            let mut guard = lock_or_recover(&self.active, "active");
             *guard = Some(ActiveHandle {
                 raw: handle as isize,
                 display_held,
@@ -120,7 +122,7 @@ impl PowerGuardBackend for Win32PowerGuard {
         reason = "Audited Win32 PowerClearRequest/CloseHandle FFI cleanup isolated to bistre-daemon."
     )]
     fn release(&self) {
-        let taken = self.active.lock().ok().and_then(|mut g| g.take());
+        let taken = lock_or_recover(&self.active, "active").take();
         if let Some(active) = taken {
             let handle = active.raw as HANDLE;
             // SAFETY: `handle` is a valid non-null power request handle owned exclusively by `active`.

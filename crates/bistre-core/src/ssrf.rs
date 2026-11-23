@@ -13,7 +13,6 @@
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
-use std::time::Duration;
 
 use bistre_protocol::{BistreError, BistreResult, DiagnosticKey};
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
@@ -51,16 +50,7 @@ fn blocked(detail: &str) -> BistreError {
 impl PublicWebTransport {
     /// Builds the hardened client; on failure the transport is permanently fail-closed.
     pub fn new() -> Self {
-        crate::providers::ensure_tls_provider();
-        let client = reqwest::Client::builder()
-            .user_agent(concat!("Bistre/", env!("CARGO_PKG_VERSION")))
-            .no_proxy()
-            .redirect(reqwest::redirect::Policy::none())
-            .dns_resolver(Arc::new(PublicOnlyDnsResolver))
-            .connect_timeout(Duration::from_secs(10))
-            .read_timeout(Duration::from_secs(30))
-            .timeout(Duration::from_secs(60))
-            .build()
+        let client = crate::http_clients::public_web_client(Arc::new(PublicOnlyDnsResolver))
             .map_err(|_| blocked("public_transport_init_failed"));
         Self { client }
     }

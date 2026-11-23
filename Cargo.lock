@@ -266,6 +266,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
@@ -274,6 +275,7 @@ version = "0.1.0"
 dependencies = [
  "bistre-protocol",
  "rusqlite",
+ "serde",
  "serde_json",
  "tempfile",
  "tracing",

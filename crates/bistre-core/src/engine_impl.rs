@@ -15,6 +15,7 @@ use super::{
 };
 use crate::engine_runs::{utc_day_start_unix_ms, utc_now_unix_ms};
 use crate::events::{emit, emit_logged, note_write};
+use bistre_protocol::lock_or_recover;
 
 impl EngineClient for InProcessEngine {
     fn health(&self) -> BoxFuture<'_, BistreResult<AppHealthSnapshot>> {
@@ -489,9 +490,7 @@ impl EngineClient for InProcessEngine {
                 self.ota_release_key.get().map(String::as_str),
             )
             .await?;
-            *self.verified_update.lock().map_err(|_| {
-                BistreError::with_detail(DiagnosticKey::InternalError, "ota_state_lock")
-            })? = Some(verified);
+            *lock_or_recover(&self.verified_update, "verified_update") = Some(verified);
             Ok(summary)
         })
     }
@@ -500,12 +499,7 @@ impl EngineClient for InProcessEngine {
         Box::pin(async move {
             // The UI only chooses *which* checked version to stage; every URL, digest, and size
             // comes from the core-held signed manifest.
-            let verified = self
-                .verified_update
-                .lock()
-                .map_err(|_| {
-                    BistreError::with_detail(DiagnosticKey::InternalError, "ota_state_lock")
-                })?
+            let verified = lock_or_recover(&self.verified_update, "verified_update")
                 .clone()
                 .filter(|m| m.latest_version() == check.latest_version)
                 .ok_or_else(|| {
@@ -526,9 +520,8 @@ impl EngineClient for InProcessEngine {
 
     fn cancel_active_run(&self, thread_id: String) -> BoxFuture<'_, BistreResult<bool>> {
         Box::pin(async move {
-            if let Ok(guard) = self.cancellations.lock()
-                && let Some(flag) = guard.get(&thread_id)
-            {
+            let guard = lock_or_recover(&self.cancellations, "cancellations");
+            if let Some(flag) = guard.get(&thread_id) {
                 flag.store(true, Ordering::SeqCst);
                 self.wake_run(&thread_id);
                 return Ok(true);
@@ -1065,7 +1058,7 @@ impl EngineClient for InProcessEngine {
         &self,
         workspace_root: String,
     ) -> BoxFuture<'_, BistreResult<Vec<hooks::WorkspaceHookConfig>>> {
-        Box::pin(async move { Ok(hooks::load_workspace_hooks(Path::new(&workspace_root))) })
+        Box::pin(async move { hooks::load_workspace_hooks(Path::new(&workspace_root)) })
     }
 
     fn list_cron_jobs(&self) -> BoxFuture<'_, BistreResult<Vec<CronJobRecord>>> {
@@ -1332,7 +1325,8 @@ impl EngineClient for InProcessEngine {
 
     fn shutdown(&self) -> BoxFuture<'_, BistreResult<()>> {
         Box::pin(async move {
-            if let Ok(guard) = self.cancellations.lock() {
+            {
+                let guard = lock_or_recover(&self.cancellations, "cancellations");
                 for flag in guard.values() {
                     flag.store(true, Ordering::SeqCst);
                 }

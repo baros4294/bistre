@@ -97,11 +97,19 @@ pub fn handle_power_event(
                     paused_runs = paused,
                     "checkpointed active runs to sleep_paused before OS suspend/timeout"
                 );
-                if let Ok(runs) = storage.list_agent_runs(None, true, 50) {
-                    for run in runs {
-                        let ev = EngineEvent::RunStateChanged { run };
-                        emit_logged(storage, events_tx, None, ev);
+                match storage.list_agent_runs(None, true, 50) {
+                    Ok(runs) => {
+                        for run in runs {
+                            let ev = EngineEvent::RunStateChanged { run };
+                            emit_logged(storage, events_tx, None, ev);
+                        }
                     }
+                    // The runs are checkpointed; only the UI refresh is lost, and it reloads runs
+                    // on resume.
+                    Err(err) => tracing::warn!(
+                        key = err.key.as_key(),
+                        "listing runs after suspend checkpoint failed"
+                    ),
                 }
             }
             Ok(Vec::new())

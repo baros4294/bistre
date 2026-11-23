@@ -1288,6 +1288,24 @@ pub enum EngineEvent {
     },
 }
 
+/// Locks `mutex`, recovering the inner value if a previous holder panicked.
+///
+/// The one sanctioned `Mutex::lock` call site (`clippy.toml` bans the raw method). Bistre's
+/// mutexes guard plain data that stays valid after a panic, so recovery is correct; it is logged
+/// with `what` so a poisoned lock is never silent, and callers never lose a write (such as a
+/// Stop request) because of an old panic.
+pub fn lock_or_recover<'a, T>(
+    mutex: &'a std::sync::Mutex<T>,
+    what: &'static str,
+) -> std::sync::MutexGuard<'a, T> {
+    #[expect(clippy::disallowed_methods, reason = "the single sanctioned lock site")]
+    let result = mutex.lock();
+    result.unwrap_or_else(|poisoned| {
+        tracing::error!(lock = what, "mutex poisoned; recovering its data");
+        poisoned.into_inner()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

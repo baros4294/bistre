@@ -1271,12 +1271,12 @@ mod spill_tests {
                 .complete_run_step(step.id.clone(), "completed".to_owned(), big.clone(), 5)
                 .is_ok()
         );
-        let listed = storage.list_run_steps(&run.id).unwrap_or_default();
-        assert!(
-            listed
+        let listed = storage.list_run_steps(&run.id);
+        assert!(listed.is_ok_and(|steps| {
+            steps
                 .first()
                 .is_some_and(|s| s.output_json.len() < 8 * 1024)
-        );
+        }));
         assert_eq!(
             storage.load_run_step_output(&step.id).ok().flatten(),
             Some(big)

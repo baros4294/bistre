@@ -13,6 +13,7 @@ pub mod story;
 #[cfg(test)]
 mod tests;
 
+use bistre_protocol::lock_or_recover;
 use catalog_repo::normalize_topic;
 use schema::{
     configure_connection, ensure_default_assistant_if_empty, ensure_default_workspace,
@@ -636,7 +637,11 @@ impl StorageHandle {
             .optional()
             .map_err(map_sqlite_err)?;
         match raw {
-            Some(json) => Ok(serde_json::from_str::<AppSettings>(&json).unwrap_or_default()),
+            // Corrupt settings must not silently reset safety settings (such as the spending
+            // limit) to defaults; the error surfaces and saving new settings replaces the row.
+            Some(json) => serde_json::from_str::<AppSettings>(&json).map_err(|_| {
+                BistreError::with_detail(DiagnosticKey::InvalidInput, "settings_json_corrupt")
+            }),
             None => Ok(AppSettings::default()),
         }
     }
@@ -1034,9 +1039,8 @@ impl StorageHandle {
         let stats = reply_rx
             .recv()
             .unwrap_or_else(|_| Err(BistreError::new(DiagnosticKey::RuntimeNotInitialized)));
-        if let Ok(mut guard) = self.writer_thread.lock()
-            && let Some(handle) = guard.take()
-        {
+        let mut guard = lock_or_recover(&self.writer_thread, "writer_thread");
+        if let Some(handle) = guard.take() {
             join_writer(handle);
         }
         stats
@@ -1045,9 +1049,8 @@ impl StorageHandle {
 
 impl Drop for StorageHandle {
     fn drop(&mut self) {
-        if let Ok(mut guard) = self.writer_thread.lock()
-            && let Some(handle) = guard.take()
-        {
+        let mut guard = lock_or_recover(&self.writer_thread, "writer_thread");
+        if let Some(handle) = guard.take() {
             let (reply_tx, _reply_rx) = mpsc::sync_channel(1);
             if self
                 .writer_tx

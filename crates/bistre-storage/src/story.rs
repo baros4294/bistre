@@ -640,16 +640,15 @@ impl StorageHandle {
                     let lib_i64: i64 = row.get(11)?;
                     Ok(StoryThreadStateRecord {
                         thread_id: row.get(0)?,
-                        active_character_ids: serde_json::from_str(&chars_raw).unwrap_or_default(),
+                        active_character_ids: json_column(&chars_raw)?,
                         user_persona_id: row.get(2)?,
-                        active_book_ids: serde_json::from_str(&books_raw).unwrap_or_default(),
+                        active_book_ids: json_column(&books_raw)?,
                         author_note: row.get(4)?,
                         author_note_depth: row.get(5)?,
                         story_memory: row.get(6)?,
                         group_turn_mode: row.get(7)?,
                         dialogue_styling: dialogue_i64 != 0,
-                        samplers: serde_json::from_str::<CreativeSamplerConfig>(&samplers_raw)
-                            .unwrap_or_default(),
+                        samplers: json_column::<CreativeSamplerConfig>(&samplers_raw)?,
                         prewriter_enabled: pre_i64 != 0,
                         librarian_enabled: lib_i64 != 0,
                         current_chapter_order: row.get(12)?,
@@ -822,11 +821,11 @@ fn map_character_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CharacterCardR
         personality: row.get(5)?,
         scenario: row.get(6)?,
         first_message: row.get(7)?,
-        alternate_greetings: serde_json::from_str(&alt_raw).unwrap_or_default(),
+        alternate_greetings: json_column(&alt_raw)?,
         system_prompt: row.get(9)?,
         post_history_instructions: row.get(10)?,
         creator_notes: row.get(11)?,
-        tags: serde_json::from_str(&tags_raw).unwrap_or_default(),
+        tags: json_column(&tags_raw)?,
         avatar_path: row.get(13)?,
         extensions_json: row.get(14)?,
         updated_at_ms: row.get(15)?,
@@ -846,8 +845,8 @@ fn map_story_entry_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoryEntryRe
         book_id: row.get(1)?,
         category: row.get(2)?,
         name: row.get(3)?,
-        keys: serde_json::from_str(&keys_raw).unwrap_or_default(),
-        secondary_keys: serde_json::from_str(&sec_raw).unwrap_or_default(),
+        keys: json_column(&keys_raw)?,
+        secondary_keys: json_column(&sec_raw)?,
         selective_logic: row.get(6)?,
         content: row.get(7)?,
         insertion_order: row.get(8)?,
@@ -861,7 +860,7 @@ fn map_story_entry_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoryEntryRe
         sticky_turns: row.get(16)?,
         cooldown_turns: row.get(17)?,
         delay_turns: row.get(18)?,
-        decorators: serde_json::from_str(&dec_raw).unwrap_or_default(),
+        decorators: json_column(&dec_raw)?,
         enabled: en_i != 0,
         updated_at_ms: row.get(21)?,
     })
@@ -875,5 +874,13 @@ fn map_progression_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoryProgres
         scene_order: row.get(3)?,
         delta_text: row.get(4)?,
         created_at_ms: row.get(5)?,
+    })
+}
+
+/// Decodes a JSON column written by this crate. Corrupt data is a storage error, never a silent
+/// empty default.
+fn json_column<T: serde::de::DeserializeOwned>(raw: &str) -> rusqlite::Result<T> {
+    serde_json::from_str(raw).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e))
     })
 }
