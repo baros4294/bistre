@@ -307,4 +307,23 @@ void main() {
       await gw.shutdown();
     },
   );
+
+  test('a failed first load reports failure and Try again recovers', () async {
+    final l10n = loadDiskCatalogs();
+    final gw = GalleryGateway(connected: true)..failInitTimes = 1;
+    final ctrl = FolioController(
+      gateway: gw,
+      defaultThreadTitle: l10n.t(L10nKey.shellThreadDefaultTitle),
+      onLocaleSynced: l10n.setLocale,
+      isDevEnvironment: true,
+    );
+    expect(ctrl.bootState, BootState.loading);
+    await ctrl.bootstrap('memory');
+    expect(ctrl.bootState, BootState.failed);
+    await ctrl.retryBootstrap();
+    expect(ctrl.bootState, BootState.ready);
+    expect(ctrl.threads, isNotEmpty);
+    ctrl.dispose();
+    await gw.shutdown();
+  });
 }
