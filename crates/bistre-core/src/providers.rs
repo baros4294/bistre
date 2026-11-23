@@ -395,14 +395,28 @@ where
         } else {
             INITIAL_LINE_TIMEOUT
         };
-        let next_chunk = tokio::time::timeout(idle, resp.chunk())
-            .await
-            .map_err(|_| {
-                BistreError::with_detail(DiagnosticKey::ProviderStreamInterrupted, "idle_timeout")
-            })?
-            .map_err(|_| {
-                BistreError::with_detail(DiagnosticKey::ProviderStreamInterrupted, "stream_io")
-            })?;
+        let next_chunk = match tokio::time::timeout(idle, resp.chunk()).await {
+            Ok(Ok(chunk)) => chunk,
+            failure => {
+                let detail = if failure.is_err() {
+                    "idle_timeout"
+                } else {
+                    "stream_io"
+                };
+                // Once any output reached the user the request is paid and visible: keep it and
+                // mark the reply interrupted. Only a stream that produced nothing may be retried.
+                if crate::error_policy::may_retry_stream(&state.out.full_text, 0)
+                    && state.out.thinking_text.is_empty()
+                {
+                    return Err(BistreError::with_detail(
+                        DiagnosticKey::ProviderStreamInterrupted,
+                        detail,
+                    ));
+                }
+                state.out.interrupted = true;
+                break;
+            }
+        };
         let Some(bytes) = next_chunk else {
             break;
         };
@@ -1430,5 +1444,73 @@ mod tests {
             !seen.last().is_some_and(|r| r.contains("stream_options")),
             "healed resend must drop stream_options"
         );
+    }
+
+    #[tokio::test]
+    async fn a_stream_that_breaks_after_output_is_kept_not_retried()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let server = tokio::spawn(async move {
+            if let Ok((mut sock, _)) = listener.accept().await {
+                let mut buf = [0_u8; 8192];
+                let _read = sock.read(&mut buf).await;
+                let body = "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n";
+                // Promise far more bytes than are sent, then drop: the body read fails mid-stream.
+                let head = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: 100000\r\n\r\n";
+                let _w = sock.write_all(head.as_bytes()).await;
+                let _w = sock.write_all(body.as_bytes()).await;
+                let _f = sock.flush().await;
+            }
+        });
+        let http = build_http_client()?;
+        let provider = ProviderProfile {
+            id: "p".to_owned(),
+            name: "Local".to_owned(),
+            dialect: ProviderDialect::CustomOpenAi,
+            base_url: format!("http://{addr}/v1"),
+            default_model: "m".to_owned(),
+            key_hint: String::new(),
+            has_api_key: true,
+            is_enabled: true,
+            is_builtin: false,
+            use_server_state_cache: false,
+            icon_slug: String::new(),
+            custom_icon_path: String::new(),
+            created_at_ms: 0,
+            updated_at_ms: 0,
+        };
+        let ring = KeyRing::new(vec![zeroize::Zeroizing::new("k".to_owned())]);
+        let cancel = AtomicBool::new(false);
+        let history = vec![NodeRecord {
+            id: "u".to_owned(),
+            thread_id: "t".to_owned(),
+            parent_id: None,
+            role: NodeRole::User,
+            content: "hello".to_owned(),
+            provider_meta_json: None,
+            created_at_ms: 0,
+        }];
+        let outcome = stream_completion(
+            &http,
+            &provider,
+            &ring,
+            "m",
+            "",
+            &history,
+            GenerationParams::default(),
+            true,
+            &cancel,
+            |_| {},
+        )
+        .await?;
+        server.await?;
+        assert_eq!(outcome.full_text, "partial");
+        assert!(
+            outcome.interrupted,
+            "a broken stream with output is an interrupted reply, not an error"
+        );
+        Ok(())
     }
 }
