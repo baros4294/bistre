@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bistre_app/bridge/bistre_engine.dart';
+import 'package:bistre_app/design/bistre_controls.dart';
 import 'package:bistre_app/design/bistre_icons.dart';
 import 'package:bistre_app/design/bistre_theme.dart';
 import 'package:bistre_app/design/ink_primitives.dart';
@@ -502,4 +503,36 @@ void main() {
     expect(text, findsOneWidget);
     expect(Directionality.of(tester.element(text)), TextDirection.ltr);
   });
+
+  testWidgets(
+    'the composer thinking chip opens a slider that sets the effort',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1320, 820);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final (ctrl, gw, l10n) = await boot();
+      await tester.pumpWidget(
+        BistreApp(l10nController: l10n, folioController: ctrl),
+      );
+      await tester.pumpAndSettle();
+
+      String chip(L10nKey level) => l10n.t(
+        L10nKey.chatThinkingChip,
+        <String, Object?>{'level': l10n.t(level)},
+      );
+      expect(find.text(chip(L10nKey.chatEffortAuto)), findsOneWidget);
+      await tester.tap(find.text(chip(L10nKey.chatEffortAuto)));
+      await tester.pumpAndSettle();
+      final slider = find.byType(BistreSlider);
+      expect(slider, findsOneWidget);
+      tester.widget<BistreSlider>(slider).onChanged(5); // Extra
+      await tester.pumpAndSettle();
+      expect(ctrl.settings.reasoningEffort, 'xhigh');
+      expect(find.text(chip(L10nKey.chatEffortExtra)), findsOneWidget);
+
+      ctrl.dispose();
+      await gw.shutdown();
+    },
+  );
 }

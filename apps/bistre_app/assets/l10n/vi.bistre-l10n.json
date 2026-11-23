@@ -3744,6 +3744,46 @@
       "tone": "calm_editorial",
       "max_chars": 4,
       "placeholders": {}
+    },
+    "chat.effort_auto": {
+      "message": "Tự động",
+      "context": "Thinking effort: let the model decide (nothing is sent)",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "chat.effort_extra": {
+      "message": "Rất cao",
+      "context": "Thinking effort above High",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "chat.effort_max": {
+      "message": "Tối đa",
+      "context": "Highest thinking effort",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "chat.thinking_chip": {
+      "message": "Suy nghĩ: {level}",
+      "context": "Composer chip showing the thinking effort; opens a slider",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {
+        "level": {
+          "type": "String",
+          "example": "Medium"
+        }
+      }
+    },
+    "chat.thinking_hint": {
+      "message": "Chỉ gửi cho mô hình có khả năng suy nghĩ. Tự động để mô hình tự quyết.",
+      "context": "Hint under the thinking effort slider",
+      "tone": "calm_editorial",
+      "max_chars": 90,
+      "placeholders": {}
     }
   }
 }

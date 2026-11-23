@@ -33,6 +33,8 @@
 - **Split diff**: tool diffs render unified; when the timeline is at least `kSplitDiffMinWidth` (720 px) wide after dividing by the text scale, a `Split` / `Unified` toggle shows old | new columns. `pairSplitDiffRows` aligns each run of removals with the additions that follow; context lines appear on both sides and headers span both; diffs are always LTR.
 - **Unavailable cost**: `NodeUsageMeta.costKnown` reads the node's `cost_known`. An unpriced reply shows no price, only a quiet `BistreUiIcon.info` button (`apps/bistre_app/lib/features/chat/cost_unavailable_button.dart`) whose popover explains that the reply counts as `$0` toward the daily limit and lists the model and token counts (Spec 06). Tests: `apps/bistre_app/test/diff_and_cost_test.dart`.
 
+- **Thinking control (2026-11-24)**: the composer has a `Thinking: <level>` chip (`features/chat/thinking_control.dart`). It opens a popover above itself with a seven-stop `BistreSlider`: Auto, Off, Low, Medium, High, Extra, Max. This matches v2.6.0 `ThinkingControl`, which has six stops; Auto is extra, so the model decides. Settings and the chat inspector use the same stops (`kThinkingStops`).
+
 ## 4. Parchment v2.6.0 UX Parity (Open)
 
 > **Reopened 2026-11-24 (owner review)**: the rows below compared static gallery screenshots only. A code audit of v2.6.0 found many missing behaviours: the clickable context-ring breakdown, the thinking/effort slider, the tools drawer, press/hover feedback, disclosure animation, smooth wheel scrolling, the streaming pacer, full-width settings, theme presets, the profile, and more. Until this table is rebuilt from that audit, treat every "Closed" as unverified. The audit is in `docs/SLICE-0-HANDOFF.md` §22.
