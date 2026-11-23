@@ -203,6 +203,7 @@ class FolioController extends ChangeNotifier {
     customAccentHex: _settings.customAccentHex,
     typography: resolvedTypography,
     reducedEffects: _lowMemoryMode,
+    reduceMotion: _settings.reduceMotionOverride,
   );
 
   /// Background refresh failures never interrupt the user; they are logged with their
