@@ -193,3 +193,15 @@ Recorded **2026-11-21** after completing Commit-1 Repo Fortress, Spec Pack, Day-
 - **Guard rule** (`baros4294/bistre#13`): `[silent-skip]` rejects `let x = e.ok(); let Some(x) = x else { return };` in Rust.
 - **Remaining 25: convert on touch (owner decision 2026-11-24)**. The other endpoints are the six harness ones (`execute_workspace_tool_json`, `discover_local_servers_json`, `discover_mcp_server_json`, `call_mcp_tool_json`, `discover_workspace_skills_json`, `prepare_subagent_sandbox_json`) and all 19 in `api/story.rs`. A key-by-key audit of every Dart `fromJson`/`toJson` against its Rust record found them all in sync, and the live FFI round-trip already exercises the story upserts at runtime. Converting all 25 now (~1,500 lines) would buy compile-time drift protection but fix no bug, so whoever changes one of these endpoints converts it in the same change: a DTO with `From`, Dart mapping, deleted `fromJson`/`toJson`, and a live round-trip check.
 - **Verification (local, Windows)**: `cargo clippy -p bistre-ffi -D warnings` clean; `flutter analyze` clean; `flutter test` 38/38 including the live FFI round-trip (cron and memory).
+
+## 18. Plan Status After M7-M16 (2026-11-24)
+- **Merged since §12**: rebuild isolation (#8); Rust tests report their errors (#9) and no longer pass silently (#12), plus the `[silent-skip]` guard (#13); shared CI provisioning scripts (#10); long storage calls off the async workers (#11); the context gauge uses core's estimate (#12); typed DTOs for cron, checkpoints, and memory, which fixed empty checkpoint hashes (#14); Gradle cache and 429-aware download retries for Android CI (#15).
+- **Measured, not built** (Spec 11 §2): the reader pool (~56 µs per connection open against ~1.1 ms per read) and chat-history paging (~8 ms for 2,000 messages). Rebuild either one only after a re-measure crosses its stated trigger.
+- **Owner decisions**: idle RSS is reported only on the xvfb runner (§12); the remaining 25 `*_json` endpoints convert to typed DTOs on touch (§17).
+- **Blocked on native tool calling / reasoning replay** (a separate slice): the Thinking tool count, the tool timeline, 16-step quantized tool compaction, and the 8,000-char reasoning handoff (Spec 02 §42).
+- **Still open**:
+  - Linux gallery goldens: needs a Linux run to produce the baseline PNGs; a CI job could upload them for review.
+  - Idle RSS on a GPU or Windows release build: local `flutter build windows` lacks a Visual Studio toolchain.
+  - The 120 Hz streaming p95 (7.5 ms): the debug test VM measures 7.6-12.5 ms across CI runs, which is runner noise more than signal, so it needs a profile-mode measurement.
+  - 127 `.ok()` test sites in `assert_eq!(x.map(..), Some(..))` form: they fail loudly; convert as touched.
+- **Owner action**: provision the minisign release key (§11); OTA and tag releases stay disabled until then.
