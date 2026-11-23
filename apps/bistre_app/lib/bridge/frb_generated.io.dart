@@ -45,6 +45,9 @@ abstract class BistreRustLibApiImplPlatform
   FfiAppSettings dco_decode_box_autoadd_ffi_app_settings(dynamic raw);
 
   @protected
+  FfiCronJob dco_decode_box_autoadd_ffi_cron_job(dynamic raw);
+
+  @protected
   FfiDraftRecord dco_decode_box_autoadd_ffi_draft_record(dynamic raw);
 
   @protected
@@ -69,6 +72,9 @@ abstract class BistreRustLibApiImplPlatform
 
   @protected
   FfiAssistantRecord dco_decode_ffi_assistant_record(dynamic raw);
+
+  @protected
+  FfiCronJob dco_decode_ffi_cron_job(dynamic raw);
 
   @protected
   FfiDraftRecord dco_decode_ffi_draft_record(dynamic raw);
@@ -114,6 +120,9 @@ abstract class BistreRustLibApiImplPlatform
 
   @protected
   List<FfiAssistantRecord> dco_decode_list_ffi_assistant_record(dynamic raw);
+
+  @protected
+  List<FfiCronJob> dco_decode_list_ffi_cron_job(dynamic raw);
 
   @protected
   List<FfiNodeRecord> dco_decode_list_ffi_node_record(dynamic raw);
@@ -197,6 +206,9 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  FfiCronJob sse_decode_box_autoadd_ffi_cron_job(SseDeserializer deserializer);
+
+  @protected
   FfiDraftRecord sse_decode_box_autoadd_ffi_draft_record(
     SseDeserializer deserializer,
   );
@@ -229,6 +241,9 @@ abstract class BistreRustLibApiImplPlatform
   FfiAssistantRecord sse_decode_ffi_assistant_record(
     SseDeserializer deserializer,
   );
+
+  @protected
+  FfiCronJob sse_decode_ffi_cron_job(SseDeserializer deserializer);
 
   @protected
   FfiDraftRecord sse_decode_ffi_draft_record(SseDeserializer deserializer);
@@ -290,6 +305,9 @@ abstract class BistreRustLibApiImplPlatform
   List<FfiAssistantRecord> sse_decode_list_ffi_assistant_record(
     SseDeserializer deserializer,
   );
+
+  @protected
+  List<FfiCronJob> sse_decode_list_ffi_cron_job(SseDeserializer deserializer);
 
   @protected
   List<FfiNodeRecord> sse_decode_list_ffi_node_record(
@@ -395,6 +413,12 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  void sse_encode_box_autoadd_ffi_cron_job(
+    FfiCronJob self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_ffi_draft_record(
     FfiDraftRecord self,
     SseSerializer serializer,
@@ -438,6 +462,9 @@ abstract class BistreRustLibApiImplPlatform
     FfiAssistantRecord self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_ffi_cron_job(FfiCronJob self, SseSerializer serializer);
 
   @protected
   void sse_encode_ffi_draft_record(
@@ -517,6 +544,12 @@ abstract class BistreRustLibApiImplPlatform
   @protected
   void sse_encode_list_ffi_assistant_record(
     List<FfiAssistantRecord> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_ffi_cron_job(
+    List<FfiCronJob> self,
     SseSerializer serializer,
   );
 

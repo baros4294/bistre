@@ -239,26 +239,81 @@ pub async fn load_skill_body(workspace_root: String, skill_path: String) -> Resu
 
 /// Lists all scheduled cron/timer automation jobs as JSON.
 #[frb]
-pub async fn list_cron_jobs_json() -> Result<String, String> {
-    let engine = current_engine()?;
-    let jobs = engine
+pub async fn list_cron_jobs() -> Result<Vec<FfiCronJob>, String> {
+    let jobs = current_engine()?
         .list_cron_jobs()
         .await
         .map_err(crate::dto_mapping::ffi_err)?;
-    serde_json::to_string(&jobs).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
+    Ok(jobs.into_iter().map(FfiCronJob::from).collect())
 }
 
-/// Creates or updates a scheduled cron/timer automation job from JSON and returns the saved JSON.
+/// Creates or updates a scheduled cron/timer automation job and returns the saved job.
 #[frb]
-pub async fn upsert_cron_job_json(job_json: String) -> Result<String, String> {
-    let engine = current_engine()?;
-    let parsed: bistre_protocol::CronJobRecord = serde_json::from_str(&job_json)
-        .map_err(|_| DiagnosticKey::InvalidInput.as_key().to_owned())?;
-    let saved = engine
-        .upsert_cron_job(parsed)
+pub async fn upsert_cron_job(job: FfiCronJob) -> Result<FfiCronJob, String> {
+    let saved = current_engine()?
+        .upsert_cron_job(job.into())
         .await
         .map_err(crate::dto_mapping::ffi_err)?;
-    serde_json::to_string(&saved).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
+    Ok(saved.into())
+}
+
+/// Scheduled automation job (`CronJobRecord`); enums travel as their stable keys.
+#[frb]
+#[derive(Debug, Clone)]
+pub struct FfiCronJob {
+    pub id: String,
+    pub name: String,
+    pub workspace_id: String,
+    pub assistant_id: String,
+    pub schedule_expr: String,
+    pub prompt: String,
+    pub mode: String,
+    pub unattended_policy: String,
+    pub use_worktree: bool,
+    pub enabled: bool,
+    pub next_run_ms: i64,
+    pub last_run_id: Option<String>,
+    pub last_status: String,
+}
+
+impl From<bistre_protocol::CronJobRecord> for FfiCronJob {
+    fn from(r: bistre_protocol::CronJobRecord) -> Self {
+        Self {
+            id: r.id,
+            name: r.name,
+            workspace_id: r.workspace_id,
+            assistant_id: r.assistant_id,
+            schedule_expr: r.schedule_expr,
+            prompt: r.prompt,
+            mode: r.mode.as_str().to_owned(),
+            unattended_policy: r.unattended_policy.as_str().to_owned(),
+            use_worktree: r.use_worktree,
+            enabled: r.enabled,
+            next_run_ms: r.next_run_ms,
+            last_run_id: r.last_run_id,
+            last_status: r.last_status,
+        }
+    }
+}
+
+impl From<FfiCronJob> for bistre_protocol::CronJobRecord {
+    fn from(j: FfiCronJob) -> Self {
+        Self {
+            id: j.id,
+            name: j.name,
+            workspace_id: j.workspace_id,
+            assistant_id: j.assistant_id,
+            schedule_expr: j.schedule_expr,
+            prompt: j.prompt,
+            mode: bistre_protocol::ThreadMode::parse(&j.mode),
+            unattended_policy: bistre_protocol::UnattendedPolicy::parse(&j.unattended_policy),
+            use_worktree: j.use_worktree,
+            enabled: j.enabled,
+            next_run_ms: j.next_run_ms,
+            last_run_id: j.last_run_id,
+            last_status: j.last_status,
+        }
+    }
 }
 
 /// Deletes a scheduled cron/timer automation job by ID.

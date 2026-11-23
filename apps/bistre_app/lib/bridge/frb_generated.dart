@@ -75,7 +75,7 @@ class BistreRustLib
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1652664230;
+  int get rustContentHash => -2036359960;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -267,7 +267,7 @@ abstract class BistreRustLibApi extends BaseApi {
     required int limit,
   });
 
-  Future<String> crateApiHarnessListCronJobsJson();
+  Future<List<FfiCronJob>> crateApiHarnessListCronJobs();
 
   Future<String> crateApiHarnessListMemoryEntriesJson({String? scope});
 
@@ -451,7 +451,7 @@ abstract class BistreRustLibApi extends BaseApi {
     required String cardJson,
   });
 
-  Future<String> crateApiHarnessUpsertCronJobJson({required String jobJson});
+  Future<FfiCronJob> crateApiHarnessUpsertCronJob({required FfiCronJob job});
 
   Future<String> crateApiHarnessUpsertMemoryEntryJson({
     String? id,
@@ -2002,7 +2002,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
-  Future<String> crateApiHarnessListCronJobsJson() {
+  Future<List<FfiCronJob>> crateApiHarnessListCronJobs() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -2015,18 +2015,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
+          decodeSuccessData: sse_decode_list_ffi_cron_job,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiHarnessListCronJobsJsonConstMeta,
+        constMeta: kCrateApiHarnessListCronJobsConstMeta,
         argValues: [],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiHarnessListCronJobsJsonConstMeta =>
-      const TaskConstMeta(debugName: "list_cron_jobs_json", argNames: []);
+  TaskConstMeta get kCrateApiHarnessListCronJobsConstMeta =>
+      const TaskConstMeta(debugName: "list_cron_jobs", argNames: []);
 
   @override
   Future<String> crateApiHarnessListMemoryEntriesJson({String? scope}) {
@@ -3518,12 +3518,12 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
-  Future<String> crateApiHarnessUpsertCronJobJson({required String jobJson}) {
+  Future<FfiCronJob> crateApiHarnessUpsertCronJob({required FfiCronJob job}) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(jobJson, serializer);
+          sse_encode_box_autoadd_ffi_cron_job(job, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -3532,21 +3532,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
+          decodeSuccessData: sse_decode_ffi_cron_job,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiHarnessUpsertCronJobJsonConstMeta,
-        argValues: [jobJson],
+        constMeta: kCrateApiHarnessUpsertCronJobConstMeta,
+        argValues: [job],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiHarnessUpsertCronJobJsonConstMeta =>
-      const TaskConstMeta(
-        debugName: "upsert_cron_job_json",
-        argNames: ["jobJson"],
-      );
+  TaskConstMeta get kCrateApiHarnessUpsertCronJobConstMeta =>
+      const TaskConstMeta(debugName: "upsert_cron_job", argNames: ["job"]);
 
   @override
   Future<String> crateApiHarnessUpsertMemoryEntryJson({
@@ -3836,6 +3833,12 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  FfiCronJob dco_decode_box_autoadd_ffi_cron_job(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_ffi_cron_job(raw);
+  }
+
+  @protected
   FfiDraftRecord dco_decode_box_autoadd_ffi_draft_record(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_ffi_draft_record(raw);
@@ -3961,6 +3964,29 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       topPMilli: dco_decode_opt_box_autoadd_u_32(arr[11]),
       isBuiltin: dco_decode_bool(arr[12]),
       createdAtMs: dco_decode_i_64(arr[13]),
+    );
+  }
+
+  @protected
+  FfiCronJob dco_decode_ffi_cron_job(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 13)
+      throw Exception('unexpected arr length: expect 13 but see ${arr.length}');
+    return FfiCronJob(
+      id: dco_decode_String(arr[0]),
+      name: dco_decode_String(arr[1]),
+      workspaceId: dco_decode_String(arr[2]),
+      assistantId: dco_decode_String(arr[3]),
+      scheduleExpr: dco_decode_String(arr[4]),
+      prompt: dco_decode_String(arr[5]),
+      mode: dco_decode_String(arr[6]),
+      unattendedPolicy: dco_decode_String(arr[7]),
+      useWorktree: dco_decode_bool(arr[8]),
+      enabled: dco_decode_bool(arr[9]),
+      nextRunMs: dco_decode_i_64(arr[10]),
+      lastRunId: dco_decode_opt_String(arr[11]),
+      lastStatus: dco_decode_String(arr[12]),
     );
   }
 
@@ -4204,6 +4230,12 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  List<FfiCronJob> dco_decode_list_ffi_cron_job(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_ffi_cron_job).toList();
+  }
+
+  @protected
   List<FfiNodeRecord> dco_decode_list_ffi_node_record(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_ffi_node_record).toList();
@@ -4361,6 +4393,12 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_ffi_app_settings(deserializer));
+  }
+
+  @protected
+  FfiCronJob sse_decode_box_autoadd_ffi_cron_job(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_ffi_cron_job(deserializer));
   }
 
   @protected
@@ -4557,6 +4595,39 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       topPMilli: var_topPMilli,
       isBuiltin: var_isBuiltin,
       createdAtMs: var_createdAtMs,
+    );
+  }
+
+  @protected
+  FfiCronJob sse_decode_ffi_cron_job(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_name = sse_decode_String(deserializer);
+    var var_workspaceId = sse_decode_String(deserializer);
+    var var_assistantId = sse_decode_String(deserializer);
+    var var_scheduleExpr = sse_decode_String(deserializer);
+    var var_prompt = sse_decode_String(deserializer);
+    var var_mode = sse_decode_String(deserializer);
+    var var_unattendedPolicy = sse_decode_String(deserializer);
+    var var_useWorktree = sse_decode_bool(deserializer);
+    var var_enabled = sse_decode_bool(deserializer);
+    var var_nextRunMs = sse_decode_i_64(deserializer);
+    var var_lastRunId = sse_decode_opt_String(deserializer);
+    var var_lastStatus = sse_decode_String(deserializer);
+    return FfiCronJob(
+      id: var_id,
+      name: var_name,
+      workspaceId: var_workspaceId,
+      assistantId: var_assistantId,
+      scheduleExpr: var_scheduleExpr,
+      prompt: var_prompt,
+      mode: var_mode,
+      unattendedPolicy: var_unattendedPolicy,
+      useWorktree: var_useWorktree,
+      enabled: var_enabled,
+      nextRunMs: var_nextRunMs,
+      lastRunId: var_lastRunId,
+      lastStatus: var_lastStatus,
     );
   }
 
@@ -4890,6 +4961,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  List<FfiCronJob> sse_decode_list_ffi_cron_job(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <FfiCronJob>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_ffi_cron_job(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<FfiNodeRecord> sse_decode_list_ffi_node_record(
     SseDeserializer deserializer,
   ) {
@@ -5151,6 +5234,15 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  void sse_encode_box_autoadd_ffi_cron_job(
+    FfiCronJob self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_ffi_cron_job(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_ffi_draft_record(
     FfiDraftRecord self,
     SseSerializer serializer,
@@ -5281,6 +5373,24 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     sse_encode_opt_box_autoadd_u_32(self.topPMilli, serializer);
     sse_encode_bool(self.isBuiltin, serializer);
     sse_encode_i_64(self.createdAtMs, serializer);
+  }
+
+  @protected
+  void sse_encode_ffi_cron_job(FfiCronJob self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.name, serializer);
+    sse_encode_String(self.workspaceId, serializer);
+    sse_encode_String(self.assistantId, serializer);
+    sse_encode_String(self.scheduleExpr, serializer);
+    sse_encode_String(self.prompt, serializer);
+    sse_encode_String(self.mode, serializer);
+    sse_encode_String(self.unattendedPolicy, serializer);
+    sse_encode_bool(self.useWorktree, serializer);
+    sse_encode_bool(self.enabled, serializer);
+    sse_encode_i_64(self.nextRunMs, serializer);
+    sse_encode_opt_String(self.lastRunId, serializer);
+    sse_encode_String(self.lastStatus, serializer);
   }
 
   @protected
@@ -5504,6 +5614,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_ffi_assistant_record(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_ffi_cron_job(
+    List<FfiCronJob> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_ffi_cron_job(item, serializer);
     }
   }
 

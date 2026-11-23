@@ -928,36 +928,4 @@ class EngineCronJob {
   final int nextRunMs;
   final String? lastRunId;
   final String lastStatus;
-
-  Map<String, Object?> toJson() => <String, Object?>{
-    'id': id,
-    'name': name,
-    'workspace_id': workspaceId,
-    'assistant_id': assistantId,
-    'schedule_expr': scheduleExpr,
-    'prompt': prompt,
-    'mode': mode,
-    'unattended_policy': unattendedPolicy,
-    'use_worktree': useWorktree,
-    'enabled': enabled,
-    'next_run_ms': nextRunMs,
-    'last_run_id': lastRunId,
-    'last_status': lastStatus,
-  };
-
-  static EngineCronJob fromJson(Map<String, Object?> m) => EngineCronJob(
-    id: m['id'] as String? ?? '',
-    name: m['name'] as String? ?? '',
-    workspaceId: m['workspace_id'] as String? ?? 'default',
-    assistantId: m['assistant_id'] as String? ?? 'default_assistant',
-    scheduleExpr: m['schedule_expr'] as String? ?? '',
-    prompt: m['prompt'] as String? ?? '',
-    mode: m['mode'] as String? ?? 'chat',
-    unattendedPolicy: m['unattended_policy'] as String? ?? 'pause_and_notify',
-    useWorktree: m['use_worktree'] as bool? ?? false,
-    enabled: m['enabled'] as bool? ?? true,
-    nextRunMs: (m['next_run_ms'] as num?)?.toInt() ?? 0,
-    lastRunId: m['last_run_id'] as String?,
-    lastStatus: m['last_status'] as String? ?? 'idle',
-  );
 }

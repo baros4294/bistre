@@ -967,21 +967,45 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
       frb.loadSkillBody(workspaceRoot: workspaceRoot, skillPath: skillPath);
 
   @override
-  Future<List<EngineCronJob>> listCronJobs() async {
-    final raw = await frb.listCronJobsJson();
-    final decoded = jsonDecode(raw);
-    if (decoded is! List<Object?>) return const <EngineCronJob>[];
-    return decoded
-        .whereType<Map<String, Object?>>()
-        .map(EngineCronJob.fromJson)
-        .toList(growable: false);
-  }
+  Future<List<EngineCronJob>> listCronJobs() async =>
+      (await frb.listCronJobs()).map(_mapCronJob).toList(growable: false);
 
   @override
-  Future<EngineCronJob> upsertCronJob(EngineCronJob job) async {
-    final raw = await frb.upsertCronJobJson(jobJson: jsonEncode(job.toJson()));
-    return EngineCronJob.fromJson(jsonDecode(raw) as Map<String, Object?>);
-  }
+  Future<EngineCronJob> upsertCronJob(EngineCronJob job) async => _mapCronJob(
+    await frb.upsertCronJob(
+      job: frb.FfiCronJob(
+        id: job.id,
+        name: job.name,
+        workspaceId: job.workspaceId,
+        assistantId: job.assistantId,
+        scheduleExpr: job.scheduleExpr,
+        prompt: job.prompt,
+        mode: job.mode,
+        unattendedPolicy: job.unattendedPolicy,
+        useWorktree: job.useWorktree,
+        enabled: job.enabled,
+        nextRunMs: job.nextRunMs,
+        lastRunId: job.lastRunId,
+        lastStatus: job.lastStatus,
+      ),
+    ),
+  );
+
+  static EngineCronJob _mapCronJob(frb.FfiCronJob j) => EngineCronJob(
+    id: j.id,
+    name: j.name,
+    workspaceId: j.workspaceId,
+    assistantId: j.assistantId,
+    scheduleExpr: j.scheduleExpr,
+    prompt: j.prompt,
+    mode: j.mode,
+    unattendedPolicy: j.unattendedPolicy,
+    useWorktree: j.useWorktree,
+    enabled: j.enabled,
+    nextRunMs: j.nextRunMs,
+    lastRunId: j.lastRunId,
+    lastStatus: j.lastStatus,
+  );
 
   @override
   Future<void> deleteCronJob(String jobId) => frb.deleteCronJob(jobId: jobId);
