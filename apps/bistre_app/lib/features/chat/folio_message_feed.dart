@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
@@ -328,6 +329,8 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                       branchInfo: branchInfo,
                       showBottomDivider: !isLast && node.role == 'assistant',
                       reduceMotionOverride: ctrl.reduceMotionOverride,
+                      showActionsAtRest:
+                          _isTouchPlatform && index + 2 >= itemCount,
                       onCopy: () => unawaited(ctrl.copyText(node.content)),
                       onCopyCode: (code) => unawaited(ctrl.copyText(code)),
                       onReply: () => widget.onReplyToPassage(node.content),
@@ -584,6 +587,11 @@ class _ProviderSetupBanner extends StatelessWidget {
   }
 }
 
+/// Phones and tablets (no hover): actions stay visible on the newest turns.
+bool get _isTouchPlatform =>
+    defaultTargetPlatform == TargetPlatform.android ||
+    defaultTargetPlatform == TargetPlatform.iOS;
+
 class _PassageItem extends StatefulWidget {
   const _PassageItem({
     required this.node,
@@ -596,6 +604,7 @@ class _PassageItem extends StatefulWidget {
     required this.branchInfo,
     required this.showBottomDivider,
     required this.reduceMotionOverride,
+    this.showActionsAtRest = false,
     required this.onCopy,
     required this.onCopyCode,
     required this.onReply,
@@ -617,6 +626,9 @@ class _PassageItem extends StatefulWidget {
   final BranchSlotInfo? branchInfo;
   final bool showBottomDivider;
   final bool reduceMotionOverride;
+
+  /// Touch screens have no hover: the newest turns keep their actions visible.
+  final bool showActionsAtRest;
   final VoidCallback onCopy;
   final ValueChanged<String> onCopyCode;
   final VoidCallback onReply;
@@ -943,10 +955,17 @@ class _PassageItemState extends State<_PassageItem> {
     bool isAssistant,
   ) {
     final branch = widget.branchInfo;
-    final alwaysShow = branch != null || _hovered || _focused || _editing;
+    // Controls appear when needed (DESIGN §1.1, Parchment v2.6.0): hidden at rest on pointer
+    // devices, revealed on hover or keyboard focus (focusing a hidden button reveals the bar).
+    final alwaysShow =
+        branch != null ||
+        _hovered ||
+        _focused ||
+        _editing ||
+        widget.showActionsAtRest;
 
     return AnimatedOpacity(
-      opacity: alwaysShow ? 1.0 : 0.35,
+      opacity: alwaysShow ? 1.0 : 0.0,
       duration: BistreMotion.overlayDuration(
         context,
         reduceMotionOverride: widget.reduceMotionOverride,
