@@ -396,13 +396,21 @@ class LabIcon extends StatelessWidget {
   final double size;
   final bool framed;
 
+  /// Whether a custom icon file exists, checked once per path (never disk I/O on every build).
+  static final Map<String, bool> _existsCache = <String, bool>{};
+
+  static bool _customIconExists(String path) {
+    if (_existsCache.length > 128) _existsCache.clear();
+    return _existsCache.putIfAbsent(path, () => File(path).existsSync());
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
     final customPath = customIconPath?.trim() ?? '';
     Widget mark;
 
-    if (customPath.isNotEmpty && File(customPath).existsSync()) {
+    if (customPath.isNotEmpty && _customIconExists(customPath)) {
       mark = ClipRRect(
         borderRadius: BorderRadius.circular(4),
         child: Image.file(
