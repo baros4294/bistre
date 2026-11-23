@@ -288,4 +288,33 @@ mod tests {
         text.push_str(&buf.finish());
         assert_eq!(text, "line one\nline two\nline three\n");
     }
+
+    proptest::proptest! {
+        /// However the network splits the bytes, the framer yields the same events.
+        #[test]
+        fn chunk_boundaries_never_change_the_events(
+            events in proptest::collection::vec("[a-z0-9 ]{0,24}", 1..8),
+            cuts in proptest::collection::vec(0_usize..400, 0..12),
+        ) {
+            let stream = events
+                .iter()
+                .map(|e| format!("data: {{\"t\":\"{e}\"}}\n\n"))
+                .collect::<Vec<_>>()
+                .concat();
+            let bytes = stream.as_bytes();
+            let whole = frames(&[bytes]);
+            let mut points: Vec<usize> = cuts.into_iter().map(|c| c % (bytes.len() + 1)).collect();
+            points.sort_unstable();
+            points.dedup();
+            let mut pieces: Vec<&[u8]> = Vec::new();
+            let mut start = 0;
+            for p in points {
+                pieces.push(&bytes[start..p]);
+                start = p;
+            }
+            pieces.push(&bytes[start..]);
+            proptest::prop_assert_eq!(frames(&pieces), whole.clone());
+            proptest::prop_assert_eq!(whole.len(), events.len());
+        }
+    }
 }

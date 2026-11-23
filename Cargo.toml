@@ -65,6 +65,8 @@ windows-sys = { version = "0.61", features = [
 ] }
 flutter_rust_bridge = "=2.13.0"
 tempfile = "3.23"
+# Test-only: property tests for parsers (Spec 02 SseFramer).
+proptest = { version = "1.12", default-features = false, features = ["std"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"
