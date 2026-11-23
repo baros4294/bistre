@@ -53,17 +53,21 @@ void main() {
     void collect(List<FrameTiming> batch) => timings.addAll(batch);
     WidgetsBinding.instance.addTimingsCallback(collect);
     const chunk = 480; // ~120 tok/s at 16 ms batches with ~4 chars per token
-    for (var i = 0; i < text.length; i += chunk) {
-      final end = i + chunk > text.length ? text.length : i + chunk;
-      gw.emit(
-        DeltaBatchEvent(
-          threadId: threadId,
-          nodeId: 'probe',
-          textDelta: text.substring(i, end),
-        ),
-      );
-      await tester.pump(const Duration(milliseconds: 16));
-    }
+    // The stream runs inside a timeline trace; the driver writes it as
+    // build/streaming.timeline.json so the per-frame cost can be attributed by event.
+    await binding.traceAction(() async {
+      for (var i = 0; i < text.length; i += chunk) {
+        final end = i + chunk > text.length ? text.length : i + chunk;
+        gw.emit(
+          DeltaBatchEvent(
+            threadId: threadId,
+            nodeId: 'probe',
+            textDelta: text.substring(i, end),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+    });
     // The engine reports timings in batches (about once a second); let the last one arrive.
     // No pumpAndSettle here: the streaming cursor keeps animating until the run finishes.
     await tester.pump(const Duration(milliseconds: 100));

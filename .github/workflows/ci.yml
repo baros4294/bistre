@@ -331,6 +331,14 @@ jobs:
         shell: bash
         # UI-thread build p99 over 16 ms fails; raster p99 is reported (software GL on xvfb).
         run: xvfb-run -a flutter drive --profile -d linux --driver=test_driver/integration_test.dart --target=integration_test/streaming_perf_test.dart
+      - name: Upload the streaming timeline for attribution
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: streaming-timeline
+          path: apps/bistre_app/build/streaming.timeline*.json
+          if-no-files-found: warn
+          retention-days: 7
       - name: Build Windows release bundle
         if: runner.os == 'Windows'
         working-directory: apps/bistre_app
