@@ -3723,6 +3723,20 @@
       "tone": "concise_action",
       "max_chars": 24,
       "placeholders": {}
+    },
+    "settings.search.placeholder": {
+      "message": "Search all settings...",
+      "context": "Settings navigation search field placeholder",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.search.empty": {
+      "message": "No settings match.",
+      "context": "Shown when the settings search finds nothing",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
     }
   }
 }

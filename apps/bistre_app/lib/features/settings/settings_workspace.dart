@@ -98,27 +98,10 @@ class SettingsWorkspace extends StatelessWidget {
                             color: theme.bgSurface.withValues(
                               alpha: theme.isDark ? 0.55 : 0.65,
                             ),
-                            child: SingleChildScrollView(
-                              padding: const EdgeInsetsDirectional.fromSTEB(
-                                12,
-                                16,
-                                12,
-                                20,
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  for (final t in _tabs) ...[
-                                    _SettingsNavTile(
-                                      icon: t.$3,
-                                      label: l10n.t(t.$2),
-                                      selected: ctrl.settingsTab == t.$1,
-                                      onTap: () => ctrl.setSettingsTab(t.$1),
-                                    ),
-                                    const SizedBox(height: 3),
-                                  ],
-                                ],
-                              ),
+                            child: _SearchableSettingsNav(
+                              tabs: _tabs,
+                              selected: ctrl.settingsTab,
+                              onSelected: ctrl.setSettingsTab,
                             ),
                           ),
                         ),
@@ -361,6 +344,115 @@ class _NarrowTabStrip extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Catalog key prefixes whose text belongs to each settings page; searching matches the page
+/// name and every label on it ("Search all settings", Parchment v2.6.0).
+const Map<SettingsTab, List<String>> _searchPrefixes =
+    <SettingsTab, List<String>>{
+      SettingsTab.providers: <String>['provider.', 'settings.tab.providers'],
+      SettingsTab.assistants: <String>['settings.assistants', 'assistant.'],
+      SettingsTab.appearance: <String>['settings.appearance'],
+      SettingsTab.trust: <String>[
+        'settings.trust',
+        'settings.budget',
+        'settings.prices',
+      ],
+      SettingsTab.agent: <String>[
+        'settings.agent',
+        'settings.sleep',
+        'settings.engine',
+      ],
+      SettingsTab.memory: <String>['memory.', 'cron.', 'settings.tab.memory'],
+      SettingsTab.updates: <String>['settings.ota', 'settings.storage'],
+      SettingsTab.language: <String>['settings.language'],
+      SettingsTab.shortcuts: <String>['shortcut.'],
+    };
+
+class _SearchableSettingsNav extends StatefulWidget {
+  const _SearchableSettingsNav({
+    required this.tabs,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final List<(SettingsTab, L10nKey, BistreUiIcon)> tabs;
+  final SettingsTab selected;
+  final ValueChanged<SettingsTab> onSelected;
+
+  @override
+  State<_SearchableSettingsNav> createState() => _SearchableSettingsNavState();
+}
+
+class _SearchableSettingsNavState extends State<_SearchableSettingsNav> {
+  final TextEditingController _query = TextEditingController();
+  final FocusNode _focus = FocusNode();
+
+  @override
+  void dispose() {
+    _query.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  bool _matches(
+    BistreLocalizationController l10n,
+    (SettingsTab, L10nKey, BistreUiIcon) tab,
+    String q,
+  ) {
+    if (q.isEmpty || l10n.t(tab.$2).toLowerCase().contains(q)) return true;
+    final prefixes = _searchPrefixes[tab.$1] ?? const <String>[];
+    return L10nKey.values.any(
+      (k) =>
+          prefixes.any(k.key.startsWith) && l10n.t(k).toLowerCase().contains(q),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = BistreLocalizations.of(context);
+    final theme = BistreTheme.of(context);
+    final q = _query.text.trim().toLowerCase();
+    final visible = widget.tabs.where((t) => _matches(l10n, t, q)).toList();
+    return SingleChildScrollView(
+      padding: const EdgeInsetsDirectional.fromSTEB(12, 16, 12, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          QuillInput(
+            controller: _query,
+            focusNode: _focus,
+            placeholder: l10n.t(L10nKey.settingsSearchPlaceholder),
+            maxLines: 1,
+            submitOnEnter: false,
+            onSubmitted: () {
+              if (visible.isNotEmpty) widget.onSelected(visible.first.$1);
+            },
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: BistreSpacing.s12),
+          for (final t in visible) ...[
+            _SettingsNavTile(
+              icon: t.$3,
+              label: l10n.t(t.$2),
+              selected: widget.selected == t.$1,
+              onTap: () => widget.onSelected(t.$1),
+            ),
+            const SizedBox(height: 3),
+          ],
+          if (visible.isEmpty)
+            Padding(
+              padding: const EdgeInsetsDirectional.all(BistreSpacing.s8),
+              child: InkText(
+                l10n.t(L10nKey.settingsSearchEmpty),
+                role: InkTextRole.captionMeta,
+                color: theme.inkMuted,
+              ),
+            ),
+        ],
       ),
     );
   }

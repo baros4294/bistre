@@ -305,6 +305,8 @@ enum L10nKey {
   settingsPricesAutoRefreshHint('settings.prices.auto_refresh_hint'),
   settingsPricesHeading('settings.prices.heading'),
   settingsPricesRefreshNow('settings.prices.refresh_now'),
+  settingsSearchEmpty('settings.search.empty'),
+  settingsSearchPlaceholder('settings.search.placeholder'),
   settingsSleepAndroidBattery('settings.sleep.android_battery'),
   settingsSleepAndroidBatteryAllow('settings.sleep.android_battery_allow'),
   settingsSleepAndroidBatteryOk('settings.sleep.android_battery_ok'),
