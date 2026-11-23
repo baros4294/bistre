@@ -170,3 +170,7 @@ Recorded **2026-11-21** after completing Commit-1 Repo Fortress, Spec Pack, Day-
 - **Why this scope**: after this, the shell rebuilds only for user actions and run start/finish. Splitting the catalog, runs, and story state into separate controllers would not remove any frequent rebuild, so the §11 "full split" item is closed as unnecessary.
 - **Regression test** (`anti_pattern_regression_test.dart`, "rebuild only their own widgets"): a toast plus three search keystrokes, a draft save, and its engine echo rebuild the sidebar 0 times (3 / 1 / 1 before); two sidebar-filter keystrokes rebuild the feed 0 times (2 before). Each assertion was shown to fail without its fix.
 - **Verification (local, Windows)**: `flutter analyze` clean; `flutter test` 37/37; `just guard` passes.
+## 14. Rust Tests Report Their Errors (2026-11-23)
+- **What changed**: test setup written as `let x = e.ok(); assert!(x.is_some()); let Some(x) = x else { return };` (and the `if let Some(..)` variant) now reads `let x = e?;` in tests that return `TestResult`. A failure prints the `DiagnosticKey` or I/O error instead of `assertion failed: x.is_some()`. `.ok().unwrap_or_default()` in tests, which turned an error into an empty list, also became `?`.
+- **Remaining**: 127 `.ok()` sites in test code feed `assert_eq!(x.map(..), Some(..))`. They still fail loudly, but without the error text; convert them by hand as those tests are touched.
+- **Verification (local, Windows)**: workspace clippy `-D warnings` clean; `cargo nextest` 103/103; `just guard` passes.
