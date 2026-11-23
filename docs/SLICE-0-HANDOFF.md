@@ -151,3 +151,10 @@ Recorded **2026-11-21** after completing Commit-1 Repo Fortress, Spec Pack, Day-
   - Tests: `TestResult` + `?` across Rust tests (many still use `.ok()` + `assert!`); Linux golden comparison for the gallery; a CI `perf-linux` profile-build frame timing (the launch/perf gate uses the existing runner).
   - Shared CI setup composite action (provisioning is still duplicated between `ci.yml` and `release.yml`).
 - **Owner actions**: provision the minisign key (`MINISIGN_SECRET_KEY`, `MINISIGN_PASSWORD` in a `release` environment with required reviewers) and embed the public key in `OFFICIAL_RELEASE_PUBKEY_B64`; OTA and tag releases stay disabled until then.
+
+## 12. M4 Parity Closure (2026-11-23)
+- **What changed**: chat tabs under the header; v2.6.0 error notice (status dot, one plain sentence, one fix, live region); code card wrap/fold/save/copy icon buttons; settings search (matches page names and every label on each page, Enter opens the first match); every `' · '` meta join goes through `BistreLocalizationController.joinMeta` (separator `app.meta_separator`, each fragment in a first-strong isolate so mixed-direction text keeps its order).
+- **Spec 08 §4 parity**: every row Closed except Thinking, which is Blocked: v2.6.0 shows a tool count, but runs execute no model-directed tools yet (native tool calling is its own slice), so a count would always be 0.
+- **CI fix**: zizmor 1.32 flags `uses: ./.github/workflows/ci.yml` (self-repository audit) and suggests `$/`, but actionlint 1.7.12 rejects `$/` (rhysd/actionlint#711, #780). `release.yml` keeps `./` with an inline `zizmor: ignore[self-repository]` that states why; switch to `$/` once actionlint supports it (the guard's pin and timeout checks would then need to accept `$/`).
+- **Verification (local, Windows)**: `flutter analyze` clean; `flutter test` 36/36; `just guard`, `just i18n-check`, `just fmt-check` pass.
+- **Open items**: unchanged from §11 apart from the parity rows above.
