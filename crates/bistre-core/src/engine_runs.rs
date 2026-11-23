@@ -142,8 +142,14 @@ pub(crate) async fn execute_durable_stream_loop(
         let think_node = current_stream_node_id.clone();
         let buf_storage = Arc::clone(storage);
         let buf_run_id = run_id.to_owned();
-        let mut buffered_text = String::new();
-        let mut chunk_counter: u32 = 0;
+        // Checkpoint only the new suffix, at most every CHECKPOINT_INTERVAL and once at least
+        // CHECKPOINT_MIN_BYTES arrived (whole-buffer rewrites per chunk were quadratic).
+        let mut unsaved_suffix = String::new();
+        let mut last_checkpoint = std::time::Instant::now();
+        // Coalesce deltas to one event per frame (DELTA_FRAME) so a fast stream cannot overrun
+        // the bounded event bus.
+        let mut pending_delta = String::new();
+        let mut last_delta_emit = std::time::Instant::now();
 
         if !is_local {
             services.pricing.ensure_fresh(&services.web);
@@ -160,30 +166,24 @@ pub(crate) async fn execute_durable_stream_loop(
             cancel_flag,
             |chunk| {
                 activity.tick();
-                buffered_text.push_str(chunk);
-                chunk_counter = chunk_counter.saturating_add(1);
-                if chunk_counter.is_multiple_of(24) {
+                unsaved_suffix.push_str(chunk);
+                if unsaved_suffix.len() >= CHECKPOINT_MIN_BYTES
+                    && last_checkpoint.elapsed() >= CHECKPOINT_INTERVAL
+                {
                     note_write(
                         "agent_run_checkpoint",
-                        buf_storage.update_agent_run(
+                        buf_storage.append_agent_run_partial_text(
                             buf_run_id.clone(),
-                            AgentRunUpdate {
-                                partial_text_buffer: Some(buffered_text.clone()),
-                                ..AgentRunUpdate::default()
-                            },
+                            std::mem::take(&mut unsaved_suffix),
                         ),
                     );
+                    last_checkpoint = std::time::Instant::now();
                 }
-                emit(
-                    &delta_tx,
-                    EngineEvent::DeltaBatch {
-                        thread_id: delta_thread.clone(),
-                        chunks: vec![StreamChunk {
-                            node_id: delta_node.clone(),
-                            text_delta: chunk.to_owned(),
-                        }],
-                    },
-                );
+                pending_delta.push_str(chunk);
+                if last_delta_emit.elapsed() >= DELTA_FRAME {
+                    emit_delta(&delta_tx, &delta_thread, &delta_node, &mut pending_delta);
+                    last_delta_emit = std::time::Instant::now();
+                }
             },
             |thinking_chunk| {
                 emit(
@@ -197,6 +197,14 @@ pub(crate) async fn execute_durable_stream_loop(
             },
         )
         .await;
+        // Flush the last partial frame and checkpoint.
+        emit_delta(&delta_tx, &delta_thread, &delta_node, &mut pending_delta);
+        if !unsaved_suffix.is_empty() {
+            note_write(
+                "agent_run_checkpoint",
+                storage.append_agent_run_partial_text(run_id.to_owned(), unsaved_suffix),
+            );
+        }
 
         let elapsed_ms = activity.finish_ms();
         let mut committed_assistant_id: Option<String> = None;
@@ -676,6 +684,34 @@ pub(crate) fn utc_day_start_unix_ms() -> i64 {
 
 /// Walks parent pointers backward from `leaf_id` to root so branching threads send
 /// only the active conversation branch (never sibling branches) to the LLM provider.
+/// Minimum interval between partial-text checkpoints of a streaming reply.
+const CHECKPOINT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+/// Minimum new text before a checkpoint is written.
+const CHECKPOINT_MIN_BYTES: usize = 4 * 1024;
+/// One display frame: deltas inside it are sent as one event.
+const DELTA_FRAME: std::time::Duration = std::time::Duration::from_millis(16);
+
+fn emit_delta(
+    tx: &broadcast::Sender<EngineEvent>,
+    thread_id: &str,
+    node_id: &str,
+    pending: &mut String,
+) {
+    if pending.is_empty() {
+        return;
+    }
+    emit(
+        tx,
+        EngineEvent::DeltaBatch {
+            thread_id: thread_id.to_owned(),
+            chunks: vec![StreamChunk {
+                node_id: node_id.to_owned(),
+                text_delta: std::mem::take(pending),
+            }],
+        },
+    );
+}
+
 /// Loads everything one model turn needs: the branch history (respecting the context pin),
 /// whether the thread is in Write mode, and the effective system prompt.
 fn load_turn_context(

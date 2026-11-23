@@ -648,6 +648,17 @@ final class NodeCommittedEvent extends BistreEvent {
   final EngineNode node;
 }
 
+/// The core dropped events because the UI fell behind; reload state from storage.
+final class EventsLaggedEvent extends BistreEvent {
+  const EventsLaggedEvent();
+}
+
+/// An event kind this build does not know (a newer core); ignored, never an error.
+final class UnknownEngineEvent extends BistreEvent {
+  const UnknownEngineEvent(this.kind);
+  final String kind;
+}
+
 final class DraftSavedEvent extends BistreEvent {
   const DraftSavedEvent({required this.threadId, required this.updatedAtMs});
   final String threadId;

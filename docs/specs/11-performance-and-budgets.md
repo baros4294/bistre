@@ -14,7 +14,8 @@
 | Android `arm64-v8a` Release APK | `<= 28 MB` Wave 1 (`~19.5 MB` Slice 0 measured) | `> 32 MB` | CI `android-arm64-16kb` `stat` gate |
 
 ## 2. Structural Efficiency Techniques
-- **FFI Delta Coalescing**: `crates/bistre-ffi` batches high-frequency streaming deltas on a `16ms` cadence over bounded channels (`cap=256`), preventing Dart isolate thrashing.
+- **FFI Delta Coalescing**: `crates/bistre-ffi` batches high-frequency streaming deltas on a `16ms` cadence over bounded channels (`cap=256`), preventing Dart isolate thrashing. The core already coalesces each run's text into at most one `DeltaBatch` per `16 ms` frame before the `broadcast(256)` bus (`engine_runs::DELTA_FRAME`), so a fast stream cannot overrun it; if a subscriber still lags, FFI sends `events_lagged` and the app reloads state from storage instead of showing an error. Unknown event kinds from a newer core are ignored.
+- **Streaming checkpoints**: the partial reply is checkpointed append-only (`append_agent_run_partial_text`) at most every `250 ms` and only after `4 KiB` of new text, plus once at the end (previously the whole buffer was rewritten every 24 chunks, quadratic in reply length).
 - **Zero-Fork Native Tools**: File read, ripgrep search, glob, hash-anchored edit, and diff execute in-process inside Rust with zero subprocess spawn overhead.
 - **Asset & Binary Hygiene**: Bundled static weights only (`Inter`, `JetBrainsMono`, `NotoSansMath`), pre-compiled `.vec` vector icons (`vector_graphics`), Rust `lto = "thin"`, `codegen-units = 1`, `panic = "abort"`, `strip = "symbols"`, `opt-level = "z"` for Android, and `arm64-v8a` ABI split with `0x4000` (16KB) ELF alignment.
 - **Zero Idle FGS & Daemon Drain**: Android `BistreAgentService` (`FOREGROUND_SERVICE_SPECIAL_USE` / `MICROPHONE`) and desktop `bistre-daemon` run strictly while `active_runs > 0` or a scheduled job is active and stop cleanly when idle (`ADR-0012`, `ADR-0013`).

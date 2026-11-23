@@ -1422,10 +1422,12 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
       packId: e.packId ?? '',
       semver: e.semver ?? '',
     ),
-    _ => DiagnosticRaisedEvent(
+    'events_lagged' => const EventsLaggedEvent(),
+    'diagnostic_raised' => DiagnosticRaisedEvent(
       key: e.diagnosticKey ?? 'diag.internal.error',
       detailCode: e.detailCode,
     ),
+    _ => UnknownEngineEvent(e.kind),
   };
 
   static int _parsePendingCount(String? raw) {

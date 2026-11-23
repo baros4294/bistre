@@ -265,6 +265,25 @@ impl StorageHandle {
     }
 
     /// Updates status, heartbeat, buffers, retry timer, or cost of an `agent_runs` record atomically.
+    /// Appends streamed text to a run's partial buffer (checkpoints write only the new suffix).
+    pub fn append_agent_run_partial_text(
+        &self,
+        run_id: String,
+        suffix: String,
+    ) -> BistreResult<()> {
+        let now = now_unix_ms();
+        self.write(move |conn| {
+            conn.execute(
+                "UPDATE agent_runs SET partial_text_buffer = partial_text_buffer || ?2,
+                                       last_heartbeat_ms = ?3
+                 WHERE id = ?1",
+                params![run_id, suffix, now],
+            )
+            .map_err(map_sqlite_err)?;
+            Ok(())
+        })
+    }
+
     pub fn update_agent_run(
         &self,
         run_id: String,
