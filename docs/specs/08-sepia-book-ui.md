@@ -46,9 +46,9 @@ Renders land in `parchment-v260/.parchment-local/verification/gallery/` (38 scre
 
 | Screen | Parchment v2.6.0 (rendered) | Bistre gap | Status |
 |---|---|---|---|
-| Header | Leading: sidebar toggle, chat title with `model on Provider ▾` subtitle. Trailing: workspace folder count, new chat, settings. Nothing else | Mode segment, run pill, model pill, and 6 unlabeled icons share the bar; header controls are mouse-only | Open |
-| Header status | No run or sleep status in the header | `1 running · Awake` with a warning triangle shows on every chat | Open |
-| Pickers | One model picker (the header subtitle); the composer's chips set thinking (`None`) and tools | Model (header pill), assistant (composer), and mode (header) compete | Open |
+| Header | Leading: sidebar toggle, chat title with `model on Provider ▾` subtitle. Trailing: workspace folder count, new chat, settings. Nothing else | Title + `model on Provider ▾`; trailing new chat, Studio, settings; title and model picker are focusable | Closed (2026-11-23) |
+| Header status | No run or sleep status in the header | Removed; runs live in the Studio pane | Closed (2026-11-23) |
+| Pickers | One model picker (the header subtitle); the composer's chips set thinking (`None`) and tools | One model picker (header subtitle); mode and assistant are composer chips (mode collapses to one cycling chip when narrow) | Closed (2026-11-23) |
 | Chat tabs | Open chats show as tabs under the header with `N Tabs` overflow | No chat tabs | Open |
 | Empty chat | One `rubricMark` line, "Start with a question, a draft or a file.", with the model name beneath; nothing else when a key exists | Three intro lines, a second rubric bar on the setup card, starter rows | Open |
 | Messages | Messenger bubbles: yours a tinted right-aligned pill; replies a hairline-bordered card; model name and time above the bubble; actions on hover (touch: under the newest turns) | Speaker header with six always-visible actions; no bubble shape by default | Open |

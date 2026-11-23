@@ -210,11 +210,12 @@ void main() {
       expect(find.text('Reply draft #1'), findsOneWidget);
       expect(find.text('1 / 2'), findsOneWidget);
 
-      // Open right Chat Parameters Inspector drawer.
-      await tester.tap(find.bySemanticsLabel('Chat parameters'));
+      // Chat parameters moved from the header to the command palette (Parchment v2.6.0
+      // header); open and close the drawer the way the palette entry does.
+      controller.toggleInspector();
       await tester.pumpAndSettle();
       expect(find.text('Export Markdown'), findsOneWidget);
-      await tester.tap(find.bySemanticsLabel('Chat parameters').first);
+      controller.toggleInspector();
       await tester.pumpAndSettle();
 
       // Open Command Menu via Ctrl+K and dismiss via Escape.
