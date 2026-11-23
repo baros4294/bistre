@@ -100,8 +100,10 @@ class _MemorySkillsSettingsViewState extends State<MemorySkillsSettingsView> {
     }
   }
 
-  static String _formatCronMeta(EngineCronJob job) =>
-      '${job.scheduleExpr} · ${job.lastStatus}';
+  static String _formatCronMeta(
+    BistreLocalizationController l10n,
+    EngineCronJob job,
+  ) => l10n.joinMeta(<String>[job.scheduleExpr, job.lastStatus]);
 
   @override
   Widget build(BuildContext context) {
@@ -314,7 +316,7 @@ class _MemorySkillsSettingsViewState extends State<MemorySkillsSettingsView> {
                                     ),
                                     const SizedBox(height: 2),
                                     InkText(
-                                      _formatCronMeta(job),
+                                      _formatCronMeta(l10n, job),
                                       role: InkTextRole.captionMeta,
                                       color: theme.inkMuted,
                                     ),

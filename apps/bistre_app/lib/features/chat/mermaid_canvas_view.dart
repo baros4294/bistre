@@ -40,8 +40,10 @@ class _MermaidCanvasViewState extends State<MermaidCanvasView> {
   static String _formatDiagramHeader(
     BistreLocalizationController l10n,
     _ParsedDiagram diagram,
-  ) =>
-      '${l10n.t(L10nKey.chatMermaidDiagramTitle)} · ${l10n.t(diagram.kindLabelKey)}';
+  ) => l10n.joinMeta(<String>[
+    l10n.t(L10nKey.chatMermaidDiagramTitle),
+    l10n.t(diagram.kindLabelKey),
+  ]);
 
   @override
   Widget build(BuildContext context) {

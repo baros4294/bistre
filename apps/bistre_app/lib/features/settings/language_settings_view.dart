@@ -39,7 +39,10 @@ class LanguageSettingsView extends StatelessWidget {
               for (final loc in _locales)
                 _LanguageChoiceRow(
                   name: loc.$2,
-                  codeBadge: '${loc.$1.toUpperCase()} · ${loc.$3}',
+                  codeBadge: l10n.joinMeta(<String>[
+                    loc.$1.toUpperCase(),
+                    loc.$3,
+                  ]),
                   selected: currentLocale == loc.$1,
                   onTap: () => controller.syncLocale(loc.$1),
                 ),
