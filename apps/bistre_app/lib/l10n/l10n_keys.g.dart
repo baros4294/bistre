@@ -107,6 +107,7 @@ enum L10nKey {
   diagOtaCheckFailed('diag.ota.check_failed'),
   diagOtaIntegrityFailed('diag.ota.integrity_failed'),
   diagOtaManagedExternally('diag.ota.managed_externally'),
+  diagOtaSigningKeyMissing('diag.ota.signing_key_missing'),
   diagPowerGuardDegraded('diag.power.guard_degraded'),
   diagProviderAuthFailed('diag.provider.auth_failed'),
   diagProviderContextOverflow('diag.provider.context_overflow'),

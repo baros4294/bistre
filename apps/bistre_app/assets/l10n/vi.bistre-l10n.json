@@ -3568,6 +3568,13 @@
       "tone": "calm_editorial",
       "max_chars": 24,
       "placeholders": {}
+    },
+    "diag.ota.signing_key_missing": {
+      "message": "Cập nhật đang tắt vì bản này chưa có khóa ký phát hành.",
+      "context": "Rust DiagnosticKey::OtaSigningKeyMissing message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
     }
   }
 }

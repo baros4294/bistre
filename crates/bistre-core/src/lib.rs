@@ -97,6 +97,11 @@ pub struct InProcessEngine {
     events_tx: broadcast::Sender<EngineEvent>,
     active_runs: Arc<AtomicU32>,
     cancellations: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
+    /// The last signature-verified OTA manifest; `stage_update` acts only on this, never on
+    /// fields round-tripped through the UI.
+    verified_update: Arc<Mutex<Option<ota::VerifiedManifest>>>,
+    /// Release key override (tests only); unset uses `ota::OFFICIAL_RELEASE_PUBKEY_B64`.
+    ota_release_key: std::sync::OnceLock<String>,
 }
 
 impl std::fmt::Debug for InProcessEngine {
@@ -152,6 +157,8 @@ impl InProcessEngine {
             events_tx,
             active_runs: Arc::new(AtomicU32::new(0)),
             cancellations: Arc::new(Mutex::new(HashMap::new())),
+            verified_update: Arc::new(Mutex::new(None)),
+            ota_release_key: std::sync::OnceLock::new(),
         }))
     }
 

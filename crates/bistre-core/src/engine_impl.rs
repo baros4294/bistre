@@ -481,23 +481,38 @@ impl EngineClient for InProcessEngine {
                 .map(|u| u.trim().to_owned())
                 .filter(|u| !u.is_empty())
                 .unwrap_or(settings.ota_feed_url);
-            ota::check_for_updates(
+            let (summary, verified) = ota::check_for_updates(
                 &self.http,
                 &feed_url,
                 CORE_VERSION,
                 self.active_runs.load(Ordering::Relaxed),
-                None,
+                self.ota_release_key.get().map(String::as_str),
             )
-            .await
+            .await?;
+            *self.verified_update.lock().map_err(|_| {
+                BistreError::with_detail(DiagnosticKey::InternalError, "ota_state_lock")
+            })? = Some(verified);
+            Ok(summary)
         })
     }
 
     fn stage_update(&self, check: UpdateCheckResult) -> BoxFuture<'_, BistreResult<String>> {
         Box::pin(async move {
+            // The UI only chooses *which* checked version to stage; every URL, digest, and size
+            // comes from the core-held signed manifest.
+            let verified = self
+                .verified_update
+                .lock()
+                .map_err(|_| BistreError::with_detail(DiagnosticKey::InternalError, "ota_state_lock"))?
+                .clone()
+                .filter(|m| m.latest_version() == check.latest_version)
+                .ok_or_else(|| {
+                    BistreError::with_detail(DiagnosticKey::OtaIntegrityFailed, "ota_manifest_unverified")
+                })?;
             ota::stage_update_artifact(
                 &self.http,
                 &self.data_dir,
-                &check,
+                &verified,
                 self.active_runs.load(Ordering::Relaxed),
             )
             .await

@@ -3568,6 +3568,13 @@
       "tone": "calm_editorial",
       "max_chars": 24,
       "placeholders": {}
+    },
+    "diag.ota.signing_key_missing": {
+      "message": "Updates are turned off until this build has a release signing key.",
+      "context": "Rust DiagnosticKey::OtaSigningKeyMissing message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
     }
   }
 }

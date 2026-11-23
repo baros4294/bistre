@@ -221,6 +221,10 @@ pub enum DiagnosticKey {
     #[serde(rename = "diag.ota.integrity_failed")]
     OtaIntegrityFailed,
 
+    #[error("diag.ota.signing_key_missing")]
+    #[serde(rename = "diag.ota.signing_key_missing")]
+    OtaSigningKeyMissing,
+
     #[error("diag.internal.error")]
     #[serde(rename = "diag.internal.error")]
     InternalError,
@@ -265,6 +269,7 @@ impl DiagnosticKey {
             Self::ToolStaleRead => "diag.tool.stale_read",
             Self::ToolApprovalRequired => "diag.tool.approval_required",
             Self::OtaIntegrityFailed => "diag.ota.integrity_failed",
+            Self::OtaSigningKeyMissing => "diag.ota.signing_key_missing",
             Self::InternalError => "diag.internal.error",
         }
     }

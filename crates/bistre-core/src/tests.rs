@@ -219,25 +219,17 @@ async fn wallet_shield_enforces_daily_cap_and_unlimited_bypasses_and_ota_checks_
         None
     );
 
-    // Verify zero-telemetry OTA check against a local loopback manifest server.
-    let listener = TcpListener::bind("127.0.0.1:0").await.ok();
-    assert!(listener.is_some());
-    let Some(listener) = listener else { return };
-    let addr = listener.local_addr().ok();
-    assert!(addr.is_some());
-    let Some(addr) = addr else { return };
-    let ota_server = tokio::spawn(async move {
-        if let Ok((mut socket, _)) = listener.accept().await {
-            let mut req_buf = [0_u8; 2048];
-            assert!(socket.read(&mut req_buf).await.is_ok());
-            let body = r#"{"semver":"0.2.0","track":"track_b","release_notes":"Faster startup","download_url":"https://example.invalid/bistre.zip","sha256_hex":"abc","download_size_bytes":1024}"#;
-            let resp = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                body.len()
-            );
-            assert!(socket.write_all(resp.as_bytes()).await.is_ok());
-        }
-    });
+    // Verify the zero-telemetry OTA check against a signed local loopback feed.
+    let feed = ota::tests::serve_feed(
+        ota::tests::FIXTURE_MANIFEST,
+        Some(ota::tests::FIXTURE_SIG),
+        2,
+    )
+    .await
+    .ok();
+    assert!(feed.is_some());
+    let Some((addr, ota_server)) = feed else { return };
+    assert!(engine.ota_release_key.set(ota::tests::FIXTURE_PK.to_owned()).is_ok());
 
     let check = engine
         .check_for_updates(Some(format!("http://{addr}/manifest.json")))
@@ -249,6 +241,17 @@ async fn wallet_shield_enforces_daily_cap_and_unlimited_bypasses_and_ota_checks_
         check.as_ref().map(|c| c.latest_version.as_str()),
         Some("0.2.0")
     );
+
+    // A UI-forged check (version the core never verified, attacker URL) cannot be staged.
+    if let Some(mut forged) = check {
+        forged.latest_version = "9.9.9".to_owned();
+        forged.download_url = "https://evil.invalid/payload.bin".to_owned();
+        let staged = engine.stage_update(forged).await;
+        assert_eq!(
+            staged.err().and_then(|e| e.detail_code),
+            Some("ota_manifest_unverified".to_owned())
+        );
+    }
 
     let stats = engine.storage_stats().await.ok();
     assert_eq!(
