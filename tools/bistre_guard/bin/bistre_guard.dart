@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:bistre_guard/app_memory.dart';
 import 'package:bistre_guard/bistre_guard.dart';
 import 'package:bistre_guard/elf_verify.dart';
 import 'package:bistre_guard/ledger.dart';
@@ -18,11 +19,13 @@ Commands:
   record               Record current file fingerprints after a green verification run
   locked <cmd> [args]  Run a heavy command under the single-run lock, then enforce budgets
   verify-elf <path>    Verify 16 KiB PT_LOAD alignment of a .so, directory, or APK
-  perf [--android] [--skip-desktop] [--strict] [--rss-report-only]
+  perf [--android] [--skip-desktop] [--skip-streaming] [--app-memory] [--strict]
+       [--rss-report-only]
                        Streaming frame probe + 300-chat desktop cold start / idle RSS
                        (--strict: a section that cannot run, e.g. the app never starts, fails;
                         --rss-report-only: idle RSS is reported, not failed, for software-GL
-                        runners such as xvfb, Spec 11 section 5)
+                        runners such as xvfb, Spec 11 section 5;
+                        --app-memory: Dart heap + external of the idle profile build, budgeted)
 ''';
 
 Future<void> main(List<String> args) async {
@@ -80,6 +83,8 @@ Future<void> main(List<String> args) async {
         desktop: !args.contains('--skip-desktop'),
         strict: args.contains('--strict'),
         rssHardFail: !args.contains('--rss-report-only'),
+        streaming: !args.contains('--skip-streaming'),
+        appMemory: args.contains('--app-memory'),
       );
     default:
       stderr.write(_usage);
@@ -93,6 +98,8 @@ Future<int> _perf(
   required bool desktop,
   bool strict = false,
   bool rssHardFail = true,
+  bool streaming = true,
+  bool appMemory = false,
 }) async {
   final metrics = <PerfMetric>[];
   final notes = <String>[];
@@ -104,7 +111,8 @@ Future<int> _perf(
     }
   }
 
-  await section(() => runStreamingProbe(repoRoot));
+  if (streaming) await section(() => runStreamingProbe(repoRoot));
+  if (appMemory) await section(() => runAppOwnedMemory(repoRoot));
   if (desktop) {
     await section(
       () => runDesktopColdStart(repoRoot, rssHardFail: rssHardFail),

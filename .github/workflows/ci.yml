@@ -368,6 +368,11 @@ jobs:
         # A profile build exposes the VM service, so DevTools can attribute memory and frame time
         # on real GPU hardware without Visual Studio on that machine.
         run: flutter build windows --profile
+      - name: Enforce the app-owned idle memory budget (Spec 11, profile build)
+        if: runner.os == 'Windows'
+        shell: bash
+        # Dart heap + external of the idle profile app over the VM service: budget 60 MB, fail > 80.
+        run: dart run tools/bistre_guard/bin/bistre_guard.dart perf --skip-streaming --skip-desktop --app-memory --strict
       - name: Upload the Windows profile bundle
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
