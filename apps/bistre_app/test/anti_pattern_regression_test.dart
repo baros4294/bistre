@@ -228,10 +228,23 @@ void main() {
       e('4', 'edit'),
       e('5', 'read'),
       e('6', 'read', status: 'running'),
-    ]);
+    ], joinSummaries: (p) => p.join(' · '));
     expect(folded.map((x) => x.id), <String>['1', '4', '5', '6']);
     expect(folded.first.summary, 'read 1 · grep 2 · glob 3');
   });
+
+  test(
+    'meta joins isolate each fragment so mixed-direction text keeps its order',
+    () async {
+      final (ctrl, gw, l10n) = await boot();
+      expect(
+        l10n.joinMeta(<String>['Inter', '', '15px']),
+        '\u2068Inter\u2069 · \u206815px\u2069',
+      );
+      ctrl.dispose();
+      await gw.shutdown();
+    },
+  );
 
   testWidgets('deleting a chat is undoable for 8 seconds', (
     WidgetTester tester,

@@ -3737,6 +3737,13 @@
       "tone": "calm_editorial",
       "max_chars": 40,
       "placeholders": {}
+    },
+    "app.meta_separator": {
+      "message": " · ",
+      "context": "Separator between short meta fragments such as 'Inter · 15px'; keep the surrounding spaces",
+      "tone": "calm_editorial",
+      "max_chars": 4,
+      "placeholders": {}
     }
   }
 }

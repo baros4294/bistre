@@ -413,8 +413,10 @@ class _RunCard extends StatelessWidget {
   final EngineAgentRun run;
   final FolioController controller;
 
-  static String _formatRunTitle(EngineAgentRun run) =>
-      '${run.mode.toUpperCase()} · #${run.stepIndex + 1}';
+  static String _formatRunTitle(
+    BistreLocalizationController l10n,
+    EngineAgentRun run,
+  ) => l10n.joinMeta(<String>[run.mode.toUpperCase(), '#${run.stepIndex + 1}']);
 
   @override
   Widget build(BuildContext context) {
@@ -427,7 +429,7 @@ class _RunCard extends StatelessWidget {
       _ => WaxSealStatus.neutral,
     };
 
-    final runTitle = _formatRunTitle(run);
+    final runTitle = _formatRunTitle(l10n, run);
     return FolioSurface(
       tone: FolioTone.elevated,
       child: Column(

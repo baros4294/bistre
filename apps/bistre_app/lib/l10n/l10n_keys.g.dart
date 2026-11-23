@@ -4,6 +4,7 @@
 
 /// Compile-time checked localization keys backed by runtime ICU catalogs.
 enum L10nKey {
+  appMetaSeparator('app.meta_separator'),
   appSubtitle('app.subtitle'),
   appTitle('app.title'),
   appWindowTitle('app.window_title'),

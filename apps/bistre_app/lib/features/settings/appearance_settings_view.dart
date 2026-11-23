@@ -626,8 +626,10 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
     BistreThemeData theme,
     BistreLocalizationController l10n,
   ) {
-    final fontSpecBadge =
-        '${theme.typography.proseFontFamily} · ${theme.typography.baseFontSizePx.round()}px';
+    final fontSpecBadge = l10n.joinMeta(<String>[
+      theme.typography.proseFontFamily,
+      '${theme.typography.baseFontSizePx.round()}px',
+    ]);
     return FolioSurface(
       tone: FolioTone.elevated,
       padding: const EdgeInsetsDirectional.all(20),

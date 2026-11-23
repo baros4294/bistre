@@ -44,7 +44,11 @@ const Set<String> kFoldableReadOnlyTools = <String>{
 
 /// Folds runs of consecutive completed read/search steps into a single entry (summaries and
 /// outputs joined) so long exploration bursts read as one quiet line (`docs/design/DESIGN.md` §8).
-List<ToolActivityEntry> foldReadOnlySteps(List<ToolActivityEntry> entries) {
+/// [joinSummaries] is the locale's meta join (`BistreLocalizationController.joinMeta`).
+List<ToolActivityEntry> foldReadOnlySteps(
+  List<ToolActivityEntry> entries, {
+  required String Function(Iterable<String>) joinSummaries,
+}) {
   bool foldable(ToolActivityEntry e) =>
       e.status == 'completed' && kFoldableReadOnlyTools.contains(e.toolName);
   final out = <ToolActivityEntry>[];
@@ -60,7 +64,7 @@ List<ToolActivityEntry> foldReadOnlySteps(List<ToolActivityEntry> entries) {
         ToolActivityEntry(
           id: run.first.id,
           toolName: run.first.toolName,
-          summary: run.map((e) => e.summary).join(' · '),
+          summary: joinSummaries(run.map((e) => e.summary)),
           status: 'completed',
           outputText: run.map((e) => e.outputText).join('\n\n'),
           durationMs: run.fold<int>(0, (sum, e) => sum + e.durationMs),
@@ -96,7 +100,10 @@ class ToolTimelineView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (entries.isEmpty) return const SizedBox.shrink();
-    final rows = foldReadOnlySteps(entries);
+    final rows = foldReadOnlySteps(
+      entries,
+      joinSummaries: BistreLocalizations.of(context).joinMeta,
+    );
     return Padding(
       padding: const EdgeInsetsDirectional.only(bottom: BistreSpacing.s12),
       child: Column(

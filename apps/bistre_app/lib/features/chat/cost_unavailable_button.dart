@@ -89,14 +89,14 @@ class _CostUnavailableButtonState extends State<CostUnavailableButton> {
                   if (usage.modelId.isNotEmpty || usage.hasTokens) ...[
                     const SizedBox(height: BistreSpacing.s8),
                     InkText(
-                      <String>[
+                      l10n.joinMeta(<String>[
                         if (usage.modelId.isNotEmpty) usage.modelId,
                         if (usage.hasTokens)
                           l10n.t(L10nKey.chatTokensMeta, <String, Object?>{
                             'input': usage.inputTokens,
                             'output': usage.outputTokens,
                           }),
-                      ].join(' · '),
+                      ]),
                       role: InkTextRole.captionMeta,
                       color: theme.inkMuted,
                     ),

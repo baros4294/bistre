@@ -247,6 +247,14 @@ class BistreLocalizationController extends ChangeNotifier {
     return evaluateIcuMessage(pattern, _activeLocale, args);
   }
 
+  /// Joins short meta fragments (`Inter · 15px`) with the locale's separator. Each fragment is
+  /// wrapped in a Unicode first-strong isolate so LTR names inside RTL text (and the reverse)
+  /// keep their order.
+  String joinMeta(Iterable<String> parts) => parts
+      .where((p) => p.isNotEmpty)
+      .map((p) => '\u2068$p\u2069')
+      .join(t(L10nKey.appMetaSeparator));
+
   /// Loads all bundled catalogs (`en`, `vi`, `ar`) from Flutter assets.
   static Future<BistreLocalizationController> loadBundled({
     AssetBundle? bundle,

@@ -111,12 +111,16 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
   ) {
     final target = server.transport == 'http' ? server.url : server.command;
     if (report == null) {
-      return '${server.transport.toUpperCase()} · $target';
+      return l10n.joinMeta(<String>[server.transport.toUpperCase(), target]);
     }
     final tools = l10n.t(L10nKey.settingsAgentMcpToolsCount, <String, Object?>{
       'count': report.toolNames.length,
     });
-    return '${server.transport.toUpperCase()} · MCP ${report.negotiatedProtocol} · $tools';
+    return l10n.joinMeta(<String>[
+      server.transport.toUpperCase(),
+      'MCP ${report.negotiatedProtocol}',
+      tools,
+    ]);
   }
 
   static String _formatTermuxBadge(

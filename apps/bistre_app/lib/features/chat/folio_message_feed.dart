@@ -906,7 +906,7 @@ class _PassageItemState extends State<_PassageItem> {
         ],
         Expanded(
           child: InkText(
-            parts.join(' · '),
+            l10n.joinMeta(parts),
             role: InkTextRole.captionMeta,
             color: theme.inkMuted,
             maxLines: 1,
