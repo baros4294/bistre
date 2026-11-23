@@ -271,6 +271,18 @@ class _FolioShellScreenState extends State<FolioShellScreen> {
     return ListenableBuilder(
       listenable: ctrl,
       builder: (context, _) {
+        switch (ctrl.bootState) {
+          case BootState.loading:
+            // A plain page until settings load, so default theme and the setup screen never
+            // flash before the user's own state appears.
+            return ColoredBox(color: theme.bgCanvas);
+          case BootState.failed:
+            return _BootFailedPage(
+              onRetry: () => unawaited(ctrl.retryBootstrap()),
+            );
+          case BootState.ready:
+            break;
+        }
         return Shortcuts(
           shortcuts: _buildShortcutMap(ctrl),
           child: Actions(
@@ -1267,6 +1279,46 @@ class _ModeSegmentPill extends StatelessWidget {
               role: InkTextRole.captionMeta,
               color: selected ? theme.inkPrimary : theme.inkMuted,
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown when the local engine could not open; offers the one action that can fix it.
+class _BootFailedPage extends StatelessWidget {
+  const _BootFailedPage({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = BistreTheme.of(context);
+    final l10n = BistreLocalizations.of(context);
+    return ColoredBox(
+      color: theme.bgCanvas,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsetsDirectional.all(BistreSpacing.s24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Semantics(
+                liveRegion: true,
+                child: InkText(
+                  l10n.t(L10nKey.bootFailed),
+                  role: InkTextRole.titleMedium,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: BistreSpacing.s16),
+              EngravedButton(
+                label: l10n.t(L10nKey.bootTryAgain),
+                primary: true,
+                onPressed: onRetry,
+              ),
+            ],
           ),
         ),
       ),

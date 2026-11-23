@@ -14,6 +14,8 @@ enum L10nKey {
   automationsPromptPlaceholder('automations.prompt_placeholder'),
   automationsSchedulePlaceholder('automations.schedule_placeholder'),
   automationsTitle('automations.title'),
+  bootFailed('boot.failed'),
+  bootTryAgain('boot.try_again'),
   chatActionCopied('chat.action.copied'),
   chatActionCopy('chat.action.copy'),
   chatActionDelete('chat.action.delete'),

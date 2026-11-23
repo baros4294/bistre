@@ -386,7 +386,16 @@ flowchart LR
       StreamController<BistreEvent>.broadcast();
 
   @override
-  Future<EngineHealth> init(String dataDir) async => getHealth();
+  Future<EngineHealth> init(String dataDir) async {
+    if (failInitTimes > 0) {
+      failInitTimes--;
+      throw StateError('diag.storage.unavailable');
+    }
+    return getHealth();
+  }
+
+  /// Number of upcoming `init` calls that fail (boot-failure tests).
+  int failInitTimes = 0;
 
   @override
   Future<EngineHealth> getHealth() async => EngineHealth(

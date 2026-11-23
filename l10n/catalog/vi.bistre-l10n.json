@@ -3617,6 +3617,20 @@
       "tone": "concise_action",
       "max_chars": 28,
       "placeholders": {}
+    },
+    "boot.failed": {
+      "message": "Bistre không mở được dữ liệu cục bộ trên thiết bị này.",
+      "context": "Shown when the local engine fails to start",
+      "tone": "calm_editorial",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "boot.try_again": {
+      "message": "Thử lại",
+      "context": "Retries opening the local engine after a startup failure",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
     }
   }
 }

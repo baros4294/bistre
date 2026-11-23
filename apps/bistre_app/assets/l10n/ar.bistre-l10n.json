@@ -3617,6 +3617,20 @@
       "tone": "concise_action",
       "max_chars": 28,
       "placeholders": {}
+    },
+    "boot.failed": {
+      "message": "تعذّر على Bistre فتح بياناته المحلية على هذا الجهاز.",
+      "context": "Shown when the local engine fails to start",
+      "tone": "calm_editorial",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "boot.try_again": {
+      "message": "حاول مرة أخرى",
+      "context": "Retries opening the local engine after a startup failure",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
     }
   }
 }

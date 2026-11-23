@@ -3617,6 +3617,20 @@
       "tone": "concise_action",
       "max_chars": 28,
       "placeholders": {}
+    },
+    "boot.failed": {
+      "message": "Bistre couldn't open its local data on this device.",
+      "context": "Shown when the local engine fails to start",
+      "tone": "calm_editorial",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "boot.try_again": {
+      "message": "Try again",
+      "context": "Retries opening the local engine after a startup failure",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
     }
   }
 }

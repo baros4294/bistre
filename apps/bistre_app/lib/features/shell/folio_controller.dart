@@ -133,6 +133,9 @@ class ShortcutActionSpec {
   ];
 }
 
+/// First-load progress of the shell (see [FolioController.bootState]).
+enum BootState { loading, ready, failed }
+
 /// Pure `ChangeNotifier` state coordinator for Bistre's native desktop & mobile UI.
 /// All persistence, OS secret vault operations, HTTP streaming, FTS5 search, OTA,
 /// and settings delegate strictly to `BistreEngineGateway`.
@@ -667,9 +670,62 @@ class FolioController extends ChangeNotifier {
     return map;
   }
 
+  /// Whether the first load finished; the shell shows a plain page until [BootState.ready]
+  /// so defaults never flash, and a retry screen on [BootState.failed].
+  BootState get bootState => _bootState;
+  BootState _bootState = BootState.loading;
+  String? _bootDataDir;
+
+  /// Retries a failed first load (the boot screen's "Try again").
+  Future<void> retryBootstrap() async {
+    final dir = _bootDataDir;
+    if (dir == null) return;
+    _bootState = BootState.loading;
+    notifyListeners();
+    await bootstrap(dir);
+  }
+
+  /// Event-stream re-subscriptions left before the failure is shown to the user.
+  int _eventResubscribesLeft = _kMaxEventResubscribes;
+  static const int _kMaxEventResubscribes = 3;
+
+  /// Subscribes to engine events first, so nothing that happens during startup is missed, and
+  /// re-subscribes (bounded) if the stream errors or closes.
+  void _subscribeEvents() {
+    unawaited(_eventSub?.cancel());
+    _eventSub = _gateway.subscribeEvents().listen(
+      (event) {
+        _eventResubscribesLeft = _kMaxEventResubscribes;
+        _handleEngineEvent(event);
+      },
+      onError: _onEventStreamLost,
+      onDone: () => _onEventStreamLost(null),
+    );
+  }
+
+  void _onEventStreamLost(Object? error) {
+    if (_disposed) return;
+    if (_eventResubscribesLeft <= 0) {
+      _lastDiagnosticKey = error == null
+          ? 'diag.runtime.not_initialized'
+          : extractDiagnosticKey(error);
+      notifyListeners();
+      return;
+    }
+    final attempt = _kMaxEventResubscribes - _eventResubscribesLeft;
+    _eventResubscribesLeft--;
+    unawaited(
+      Future<void>.delayed(Duration(milliseconds: 250 << attempt), () {
+        if (!_disposed) _subscribeEvents();
+      }),
+    );
+  }
+
   Future<void> bootstrap(String dataDir) async {
+    _bootDataDir = dataDir;
     try {
       _health = await _gateway.init(dataDir);
+      _subscribeEvents();
       // Fire-and-forget: platform probes must never block startup.
       unawaited(
         detectLowMemoryHost().then((low) {
@@ -723,11 +779,11 @@ class FolioController extends ChangeNotifier {
         });
       }
 
-      unawaited(_eventSub?.cancel());
-      _eventSub = _gateway.subscribeEvents().listen(_handleEngineEvent);
+      _bootState = BootState.ready;
       notifyListeners();
     } catch (e) {
       _lastDiagnosticKey = extractDiagnosticKey(e);
+      _bootState = BootState.failed;
       notifyListeners();
     }
   }
