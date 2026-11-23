@@ -489,30 +489,22 @@ fn schema_v6_checkpoints_memory_cron_and_event_cursor_replay() -> TestResult {
 }
 
 #[test]
-fn schema_v7_story_bible_progressions_manuscript_and_time_machine() {
-    let dir = tempdir().ok();
-    let Some(dir) = dir else { return };
-    let storage = StorageHandle::open(dir.path().join("v7.sqlite")).ok();
-    let Some(storage) = storage else { return };
+fn schema_v7_story_bible_progressions_manuscript_and_time_machine() -> TestResult {
+    let dir = tempdir()?;
+    let storage = StorageHandle::open(dir.path().join("v7.sqlite"))?;
     assert_eq!(
         storage.health().ok().map(|h| h.schema_version),
         Some(CURRENT_SCHEMA_VERSION)
     );
 
-    let thread = storage
-        .create_thread(None, "Novel Draft", ThreadMode::Write, None, None)
-        .ok();
-    let Some(thread) = thread else { return };
+    let thread = storage.create_thread(None, "Novel Draft", ThreadMode::Write, None, None)?;
 
-    let card = storage
-        .upsert_character_card(bistre_protocol::CharacterCardRecord {
-            name: "Lyra".to_owned(),
-            description: "Archivist of the Glass City".to_owned(),
-            alternate_greetings: vec!["Rain taps the skylight.".to_owned()],
-            ..bistre_protocol::CharacterCardRecord::default()
-        })
-        .ok();
-    let Some(card) = card else { return };
+    let card = storage.upsert_character_card(bistre_protocol::CharacterCardRecord {
+        name: "Lyra".to_owned(),
+        description: "Archivist of the Glass City".to_owned(),
+        alternate_greetings: vec!["Rain taps the skylight.".to_owned()],
+        ..bistre_protocol::CharacterCardRecord::default()
+    })?;
     assert_eq!(
         storage
             .list_story_snapshots("character_card", &card.id, 10)
@@ -521,15 +513,12 @@ fn schema_v7_story_bible_progressions_manuscript_and_time_machine() {
         Some(1)
     );
 
-    let entry = storage
-        .upsert_story_entry(bistre_protocol::StoryEntryRecord {
-            name: "Glass City".to_owned(),
-            keys: vec!["glass city".to_owned()],
-            content: "A terraced citadel above the salt sea.".to_owned(),
-            ..bistre_protocol::StoryEntryRecord::default()
-        })
-        .ok();
-    let Some(entry) = entry else { return };
+    let entry = storage.upsert_story_entry(bistre_protocol::StoryEntryRecord {
+        name: "Glass City".to_owned(),
+        keys: vec!["glass city".to_owned()],
+        content: "A terraced citadel above the salt sea.".to_owned(),
+        ..bistre_protocol::StoryEntryRecord::default()
+    })?;
 
     assert!(
         storage
@@ -550,15 +539,12 @@ fn schema_v7_story_bible_progressions_manuscript_and_time_machine() {
         Some(1)
     );
 
-    let ch = storage
-        .upsert_story_chapter(bistre_protocol::StoryChapterRecord {
-            thread_id: thread.id,
-            order_index: 1,
-            title: "Chapter 1: Salt and Ink".to_owned(),
-            ..bistre_protocol::StoryChapterRecord::default()
-        })
-        .ok();
-    let Some(ch) = ch else { return };
+    let ch = storage.upsert_story_chapter(bistre_protocol::StoryChapterRecord {
+        thread_id: thread.id,
+        order_index: 1,
+        title: "Chapter 1: Salt and Ink".to_owned(),
+        ..bistre_protocol::StoryChapterRecord::default()
+    })?;
     let scene = storage
         .upsert_story_scene(bistre_protocol::StorySceneRecord {
             chapter_id: ch.id,
@@ -570,4 +556,5 @@ fn schema_v7_story_bible_progressions_manuscript_and_time_machine() {
         })
         .ok();
     assert_eq!(scene.map(|s| s.word_count), Some(5));
+    Ok(())
 }

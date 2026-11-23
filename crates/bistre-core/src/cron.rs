@@ -157,8 +157,10 @@ mod tests {
     use bistre_protocol::{ThreadMode, UnattendedPolicy};
     use tempfile::tempdir;
 
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
     #[test]
-    fn evaluates_intervals_and_five_field_cron_and_polls_due_jobs() {
+    fn evaluates_intervals_and_five_field_cron_and_polls_due_jobs() -> TestResult {
         let base_ms = 1_700_000_000_000_i64;
         assert_eq!(
             compute_next_run_unix_ms("every 15m", base_ms).ok(),
@@ -168,10 +170,8 @@ mod tests {
         assert!(next_cron.is_some_and(|t| t > base_ms && ((t / 60_000) % 5 == 0)));
         assert!(compute_next_run_unix_ms("bad expr", base_ms).is_err());
 
-        let dir = tempdir().ok();
-        let Some(dir) = dir else { return };
-        let storage = StorageHandle::open(dir.path().join("cron.sqlite")).ok();
-        let Some(storage) = storage else { return };
+        let dir = tempdir()?;
+        let storage = StorageHandle::open(dir.path().join("cron.sqlite"))?;
 
         let job = CronJobRecord {
             id: String::new(),
@@ -202,5 +202,6 @@ mod tests {
             .ok()
             .unwrap_or_default();
         assert_eq!(due_again.len(), 0);
+        Ok(())
     }
 }

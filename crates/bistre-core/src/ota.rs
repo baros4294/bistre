@@ -443,6 +443,8 @@ fn now_unix_ms() -> i64 {
 pub(crate) mod tests {
     use super::*;
 
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
     #[test]
     fn semver_anti_rollback_compares_triples_monotonically() {
         assert!(is_semver_newer("0.2.0", "0.1.0"));
@@ -479,12 +481,10 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn staging_requires_digest_and_rejects_mismatch() {
+    async fn staging_requires_digest_and_rejects_mismatch() -> TestResult {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        let dir = tempfile::tempdir().ok();
-        let Some(dir) = dir else { return };
-        let http = crate::providers::build_http_client().ok();
-        let Some(http) = http else { return };
+        let dir = tempfile::tempdir()?;
+        let http = crate::providers::build_http_client()?;
         let mut check = VerifiedManifest {
             latest_version: "0.2.0".to_owned(),
             track: "track_a".to_owned(),
@@ -499,10 +499,9 @@ pub(crate) mod tests {
             Some("ota_sha256_missing".to_owned())
         );
 
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.ok();
-        let Some(listener) = listener else { return };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
         let Ok(addr) = listener.local_addr() else {
-            return;
+            return Ok(());
         };
         let server = tokio::spawn(async move {
             if let Ok((mut sock, _)) = listener.accept().await {
@@ -531,6 +530,7 @@ pub(crate) mod tests {
                 .join("ota_staging/0.2.0/payload.bin.partial")
                 .exists()
         );
+        Ok(())
     }
 
     // Test-only minisign fixture: an "ED" (prehashed) signature over FIXTURE_MANIFEST made with a

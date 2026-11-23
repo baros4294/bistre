@@ -122,10 +122,11 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
     #[tokio::test]
-    async fn loads_and_executes_matching_lifecycle_hooks() {
-        let dir = tempdir().ok();
-        let Some(dir) = dir else { return };
+    async fn loads_and_executes_matching_lifecycle_hooks() -> TestResult {
+        let dir = tempdir()?;
         let cfg_dir = dir.path().join(".bistre");
         assert!(std::fs::create_dir_all(&cfg_dir).is_ok());
         assert!(
@@ -146,5 +147,6 @@ mod tests {
             .ok();
         assert_eq!(ran.as_ref().map(Vec::len), Some(1));
         assert!(ran.as_ref().and_then(|v| v.first()).is_some_and(|r| r.ok));
+        Ok(())
     }
 }
