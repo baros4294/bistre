@@ -526,6 +526,7 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
+    #[cfg(windows)]
     type TestResult = Result<(), Box<dyn std::error::Error>>;
 
     // Official minisign-verify 0.3.0 RFC test vector (payload = b"test").
