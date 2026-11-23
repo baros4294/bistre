@@ -225,6 +225,10 @@ pub enum DiagnosticKey {
     #[serde(rename = "diag.ota.signing_key_missing")]
     OtaSigningKeyMissing,
 
+    #[error("diag.wallet.check_unavailable")]
+    #[serde(rename = "diag.wallet.check_unavailable")]
+    WalletCheckUnavailable,
+
     #[error("diag.internal.error")]
     #[serde(rename = "diag.internal.error")]
     InternalError,
@@ -270,6 +274,7 @@ impl DiagnosticKey {
             Self::ToolApprovalRequired => "diag.tool.approval_required",
             Self::OtaIntegrityFailed => "diag.ota.integrity_failed",
             Self::OtaSigningKeyMissing => "diag.ota.signing_key_missing",
+            Self::WalletCheckUnavailable => "diag.wallet.check_unavailable",
             Self::InternalError => "diag.internal.error",
         }
     }

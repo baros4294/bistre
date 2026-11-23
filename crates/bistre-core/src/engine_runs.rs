@@ -8,6 +8,8 @@ use super::{
     ssrf, story,
 };
 use crate::events::{emit, emit_logged, note_write};
+use crate::wallet;
+use bistre_protocol::{BistreResult, UsageMetrics};
 
 /// Shared network services for one streaming run.
 #[derive(Debug)]
@@ -85,6 +87,35 @@ pub(crate) async fn execute_durable_stream_loop(
             compile_write_mode_system_prompt(storage, thread_id, system_prompt, &history)
         } else {
             system_prompt.to_owned()
+        };
+        // Wallet Shield: reserve spend for this paid request before it is sent (fail closed).
+        let mut reservation = if is_local {
+            None
+        } else {
+            match reserve_paid_request(
+                storage,
+                services,
+                thread_id,
+                provider,
+                model,
+                &effective_system_prompt,
+                &history,
+            )
+            .await
+            {
+                Ok(r) => Some(r),
+                Err(err) => {
+                    failed_key = Some(err.key.as_key().to_owned());
+                    emit(
+                        events_tx,
+                        EngineEvent::DiagnosticRaised {
+                            key: err.key,
+                            detail_code: Some(run_id.to_owned()),
+                        },
+                    );
+                    break;
+                }
+            }
         };
         let mut activity = approval::RunActivity::start();
         let step_rec = storage
@@ -271,19 +302,29 @@ pub(crate) async fn execute_durable_stream_loop(
                         }
                         Ok(committed) => {
                             committed_assistant_id = Some(committed.id.clone());
-                            if let Err(err) = storage.record_wallet_entry_with_usage(
-                                Some(thread_id.to_owned()),
-                                provider.id.clone(),
-                                model.to_owned(),
-                                res.usage.estimated_cost_micros,
-                                res.usage.input_tokens,
-                                res.usage.output_tokens,
-                                if res.cancelled {
-                                    "cancelled".to_owned()
-                                } else {
-                                    "settled".to_owned()
-                                },
-                            ) {
+                            let status = if res.cancelled {
+                                "cancelled".to_owned()
+                            } else {
+                                "settled".to_owned()
+                            };
+                            let recorded = match reservation.take() {
+                                Some(r) => r.settle(
+                                    res.usage.estimated_cost_micros,
+                                    res.usage.input_tokens,
+                                    res.usage.output_tokens,
+                                    status,
+                                ),
+                                None => storage.record_wallet_entry_with_usage(
+                                    Some(thread_id.to_owned()),
+                                    provider.id.clone(),
+                                    model.to_owned(),
+                                    res.usage.estimated_cost_micros,
+                                    res.usage.input_tokens,
+                                    res.usage.output_tokens,
+                                    status,
+                                ),
+                            };
+                            if let Err(err) = recorded {
                                 // Wallet Shield budgets read these rows; a lost spend record is surfaced.
                                 tracing::error!(
                                     key = err.key.as_key(),
@@ -418,26 +459,6 @@ pub(crate) async fn execute_durable_stream_loop(
             .unwrap_or_default();
         if pending_steers.is_empty() {
             break;
-        }
-
-        if let Ok(latest_settings) = storage.load_settings()
-            && !crate::net::is_loopback_url(&provider.base_url)
-            && let Some(cap) = latest_settings.wallet_daily_ceiling_micros
-        {
-            let spent_today = storage
-                .sum_wallet_spend_since_micros(utc_day_start_unix_ms())
-                .unwrap_or(MoneyMicros::ZERO);
-            if spent_today >= cap {
-                failed_key = Some(DiagnosticKey::WalletCeilingExceeded.as_key().to_owned());
-                emit(
-                    events_tx,
-                    EngineEvent::DiagnosticRaised {
-                        key: DiagnosticKey::WalletCeilingExceeded,
-                        detail_code: Some(run_id.to_owned()),
-                    },
-                );
-                break;
-            }
         }
 
         let steer_text = pending_steers
@@ -595,6 +616,46 @@ pub(crate) fn utc_day_start_unix_ms() -> i64 {
 
 /// Walks parent pointers backward from `leaf_id` to root so branching threads send
 /// only the active conversation branch (never sibling branches) to the LLM provider.
+/// Reserves Wallet Shield spend for one paid request. The estimate prices the prompt's input
+/// tokens (about 4 characters each) when live rates are known; output is settled afterwards.
+async fn reserve_paid_request(
+    storage: &Arc<StorageHandle>,
+    services: &StreamServices,
+    thread_id: &str,
+    provider: &ProviderProfile,
+    model: &str,
+    system_prompt: &str,
+    history: &[NodeRecord],
+) -> BistreResult<wallet::SpendReservation> {
+    let settings = storage.load_settings().map_err(|err| {
+        BistreError::with_detail(DiagnosticKey::WalletCheckUnavailable, err.key.as_key())
+    })?;
+    let prompt_chars = history
+        .iter()
+        .map(|n| n.content.len())
+        .fold(system_prompt.len(), usize::saturating_add);
+    let estimate_usage = UsageMetrics {
+        input_tokens: u64::try_from(prompt_chars / 4).unwrap_or(u64::MAX),
+        ..UsageMetrics::default()
+    };
+    let rates = services.pricing.rates_for(model).await;
+    let estimate = providers::estimate_cost_micros(provider, rates, &estimate_usage)
+        .unwrap_or(MoneyMicros::ZERO);
+    wallet::SpendReservation::reserve(
+        storage,
+        Some(thread_id.to_owned()),
+        provider.id.clone(),
+        model.to_owned(),
+        estimate,
+        settings.wallet_daily_ceiling_micros,
+        utc_day_start_unix_ms(),
+    )
+    .map_err(|err| match err.key {
+        DiagnosticKey::WalletCeilingExceeded => err,
+        other => BistreError::with_detail(DiagnosticKey::WalletCheckUnavailable, other.as_key()),
+    })
+}
+
 pub(crate) fn collect_branch_ancestry(nodes: &[NodeRecord], leaf_id: &str) -> Vec<NodeRecord> {
     let by_id: HashMap<&str, &NodeRecord> = nodes.iter().map(|n| (n.id.as_str(), n)).collect();
     let mut chain = Vec::new();

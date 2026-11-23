@@ -503,11 +503,16 @@ impl EngineClient for InProcessEngine {
             let verified = self
                 .verified_update
                 .lock()
-                .map_err(|_| BistreError::with_detail(DiagnosticKey::InternalError, "ota_state_lock"))?
+                .map_err(|_| {
+                    BistreError::with_detail(DiagnosticKey::InternalError, "ota_state_lock")
+                })?
                 .clone()
                 .filter(|m| m.latest_version() == check.latest_version)
                 .ok_or_else(|| {
-                    BistreError::with_detail(DiagnosticKey::OtaIntegrityFailed, "ota_manifest_unverified")
+                    BistreError::with_detail(
+                        DiagnosticKey::OtaIntegrityFailed,
+                        "ota_manifest_unverified",
+                    )
                 })?;
             ota::stage_update_artifact(
                 &self.http,

@@ -30,6 +30,7 @@ pub mod story;
 pub mod subagents;
 pub mod tools;
 pub mod vault_key;
+pub mod wallet;
 
 mod engine_client;
 mod engine_impl;
@@ -133,6 +134,8 @@ impl InProcessEngine {
         let dir = data_dir.as_ref().to_path_buf();
         let db_path = dir.join("bistre.sqlite");
         let storage = StorageHandle::open(db_path)?;
+        // No run exists yet, so any outstanding reservation is from a crash; release it.
+        storage.release_all_wallet_reservations()?;
         let vault: Arc<dyn SecretVault> = Arc::new(LocalSecretVault::open(&dir, vault_key)?);
         let http = providers::build_http_client()?;
         let power = PowerCoordinator::new(power_backend);

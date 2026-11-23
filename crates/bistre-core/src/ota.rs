@@ -562,7 +562,11 @@ AcVYMmpeIXCzgxq42h3Z3qKtmljay0AsdPqX+qkYbcHmmZxkYR/OZWqy1u7S4gT4X4e+aTVNH15wDFXG
                     return;
                 };
                 let req = String::from_utf8_lossy(&buf[..n]);
-                let body = if req.contains(".minisig") { sig } else { Some(manifest) };
+                let body = if req.contains(".minisig") {
+                    sig
+                } else {
+                    Some(manifest)
+                };
                 let resp = match body {
                     Some(b) => format!(
                         "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{b}",
@@ -582,11 +586,16 @@ AcVYMmpeIXCzgxq42h3Z3qKtmljay0AsdPqX+qkYbcHmmZxkYR/OZWqy1u7S4gT4X4e+aTVNH15wDFXG
     }
 
     #[tokio::test]
-    async fn missing_release_key_disables_ota_before_any_request() -> Result<(), Box<dyn std::error::Error>> {
+    async fn missing_release_key_disables_ota_before_any_request()
+    -> Result<(), Box<dyn std::error::Error>> {
         let http = crate::providers::build_http_client()?;
         // Port 9 (discard) is never contacted: the key check runs first.
-        let res = check_for_updates(&http, "http://127.0.0.1:9/manifest.json", "0.1.0", 0, None).await;
-        assert_eq!(res.err().map(|e| e.key), Some(DiagnosticKey::OtaSigningKeyMissing));
+        let res =
+            check_for_updates(&http, "http://127.0.0.1:9/manifest.json", "0.1.0", 0, None).await;
+        assert_eq!(
+            res.err().map(|e| e.key),
+            Some(DiagnosticKey::OtaSigningKeyMissing)
+        );
         Ok(())
     }
 
@@ -615,14 +624,34 @@ AcVYMmpeIXCzgxq42h3Z3qKtmljay0AsdPqX+qkYbcHmmZxkYR/OZWqy1u7S4gT4X4e+aTVNH15wDFXG
         let http = crate::providers::build_http_client()?;
         let tampered: &'static str = r#"{"semver":"9.9.9","track":"track_b","release_notes":"","download_url":"https://evil.invalid/x","sha256_hex":"sha256:0000000000000000000000000000000000000000000000000000000000000000","download_size_bytes":1}"#;
         let (addr, server) = serve_feed(tampered, Some(FIXTURE_SIG), 2).await?;
-        let res = check_for_updates(&http, &format!("http://{addr}/m.json"), "0.1.0", 0, Some(FIXTURE_PK)).await;
+        let res = check_for_updates(
+            &http,
+            &format!("http://{addr}/m.json"),
+            "0.1.0",
+            0,
+            Some(FIXTURE_PK),
+        )
+        .await;
         server.await?;
-        assert_eq!(res.err().map(|e| e.key), Some(DiagnosticKey::CryptoSignatureInvalid));
+        assert_eq!(
+            res.err().map(|e| e.key),
+            Some(DiagnosticKey::CryptoSignatureInvalid)
+        );
 
         let (addr, server) = serve_feed(FIXTURE_MANIFEST, None, 2).await?;
-        let res = check_for_updates(&http, &format!("http://{addr}/m.json"), "0.1.0", 0, Some(FIXTURE_PK)).await;
+        let res = check_for_updates(
+            &http,
+            &format!("http://{addr}/m.json"),
+            "0.1.0",
+            0,
+            Some(FIXTURE_PK),
+        )
+        .await;
         server.await?;
-        assert_eq!(res.err().map(|e| e.key), Some(DiagnosticKey::CryptoSignatureInvalid));
+        assert_eq!(
+            res.err().map(|e| e.key),
+            Some(DiagnosticKey::CryptoSignatureInvalid)
+        );
         Ok(())
     }
 }

@@ -228,8 +228,15 @@ async fn wallet_shield_enforces_daily_cap_and_unlimited_bypasses_and_ota_checks_
     .await
     .ok();
     assert!(feed.is_some());
-    let Some((addr, ota_server)) = feed else { return };
-    assert!(engine.ota_release_key.set(ota::tests::FIXTURE_PK.to_owned()).is_ok());
+    let Some((addr, ota_server)) = feed else {
+        return;
+    };
+    assert!(
+        engine
+            .ota_release_key
+            .set(ota::tests::FIXTURE_PK.to_owned())
+            .is_ok()
+    );
 
     let check = engine
         .check_for_updates(Some(format!("http://{addr}/manifest.json")))

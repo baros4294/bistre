@@ -754,6 +754,94 @@ impl StorageHandle {
         self.record_wallet_entry_with_usage(thread_id, provider_id, model_id, cost, 0, 0, status)
     }
 
+    /// Atomically checks the daily ceiling and reserves `estimate` before a paid request.
+    ///
+    /// Runs on the single writer, so concurrent runs serialize: each sees every settled entry
+    /// *and* every outstanding reservation. Returns the reservation id, or
+    /// `WalletCeilingExceeded` when today's settled + reserved spend already meets `ceiling`.
+    pub fn reserve_wallet_spend(
+        &self,
+        thread_id: Option<String>,
+        provider_id: String,
+        model_id: String,
+        estimate: MoneyMicros,
+        ceiling: Option<MoneyMicros>,
+        since_unix_ms: i64,
+    ) -> BistreResult<String> {
+        let id = Uuid::now_v7().to_string();
+        let now = now_unix_ms();
+        self.write(move |conn| {
+            let tx = conn.transaction().map_err(map_sqlite_err)?;
+            let spent: i64 = tx
+                .query_row(
+                    "SELECT COALESCE(SUM(cost_micros), 0) FROM wallet_ledger WHERE created_at_ms >= ?1",
+                    [since_unix_ms],
+                    |row| row.get(0),
+                )
+                .map_err(map_sqlite_err)?;
+            if ceiling.is_some_and(|c| MoneyMicros::from_micros(spent) >= c) {
+                return Err(BistreError::new(DiagnosticKey::WalletCeilingExceeded));
+            }
+            tx.execute(
+                "INSERT INTO wallet_ledger (id, thread_id, job_id, provider_id, model_id, cost_micros,
+                                            input_tokens, output_tokens, status, created_at_ms)
+                 VALUES (?1, ?2, NULL, ?3, ?4, ?5, 0, 0, 'reserved', ?6)",
+                params![id, thread_id, provider_id, model_id, estimate.as_micros(), now],
+            )
+            .map_err(map_sqlite_err)?;
+            tx.commit().map_err(map_sqlite_err)?;
+            Ok(id)
+        })
+    }
+
+    /// Replaces a reservation with the exact settled cost and token counts.
+    pub fn settle_wallet_reservation(
+        &self,
+        reservation_id: String,
+        cost: MoneyMicros,
+        input_tokens: u64,
+        output_tokens: u64,
+        status: String,
+    ) -> BistreResult<()> {
+        let in_tok = i64::try_from(input_tokens).unwrap_or(i64::MAX);
+        let out_tok = i64::try_from(output_tokens).unwrap_or(i64::MAX);
+        self.write(move |conn| {
+            let changed = conn
+                .execute(
+                    "UPDATE wallet_ledger SET cost_micros = ?2, input_tokens = ?3, output_tokens = ?4,
+                                              status = ?5
+                     WHERE id = ?1 AND status = 'reserved'",
+                    params![reservation_id, cost.as_micros(), in_tok, out_tok, status],
+                )
+                .map_err(map_sqlite_err)?;
+            if changed == 1 {
+                Ok(())
+            } else {
+                Err(BistreError::with_detail(DiagnosticKey::StorageNotFound, "wallet_reservation"))
+            }
+        })
+    }
+
+    /// Drops an unsettled reservation (request failed, was cancelled before output, or retried).
+    pub fn release_wallet_reservation(&self, reservation_id: String) -> BistreResult<()> {
+        self.write(move |conn| {
+            conn.execute(
+                "DELETE FROM wallet_ledger WHERE id = ?1 AND status = 'reserved'",
+                [reservation_id],
+            )
+            .map_err(map_sqlite_err)?;
+            Ok(())
+        })
+    }
+
+    /// Drops every outstanding reservation; called at engine start, when no run can own one.
+    pub fn release_all_wallet_reservations(&self) -> BistreResult<usize> {
+        self.write(|conn| {
+            conn.execute("DELETE FROM wallet_ledger WHERE status = 'reserved'", [])
+                .map_err(map_sqlite_err)
+        })
+    }
+
     /// Returns total recorded spend across all time in exact `MoneyMicros`.
     pub fn sum_wallet_spend_micros(&self) -> BistreResult<MoneyMicros> {
         let conn = self.open_reader()?;

@@ -131,6 +131,7 @@ enum L10nKey {
   diagToolStaleRead('diag.tool.stale_read'),
   diagValidationInvalidInput('diag.validation.invalid_input'),
   diagWalletCeilingExceeded('diag.wallet.ceiling_exceeded'),
+  diagWalletCheckUnavailable('diag.wallet.check_unavailable'),
   memoryAddAction('memory.add_action'),
   memoryAddPlaceholder('memory.add_placeholder'),
   memoryEmpty('memory.empty'),

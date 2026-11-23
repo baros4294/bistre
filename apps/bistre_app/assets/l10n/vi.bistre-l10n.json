@@ -3575,6 +3575,13 @@
       "tone": "diagnostic",
       "max_chars": 96,
       "placeholders": {}
+    },
+    "diag.wallet.check_unavailable": {
+      "message": "Không kiểm tra được hạn mức chi tiêu nên yêu cầu chưa được gửi.",
+      "context": "Rust DiagnosticKey::WalletCheckUnavailable message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
     }
   }
 }

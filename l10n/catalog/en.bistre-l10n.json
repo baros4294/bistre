@@ -3575,6 +3575,13 @@
       "tone": "diagnostic",
       "max_chars": 96,
       "placeholders": {}
+    },
+    "diag.wallet.check_unavailable": {
+      "message": "Couldn't check your spending limit, so the request was not sent.",
+      "context": "Rust DiagnosticKey::WalletCheckUnavailable message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
     }
   }
 }

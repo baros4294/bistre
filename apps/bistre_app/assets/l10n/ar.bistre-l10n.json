@@ -3575,6 +3575,13 @@
       "tone": "diagnostic",
       "max_chars": 96,
       "placeholders": {}
+    },
+    "diag.wallet.check_unavailable": {
+      "message": "تعذّر التحقق من حد الإنفاق، لذلك لم يُرسَل الطلب.",
+      "context": "Rust DiagnosticKey::WalletCheckUnavailable message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
     }
   }
 }
