@@ -935,11 +935,11 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
     #[test]
-    fn capability_scoped_read_edit_diff_rewind_and_tier3_secret_blocks() {
-        let dir = tempdir().ok();
-        assert!(dir.is_some());
-        let Some(dir) = dir else { return };
+    fn capability_scoped_read_edit_diff_rewind_and_tier3_secret_blocks() -> TestResult {
+        let dir = tempdir()?;
         let workspace = dir.path().join("ws");
         assert!(std::fs::create_dir_all(&workspace).is_ok());
         let file = workspace.join("hello.rs");
@@ -965,13 +965,11 @@ mod tests {
         );
 
         // Edit verifies hash, saves pre-image checkpoint, writes atomically, produces unified diff.
-        let storage = StorageHandle::open(dir.path().join("tools.sqlite")).ok();
-        assert!(storage.is_some());
-        let Some(storage) = storage else { return };
+        let storage = StorageHandle::open(dir.path().join("tools.sqlite"))?;
         let thread = storage
             .create_thread(None, "Tools", bistre_protocol::ThreadMode::Code, None, None)
             .ok();
-        let Some(thread) = thread else { return };
+        let Some(thread) = thread else { return Ok(()) };
 
         let target = "    let x = 1;";
         let bad_edit = tool_edit(
@@ -1030,6 +1028,7 @@ mod tests {
             gl.as_ref()
                 .is_some_and(|r| r.output_text.contains("hello.rs"))
         );
+        Ok(())
     }
 
     #[test]

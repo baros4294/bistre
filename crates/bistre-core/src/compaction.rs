@@ -241,16 +241,20 @@ mod tests {
     use bistre_protocol::ThreadMode;
     use tempfile::tempdir;
 
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
     #[test]
-    fn reversible_compaction_and_fixed_context_start_pin_preserve_original_dag() {
+    fn reversible_compaction_and_fixed_context_start_pin_preserve_original_dag() -> TestResult {
         let dir = tempdir().ok();
-        let Some(dir) = dir else { return };
+        let Some(dir) = dir else { return Ok(()) };
         let storage = StorageHandle::open(dir.path().join("compact.sqlite")).ok();
-        let Some(storage) = storage else { return };
+        let Some(storage) = storage else {
+            return Ok(());
+        };
         let thread = storage
             .create_thread(None, "Compaction", ThreadMode::Chat, None, None)
             .ok();
-        let Some(thread) = thread else { return };
+        let Some(thread) = thread else { return Ok(()) };
 
         let mut parent = None;
         let mut created = Vec::new();
@@ -269,7 +273,7 @@ mod tests {
                     None,
                 )
                 .ok();
-            let Some(n) = n else { return };
+            let Some(n) = n else { return Ok(()) };
             parent = Some(n.id.clone());
             created.push(n);
         }
@@ -280,11 +284,9 @@ mod tests {
         assert_eq!(pinned[0].id, created[2].id);
 
         // Compact keeping 2 recent turns.
-        let summary = create_reversible_compaction(&storage, &thread.id, &created, 2, None).ok();
-        assert!(summary.is_some());
-        let Some(summary) = summary else { return };
+        let summary = create_reversible_compaction(&storage, &thread.id, &created, 2, None)?;
 
-        let all_after = storage.list_nodes(&thread.id).ok().unwrap_or_default();
+        let all_after = storage.list_nodes(&thread.id)?;
         assert_eq!(all_after.len(), 7);
         let projected = project_effective_history(&all_after, None);
         assert_eq!(projected.len(), 3); // [CompactionSummary, Turn #4, Turn #5]
@@ -292,10 +294,11 @@ mod tests {
 
         // Undo compaction restores all 6 verbatim messages!
         assert!(undo_compaction(&storage, &thread.id, &summary.id).is_ok());
-        let restored = storage.list_nodes(&thread.id).ok().unwrap_or_default();
+        let restored = storage.list_nodes(&thread.id)?;
         assert_eq!(restored.len(), 6);
         assert!(should_auto_compact(85_000, 100_000, 20));
         assert!(!should_auto_compact(50_000, 100_000, 20));
+        Ok(())
     }
 
     #[test]

@@ -153,19 +153,19 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
     #[tokio::test]
-    async fn copy_sandbox_fallback_isolates_workspace_and_skips_secrets() {
+    async fn copy_sandbox_fallback_isolates_workspace_and_skips_secrets() -> TestResult {
         let dir = tempdir().ok();
-        let Some(dir) = dir else { return };
+        let Some(dir) = dir else { return Ok(()) };
         let src = dir.path().join("project");
         let scratch = dir.path().join("sandboxes");
         assert!(std::fs::create_dir_all(&src).is_ok());
         assert!(std::fs::write(src.join("main.rs"), "fn main() {}\n").is_ok());
         assert!(std::fs::write(src.join(".env"), "SECRET=do-not-copy\n").is_ok());
 
-        let sb = prepare_worktree_sandbox(&src, &scratch).await.ok();
-        assert!(sb.is_some());
-        let Some(sb) = sb else { return };
+        let sb = prepare_worktree_sandbox(&src, &scratch).await?;
         assert!(!sb.used_git_worktree);
 
         let sb_root = PathBuf::from(&sb.sandbox_path);
@@ -174,5 +174,6 @@ mod tests {
 
         assert!(cleanup_worktree_sandbox(&sb).await.is_ok());
         assert!(!sb_root.exists());
+        Ok(())
     }
 }
