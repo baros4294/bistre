@@ -50,15 +50,16 @@ Renders land in `parchment-v260/.parchment-local/verification/gallery/` (38 scre
 | Header status | No run or sleep status in the header | Removed; runs live in the Studio pane | Closed (2026-11-23) |
 | Pickers | One model picker (the header subtitle); the composer's chips set thinking (`None`) and tools | One model picker (header subtitle); mode and assistant are composer chips (mode collapses to one cycling chip when narrow) | Closed (2026-11-23) |
 | Chat tabs | Open chats show as tabs under the header with `N Tabs` overflow | No chat tabs | Open |
-| Empty chat | One `rubricMark` line, "Start with a question, a draft or a file.", with the model name beneath; nothing else when a key exists | Three intro lines, a second rubric bar on the setup card, starter rows | Open |
+| Empty chat | One `rubricMark` line, "Start with a question, a draft or a file.", with the model name beneath; nothing else when a key exists | Same; the setup card no longer carries a second accent bar | Closed (2026-11-23) |
 | Messages | Messenger bubbles: yours a tinted right-aligned pill; replies a hairline-bordered card; model name and time above the bubble; actions on hover (touch: under the newest turns) | Speaker header with six always-visible actions; no bubble shape by default | Open |
-| Thinking | Collapsed `> Thought 4s, 2 tools` on the trailing edge above the reply; expanded as a tinted panel "Thinking and tool steps (21 words • 2 tools)" | Full-width disclosure box with a solid ink border | Open |
-| Code card | `kotlin (2 lines)` plus four equal icon buttons: wrap, fold, download, copy | `Wrap lines` text pill beside one copy icon; no line count, fold, or download | Open |
+| Thinking | Collapsed `> Thought 4s, 2 tools` on the trailing edge above the reply; expanded as a tinted panel "Thinking and tool steps (21 words • 2 tools)" | Trailing `> Thinking · 2.4s` toggle (focusable); tinted hairline panel whose content fades in over `arriving`; tool count not shown yet | Partial |
+| Code card | `kotlin (2 lines)` plus four equal icon buttons: wrap, fold, download, copy | `rust (3 lines)` header done; wrap is still a text pill (no wrap icon in the `.vec` set yet); no fold or download | Partial |
 | Composer | Placeholder `Message <assistant>...`; chips attach, voice, thinking level, Tools; context ring labelled `217/128k (0%)`; `Send ↵` as a quiet secondary button | Placeholder `Type a message...`; unlabeled `170` ring; loud filled red Send; assistant picker in the composer | Open |
 | Errors | Floating notice: plain sentence + one fix button (`Check API key`) + dismiss | Banner above the composer | Open |
 | Scroll | `↓ Latest` pill when scrolled up | No jump-to-latest | Open |
 | Sidebar | Search field + `+` new chat; `Assistants · Chats · Pinned`; chats grouped by assistant with count and `Clear all`; title + relative time | Date groups; no new-chat button beside search; no relative time | Open |
 | Settings | Left nav with icons and `← Chat`; searchable ("Search all settings..."); content in titled cards; theme presets as preview swatches | Nine tabs, no settings search | Open |
 | Feed | 0 ms motion for 100+/day actions | `FolioFadeSlide` replayed on scroll-back and thread switch | Closed (2026-11-23) |
+| Motion | 150 ms arriving, 110 leaving, 180 travelling, 250 overlay exit, bounce-free size springs; instant under Reduce motion | Same timings (`BistreMotion.arriving/leaving/travelling`); overlays close instantly and sizes snap with a content fade (no layout animation) | Closed (2026-11-23) |
 | Copy | Plain-words glossary | `Author's Note`, `API base URL`, `Reasoning effort`, `Compact context`, `steer`, `endpoint`; RTL-unsafe `' · '` joins | Open |
 | Targets | 48 dp touch; 34/38 dp control heights on one row | About 30 targets at 26–36 px | Open |
