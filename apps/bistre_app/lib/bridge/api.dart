@@ -440,6 +440,16 @@ Future<FfiAgentRunRecord> resolveIndeterminateRun({
 Future<int?> modelContextTokens({required String model}) =>
     BistreRustLib.instance.api.crateApiModelContextTokens(model: model);
 
+/// Estimated tokens the next request sends for the branch ending at `leaf_node_id`
+/// (saturates at `u32::MAX`).
+Future<int> contextUsage({
+  required String threadId,
+  required String leafNodeId,
+}) => BistreRustLib.instance.api.crateApiContextUsage(
+  threadId: threadId,
+  leafNodeId: leafNodeId,
+);
+
 /// Starts a public price-list refresh now.
 Future<void> refreshPrices() =>
     BistreRustLib.instance.api.crateApiRefreshPrices();

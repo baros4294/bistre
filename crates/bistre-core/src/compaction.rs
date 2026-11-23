@@ -244,6 +244,47 @@ mod tests {
     type TestResult = Result<(), Box<dyn std::error::Error>>;
 
     #[test]
+    fn context_usage_follows_what_the_next_request_sends() -> TestResult {
+        let dir = tempdir()?;
+        let storage = StorageHandle::open(dir.path().join("usage.sqlite"))?;
+        let thread = storage.create_thread(None, "Usage", ThreadMode::Chat, None, None)?;
+        let mut parent = None;
+        let mut created = Vec::new();
+        for idx in 0..6_u32 {
+            let role = if idx % 2 == 0 {
+                NodeRole::User
+            } else {
+                NodeRole::Assistant
+            };
+            let n = storage.append_node(
+                thread.id.clone(),
+                parent.clone(),
+                role,
+                format!("{idx}: {}", "words ".repeat(400)),
+                None,
+            )?;
+            parent = Some(n.id.clone());
+            created.push(n);
+        }
+        let leaf = created.last().map(|n| n.id.clone()).ok_or("no turns")?;
+        let full = crate::engine_runs::branch_context_tokens(&storage, &thread.id, &leaf)?;
+        // Five ~2,400-char turns: the trailing assistant turn is not resent.
+        assert!(full >= 5 * 600, "five ~2,400-char turns: {full}");
+
+        // A compaction keeping two turns lowers the gauge the way it lowers the real request.
+        let summary = create_reversible_compaction(&storage, &thread.id, &created, 2, None)?;
+        // The summary becomes the branch's newest node.
+        let compacted =
+            crate::engine_runs::branch_context_tokens(&storage, &thread.id, &summary.id)?;
+        assert!(compacted < full / 2, "compacted {compacted} vs full {full}");
+
+        undo_compaction(&storage, &thread.id, &summary.id)?;
+        let restored = crate::engine_runs::branch_context_tokens(&storage, &thread.id, &leaf)?;
+        assert_eq!(restored, full);
+        Ok(())
+    }
+
+    #[test]
     fn reversible_compaction_and_fixed_context_start_pin_preserve_original_dag() -> TestResult {
         let dir = tempdir()?;
         let storage = StorageHandle::open(dir.path().join("compact.sqlite"))?;

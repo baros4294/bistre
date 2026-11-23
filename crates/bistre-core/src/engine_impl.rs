@@ -749,6 +749,16 @@ impl EngineClient for InProcessEngine {
         Box::pin(async move { self.storage.latest_event_cursor() })
     }
 
+    fn context_usage(
+        &self,
+        thread_id: String,
+        leaf_node_id: String,
+    ) -> BoxFuture<'_, BistreResult<u64>> {
+        Box::pin(off_worker(&self.storage, move |s| {
+            crate::engine_runs::branch_context_tokens(s, &thread_id, &leaf_node_id)
+        }))
+    }
+
     fn model_context_tokens(&self, model: String) -> BoxFuture<'_, BistreResult<Option<u32>>> {
         Box::pin(async move {
             Ok(self
