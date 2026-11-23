@@ -225,9 +225,7 @@ class _FolioComposerState extends State<FolioComposer> {
                       decoration: BoxDecoration(
                         color: theme.bgElevated,
                         borderRadius: BorderRadius.circular(11),
-                        border: Border.all(
-                          color: theme.statusErr.withValues(alpha: 0.45),
-                        ),
+                        border: Border.all(color: theme.borderHairline),
                         boxShadow: theme.cardShadow,
                       ),
                       child: Padding(
@@ -237,30 +235,44 @@ class _FolioComposerState extends State<FolioComposer> {
                           8,
                           8,
                         ),
+                        // Parchment v2.6.0 notice: a status dot, one plain sentence in body ink,
+                        // one fix button, and dismiss; announced to screen readers.
                         child: Row(
                           children: [
+                            SizedBox.square(
+                              dimension: 6,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: theme.statusErr,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: BistreSpacing.s8),
                             Expanded(
-                              child: InkText(
-                                l10n.tRawKey(diag),
-                                role: InkTextRole.captionMeta,
-                                color: theme.statusErr,
+                              child: Semantics(
+                                liveRegion: true,
+                                child: InkText(
+                                  l10n.tRawKey(diag),
+                                  role: InkTextRole.bodyCompact,
+                                ),
                               ),
                             ),
                             // Fixable errors jump straight to the fix.
                             if (needsProviderKey) ...[
                               const SizedBox(width: BistreSpacing.s8),
-                              InkChip(
+                              EngravedButton(
                                 label: l10n.t(L10nKey.settingsTabProviders),
-                                selected: true,
-                                onSelected: ctrl.openSettings,
+                                compact: true,
+                                onPressed: ctrl.openSettings,
                               ),
                             ],
                             if (needsShorten) ...[
                               const SizedBox(width: BistreSpacing.s8),
-                              InkChip(
+                              EngravedButton(
                                 label: l10n.t(L10nKey.chatFixShorten),
-                                selected: true,
-                                onSelected: () {
+                                compact: true,
+                                onPressed: () {
                                   ctrl.clearDiagnostic();
                                   unawaited(ctrl.compactActiveThread());
                                 },
@@ -268,10 +280,10 @@ class _FolioComposerState extends State<FolioComposer> {
                             ],
                             if (needsSpendingLimit) ...[
                               const SizedBox(width: BistreSpacing.s8),
-                              InkChip(
+                              EngravedButton(
                                 label: l10n.t(L10nKey.chatFixSpendingLimit),
-                                selected: true,
-                                onSelected: () =>
+                                compact: true,
+                                onPressed: () =>
                                     ctrl.openSettings(SettingsTab.trust),
                               ),
                             ],
