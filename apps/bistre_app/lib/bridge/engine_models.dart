@@ -254,7 +254,7 @@ class EngineSettings {
     this.daemonKeepAliveWhenActive = true,
     this.unattendedPolicy = 'pause_and_notify',
     this.retryWatchdogMaxWaitSecs = 1800,
-    this.reasoningEffort = 'medium',
+    this.reasoningEffort = 'default',
     this.termuxBridgeEnabled = false,
     this.codeWrapMode = 'auto',
     this.pricingAutoRefresh = true,

@@ -13,6 +13,7 @@ import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
 import 'chat_mode_selector.dart';
 import 'context_gauge_ring.dart';
+import 'thinking_control.dart';
 
 /// Unified floating composer sheet respecting user reading width:
 /// - Quoted-reply bar
@@ -606,6 +607,13 @@ class _FolioComposerState extends State<FolioComposer> {
                             ),
                             const SizedBox(width: 4),
                           ],
+                          ThinkingControl(
+                            value: ctrl.settings.reasoningEffort,
+                            reduceMotionOverride: ctrl.reduceMotionOverride,
+                            onChanged: (v) =>
+                                unawaited(ctrl.setReasoningEffort(v)),
+                          ),
+                          const SizedBox(width: 4),
                           if (assistant != null)
                             FolioOverlay(
                               controller: _assistantMenuCtrl,

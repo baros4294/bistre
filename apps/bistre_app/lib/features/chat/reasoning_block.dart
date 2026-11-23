@@ -6,6 +6,7 @@ import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
+import 'thinking_control.dart';
 
 /// Collapsible editorial thinking/reasoning hairline drawer (`Thinking · 3.8s`)
 /// supporting live streaming expansion and 1-click quoting into the composer.
@@ -191,7 +192,8 @@ class _ReasoningBlockState extends State<ReasoningBlock> {
   }
 }
 
-/// Compact 4-option reasoning effort selector (`Off | Low | Medium | High`).
+/// Thinking effort as chips (Settings and the chat inspector), with the same stops as the
+/// composer slider ([kThinkingStops]).
 class ReasoningEffortSelector extends StatelessWidget {
   const ReasoningEffortSelector({
     super.key,
@@ -202,13 +204,6 @@ class ReasoningEffortSelector extends StatelessWidget {
   final String value;
   final ValueChanged<String> onChanged;
 
-  static const List<(String, L10nKey)> _options = <(String, L10nKey)>[
-    ('off', L10nKey.chatEffortOff),
-    ('low', L10nKey.chatEffortLow),
-    ('medium', L10nKey.chatEffortMedium),
-    ('high', L10nKey.chatEffortHigh),
-  ];
-
   @override
   Widget build(BuildContext context) {
     final l10n = BistreLocalizations.of(context);
@@ -216,7 +211,7 @@ class ReasoningEffortSelector extends StatelessWidget {
       spacing: 6,
       runSpacing: 6,
       children: [
-        for (final opt in _options)
+        for (final opt in kThinkingStops)
           InkChip(
             label: l10n.t(opt.$2),
             selected: value == opt.$1,

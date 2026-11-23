@@ -3744,6 +3744,46 @@
       "tone": "calm_editorial",
       "max_chars": 4,
       "placeholders": {}
+    },
+    "chat.effort_auto": {
+      "message": "Auto",
+      "context": "Thinking effort: let the model decide (nothing is sent)",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "chat.effort_extra": {
+      "message": "Extra",
+      "context": "Thinking effort above High",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "chat.effort_max": {
+      "message": "Max",
+      "context": "Highest thinking effort",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "chat.thinking_chip": {
+      "message": "Thinking: {level}",
+      "context": "Composer chip showing the thinking effort; opens a slider",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {
+        "level": {
+          "type": "String",
+          "example": "Medium"
+        }
+      }
+    },
+    "chat.thinking_hint": {
+      "message": "Sent only to models that can think. Auto lets the model decide.",
+      "context": "Hint under the thinking effort slider",
+      "tone": "calm_editorial",
+      "max_chars": 90,
+      "placeholders": {}
     }
   }
 }
