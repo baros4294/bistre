@@ -165,3 +165,8 @@ Recorded **2026-11-21** after completing Commit-1 Repo Fortress, Spec Pack, Day-
   - The 120 Hz streaming p95 (7.5 ms) is also reported `OVER` (7.6-12.5 ms on the debug test VM; not a hard fail).
   - Open: measure idle RSS on a GPU-backed or Windows release build (needs a local Visual Studio toolchain or a Windows CI launch step), then restore the hard fail.
 
+## 13. M7: Rebuild Isolation (2026-11-23)
+- **What changed**: frequent state left `FolioController`'s shell-wide notification. `ToastNotifier` and `SearchNotifier` live in `apps/bistre_app/lib/app/shell_notifiers.dart`; `draftSavedState` and `sidebarFilterQuery` are `ValueNotifier`s. Only the toast overlay, the search bar plus feed, the composer's Draft saved label, and the sidebar list listen to them. The engine's `DraftSavedEvent` echo no longer notifies, because it changes no state. The controller keeps delegating getters, so call sites did not change.
+- **Why this scope**: after this, the shell rebuilds only for user actions and run start/finish. Splitting the catalog, runs, and story state into separate controllers would not remove any frequent rebuild, so the §11 "full split" item is closed as unnecessary.
+- **Regression test** (`anti_pattern_regression_test.dart`, "rebuild only their own widgets"): a toast plus three search keystrokes, a draft save, and its engine echo rebuild the sidebar 0 times (3 / 1 / 1 before); two sidebar-filter keystrokes rebuild the feed 0 times (2 before). Each assertion was shown to fail without its fix.
+- **Verification (local, Windows)**: `flutter analyze` clean; `flutter test` 37/37; `just guard` passes.
