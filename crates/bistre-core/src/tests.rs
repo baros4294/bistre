@@ -6,6 +6,8 @@ use tempfile::tempdir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
+type TestResult = Result<(), Box<dyn std::error::Error>>;
+
 fn spawn_mock_sse_server(listener: TcpListener) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         for turn in 0..2 {
@@ -40,14 +42,10 @@ fn spawn_mock_sse_server(listener: TcpListener) -> tokio::task::JoinHandle<()> {
 }
 
 #[tokio::test]
-async fn unconfigured_provider_returns_diagnostic_and_local_sse_streams_real_http() {
-    let dir = tempdir().ok();
-    assert!(dir.is_some());
-    let Some(dir) = dir else { return };
+async fn unconfigured_provider_returns_diagnostic_and_local_sse_streams_real_http() -> TestResult {
+    let dir = tempdir()?;
 
-    let engine = InProcessEngine::open(dir.path(), VaultKey::generate().ok()).ok();
-    assert!(engine.is_some());
-    let Some(engine) = engine else { return };
+    let engine = InProcessEngine::open(dir.path(), VaultKey::generate().ok())?;
 
     let thread = engine
         .create_thread(
@@ -57,10 +55,7 @@ async fn unconfigured_provider_returns_diagnostic_and_local_sse_streams_real_htt
             Some("general".to_owned()),
             None,
         )
-        .await
-        .ok();
-    assert!(thread.is_some());
-    let Some(thread) = thread else { return };
+        .await?;
 
     // Zero fake mock replies: without a configured provider/key, returns ProviderNotConfigured.
     let blocked = engine
@@ -72,7 +67,7 @@ async fn unconfigured_provider_returns_diagnostic_and_local_sse_streams_real_htt
     );
 
     // Verify Big 3 built-in providers exist and API keys store safely in SecretVault.
-    let providers = engine.list_providers().await.ok().unwrap_or_default();
+    let providers = engine.list_providers().await?;
     assert_eq!(providers.len(), 3);
     let saved_openai = engine
         .set_provider_api_key("openai".to_owned(), "sk-test-1234567890abcd".to_owned())
@@ -90,12 +85,8 @@ async fn unconfigured_provider_returns_diagnostic_and_local_sse_streams_real_htt
     assert_eq!(cleared.as_ref().map(|p| p.has_api_key), Some(false));
 
     // Spin up a real local loopback HTTP/SSE server to verify reqwest streaming + DAG commit.
-    let listener = TcpListener::bind("127.0.0.1:0").await.ok();
-    assert!(listener.is_some());
-    let Some(listener) = listener else { return };
-    let addr = listener.local_addr().ok();
-    assert!(addr.is_some());
-    let Some(addr) = addr else { return };
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let addr = listener.local_addr()?;
     let server = spawn_mock_sse_server(listener);
 
     let custom = engine
@@ -105,10 +96,7 @@ async fn unconfigured_provider_returns_diagnostic_and_local_sse_streams_real_htt
             "local-test-model".to_owned(),
             None,
         )
-        .await
-        .ok();
-    assert!(custom.is_some());
-    let Some(custom) = custom else { return };
+        .await?;
 
     // Test live GET /models discovery.
     let models = engine.fetch_provider_models(custom.id.clone()).await.ok();
@@ -120,7 +108,7 @@ async fn unconfigured_provider_returns_diagnostic_and_local_sse_streams_real_htt
         Some("local-test-model")
     );
 
-    let mut settings = engine.load_settings().await.ok().unwrap_or_default();
+    let mut settings = engine.load_settings().await?;
     settings.active_provider_id = custom.id;
     settings.active_model_id = "local-test-model".to_owned();
     assert!(engine.save_settings(settings).await.is_ok());
@@ -149,23 +137,21 @@ async fn unconfigured_provider_returns_diagnostic_and_local_sse_streams_real_htt
     assert!(saw_finished);
     assert!(server.await.is_ok());
 
-    let nodes = engine.list_nodes(thread.id).await.ok().unwrap_or_default();
+    let nodes = engine.list_nodes(thread.id).await?;
     assert_eq!(nodes.len(), 2);
     assert_eq!(
         nodes.last().map(|n| n.content.as_str()),
         Some("Real SSE reply #1")
     );
     assert!(engine.shutdown().await.is_ok());
+    Ok(())
 }
 
 #[tokio::test]
-async fn wallet_shield_enforces_daily_cap_and_unlimited_bypasses_and_ota_checks_loopback() {
-    let dir = tempdir().ok();
-    assert!(dir.is_some());
-    let Some(dir) = dir else { return };
-    let engine = InProcessEngine::open(dir.path(), VaultKey::generate().ok()).ok();
-    assert!(engine.is_some());
-    let Some(engine) = engine else { return };
+async fn wallet_shield_enforces_daily_cap_and_unlimited_bypasses_and_ota_checks_loopback()
+-> TestResult {
+    let dir = tempdir()?;
+    let engine = InProcessEngine::open(dir.path(), VaultKey::generate().ok())?;
 
     // Save a key on OpenAI (non-loopback) and set daily ceiling to $0.00 to verify Wallet Shield hard block.
     assert!(
@@ -188,10 +174,7 @@ async fn wallet_shield_enforces_daily_cap_and_unlimited_bypasses_and_ota_checks_
     );
     let thread = engine
         .create_thread(None, "Budget test".to_owned(), ThreadMode::Chat, None, None)
-        .await
-        .ok();
-    assert!(thread.is_some());
-    let Some(thread) = thread else { return };
+        .await?;
 
     let mut settings = engine.load_settings().await.ok().unwrap_or_default();
     settings.active_provider_id = "openai".to_owned();
@@ -229,7 +212,7 @@ async fn wallet_shield_enforces_daily_cap_and_unlimited_bypasses_and_ota_checks_
     .ok();
     assert!(feed.is_some());
     let Some((addr, ota_server)) = feed else {
-        return;
+        return Ok(());
     };
     assert!(
         engine
@@ -266,16 +249,14 @@ async fn wallet_shield_enforces_daily_cap_and_unlimited_bypasses_and_ota_checks_
         Some(bistre_storage::CURRENT_SCHEMA_VERSION)
     );
     assert!(engine.shutdown().await.is_ok());
+    Ok(())
 }
 
 #[tokio::test]
-async fn suspend_resume_reconciles_tier2_indeterminate_halt_and_wallet_shield_precedence() {
-    let dir = tempdir().ok();
-    assert!(dir.is_some());
-    let Some(dir) = dir else { return };
-    let engine = InProcessEngine::open(dir.path(), VaultKey::generate().ok()).ok();
-    assert!(engine.is_some());
-    let Some(engine) = engine else { return };
+async fn suspend_resume_reconciles_tier2_indeterminate_halt_and_wallet_shield_precedence()
+-> TestResult {
+    let dir = tempdir()?;
+    let engine = InProcessEngine::open(dir.path(), VaultKey::generate().ok())?;
 
     let thread = engine
         .create_thread(
@@ -285,10 +266,7 @@ async fn suspend_resume_reconciles_tier2_indeterminate_halt_and_wallet_shield_pr
             None,
             None,
         )
-        .await
-        .ok();
-    assert!(thread.is_some());
-    let Some(thread) = thread else { return };
+        .await?;
 
     let run1 = engine
         .storage()
@@ -315,7 +293,7 @@ async fn suspend_resume_reconciles_tier2_indeterminate_halt_and_wallet_shield_pr
         })
         .ok();
     let (Some(run1), Some(run2)) = (run1, run2) else {
-        return;
+        return Ok(());
     };
     let status_of = |id: &str| {
         engine
@@ -391,23 +369,16 @@ async fn suspend_resume_reconciles_tier2_indeterminate_halt_and_wallet_shield_pr
     assert!(agent::compute_backoff_wait_ms(0, Some(12), 0, 60).is_some_and(|ms| ms >= 12_000));
     assert_eq!(agent::compute_backoff_wait_ms(4, None, 60, 60), None);
     assert!(engine.shutdown().await.is_ok());
+    Ok(())
 }
 
 #[tokio::test]
-async fn mid_stream_steering_queue_drives_follow_up_turn_without_cancel() {
-    let dir = tempdir().ok();
-    assert!(dir.is_some());
-    let Some(dir) = dir else { return };
-    let engine = InProcessEngine::open(dir.path(), VaultKey::generate().ok()).ok();
-    assert!(engine.is_some());
-    let Some(engine) = engine else { return };
+async fn mid_stream_steering_queue_drives_follow_up_turn_without_cancel() -> TestResult {
+    let dir = tempdir()?;
+    let engine = InProcessEngine::open(dir.path(), VaultKey::generate().ok())?;
 
-    let listener = TcpListener::bind("127.0.0.1:0").await.ok();
-    assert!(listener.is_some());
-    let Some(listener) = listener else { return };
-    let addr = listener.local_addr().ok();
-    assert!(addr.is_some());
-    let Some(addr) = addr else { return };
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let addr = listener.local_addr()?;
 
     // Serve 2 consecutive SSE turns (initial turn + steered continuation).
     let server = tokio::spawn(async move {
@@ -439,11 +410,8 @@ async fn mid_stream_steering_queue_drives_follow_up_turn_without_cancel() {
             "local-model".to_owned(),
             None,
         )
-        .await
-        .ok();
-    assert!(custom.is_some());
-    let Some(custom) = custom else { return };
-    let mut settings = engine.load_settings().await.ok().unwrap_or_default();
+        .await?;
+    let mut settings = engine.load_settings().await?;
     settings.active_provider_id = custom.id;
     settings.active_model_id = "local-model".to_owned();
     assert!(engine.save_settings(settings).await.is_ok());
@@ -456,10 +424,7 @@ async fn mid_stream_steering_queue_drives_follow_up_turn_without_cancel() {
             None,
             None,
         )
-        .await
-        .ok();
-    assert!(thread.is_some());
-    let Some(thread) = thread else { return };
+        .await?;
 
     let mut rx = engine.subscribe_events();
     assert!(
@@ -505,6 +470,7 @@ async fn mid_stream_steering_queue_drives_follow_up_turn_without_cancel() {
         Some((0, false))
     );
     assert!(engine.shutdown().await.is_ok());
+    Ok(())
 }
 
 #[tokio::test]

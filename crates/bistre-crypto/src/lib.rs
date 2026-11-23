@@ -526,6 +526,8 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
     // Official minisign-verify 0.3.0 RFC test vector (payload = b"test").
     const TEST_PK: &str = "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3";
     const TEST_SIG: &str = "untrusted comment: signature from minisign secret key\n\
@@ -573,38 +575,32 @@ wLMDjy9FLAuxZ3q4NlEvkgtyhrr0gtTu6KC4KBJdITbbOeAi1zBIYo0v4iTgt8jJpIidRJnp94ABQkJA
 
     #[cfg(windows)]
     #[test]
-    fn local_secret_vault_persists_and_encrypts_on_windows() {
-        let dir = tempdir().ok();
-        assert!(dir.is_some());
-        let Some(dir) = dir else { return };
+    fn local_secret_vault_persists_and_encrypts_on_windows() -> TestResult {
+        let dir = tempdir()?;
 
         let secret = b"sk-test-local-vault-secret-987654";
-        let vault = LocalSecretVault::open(dir.path(), None).ok();
-        assert!(vault.is_some());
-        let Some(vault) = vault else { return };
+        let vault = LocalSecretVault::open(dir.path(), None)?;
 
         assert!(vault.put("provider:openai", secret).is_ok());
         assert_eq!(vault.contains("provider:openai").ok(), Some(true));
 
         // Reopen fresh handle to verify durability across restarts.
-        let reopened = LocalSecretVault::open(dir.path(), None).ok();
-        assert!(reopened.is_some());
-        let Some(reopened) = reopened else { return };
+        let reopened = LocalSecretVault::open(dir.path(), None)?;
         let decrypted = reopened.get("provider:openai").ok().flatten();
         assert_eq!(
             decrypted.as_deref().map(Vec::as_slice),
             Some(secret.as_slice())
         );
 
-        let on_disk = std::fs::read_to_string(dir.path().join("bistre_vault.dpapi.json")).ok();
-        assert!(on_disk.is_some());
-        if let Some(raw) = on_disk {
+        let raw = std::fs::read_to_string(dir.path().join("bistre_vault.dpapi.json"))?;
+        {
             assert!(!raw.contains("sk-test-local-vault-secret-987654"));
             assert!(!raw.contains(&hex::encode(secret)));
         }
 
         assert!(reopened.delete("provider:openai").is_ok());
         assert_eq!(reopened.get("provider:openai").ok().flatten(), None);
+        Ok(())
     }
 
     fn sealed_vault(dir: &Path, key: &[u8; 32]) -> Option<LocalSecretVault> {
