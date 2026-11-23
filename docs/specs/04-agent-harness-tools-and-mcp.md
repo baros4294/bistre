@@ -16,11 +16,11 @@ Every core workspace tool runs in-process inside `crates/bistre-core` (zero shel
 - **Scheduled Cron & Interval Automations** (`crates/bistre-core/src/cron.rs`): Evaluates interval (`every 30s/15m/2h/1d`) and 5-field UTC cron expressions cleanly inside `bistre-daemon` without idle polling burn, respecting Wallet Shield and `UnattendedPolicy`.
 - **Sleep-Immune Durable Runs & Mid-Stream Steering (`ADR-0013`)**: Every agent run and step journals to SQLite WAL (`agent_runs`, `run_steps`, `steering_queue`) behind OS sleep leases (`PowerCoordinator` / Win32 `PowerCreateRequest` / Linux `systemd-inhibit` / Android `BistreAgentService` `specialUse` FGS + optional `TermuxBridge`). Mid-stream user steering messages inject cleanly at step boundaries without cancelling active generations.
 
-## 3. MCP Client (`rmcp 3.11.0`, Spec `2026-07-28` + Legacy Fallback)
-- Implements official `rmcp 3.11.0` targeting **`2026-07-28`** as primary (`server/discover`, stateless `_meta` capabilities, `Mcp-Method`/`Mcp-Name` headers, `ttlMs`/`cacheScope` tool caching, `subscriptions/listen`, MRTR `resultType: "input_required"`, `io.modelcontextprotocol/tasks` extension).
+## 3. MCP Client (Streamable HTTP, Spec `2026-07-28` + Legacy Fallback)
+- Bistre's own Streamable HTTP client (no SDK, `ADR-0018`) targets **`2026-07-28`** as primary (`server/discover`, stateless `_meta` capabilities, `Mcp-Method`/`Mcp-Name` headers, `ttlMs`/`cacheScope` tool caching, `subscriptions/listen`, MRTR `resultType: "input_required"`, `io.modelcontextprotocol/tasks` extension).
 - Auto-negotiates seamless fallback to `2025-11-25` / `2025-03-26` handshake when `server/discover` is unsupported.
 - Explicitly omits deprecated MCP features (Roots, Sampling, Logging, HTTP+SSE, OAuth DCR).
-- **Noisy Server Resilience**: Always drains stdio child `stderr` into a 64 KiB ring buffer; quarantines non-JSON `stdout` banner lines without breaking framing; caps per-tool result payloads at `256 KiB` (spilling overflow to local artifacts) and sorts exposed tool schemas deterministically for LLM prompt-cache stability.
+- **Noisy Server Resilience** (stdio transport is planned, not yet implemented; it brings the 64 KiB `stderr` ring and non-JSON `stdout` quarantine with it): caps per-tool result payloads at `256 KiB` (spilling overflow to local artifacts) and sorts exposed tool schemas deterministically for LLM prompt-cache stability.
 
 ## 4. Harness Precision & Web Safety
 - **Stale-read guard** (`tools::ReadLedger`): every `read` records the file digest per scope (thread); an `edit` after the file changed on disk fails with `DiagnosticKey::ToolStaleRead`. Failed edits return a near-miss hint (`target_not_found;near_line=N`); CRLF files keep CRLF when the model sends LF text; partial reads end with a footer telling the model never to rewrite a whole file from a truncated view.
