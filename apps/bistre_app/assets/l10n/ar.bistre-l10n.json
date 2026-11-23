@@ -1,0 +1,3573 @@
+{
+  "$schema": "../schema.json",
+  "locale": "ar",
+  "direction": "rtl",
+  "entries": {
+    "app.title": {
+      "message": "بيستر",
+      "context": "Application window title and root brand header",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "app.subtitle": {
+      "message": "مساحة ذكاء اصطناعي محلية",
+      "context": "Short subtitle under brand title in sidebar",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "shell.theme.day": {
+      "message": "فاتح",
+      "context": "Light sepia theme option",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "shell.theme.night": {
+      "message": "داكن",
+      "context": "Dark sepia theme option",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "shell.layout.bubbles": {
+      "message": "فقاعات",
+      "context": "Chat bubble message layout option",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "shell.layout.folio": {
+      "message": "مستند",
+      "context": "Clean document-style reading layout option",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "shell.health.wal_ready": {
+      "message": "النواة v{version} · {count, plural, =0{0 رسائل} one{رسالة واحدة} two{رسالتان} other{{count} رسائل}}",
+      "context": "Compact engine and storage status label",
+      "tone": "diagnostic",
+      "max_chars": 120,
+      "placeholders": {
+        "version": {
+          "type": "string",
+          "example": "0.1.0"
+        },
+        "count": {
+          "type": "int",
+          "example": "4"
+        }
+      }
+    },
+    "shell.search.placeholder": {
+      "message": "ابحث في الرسائل...",
+      "context": "Inline chat history search input placeholder",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "shell.search.results": {
+      "message": "{count, plural, =0{لا توجد رسائل مطابقة} one{رسالة واحدة مطابقة} two{رسالتان مطابقتان} other{{count} رسائل مطابقة}}",
+      "context": "Search hit summary below search input",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "3"
+        }
+      }
+    },
+    "shell.composer.placeholder": {
+      "message": "اكتب رسالة...",
+      "context": "Bottom message composer placeholder",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "shell.composer.send": {
+      "message": "إرسال",
+      "context": "Primary message submit button label",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "shell.composer.draft_saved": {
+      "message": "تم حفظ المسودة",
+      "context": "Indicator confirming unsent draft is saved locally",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "shell.empty.title": {
+      "message": "ابدأ محادثة",
+      "context": "Empty chat heading before first message",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "shell.empty.body": {
+      "message": "ذكاء اصطناعي محلي وسريع وخاص. محادثاتك ومفاتيحك مشفرة على هذا الجهاز.",
+      "context": "Empty chat helper subtitle",
+      "tone": "calm_editorial",
+      "max_chars": 128,
+      "placeholders": {}
+    },
+    "shell.role.user": {
+      "message": "أنت",
+      "context": "Speaker label for user messages",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "shell.role.assistant": {
+      "message": "بيستر",
+      "context": "Speaker label for assistant replies",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "shell.selection.copy": {
+      "message": "نسخ",
+      "context": "Custom text selection toolbar copy action",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "shell.selection.select_all": {
+      "message": "تحديد الكل",
+      "context": "Custom text selection toolbar select-all action",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "shell.locale.switch_a11y": {
+      "message": "تبديل اللغة إلى {locale}",
+      "context": "Screen reader label for language selector",
+      "tone": "concise_action",
+      "max_chars": 48,
+      "placeholders": {
+        "locale": {
+          "type": "string",
+          "example": "ar"
+        }
+      }
+    },
+    "shell.locale.en": {
+      "message": "EN",
+      "context": "Short label for English",
+      "tone": "concise_action",
+      "max_chars": 8,
+      "placeholders": {}
+    },
+    "shell.locale.vi": {
+      "message": "VI",
+      "context": "Short label for Vietnamese",
+      "tone": "concise_action",
+      "max_chars": 8,
+      "placeholders": {}
+    },
+    "shell.locale.ar": {
+      "message": "AR",
+      "context": "Short label for Arabic RTL",
+      "tone": "concise_action",
+      "max_chars": 8,
+      "placeholders": {}
+    },
+    "shell.thread.default_title": {
+      "message": "محادثة جديدة",
+      "context": "Default title for newly created chats",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "diag.ok": {
+      "message": "جاهز",
+      "context": "Rust DiagnosticKey::Ok status label",
+      "tone": "diagnostic",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "diag.storage.busy": {
+      "message": "التخزين المحلي مشغول؛ ستتم إعادة المحاولة قريباً.",
+      "context": "Rust DiagnosticKey::StorageBusy message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.storage.disk_full": {
+      "message": "القرص ممتلئ — مسودتك محفوظة بأمان في الذاكرة.",
+      "context": "Rust DiagnosticKey::StorageDiskFull message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.storage.migration_failed": {
+      "message": "فشل فحص سلامة ترقية قاعدة البيانات.",
+      "context": "Rust DiagnosticKey::StorageMigrationFailed message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.storage.not_found": {
+      "message": "تعذر العثور على المحادثة أو الرسالة المطلوبة.",
+      "context": "Rust DiagnosticKey::StorageNotFound message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.crypto.signature_invalid": {
+      "message": "فشل التحقق من التوقيع.",
+      "context": "Rust DiagnosticKey::CryptoSignatureInvalid message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.crypto.vault_unavailable": {
+      "message": "خزينة المفاتيح المشفرة غير متاحة على هذا الجهاز.",
+      "context": "Rust DiagnosticKey::CryptoVaultUnavailable message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.network.captive_portal": {
+      "message": "صفحة تسجيل دخول الشبكة تعترض الاتصال.",
+      "context": "Rust DiagnosticKey::NetworkCaptivePortal message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.clock.skew_suspected": {
+      "message": "ساعة الجهاز غير متزامنة؛ يرجى التحقق من الوقت.",
+      "context": "Rust DiagnosticKey::ClockSkewSuspected message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.tool.edit_hash_mismatch": {
+      "message": "تغير الملف منذ آخر قراءة؛ تم إلغاء التعديل بأمان.",
+      "context": "Rust DiagnosticKey::ToolEditHashMismatch message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.wallet.ceiling_exceeded": {
+      "message": "تم إيقاف الطلب: وصلت إلى حد الإنفاق اليومي.",
+      "context": "Rust DiagnosticKey::WalletCeilingExceeded message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.not_configured": {
+      "message": "لم يتم ربط مزود ذكاء اصطناعي. أضف مفتاح API من الإعدادات.",
+      "context": "Rust DiagnosticKey::ProviderNotConfigured message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.model_required": {
+      "message": "اختر أو اكتب اسم النموذج في الإعدادات أولاً.",
+      "context": "Rust DiagnosticKey::ProviderModelRequired message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.auth_failed": {
+      "message": "تم رفض مفتاح API. تحقق منه في الإعدادات.",
+      "context": "Rust DiagnosticKey::ProviderAuthFailed message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.request_failed": {
+      "message": "تعذر الاتصال بالمزود. تحقق من الشبكة أو الرابط.",
+      "context": "Rust DiagnosticKey::ProviderRequestFailed message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.validation.invalid_input": {
+      "message": "يرجى التحقق من الإدخال والمحاولة مرة أخرى.",
+      "context": "Rust DiagnosticKey::InvalidInput message",
+      "tone": "diagnostic",
+      "max_chars": 72,
+      "placeholders": {}
+    },
+    "diag.runtime.already_running": {
+      "message": "توجد نسخة أخرى من بيستر تعمل بالخلفية.",
+      "context": "Rust DiagnosticKey::RuntimeAlreadyRunning message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.runtime.not_initialized": {
+      "message": "جارٍ تشغيل المحرك المحلي...",
+      "context": "Rust DiagnosticKey::RuntimeNotInitialized message",
+      "tone": "diagnostic",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "diag.internal.error": {
+      "message": "حدث خطأ داخلي في المحرك المحلي.",
+      "context": "Rust DiagnosticKey::InternalError message",
+      "tone": "diagnostic",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "sidebar.new_folio": {
+      "message": "محادثة جديدة",
+      "context": "Primary sidebar button to start a new conversation",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "sidebar.toggle": {
+      "message": "إظهار أو إخفاء الشريط الجانبي",
+      "context": "Button to show or hide left sidebar",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "sidebar.filter_placeholder": {
+      "message": "ابحث في المحادثات...",
+      "context": "Filter box inside left sidebar",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "sidebar.section.assistants": {
+      "message": "المساعدون",
+      "context": "Sidebar vertical section for assistants",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.section.topics": {
+      "message": "المواضيع",
+      "context": "Sidebar vertical section for topic filters",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.section.pinned": {
+      "message": "المثبتة",
+      "context": "Sidebar vertical section for pinned chats",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.section.recent": {
+      "message": "الأخيرة",
+      "context": "Sidebar vertical section for recent chats",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "sidebar.empty_filtered": {
+      "message": "لا توجد محادثات مطابقة.",
+      "context": "Shown when sidebar search or topic filter finds nothing",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "sidebar.add_assistant": {
+      "message": "مساعد جديد",
+      "context": "Action to create a custom assistant",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "sidebar.settings": {
+      "message": "الإعدادات",
+      "context": "Sidebar footer button to open Settings",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.shortcuts": {
+      "message": "الاختصارات",
+      "context": "Sidebar footer button to view keyboard shortcuts",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.wallet_summary": {
+      "message": "{preset} · {spent} / {ceiling}",
+      "context": "Compact permission mode and daily spend summary",
+      "tone": "diagnostic",
+      "max_chars": 64,
+      "placeholders": {
+        "preset": {
+          "type": "string",
+          "example": "متوازن"
+        },
+        "spent": {
+          "type": "string",
+          "example": "$0.00"
+        },
+        "ceiling": {
+          "type": "string",
+          "example": "$5.00"
+        }
+      }
+    },
+    "topic.all": {
+      "message": "كل المحادثات",
+      "context": "Topic filter showing every chat",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "topic.general": {
+      "message": "عام",
+      "context": "General chat topic",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "topic.code": {
+      "message": "برمجة",
+      "context": "Software engineering topic",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "topic.writing": {
+      "message": "كتابة",
+      "context": "Writing and editing topic",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "topic.research": {
+      "message": "بحث",
+      "context": "Research and reading topic",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "topic.translate": {
+      "message": "ترجمة",
+      "context": "Translation topic",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "mode.chat": {
+      "message": "محادثة",
+      "context": "General chat mode",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "mode.code": {
+      "message": "برمجة",
+      "context": "Coding mode",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "mode.write": {
+      "message": "كتابة",
+      "context": "Writing mode",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "mode.translate": {
+      "message": "ترجمة",
+      "context": "Translation mode",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "thread.pin": {
+      "message": "تثبيت المحادثة",
+      "context": "Pin chat to top of sidebar",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "thread.unpin": {
+      "message": "إلغاء التثبيت",
+      "context": "Unpin chat from top of sidebar",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "thread.rename": {
+      "message": "إعادة تسمية",
+      "context": "Rename chat action",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "thread.rename_placeholder": {
+      "message": "عنوان المحادثة...",
+      "context": "Inline chat rename input placeholder",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "thread.delete": {
+      "message": "حذف المحادثة",
+      "context": "Delete chat action",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "thread.confirm_delete": {
+      "message": "تأكيد الحذف",
+      "context": "Second-click confirmation to delete chat",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "thread.cancel": {
+      "message": "إلغاء",
+      "context": "Cancel action",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "thread.save": {
+      "message": "حفظ",
+      "context": "Save action",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.action.copy": {
+      "message": "نسخ",
+      "context": "Copy full message text",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "chat.action.copied": {
+      "message": "تم النسخ",
+      "context": "Brief feedback after copying",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "chat.action.reply": {
+      "message": "رد",
+      "context": "Quote-reply to a message in composer",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "chat.action.regenerate": {
+      "message": "إعادة المحاولة",
+      "context": "Generate another version of an AI reply",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.action.stop": {
+      "message": "إيقاف",
+      "context": "Stop generating active reply",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.action.jump_latest": {
+      "message": "الانتقال للأحدث",
+      "context": "Floating button when scrolled up from bottom",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.replying_to": {
+      "message": "الرد على {excerpt}",
+      "context": "Quoted reply banner above composer",
+      "tone": "calm_editorial",
+      "max_chars": 96,
+      "placeholders": {
+        "excerpt": {
+          "type": "string",
+          "example": "SQLite WAL"
+        }
+      }
+    },
+    "chat.reply_clear": {
+      "message": "إلغاء الرد",
+      "context": "Dismiss quoted reply banner",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.streaming_badge": {
+      "message": "جارٍ الرد...",
+      "context": "Indicator while AI reply streams",
+      "tone": "diagnostic",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.branch_indicator": {
+      "message": "{current} / {total}",
+      "context": "Version indicator on regenerated replies",
+      "tone": "diagnostic",
+      "max_chars": 20,
+      "placeholders": {
+        "current": {
+          "type": "int",
+          "example": "1"
+        },
+        "total": {
+          "type": "int",
+          "example": "2"
+        }
+      }
+    },
+    "chat.branch_prev": {
+      "message": "النسخة السابقة",
+      "context": "Switch to earlier reply version",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.branch_next": {
+      "message": "النسخة التالية",
+      "context": "Switch to newer reply version",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.code_copy": {
+      "message": "نسخ الكود",
+      "context": "Copy button on code block header",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.search_toggle": {
+      "message": "بحث السجل",
+      "context": "Toggle chat history search bar",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.search_all_scope": {
+      "message": "كل المحادثات",
+      "context": "Search across every chat",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.search_thread_scope": {
+      "message": "هذه المحادثة",
+      "context": "Search only inside the active chat",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt1.title": {
+      "message": "مراجعة أو تصحيح كود",
+      "context": "Starter suggestion 1 title",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt1.body": {
+      "message": "راجع هذه الدالة لاكتشاف الحالات الحدية وتحسين وضوح البنية.",
+      "context": "Starter suggestion 1 prompt",
+      "tone": "calm_editorial",
+      "max_chars": 120,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt2.title": {
+      "message": "كتابة رسالة واضحة",
+      "context": "Starter suggestion 2 title",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt2.body": {
+      "message": "ساعدني في كتابة تحديث مشروع موجز وواضح بدون حشو.",
+      "context": "Starter suggestion 2 prompt",
+      "tone": "calm_editorial",
+      "max_chars": 128,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt3.title": {
+      "message": "تبسيط فكرة معقدة",
+      "context": "Starter suggestion 3 title",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt3.body": {
+      "message": "اشرح ببساطة كيف يعمل تخزين SQLite المحلي وتفريع المحادثات.",
+      "context": "Starter suggestion 3 prompt",
+      "tone": "calm_editorial",
+      "max_chars": 120,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt4.title": {
+      "message": "ترجمة طبيعية",
+      "context": "Starter suggestion 4 title",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt4.body": {
+      "message": "ترجم هذا النص بين الإنجليزية والفيتنامية والعربية مع الحفاظ على الأسلوب.",
+      "context": "Starter suggestion 4 prompt",
+      "tone": "calm_editorial",
+      "max_chars": 128,
+      "placeholders": {}
+    },
+    "provider.setup.title": {
+      "message": "اربط مزود ذكاء اصطناعي",
+      "context": "Onboarding card title when no API key is saved yet",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.setup.body": {
+      "message": "أضف مفتاح OpenAI أو Google Gemini أو Anthropic أو مزوداً مخصصاً للبدء. تُحفظ المفاتيح مشفرة على جهازك.",
+      "context": "Onboarding card body explaining where to add API keys",
+      "tone": "calm_editorial",
+      "max_chars": 160,
+      "placeholders": {}
+    },
+    "provider.setup.cta": {
+      "message": "إضافة مفتاح API",
+      "context": "Primary onboarding CTA button opening Providers & Keys settings",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.status.connected": {
+      "message": "متصل",
+      "context": "Badge when provider has a saved API key",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.status.not_connected": {
+      "message": "بلا مفتاح",
+      "context": "Badge when Big 3 provider has no API key yet",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.status.custom_ready": {
+      "message": "مخصص",
+      "context": "Badge for custom OpenAI-compatible provider",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.status.active": {
+      "message": "نشط",
+      "context": "Badge indicating active selected provider",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "provider.status.count": {
+      "message": "{count, plural, =0{أضف مفتاح API} one{مزود واحد جاهز} two{مزودان جاهزان} other{{count} مزودين جاهزين}}",
+      "context": "Sidebar footer status summary for connected providers",
+      "tone": "concise_action",
+      "max_chars": 48,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "1"
+        }
+      }
+    },
+    "provider.field.api_key": {
+      "message": "مفتاح API",
+      "context": "Form label for API key input",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.field.api_key_placeholder": {
+      "message": "الصق مفتاح API هنا...",
+      "context": "Placeholder inside API key input",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "provider.field.base_url": {
+      "message": "رابط API الأساسي",
+      "context": "Form label for provider endpoint URL",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.field.model": {
+      "message": "النموذج",
+      "context": "Form label for active model ID",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.field.model_placeholder": {
+      "message": "اختر أو اكتب معرف النموذج...",
+      "context": "Placeholder inside model ID field",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "provider.field.name": {
+      "message": "اسم المزود",
+      "context": "Form label when adding a custom provider",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.field.name_placeholder": {
+      "message": "مثال: Ollama أو OpenRouter",
+      "context": "Placeholder for custom provider display name",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "provider.action.save_key": {
+      "message": "حفظ المفتاح",
+      "context": "Button saving API key to encrypted OS vault",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.action.clear_key": {
+      "message": "حذف المفتاح",
+      "context": "Button clearing saved API key from vault",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.action.save_config": {
+      "message": "حفظ الإعدادات",
+      "context": "Button saving base URL and model for provider",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.action.load_models": {
+      "message": "جلب النماذج",
+      "context": "Button fetching live models from provider API",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.action.loading_models": {
+      "message": "جارٍ الجلب...",
+      "context": "Button label while fetching live models",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.action.use_provider": {
+      "message": "تفعيل",
+      "context": "Button making this provider and model active for chats",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.action.add_custom": {
+      "message": "إضافة مزود مخصص",
+      "context": "Button to create a custom OpenAI-compatible provider",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "provider.action.delete_custom": {
+      "message": "حذف المزود",
+      "context": "Button deleting a custom provider",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.action.show_key": {
+      "message": "إظهار مفتاح API",
+      "context": "Accessibility label to reveal typed key",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.action.hide_key": {
+      "message": "إخفاء مفتاح API",
+      "context": "Accessibility label to mask typed key",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.vault_note": {
+      "message": "تُحفظ المفاتيح مشفرة داخل خزينة النظام ولا تُخزن كنص واضح أبداً.",
+      "context": "Security assurance note in Providers & Keys tab",
+      "tone": "calm_editorial",
+      "max_chars": 112,
+      "placeholders": {}
+    },
+    "provider.models_loaded": {
+      "message": "{count, plural, =0{لم تُرجع أي نماذج} one{تم تحميل نموذج واحد} two{تم تحميل نموذجين} other{تم تحميل {count} نموذجاً}}",
+      "context": "Summary after live /models fetch succeeds",
+      "tone": "diagnostic",
+      "max_chars": 56,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "24"
+        }
+      }
+    },
+    "provider.custom_heading": {
+      "message": "إضافة مزود مخصص (متوافق مع OpenAI)",
+      "context": "Heading for custom provider form",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "provider.dialect.openai": {
+      "message": "واجهة OpenAI Responses",
+      "context": "Subtitle for OpenAI provider row",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.dialect.gemini": {
+      "message": "واجهة Google Gemini",
+      "context": "Subtitle for Google Gemini provider row",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.dialect.anthropic": {
+      "message": "واجهة Anthropic Messages",
+      "context": "Subtitle for Anthropic provider row",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.dialect.custom": {
+      "message": "متوافق مع OpenAI",
+      "context": "Subtitle for Custom provider row",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "palette.trigger": {
+      "message": "قائمة الأوامر",
+      "context": "Button opening Ctrl+K command menu",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "palette.placeholder": {
+      "message": "ابحث عن أمر أو محادثة أو مساعد...",
+      "context": "Search input inside Ctrl+K command menu",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "palette.empty": {
+      "message": "لا توجد أوامر مطابقة.",
+      "context": "Empty state in command menu",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "palette.section.actions": {
+      "message": "إجراءات سريعة",
+      "context": "Command menu actions group heading",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "palette.section.folios": {
+      "message": "تبديل المحادثة",
+      "context": "Command menu chat list heading",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "palette.section.assistants": {
+      "message": "تغيير المساعد",
+      "context": "Command menu assistant list heading",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.title": {
+      "message": "الإعدادات",
+      "context": "Settings modal header title",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.close": {
+      "message": "إغلاق الإعدادات",
+      "context": "Accessibility label on close settings button",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.tab.providers": {
+      "message": "المزودون والمفاتيح",
+      "context": "Settings tab 1 label for API keys and models",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.tab.appearance": {
+      "message": "المظهر",
+      "context": "Settings tab label",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.tab.language": {
+      "message": "اللغة",
+      "context": "Settings tab label",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.tab.assistants": {
+      "message": "المساعدون",
+      "context": "Settings tab label",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.tab.trust": {
+      "message": "الأمان والميزانية",
+      "context": "Settings tab label for permissions and spend limits",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.tab.shortcuts": {
+      "message": "الاختصارات",
+      "context": "Settings tab label",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.tab.engine": {
+      "message": "التخزين والمحرك",
+      "context": "Settings tab label for local database info",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.appearance.theme": {
+      "message": "المظهر",
+      "context": "Setting row label for Light/Dark theme",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.appearance.layout": {
+      "message": "تخطيط المحادثة",
+      "context": "Setting row label for Document vs Bubbles",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.appearance.scale": {
+      "message": "حجم النص",
+      "context": "Setting row label for font scaling",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.appearance.motion": {
+      "message": "الحركة",
+      "context": "Setting row label for smooth vs reduced motion",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.appearance.motion_smooth": {
+      "message": "سلسة",
+      "context": "Option enabling smooth transitions",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.motion_reduced": {
+      "message": "مخفضة",
+      "context": "Option minimizing motion",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.send_enter": {
+      "message": "الإرسال بزر Enter",
+      "context": "Toggle whether Enter sends a message",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.appearance.on": {
+      "message": "مفعل",
+      "context": "Toggle enabled option",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.appearance.off": {
+      "message": "متوقف",
+      "context": "Toggle disabled option",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.language.heading": {
+      "message": "لغة الواجهة",
+      "context": "Language settings heading",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.language.note": {
+      "message": "تتغير اللغة فوراً دون إعادة تشغيل مع عكس اتجاه الواجهة تلقائياً للغات من اليمين إلى اليسار.",
+      "context": "Explanatory note in Language settings tab",
+      "tone": "calm_editorial",
+      "max_chars": 160,
+      "placeholders": {}
+    },
+    "settings.assistants.create_title": {
+      "message": "إنشاء مساعد مخصص",
+      "context": "Form heading inside Assistants settings tab",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.assistants.name_placeholder": {
+      "message": "الاسم (مثال: مراجع كود)",
+      "context": "Input placeholder for new assistant name",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.assistants.subtitle_placeholder": {
+      "message": "وصف قصير",
+      "context": "Input placeholder for new assistant description",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.assistants.prompt_placeholder": {
+      "message": "تعليمات مخصصة لهذا المساعد...",
+      "context": "Input placeholder for assistant system prompt",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.assistants.create_action": {
+      "message": "إضافة مساعد",
+      "context": "Submit button creating custom assistant",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.trust.preset_heading": {
+      "message": "صلاحيات الأدوات",
+      "context": "Heading for tool approval presets",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.trust.parchment": {
+      "message": "صارم",
+      "context": "Ask before any file edit or command",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.trust.guided": {
+      "message": "متوازن",
+      "context": "Default safe mode with easy undo",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.trust.unchained": {
+      "message": "معزول",
+      "context": "Auto-run inside isolated sandbox",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.trust.ceiling_heading": {
+      "message": "حد الإنفاق اليومي",
+      "context": "Heading for daily API spend limit",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.trust.local_first": {
+      "message": "تفضيل النماذج المحلية المجانية",
+      "context": "Toggle prioritizing free local endpoints",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.trust.stateless": {
+      "message": "طلبات خاصة (دون حفظ على خوادم المزود)",
+      "context": "Toggle setting store: false by default",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.engine.heading": {
+      "message": "التخزين المحلي والمحرك",
+      "context": "Storage and engine tab heading",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.engine.telemetry": {
+      "message": "دون تتبع · مفاتيح مشفرة محلياً · تخزين SQLite دون اتصال",
+      "context": "Privacy note in Storage & Engine tab",
+      "tone": "calm_editorial",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "settings.engine.metrics": {
+      "message": "النواة v{version} · المخطط v{schema} · {threads} محادثات · {nodes} رسائل · النشطة: {runs}",
+      "context": "Live local engine metrics",
+      "tone": "diagnostic",
+      "max_chars": 128,
+      "placeholders": {
+        "version": {
+          "type": "string",
+          "example": "0.1.0"
+        },
+        "schema": {
+          "type": "int",
+          "example": "3"
+        },
+        "threads": {
+          "type": "int",
+          "example": "3"
+        },
+        "nodes": {
+          "type": "int",
+          "example": "12"
+        },
+        "runs": {
+          "type": "int",
+          "example": "0"
+        }
+      }
+    },
+    "shortcut.palette": {
+      "message": "فتح قائمة الأوامر",
+      "context": "Shortcut description for Ctrl+K",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "shortcut.new_folio": {
+      "message": "محادثة جديدة",
+      "context": "Shortcut description for Ctrl+N",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "shortcut.sidebar": {
+      "message": "إظهار أو إخفاء الشريط الجانبي",
+      "context": "Shortcut description for Ctrl+B",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "shortcut.settings": {
+      "message": "فتح الإعدادات",
+      "context": "Shortcut description for Ctrl+,",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "shortcut.search": {
+      "message": "البحث في سجل المحادثات",
+      "context": "Shortcut description for Ctrl+Shift+F",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "shortcut.theme": {
+      "message": "تبديل المظهر الفاتح والداكن",
+      "context": "Shortcut description for Ctrl+Shift+L",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "shortcut.layout": {
+      "message": "تبديل تخطيط المستند والفقاعات",
+      "context": "Shortcut description for Ctrl+Shift+M",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "shortcut.shortcuts": {
+      "message": "عرض اختصارات لوحة المفاتيح",
+      "context": "Shortcut description for Ctrl+/",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "shortcut.escape": {
+      "message": "إغلاق النافذة أو إيقاف الرد",
+      "context": "Shortcut description for Escape",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "toast.copied": {
+      "message": "تم النسخ إلى الحافظة",
+      "context": "Toast after copying",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.pinned": {
+      "message": "تم تثبيت المحادثة",
+      "context": "Toast after pinning chat",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.unpinned": {
+      "message": "تم إلغاء التثبيت",
+      "context": "Toast after unpinning chat",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.deleted": {
+      "message": "تم حذف المحادثة",
+      "context": "Toast after deleting chat",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "toast.assistant_created": {
+      "message": "تمت إضافة المساعد",
+      "context": "Toast after creating assistant",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.settings_saved": {
+      "message": "تم حفظ الإعدادات",
+      "context": "Toast after saving settings",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.key_saved": {
+      "message": "تم حفظ مفتاح API بأمان",
+      "context": "Toast after saving API key in OS vault",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "toast.key_removed": {
+      "message": "تم حذف مفتاح API",
+      "context": "Toast after deleting API key from vault",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.provider_added": {
+      "message": "تمت إضافة المزود",
+      "context": "Toast after adding a custom provider",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.provider_deleted": {
+      "message": "تم حذف المزود",
+      "context": "Toast after deleting a custom provider",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "sidebar.tab.assistant": {
+      "message": "المساعد",
+      "context": "Left sidebar top segmented tab for assistants",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "sidebar.tab.chat": {
+      "message": "المحادثة",
+      "context": "Left sidebar top segmented tab for chats",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "sidebar.tab.pinned": {
+      "message": "المثبتة",
+      "context": "Left sidebar top segmented tab for pinned chats",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "sidebar.pinned.empty": {
+      "message": "لا توجد محادثات مثبتة بعد",
+      "context": "Empty state inside Pinned sidebar tab",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "sidebar.assistant.new": {
+      "message": "مساعد جديد",
+      "context": "Action button inside Assistant sidebar tab",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.field.server_cache": {
+      "message": "ذاكرة تخزين مؤقت على الخادم",
+      "context": "Optional toggle enabling provider-side conversation state caching",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.assistants.edit_title": {
+      "message": "تعديل المساعد",
+      "context": "Heading when editing an existing assistant",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.assistants.save_action": {
+      "message": "حفظ التغييرات",
+      "context": "Primary button saving assistant edits",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.assistants.delete_action": {
+      "message": "حذف المساعد",
+      "context": "Action deleting an assistant",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.trust.spend_today": {
+      "message": "الإنفاق اليوم: {spent} / {limit}",
+      "context": "Live daily spend meter in Safety & Budget",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "spent": {
+          "type": "string",
+          "example": "$0.00"
+        },
+        "limit": {
+          "type": "string",
+          "example": "$5.00"
+        }
+      }
+    },
+    "toast.assistant_updated": {
+      "message": "تم تحديث المساعد",
+      "context": "Toast after updating an assistant",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.assistant_deleted": {
+      "message": "تم حذف المساعد",
+      "context": "Toast after deleting an assistant",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "diag.ota.check_failed": {
+      "message": "تعذر التحقق من التحديثات. تحقق من الاتصال أو رابط المصدر.",
+      "context": "Diagnostic when OTA manifest check fails",
+      "tone": "diagnostic",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "diag.ota.active_runs_deferred": {
+      "message": "التحديث جاهز بانتظار انتهاء المحادثات النشطة.",
+      "context": "Diagnostic when Track-B OTA defers until active runs reach zero",
+      "tone": "diagnostic",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "diag.ota.managed_externally": {
+      "message": "تتم إدارة التحديثات عبر مدير حزم النظام.",
+      "context": "Diagnostic when Linux app is installed via Flatpak, Snap, or /usr",
+      "tone": "diagnostic",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "diag.export.failed": {
+      "message": "تعذر حفظ الملف أو تصديره.",
+      "context": "Diagnostic when chat export or DB backup fails",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "shell.theme.system": {
+      "message": "النظام",
+      "context": "Follow OS light/dark theme",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.back_to_chat": {
+      "message": "العودة إلى المحادثة",
+      "context": "Button returning from full-window settings to chat",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.appearance.theme_section": {
+      "message": "المظهر والتخطيط",
+      "context": "Appearance section header for theme and layout",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.appearance.accent": {
+      "message": "اللون المميز",
+      "context": "Label for primary accent color customization",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.appearance.accent_custom": {
+      "message": "لون مخصص",
+      "context": "Custom hex color option label",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.appearance.accent_wax": {
+      "message": "قرمزي",
+      "context": "Warm vermilion accent preset",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.accent_brass": {
+      "message": "كهرماني",
+      "context": "Warm amber accent preset",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.accent_pine": {
+      "message": "أخضر غابات",
+      "context": "Deep forest green accent preset",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.accent_cobalt": {
+      "message": "أزرق كوبالت",
+      "context": "Deep cobalt blue accent preset",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.accent_plum": {
+      "message": "برقوقي",
+      "context": "Warm plum accent preset",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.typography_section": {
+      "message": "الخطوط والطباعة",
+      "context": "Section heading for font family and size controls",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.appearance.prose_font": {
+      "message": "خط القراءة والواجهة",
+      "context": "Label for local UI/reading font selector",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.appearance.mono_font": {
+      "message": "خط الشيفرة البرمجية",
+      "context": "Label for local monospace code font selector",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.appearance.font_default": {
+      "message": "الافتراضي المدمج",
+      "context": "Default bundled font option",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.appearance.font_browse": {
+      "message": "اختر ملف خط...",
+      "context": "Button opening native file picker for local TTF/OTF font",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.appearance.font_reset": {
+      "message": "إعادة ضبط",
+      "context": "Button resetting control back to default value",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.font_size_px": {
+      "message": "حجم الخط ({px} بكسل)",
+      "context": "Continuous font size control label in logical pixels",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "px": {
+          "type": "int",
+          "example": "15"
+        }
+      }
+    },
+    "settings.appearance.line_height": {
+      "message": "تباعد الأسطر ({value})",
+      "context": "Line spacing multiplier control label",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "value": {
+          "type": "string",
+          "example": "1.60"
+        }
+      }
+    },
+    "settings.appearance.reading_width": {
+      "message": "عرض عمود القراءة ({px} بكسل)",
+      "context": "Max reading column width slider label",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {
+        "px": {
+          "type": "int",
+          "example": "760"
+        }
+      }
+    },
+    "settings.appearance.preview_title": {
+      "message": "معاينة فورية",
+      "context": "Header above live typography preview card",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.appearance.preview_body": {
+      "message": "الطباعة الواضحة تجعل جلسات القراءة والبرمجة الطويلة مريحة.",
+      "context": "Sample paragraph rendered inside live typography preview",
+      "tone": "calm_editorial",
+      "max_chars": 120,
+      "placeholders": {}
+    },
+    "settings.appearance.show_tokens": {
+      "message": "عرض تفاصيل الرموز والتكلفة",
+      "context": "Toggle displaying model token counts and estimated cost below replies",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "provider.add_button": {
+      "message": "إضافة مزوّد",
+      "context": "Primary button opening add provider template picker",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "provider.add_title": {
+      "message": "إضافة مزوّد ذكاء اصطناعي",
+      "context": "Title of add provider panel",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "provider.add_subtitle": {
+      "message": "اختر قالباً جاهزاً أو اربط أي خادم متوافق مع OpenAI.",
+      "context": "Helper subtitle on add provider screen",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "provider.delete_button": {
+      "message": "حذف المزوّد",
+      "context": "Button deleting any provider including starters",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "provider.delete_confirm": {
+      "message": "انقر مجدداً للحذف",
+      "context": "Second-click delete confirmation label",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "provider.icon_label": {
+      "message": "أيقونة المزوّد",
+      "context": "Label above color lab icon picker for provider",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.icon_custom_upload": {
+      "message": "اختر صورة محلية...",
+      "context": "Button picking local PNG/WebP custom provider icon",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.icon_clear_custom": {
+      "message": "استخدام أيقونة المزوّد",
+      "context": "Button clearing custom local image icon",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "provider.empty_title": {
+      "message": "لا يوجد مزوّدون مُعدّون",
+      "context": "Empty state title when user deleted all providers",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "provider.empty_body": {
+      "message": "أضف OpenAI أو Google Gemini أو Anthropic أو Ollama أو أي خادم مخصص للبدء.",
+      "context": "Empty state body when provider list is empty",
+      "tone": "calm_editorial",
+      "max_chars": 140,
+      "placeholders": {}
+    },
+    "provider.enabled_toggle": {
+      "message": "مفعّل",
+      "context": "Toggle enabling or disabling a provider",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.dialect_label": {
+      "message": "بروتوكول الواجهة",
+      "context": "Label for provider wire dialect selector",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.assistants.default_provider": {
+      "message": "المزوّد الافتراضي",
+      "context": "Optional default provider bound to an assistant",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.assistants.default_model": {
+      "message": "النموذج الافتراضي",
+      "context": "Optional default model bound to an assistant",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.assistants.use_global_default": {
+      "message": "استخدام افتراضي التطبيق",
+      "context": "Option inheriting global active provider/model",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.assistants.icon_label": {
+      "message": "أيقونة المساعد",
+      "context": "Optional icon label in assistant editor",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.assistants.temperature": {
+      "message": "درجة العشوائية",
+      "context": "Generation temperature parameter label",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.assistants.max_tokens": {
+      "message": "الحد الأقصى للرموز",
+      "context": "Generation max output tokens label",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.assistants.top_p": {
+      "message": "Top P",
+      "context": "Nucleus sampling top-p parameter label",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.assistants.params_default": {
+      "message": "افتراضي",
+      "context": "Value label when numeric generation parameter is unset",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.budget.unlimited": {
+      "message": "غير محدود",
+      "context": "Unlimited daily spending badge/label",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.budget.unlimited_toggle": {
+      "message": "إنفاق غير محدود",
+      "context": "Toggle disabling daily spending cap completely",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.budget.unlimited_badge": {
+      "message": "لا يوجد حد يومي للإنفاق حالياً.",
+      "context": "Subtitle when unlimited spending is enabled",
+      "tone": "calm_editorial",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "settings.budget.custom_amount": {
+      "message": "حد يومي مخصص (دولار)",
+      "context": "Custom USD numeric input label",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.budget.apply_amount": {
+      "message": "تطبيق",
+      "context": "Apply custom daily limit button",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.budget.today_spend": {
+      "message": "إنفاق اليوم",
+      "context": "Heading for today Wallet Shield spend bar",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.tab.updates": {
+      "message": "التحديثات والتخزين",
+      "context": "Settings navigation tab combining OTA updates and local storage",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.ota.section_title": {
+      "message": "تحديثات التطبيق والبيانات",
+      "context": "OTA updates section heading",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {}
+    },
+    "settings.ota.section_subtitle": {
+      "message": "تحديثات موقعة بدون تتبع يتم التحقق منها محلياً عبر Ed25519.",
+      "context": "OTA section subtitle explaining cryptographic verification",
+      "tone": "calm_editorial",
+      "max_chars": 120,
+      "placeholders": {}
+    },
+    "settings.ota.current_version": {
+      "message": "الإصدار المثبّت",
+      "context": "Current installed Bistre version row label",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.ota.channel": {
+      "message": "قناة الإصدار",
+      "context": "OTA release channel selector label",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.ota.channel_stable": {
+      "message": "مستقر",
+      "context": "Stable release channel option",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.ota.channel_beta": {
+      "message": "تجريبي",
+      "context": "Beta release channel option",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.ota.feed_url": {
+      "message": "رابط مصدر التحديثات",
+      "context": "Configurable self-hostable OTA manifest URL input",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.ota.check_button": {
+      "message": "التحقق من التحديثات",
+      "context": "Primary button triggering live zero-telemetry OTA check",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.ota.checking": {
+      "message": "جارٍ التحقق...",
+      "context": "Progress label while checking for updates",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.ota.up_to_date": {
+      "message": "محدّث لآخر إصدار (v{version})",
+      "context": "Status badge when already on newest version",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {
+        "version": {
+          "type": "string",
+          "example": "0.1.0"
+        }
+      }
+    },
+    "settings.ota.update_available": {
+      "message": "يتوفر تحديث جديد: v{version}",
+      "context": "Status banner when newer signed version is available",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {
+        "version": {
+          "type": "string",
+          "example": "0.2.0"
+        }
+      }
+    },
+    "settings.ota.download_stage": {
+      "message": "تنزيل وتجهيز التحديث",
+      "context": "Button downloading and verifying OTA payload",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.ota.staging": {
+      "message": "جارٍ التنزيل...",
+      "context": "Progress label while downloading OTA artifact",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.ota.staged_ready": {
+      "message": "تم التحقق من التحديث وتجهيزه. أعد تشغيل Bistre للتطبيق.",
+      "context": "Confirmation once update artifact is verified and staged",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "settings.ota.signature_verified": {
+      "message": "تم التحقق من توقيع Ed25519",
+      "context": "Badge indicating offline Ed25519 signature passed",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.ota.active_runs_notice": {
+      "message": "توجد محادثات نشطة — سيُؤجّل التبديل حتى انتهائها.",
+      "context": "Deferral notice when active_runs > 0",
+      "tone": "diagnostic",
+      "max_chars": 100,
+      "placeholders": {}
+    },
+    "settings.storage.section_title": {
+      "message": "التخزين المحلي والنسخ الاحتياطي",
+      "context": "Storage section heading",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {}
+    },
+    "settings.storage.data_dir": {
+      "message": "مجلد البيانات",
+      "context": "Active SQLite and encrypted vault path row",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.storage.dev_badge": {
+      "message": "بيئة التطوير",
+      "context": "Badge shown when isolated inside .bistre-dev",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.storage.open_folder": {
+      "message": "فتح المجلد",
+      "context": "Button opening active data folder in OS Explorer",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.storage.backup_db": {
+      "message": "نسخ احتياطي للقاعدة...",
+      "context": "Button invoking WAL-safe VACUUM INTO backup",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.storage.db_size": {
+      "message": "حجم قاعدة البيانات",
+      "context": "On-disk SQLite + WAL size metric label",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.inspector.title": {
+      "message": "إعدادات المحادثة",
+      "context": "Title of right-side collapsible chat inspector drawer",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.inspector.toggle": {
+      "message": "إعدادات المحادثة",
+      "context": "Tooltip/semantics for header inspector toggle button",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.inspector.override_prompt": {
+      "message": "تجاوز تعليمات النظام",
+      "context": "Per-chat system prompt override editor label",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "chat.inspector.override_prompt_hint": {
+      "message": "اتركه فارغاً لاستخدام تعليمات المساعد النشط...",
+      "context": "Placeholder for per-chat system prompt override",
+      "tone": "calm_editorial",
+      "max_chars": 90,
+      "placeholders": {}
+    },
+    "chat.inspector.reset_params": {
+      "message": "إعادة ضبط التجاوزات",
+      "context": "Button clearing all per-chat parameter overrides",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.inspector.export_section": {
+      "message": "تصدير المحادثة",
+      "context": "Section header for Markdown and JSON chat export",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.inspector.export_md": {
+      "message": "تصدير Markdown",
+      "context": "Export thread as Markdown button",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.inspector.export_json": {
+      "message": "تصدير JSON",
+      "context": "Export thread as JSON button",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.action.edit": {
+      "message": "تعديل",
+      "context": "Hover action editing a user message and branching",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.action.delete": {
+      "message": "حذف",
+      "context": "Hover action deleting a single message node",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.action.save_resend": {
+      "message": "حفظ وإعادة إرسال",
+      "context": "Confirm edited user prompt and regenerate reply",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.tokens_meta": {
+      "message": "{input} إدخال · {output} إخراج",
+      "context": "Compact token count readout below assistant response",
+      "tone": "diagnostic",
+      "max_chars": 48,
+      "placeholders": {
+        "input": {
+          "type": "int",
+          "example": "412"
+        },
+        "output": {
+          "type": "int",
+          "example": "198"
+        }
+      }
+    },
+    "sidebar.group.today": {
+      "message": "اليوم",
+      "context": "Sidebar chronological chat group header",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.group.yesterday": {
+      "message": "أمس",
+      "context": "Sidebar chronological chat group header",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.group.week": {
+      "message": "آخر 7 أيام",
+      "context": "Sidebar chronological chat group header",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "sidebar.group.older": {
+      "message": "أقدم",
+      "context": "Sidebar chronological chat group header",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "shortcuts.record_hint": {
+      "message": "اضغط الاختصار الجديد...",
+      "context": "Prompt while recording a custom keyboard shortcut",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "shortcuts.reset_defaults": {
+      "message": "استعادة الافتراضي",
+      "context": "Button resetting custom keyboard shortcuts",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.exported": {
+      "message": "تم تصدير المحادثة",
+      "context": "Toast after exporting chat",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "toast.backup_saved": {
+      "message": "تم حفظ النسخة الاحتياطية",
+      "context": "Toast after VACUUM INTO DB backup",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "toast.font_loaded": {
+      "message": "تم تطبيق الخط المخصص",
+      "context": "Toast after loading local TTF/OTF font",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "toast.update_staged": {
+      "message": "تم تنزيل التحديث والتحقق منه",
+      "context": "Toast after OTA artifact staging",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {}
+    },
+    "toast.node_deleted": {
+      "message": "تم حذف الرسالة",
+      "context": "Toast after deleting a single message node",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "diag.run.indeterminate_halt": {
+      "message": "توقفت أداة خارجية أثناء السكون أو إعادة التشغيل. يرجى المراجعة والتأكيد قبل المتابعة.",
+      "context": "Diagnostic message when Tier-2 tool recovery requires manual confirmation",
+      "tone": "calm_editorial",
+      "max_chars": 140,
+      "placeholders": {}
+    },
+    "diag.run.backoff_waiting": {
+      "message": "تم بلوغ حد المعدل للمزود. جارٍ الانتظار تلقائيًا قبل المتابعة.",
+      "context": "Diagnostic message during long-horizon rate-limit backoff",
+      "tone": "calm_editorial",
+      "max_chars": 100,
+      "placeholders": {}
+    },
+    "diag.power.guard_degraded": {
+      "message": "تعذر قفل منع السكون للنظام. تظل المهام النشطة محفوظة بأمان.",
+      "context": "Diagnostic warning when sleep inhibitor could not be acquired",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "diag.daemon.unavailable": {
+      "message": "خدمة الخلفية غير متاحة. يعمل المحرك مباشرة داخل التطبيق.",
+      "context": "Diagnostic message when desktop daemon IPC falls back to in-process",
+      "tone": "calm_editorial",
+      "max_chars": 100,
+      "placeholders": {}
+    },
+    "studio.title": {
+      "message": "الاستوديو",
+      "context": "Toggle button and header for right-side Studio pane",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "studio.tab.runs": {
+      "message": "المهام",
+      "context": "Studio pane tab showing active runs and sleep guard",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "studio.awake_badge": {
+      "message": "نشط",
+      "context": "Compact status pill indicating OS sleep prevention is active",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "studio.running_count": {
+      "message": "{count} قيد التشغيل",
+      "context": "Top-bar badge showing number of active agent runs",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "studio.power_guard_title": {
+      "message": "حماية السكون والانقطاع",
+      "context": "Card heading in Studio Runs panel",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "studio.power_active": {
+      "message": "إبقاء الجهاز مستيقظًا أثناء العمل",
+      "context": "Status line when OS sleep inhibitor is held",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {}
+    },
+    "studio.power_idle": {
+      "message": "استعداد · يسمح بالسكون الطبيعي",
+      "context": "Status line when no runs are active",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {}
+    },
+    "studio.runs_empty": {
+      "message": "لا توجد مهام نشطة بعد. تظهر المهام الطويلة هنا وتستأنف تلقائيًا بعد السكون.",
+      "context": "Empty state inside Studio Runs panel",
+      "tone": "calm_editorial",
+      "max_chars": 140,
+      "placeholders": {}
+    },
+    "studio.confirm_completed": {
+      "message": "تأكيد الاكتمال",
+      "context": "Action resolving indeterminate halted step as already completed",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "studio.retry_step": {
+      "message": "إعادة الخطوة",
+      "context": "Action retrying indeterminate halted step",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "composer.steer_placeholder": {
+      "message": "اكتب توجيهًا إضافيًا للمهمة النشطة...",
+      "context": "Composer placeholder while AI is actively streaming",
+      "tone": "calm_editorial",
+      "max_chars": 68,
+      "placeholders": {}
+    },
+    "composer.steer_queued": {
+      "message": "قيد الانتظار ({count})",
+      "context": "Header for mid-stream steering queue strip above composer",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "composer.queue_action": {
+      "message": "إضافة",
+      "context": "Button label to enqueue a mid-stream steering message",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.sleep.section_title": {
+      "message": "العمل بالخلفية ومنع السكون",
+      "context": "Settings section heading for long-horizon sleep/daemon controls",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.sleep.section_subtitle": {
+      "message": "إبقاء الوكلاء يعملون دون توقف عند قفل الشاشة أو السكون أو إغلاق النافذة.",
+      "context": "Settings section subtitle for sleep survival controls",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "settings.sleep.keep_awake": {
+      "message": "إبقاء الجهاز مستيقظًا أثناء المهام",
+      "context": "Toggle enabling OS sleep inhibition while runs are active",
+      "tone": "calm_editorial",
+      "max_chars": 54,
+      "placeholders": {}
+    },
+    "settings.sleep.windows_battery": {
+      "message": "فرض اليقظة على البطارية (ويندوز)",
+      "context": "Opt-in toggle for Windows Modern Standby DC display-required",
+      "tone": "calm_editorial",
+      "max_chars": 58,
+      "placeholders": {}
+    },
+    "settings.sleep.windows_battery_desc": {
+      "message": "يمنع وضع الاستعداد الحديث في ويندوز من إيقاف المهام بعد 5 دقائق على البطارية.",
+      "context": "Description for Windows battery stay-awake toggle",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "settings.sleep.daemon_active": {
+      "message": "إبقاء خدمة الخلفية أثناء العمل فقط",
+      "context": "Toggle keeping desktop daemon running after window close only during active runs",
+      "tone": "calm_editorial",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "settings.sleep.daemon_active_desc": {
+      "message": "إغلاق النافذة لا يوقف الوكيل النشط، وتُغلق الخدمة تلقائيًا عند الخمول.",
+      "context": "Description for active-scoped daemon toggle",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "settings.sleep.unattended_policy": {
+      "message": "سياسة الموافقة التلقائية",
+      "context": "Setting label for handling approvals during background/overnight runs",
+      "tone": "calm_editorial",
+      "max_chars": 42,
+      "placeholders": {}
+    },
+    "settings.sleep.policy_pause": {
+      "message": "إيقاف وإشعار",
+      "context": "Unattended policy option to pause and alert user",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.sleep.policy_deny": {
+      "message": "تخطي ومتابعة",
+      "context": "Unattended policy option to deny external actions and continue",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.sleep.policy_sandbox": {
+      "message": "عزل تلقائي",
+      "context": "Unattended policy option allowing actions inside isolated worktree",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.sleep.android_battery": {
+      "message": "بطارية غير مقيدة (أندرويد)",
+      "context": "Android battery optimization exemption row",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.sleep.android_battery_allow": {
+      "message": "السماح دون قيود",
+      "context": "Action opening Android battery exemption dialog",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.sleep.android_battery_ok": {
+      "message": "غير مقيد",
+      "context": "Badge when Android battery exemption is granted",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "toast.steering_queued": {
+      "message": "تمت إضافة التوجيه لقائمة الانتظار",
+      "context": "Toast after queuing a mid-stream steering message",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "mode.plan": {
+      "message": "خطة",
+      "context": "Read-only planning agent mode tab",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "mode.build": {
+      "message": "بناء",
+      "context": "Write-capable coding agent mode tab",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "mode.write_rp": {
+      "message": "كتابة",
+      "context": "Creative writing and roleplay mode tab",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.thinking_label": {
+      "message": "التفكير",
+      "context": "Collapsible reasoning/thinking block header",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.thinking_seconds": {
+      "message": "التفكير · {seconds}ث",
+      "context": "Collapsible reasoning block header with duration",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {
+        "seconds": {
+          "type": "string"
+        }
+      }
+    },
+    "chat.quote_thinking": {
+      "message": "اقتباس في المحرر",
+      "context": "Action quoting reasoning text into the input composer",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.reasoning_effort": {
+      "message": "جهد التفكير",
+      "context": "Label for reasoning depth control",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.effort_off": {
+      "message": "إيقاف",
+      "context": "Reasoning effort disabled",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "chat.effort_low": {
+      "message": "منخفض",
+      "context": "Low reasoning effort",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "chat.effort_medium": {
+      "message": "متوسط",
+      "context": "Medium reasoning effort",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "chat.effort_high": {
+      "message": "مرتفع",
+      "context": "High reasoning effort",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "tool.running": {
+      "message": "قيد التنفيذ",
+      "context": "Tool step status badge while executing",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "tool.completed": {
+      "message": "تم",
+      "context": "Tool step status badge when succeeded",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "tool.failed": {
+      "message": "فشل",
+      "context": "Tool step status badge when failed",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "tool.rewind": {
+      "message": "تراجع",
+      "context": "1-click restore file from pre-edit checkpoint",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "tool.rewound_toast": {
+      "message": "تمت استعادة الملف من نقطة الحفظ",
+      "context": "Toast after rewinding a file edit checkpoint",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "tool.approval_title": {
+      "message": "مطلوب موافقة",
+      "context": "Inline tool execution approval card title",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "tool.approve_once": {
+      "message": "موافقة مرة واحدة",
+      "context": "Approve single tool invocation",
+      "tone": "concise_action",
+      "max_chars": 22,
+      "placeholders": {}
+    },
+    "tool.approve_chat": {
+      "message": "موافقة للمحادثة",
+      "context": "Approve tool category for current thread",
+      "tone": "concise_action",
+      "max_chars": 26,
+      "placeholders": {}
+    },
+    "tool.deny": {
+      "message": "رفض",
+      "context": "Reject tool invocation",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.compact_action": {
+      "message": "ضغط السياق",
+      "context": "Action summarizing earlier chat history into a reversible node",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.compacted_title": {
+      "message": "ملخص السياق",
+      "context": "Header on a reversible compaction summary node",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.undo_compaction": {
+      "message": "التراجع عن الضغط",
+      "context": "Button reverting a compaction summary node back to full history",
+      "tone": "concise_action",
+      "max_chars": 26,
+      "placeholders": {}
+    },
+    "chat.pin_context_start": {
+      "message": "بدء السياق من هنا",
+      "context": "Pin a message as the fixed start of model context",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.pinned_context_banner": {
+      "message": "يبدأ السياق من هذه الرسالة",
+      "context": "Banner indicating fixed context start pin",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.tab.agent": {
+      "message": "الوكيل والأدوات",
+      "context": "Settings navigation tab for workspace tools, MCP, and search",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.agent.workspace_dir": {
+      "message": "مجلد العمل",
+      "context": "Setting label for bound coding workspace path",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.workspace_pick": {
+      "message": "اختيار مجلد",
+      "context": "Button to bind local workspace folder",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_title": {
+      "message": "خوادم MCP",
+      "context": "Settings section heading for Model Context Protocol servers",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_add": {
+      "message": "إضافة خادم MCP",
+      "context": "Button to configure a new MCP server",
+      "tone": "concise_action",
+      "max_chars": 26,
+      "placeholders": {}
+    },
+    "settings.agent.web_search": {
+      "message": "مزود بحث الويب",
+      "context": "Setting label for built-in web search backend",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.termux_title": {
+      "message": "جسر Termux (أندرويد)",
+      "context": "Optional Android Termux integration heading",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.agent.termux_desc": {
+      "message": "تشغيل أوامر محلية عبر Termux عند السماح للتطبيقات الخارجية.",
+      "context": "Description for optional Android Termux bridge",
+      "tone": "calm_editorial",
+      "max_chars": 100,
+      "placeholders": {}
+    },
+    "chat.table.copy_csv": {
+      "message": "نسخ CSV",
+      "context": "Action button to copy rendered Markdown table as CSV",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.table.copy_md": {
+      "message": "نسخ Markdown",
+      "context": "Action button to copy rendered Markdown table as Markdown",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.math.copy_latex": {
+      "message": "نسخ LaTeX",
+      "context": "Action button to copy rendered math formula as raw LaTeX",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.mermaid.copy_source": {
+      "message": "نسخ Mermaid",
+      "context": "Action button to copy diagram source code",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.mermaid.diagram_title": {
+      "message": "مخطط",
+      "context": "Header label on a rendered vector diagram card",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "composer.attach_file": {
+      "message": "إرفاق ملف",
+      "context": "Composer button to attach an image, PDF, or text file",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "composer.attachments_count": {
+      "message": "{count} مرفقات",
+      "context": "Summary pill showing number of attached files",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": 2
+        }
+      }
+    },
+    "composer.mention_title": {
+      "message": "إدراج سياق",
+      "context": "Popover title when typing @ mentions in composer",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "composer.slash_title": {
+      "message": "الأوامر",
+      "context": "Popover title when typing / slash commands in composer",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.tree.title": {
+      "message": "شجرة المحادثة",
+      "context": "Title of the visual branching session tree overlay",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.tree.jump_prompt": {
+      "message": "الانتقال إلى رسالة",
+      "context": "Action / shortcut to jump directly to an earlier prompt",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.tree.empty": {
+      "message": "لا توجد رسائل في هذه المحادثة بعد.",
+      "context": "Empty state inside session tree overlay",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "shortcut.jump_prompt": {
+      "message": "الانتقال إلى رسالة سابقة",
+      "context": "Keyboard shortcut description for Ctrl+Alt+G",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "studio.tab.files": {
+      "message": "الملفات",
+      "context": "Studio pane tab for touched files, diffs, and inline comments",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "studio.tab.story": {
+      "message": "ملف القصة",
+      "context": "Studio pane tab for characters, codex, and lorebook",
+      "tone": "concise_action",
+      "max_chars": 22,
+      "placeholders": {}
+    },
+    "studio.tab.prompt": {
+      "message": "الموجّه",
+      "context": "Studio pane tab showing exact compiled prompt and lorebook trace",
+      "tone": "concise_action",
+      "max_chars": 22,
+      "placeholders": {}
+    },
+    "studio.files.empty": {
+      "message": "ستظهر الملفات المعدّلة والفروقات هنا.",
+      "context": "Empty state in Studio Files tab",
+      "tone": "calm_editorial",
+      "max_chars": 72,
+      "placeholders": {}
+    },
+    "studio.comment_add": {
+      "message": "تعليق في المحادثة",
+      "context": "Button to attach a file line-range reference into the composer",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.detect_local": {
+      "message": "اكتشاف الخوادم المحلية",
+      "context": "Button to auto-detect Ollama, LM Studio, llama.cpp, KoboldCPP",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "provider.local_none": {
+      "message": "لم يتم العثور على خوادم محلية نشطة.",
+      "context": "Status shown when local loopback scan finds nothing",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "provider.custom_headers": {
+      "message": "ترويسات HTTP مخصصة (JSON)",
+      "context": "Advanced provider field for custom HTTP headers JSON",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.custom_body": {
+      "message": "حقول JSON إضافية",
+      "context": "Advanced provider field for custom request JSON body overrides",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.share_config": {
+      "message": "نسخ الإعدادات للمشاركة",
+      "context": "Copies non-secret provider config JSON without API keys",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.tab.memory": {
+      "message": "الذاكرة والمهارات",
+      "context": "Settings tab for cross-chat memory, skills, hooks, and schedules",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "memory.title": {
+      "message": "الذاكرة المحفوظة",
+      "context": "Heading for cross-chat local SQLite memory entries",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "memory.add_placeholder": {
+      "message": "أضف تفضيلاً أو معلومة لتذكرها...",
+      "context": "Input placeholder for adding a memory item",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "memory.add_action": {
+      "message": "حفظ الذاكرة",
+      "context": "Button to save a new memory entry",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "memory.empty": {
+      "message": "لا توجد ذكريات محفوظة بعد. أضف معلومات تريد تذكرها عبر المحادثات.",
+      "context": "Empty state for cross-chat memory",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "skills.title": {
+      "message": "مهارات مساحة العمل",
+      "context": "Heading for discovered SKILL.md progressive-disclosure skills",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "skills.empty": {
+      "message": "اربط مجلد عمل يحتوي على ملفات SKILL.md لاكتشاف المهارات المحلية.",
+      "context": "Empty state for discovered skills",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "automations.title": {
+      "message": "المهام المجدولة",
+      "context": "Heading for background cron and timer automations",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "automations.add_action": {
+      "message": "إضافة جدول",
+      "context": "Button to create a scheduled task",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "automations.empty": {
+      "message": "لا توجد مهام مجدولة بعد. أنشئ ملخصات أو فحوصات أو تذكيرات دورية.",
+      "context": "Empty state for scheduled tasks",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "automations.schedule_placeholder": {
+      "message": "Cron (مثل 0 9 * * *) أو كل 30 دقيقة",
+      "context": "Placeholder for schedule expression input",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "automations.prompt_placeholder": {
+      "message": "ماذا يجب أن يفعل المساعد عند تشغيل هذه المهمة؟",
+      "context": "Placeholder for scheduled task prompt",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "subagents.title": {
+      "message": "الوكلاء بالخلفية",
+      "context": "Heading for isolated worktree background subagents",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.characters_title": {
+      "message": "الشخصيات",
+      "context": "Story Bible section for character cards",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "story.personas_title": {
+      "message": "شخصيتك",
+      "context": "Story Bible section for user persona",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "story.codex_title": {
+      "message": "العالم وموسوعة القصة",
+      "context": "Story Bible section for unified codex and lorebook entries",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "story.import_card": {
+      "message": "استيراد بطاقة",
+      "context": "Imports a CCv3/V2 PNG, JSON, or .charx character card",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.export_card": {
+      "message": "تصدير بطاقة",
+      "context": "Exports character card as JSON or PNG",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.add_character": {
+      "message": "شخصية جديدة",
+      "context": "Creates a new character card",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.add_entry": {
+      "message": "إدخال جديد",
+      "context": "Creates a new Story Bible / Lorebook entry",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.author_note": {
+      "message": "ملاحظة المؤلف",
+      "context": "Floating guidance note injected at configurable depth",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.story_memory": {
+      "message": "ذاكرة القصة",
+      "context": "Pinned static story summary preserved in prompt cache",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.progressions_title": {
+      "message": "تطورات زمنية",
+      "context": "Novelcrafter-style chronological updates gated by chapter order",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.regex_title": {
+      "message": "قواعد النص (Regex)",
+      "context": "Safe linear-time regex transforms for display or prompts",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.time_machine": {
+      "message": "استعادة لقطة",
+      "context": "Time Machine rollback button for Story Bible entities",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "story.view_chat": {
+      "message": "محادثة",
+      "context": "Toggle button for Chat / Roleplay view inside Write mode",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "story.view_manuscript": {
+      "message": "المخطوطة",
+      "context": "Toggle button for Chapters & Scenes Manuscript view inside Write mode",
+      "tone": "concise_action",
+      "max_chars": 22,
+      "placeholders": {}
+    },
+    "story.add_chapter": {
+      "message": "فصل جديد",
+      "context": "Adds a new chapter to the manuscript",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.add_scene": {
+      "message": "مشهد جديد",
+      "context": "Adds a new scene to the active chapter",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.scene_beats": {
+      "message": "نقاط المشهد",
+      "context": "Heading for scene beats input that generates prose",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.generate_prose": {
+      "message": "كتابة النص من النقاط",
+      "context": "Generates full prose from the scene outline beats",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.laser_rewrite": {
+      "message": "إعادة صياغة",
+      "context": "Inline selection rewrite tool",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "story.laser_expand": {
+      "message": "توسيع",
+      "context": "Inline selection expand tool",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "story.laser_shorten": {
+      "message": "اختصار",
+      "context": "Inline selection shorten tool",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "story.laser_polish": {
+      "message": "تحسين",
+      "context": "Inline selection polish tool",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "story.action_continue": {
+      "message": "متابعة",
+      "context": "Continues the last assistant passage seamlessly",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "story.action_impersonate": {
+      "message": "اقترح ردي",
+      "context": "Drafts a user reply in the active persona voice",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.alt_greeting": {
+      "message": "الافتتاحية {current} / {total}",
+      "context": "Turn-0 alternate greeting switcher",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {
+        "current": {
+          "type": "int",
+          "example": 1
+        },
+        "total": {
+          "type": "int",
+          "example": 3
+        }
+      }
+    },
+    "story.samplers_title": {
+      "message": "معاملات الإبداع وحظر العبارات",
+      "context": "Expandable drawer for min_p, top_k, DRY, XTC, and phrase bans",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "story.dialogue_styling": {
+      "message": "تمييز الحوار والأفعال",
+      "context": "Toggle for editorial pure-TextSpan dialogue and action styling",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "story.inspector_title": {
+      "message": "فاحص الموجّه المباشر",
+      "context": "Title of the Prompt & Lorebook Inspector panel",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "story.inspector_cache_boundary": {
+      "message": "حد ذاكرة التخزين المؤقت",
+      "context": "Marker separating static cached prefix from dynamic suffix",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "story.inspector_lore_trace": {
+      "message": "سجل تفعيل الموسوعة",
+      "context": "Heading showing which lore entries fired or were skipped",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "diag.network.destination_blocked": {
+      "message": "هذا العنوان خاص أو محلي، لذلك لن يفتحه Bistre.",
+      "context": "Rust DiagnosticKey::NetworkDestinationBlocked message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.rate_limited": {
+      "message": "المزوّد مشغول الآن. ستتم المحاولة مرة أخرى قريبًا.",
+      "context": "Rust DiagnosticKey::ProviderRateLimited message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.quota_exhausted": {
+      "message": "نفد رصيد حسابك لدى المزوّد أو حصته اليومية.",
+      "context": "Rust DiagnosticKey::ProviderQuotaExhausted message (billing or daily quota, never retried)",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.stream_interrupted": {
+      "message": "توقف الرد قبل أن يكتمل. يمكنك المحاولة مرة أخرى.",
+      "context": "Rust DiagnosticKey::ProviderStreamInterrupted message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.context_overflow": {
+      "message": "تجاوزت هذه المحادثة الحد المسموح. اختصر المحادثة للمتابعة.",
+      "context": "Rust DiagnosticKey::ProviderContextOverflow message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.request_healed": {
+      "message": "تم إيقاف إعداد لا يدعمه هذا النموذج لهذا الرد.",
+      "context": "Rust DiagnosticKey::ProviderRequestHealed message (an unsupported setting was removed and the request resent)",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.tool.stale_read": {
+      "message": "تغيّر الملف منذ قراءته. اقرأه مرة أخرى قبل التعديل.",
+      "context": "Rust DiagnosticKey::ToolStaleRead message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.tool.approval_required": {
+      "message": "يحتاج هذا الإجراء إلى موافقتك مرة أخرى.",
+      "context": "Rust DiagnosticKey::ToolApprovalRequired message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.ota.integrity_failed": {
+      "message": "تعذّر التحقق من التحديث، لذلك لم يتم تثبيته.",
+      "context": "Rust DiagnosticKey::OtaIntegrityFailed message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "toast.undo": {
+      "message": "تراجع",
+      "context": "Action button on the toast shown after deleting a chat",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "toast.restored": {
+      "message": "تمت استعادة المحادثة",
+      "context": "Toast after a deleted chat is restored with Undo",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.context_gauge.used": {
+      "message": "{used} رمز في هذه المحادثة",
+      "context": "Screen-reader label of the composer token gauge when the model limit is unknown",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {
+        "used": {
+          "type": "string",
+          "example": "1.2k"
+        }
+      }
+    },
+    "chat.context_gauge.of_limit": {
+      "message": "تم استخدام {used} من {limit} رمز",
+      "context": "Screen-reader label of the composer token gauge (conversation limit known)",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {
+        "used": {
+          "type": "string",
+          "example": "1.2k"
+        },
+        "limit": {
+          "type": "string",
+          "example": "128k"
+        }
+      }
+    },
+    "chat.backoff.notice": {
+      "message": "ستتم المحاولة مرة أخرى بعد {seconds} ث",
+      "context": "Notice while a reply waits before trying again automatically",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "seconds": {
+          "type": "int"
+        }
+      }
+    },
+    "chat.action.retry_now": {
+      "message": "أعد المحاولة الآن",
+      "context": "Inline button that retries immediately instead of waiting",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.code.wrap": {
+      "message": "التفاف الأسطر",
+      "context": "Code block button: wrap long lines",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.code.no_wrap": {
+      "message": "بدون التفاف الأسطر",
+      "context": "Code block button: stop wrapping long lines",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.code_wrap": {
+      "message": "التفاف الشيفرة",
+      "context": "Appearance setting label for wrapping long code lines",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.appearance.code_wrap_hint": {
+      "message": "تلتف الأسطر الطويلة في كتل الشيفرة بدل التمرير أفقيًا. الوضع التلقائي يلفها على الشاشات الضيقة.",
+      "context": "Hint under the Wrap code setting",
+      "tone": "calm_editorial",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "settings.appearance.code_wrap_auto": {
+      "message": "تلقائي",
+      "context": "Wrap code option",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.appearance.code_wrap_on": {
+      "message": "تشغيل",
+      "context": "Wrap code option",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.appearance.code_wrap_off": {
+      "message": "إيقاف",
+      "context": "Wrap code option",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.fix.shorten": {
+      "message": "اختصر المحادثة",
+      "context": "Button on the conversation-limit error that shortens the conversation",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.fix.spending_limit": {
+      "message": "حد الإنفاق",
+      "context": "Button on the spending-limit error that opens the limit setting",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.empty.intro": {
+      "message": "ابدأ بسؤال أو مسودة أو ملف.",
+      "context": "Empty chat invitation shown next to the single bold accent mark",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "app.window_title": {
+      "message": "{title} — Bistre",
+      "context": "Native window caption while a chat is open",
+      "tone": "concise_action",
+      "max_chars": 96,
+      "placeholders": {
+        "title": {
+          "type": "string",
+          "example": "Fix chat export"
+        }
+      }
+    },
+    "app.window_title_replying": {
+      "message": "جارٍ الرد · {title} — Bistre",
+      "context": "Native window caption while the assistant is replying (live progress)",
+      "tone": "concise_action",
+      "max_chars": 96,
+      "placeholders": {
+        "title": {
+          "type": "string",
+          "example": "Fix chat export"
+        }
+      }
+    },
+    "app.window_title_settings": {
+      "message": "الإعدادات — Bistre",
+      "context": "Native window caption while Settings is open",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "tool.diff_split": {
+      "message": "جنبًا إلى جنب",
+      "context": "Button that shows a code diff as two side-by-side columns (old | new)",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "tool.diff_unified": {
+      "message": "موحّد",
+      "context": "Button that shows a code diff as one combined column",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.cost_unavailable_title": {
+      "message": "التكلفة غير متاحة",
+      "context": "Title of the small popup (and icon label) explaining that a reply has no known price",
+      "tone": "diagnostic",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.cost_unavailable_body": {
+      "message": "لم يُنشر سعر لهذا النموذج بعد، لذلك يُحتسب هذا الرد بقيمة $0 ضمن حد الإنفاق اليومي.",
+      "context": "Popup body explaining why a reply has no price and how it counts toward the spending limit",
+      "tone": "diagnostic",
+      "max_chars": 160,
+      "placeholders": {}
+    },
+    "settings.agent.termux_missing": {
+      "message": "لم يُعثر على Termux",
+      "context": "Status badge: the Termux app is not installed on this Android device",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.termux_permission": {
+      "message": "يلزم منح الإذن",
+      "context": "Status badge: Termux is installed but Bistre still needs permission to run commands in it",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.termux_ready": {
+      "message": "Termux جاهز",
+      "context": "Status badge: Termux is installed and allowed",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_tools_count": {
+      "message": "{count, plural, zero{لا أدوات} one{أداة واحدة} two{أداتان} few{{count} أدوات} many{{count} أداة} other{{count} أداة}}",
+      "context": "Number of tools a connected MCP server offers, shown in its summary line",
+      "tone": "diagnostic",
+      "max_chars": 24,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "6"
+        }
+      }
+    },
+    "settings.agent.mcp_server_placeholder": {
+      "message": "خادم MCP",
+      "context": "Placeholder in the MCP server name field",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.mermaid.kind_sequence": {
+      "message": "تسلسل",
+      "context": "Diagram type label: sequence diagram",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.mermaid.kind_state": {
+      "message": "حالات",
+      "context": "Diagram type label: state diagram",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.mermaid.kind_er": {
+      "message": "علاقات الكيانات",
+      "context": "Diagram type label: entity-relationship diagram",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.mermaid.kind_flowchart_lr": {
+      "message": "مخطط انسيابي (أفقي)",
+      "context": "Diagram type label: flowchart that runs left to right",
+      "tone": "diagnostic",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.mermaid.kind_flowchart_td": {
+      "message": "مخطط انسيابي (رأسي)",
+      "context": "Diagram type label: flowchart that runs top to bottom",
+      "tone": "diagnostic",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "story.request_prose_from_beats": {
+      "message": "اكتب نثرًا حيًا وواقعيًا للمشهد «{title}» يتبع هذه الأحداث بدقة:\n\n{beats}",
+      "context": "Message sent to the writing model (shown as the user message) asking for prose from scene beats",
+      "tone": "calm_editorial",
+      "max_chars": 400,
+      "placeholders": {
+        "title": {
+          "type": "string",
+          "example": "Night market"
+        },
+        "beats": {
+          "type": "string",
+          "example": "She finds the letter."
+        }
+      }
+    },
+    "story.request_rewrite": {
+      "message": "أعد كتابة هذا بصياغة أكثر حيوية مع الحفاظ على أحداث القصة:\n\n{excerpt}",
+      "context": "Message sent to the writing model asking it to rewrite the selected passage",
+      "tone": "calm_editorial",
+      "max_chars": 400,
+      "placeholders": {
+        "excerpt": {
+          "type": "string",
+          "example": "The lanterns swayed."
+        }
+      }
+    },
+    "story.request_expand": {
+      "message": "وسّع هذا بتفاصيل حسية وإيقاع متوازن:\n\n{excerpt}",
+      "context": "Message sent to the writing model asking it to expand the selected passage",
+      "tone": "calm_editorial",
+      "max_chars": 400,
+      "placeholders": {
+        "excerpt": {
+          "type": "string",
+          "example": "The lanterns swayed."
+        }
+      }
+    },
+    "story.request_shorten": {
+      "message": "اختصر هذا وأحكِم صياغته مع الحفاظ على معناه:\n\n{excerpt}",
+      "context": "Message sent to the writing model asking it to shorten the selected passage",
+      "tone": "calm_editorial",
+      "max_chars": 400,
+      "placeholders": {
+        "excerpt": {
+          "type": "string",
+          "example": "The lanterns swayed."
+        }
+      }
+    },
+    "story.request_polish": {
+      "message": "حسّن إيقاع هذا النص وصوته ووضوحه:\n\n{excerpt}",
+      "context": "Message sent to the writing model asking it to polish the selected passage",
+      "tone": "calm_editorial",
+      "max_chars": 400,
+      "placeholders": {
+        "excerpt": {
+          "type": "string",
+          "example": "The lanterns swayed."
+        }
+      }
+    },
+    "story.request_continue": {
+      "message": "تابع مباشرة من الجملة الأخيرة دون تكرار ما سبق.",
+      "context": "Message sent to the roleplay model asking it to continue the story",
+      "tone": "calm_editorial",
+      "max_chars": 200,
+      "placeholders": {}
+    },
+    "story.request_impersonate": {
+      "message": "اكتب الرد التالي بصوت الشخصية من منظور {name} بما يناسب المشهد الحالي.",
+      "context": "Message sent to the roleplay model asking it to draft the user persona’s next reply",
+      "tone": "calm_editorial",
+      "max_chars": 200,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "Mara"
+        }
+      }
+    },
+    "story.default_persona_name": {
+      "message": "المستخدم",
+      "context": "Name used for the user in roleplay requests when no persona is chosen",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    }
+  }
+}

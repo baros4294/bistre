@@ -1,0 +1,3573 @@
+{
+  "$schema": "../schema.json",
+  "locale": "en",
+  "direction": "ltr",
+  "entries": {
+    "app.title": {
+      "message": "Bistre",
+      "context": "Application window title and root brand header",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "app.subtitle": {
+      "message": "Local AI Workspace",
+      "context": "Short subtitle under brand title in sidebar",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "shell.theme.day": {
+      "message": "Light",
+      "context": "Light sepia theme option",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "shell.theme.night": {
+      "message": "Dark",
+      "context": "Dark sepia theme option",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "shell.layout.bubbles": {
+      "message": "Bubbles",
+      "context": "Chat bubble message layout option",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "shell.layout.folio": {
+      "message": "Document",
+      "context": "Clean document-style reading layout option",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "shell.health.wal_ready": {
+      "message": "Core v{version} · {count, plural, =0{0 messages} one{1 message} other{{count} messages}}",
+      "context": "Compact engine and storage status label",
+      "tone": "diagnostic",
+      "max_chars": 120,
+      "placeholders": {
+        "version": {
+          "type": "string",
+          "example": "0.1.0"
+        },
+        "count": {
+          "type": "int",
+          "example": "4"
+        }
+      }
+    },
+    "shell.search.placeholder": {
+      "message": "Search messages...",
+      "context": "Inline chat history search input placeholder",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "shell.search.results": {
+      "message": "{count, plural, =0{No matching messages} one{1 matching message} other{{count} matching messages}}",
+      "context": "Search hit summary below search input",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "3"
+        }
+      }
+    },
+    "shell.composer.placeholder": {
+      "message": "Type a message...",
+      "context": "Bottom message composer placeholder",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "shell.composer.send": {
+      "message": "Send",
+      "context": "Primary message submit button label",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "shell.composer.draft_saved": {
+      "message": "Draft saved",
+      "context": "Indicator confirming unsent draft is saved locally",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "shell.empty.title": {
+      "message": "Start a conversation",
+      "context": "Empty chat heading before first message",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "shell.empty.body": {
+      "message": "Fast, private, local-first AI. Your chats and API keys stay encrypted on this device.",
+      "context": "Empty chat helper subtitle",
+      "tone": "calm_editorial",
+      "max_chars": 128,
+      "placeholders": {}
+    },
+    "shell.role.user": {
+      "message": "You",
+      "context": "Speaker label for user messages",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "shell.role.assistant": {
+      "message": "Bistre",
+      "context": "Speaker label for assistant replies",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "shell.selection.copy": {
+      "message": "Copy",
+      "context": "Custom text selection toolbar copy action",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "shell.selection.select_all": {
+      "message": "Select all",
+      "context": "Custom text selection toolbar select-all action",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "shell.locale.switch_a11y": {
+      "message": "Switch language to {locale}",
+      "context": "Screen reader label for language selector",
+      "tone": "concise_action",
+      "max_chars": 48,
+      "placeholders": {
+        "locale": {
+          "type": "string",
+          "example": "vi"
+        }
+      }
+    },
+    "shell.locale.en": {
+      "message": "EN",
+      "context": "Short label for English",
+      "tone": "concise_action",
+      "max_chars": 8,
+      "placeholders": {}
+    },
+    "shell.locale.vi": {
+      "message": "VI",
+      "context": "Short label for Vietnamese",
+      "tone": "concise_action",
+      "max_chars": 8,
+      "placeholders": {}
+    },
+    "shell.locale.ar": {
+      "message": "AR",
+      "context": "Short label for Arabic RTL",
+      "tone": "concise_action",
+      "max_chars": 8,
+      "placeholders": {}
+    },
+    "shell.thread.default_title": {
+      "message": "New chat",
+      "context": "Default title for newly created chats",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "diag.ok": {
+      "message": "Ready",
+      "context": "Rust DiagnosticKey::Ok status label",
+      "tone": "diagnostic",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "diag.storage.busy": {
+      "message": "Local storage is busy; retrying shortly.",
+      "context": "Rust DiagnosticKey::StorageBusy message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.storage.disk_full": {
+      "message": "Disk full — your draft is kept safely in memory.",
+      "context": "Rust DiagnosticKey::StorageDiskFull message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.storage.migration_failed": {
+      "message": "Local database upgrade failed integrity checks.",
+      "context": "Rust DiagnosticKey::StorageMigrationFailed message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.storage.not_found": {
+      "message": "That chat or message could not be found.",
+      "context": "Rust DiagnosticKey::StorageNotFound message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.crypto.signature_invalid": {
+      "message": "Signature check failed.",
+      "context": "Rust DiagnosticKey::CryptoSignatureInvalid message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.crypto.vault_unavailable": {
+      "message": "Encrypted key vault is unavailable on this device.",
+      "context": "Rust DiagnosticKey::CryptoVaultUnavailable message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.network.captive_portal": {
+      "message": "A Wi-Fi sign-in page blocked the connection.",
+      "context": "Rust DiagnosticKey::NetworkCaptivePortal message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.clock.skew_suspected": {
+      "message": "Device clock looks out of sync; check date and time.",
+      "context": "Rust DiagnosticKey::ClockSkewSuspected message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.tool.edit_hash_mismatch": {
+      "message": "File changed since last read; edit cancelled safely.",
+      "context": "Rust DiagnosticKey::ToolEditHashMismatch message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.wallet.ceiling_exceeded": {
+      "message": "Request blocked: daily spending limit reached.",
+      "context": "Rust DiagnosticKey::WalletCeilingExceeded message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.not_configured": {
+      "message": "No AI provider connected. Add an API key in Settings.",
+      "context": "Rust DiagnosticKey::ProviderNotConfigured message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.model_required": {
+      "message": "Select or enter a model ID in Settings first.",
+      "context": "Rust DiagnosticKey::ProviderModelRequired message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.auth_failed": {
+      "message": "API key was rejected. Check your key in Settings.",
+      "context": "Rust DiagnosticKey::ProviderAuthFailed message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.request_failed": {
+      "message": "Could not reach the provider. Check network or URL.",
+      "context": "Rust DiagnosticKey::ProviderRequestFailed message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.validation.invalid_input": {
+      "message": "Please check your input and try again.",
+      "context": "Rust DiagnosticKey::InvalidInput message",
+      "tone": "diagnostic",
+      "max_chars": 72,
+      "placeholders": {}
+    },
+    "diag.runtime.already_running": {
+      "message": "Another Bistre background process is already running.",
+      "context": "Rust DiagnosticKey::RuntimeAlreadyRunning message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.runtime.not_initialized": {
+      "message": "Starting local engine...",
+      "context": "Rust DiagnosticKey::RuntimeNotInitialized message",
+      "tone": "diagnostic",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "diag.internal.error": {
+      "message": "Something went wrong inside the local engine.",
+      "context": "Rust DiagnosticKey::InternalError message",
+      "tone": "diagnostic",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "sidebar.new_folio": {
+      "message": "New chat",
+      "context": "Primary sidebar button to start a new conversation",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "sidebar.toggle": {
+      "message": "Toggle sidebar",
+      "context": "Button to show or hide left sidebar",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "sidebar.filter_placeholder": {
+      "message": "Search chats...",
+      "context": "Filter box inside left sidebar",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "sidebar.section.assistants": {
+      "message": "Assistants",
+      "context": "Sidebar vertical section for assistants",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.section.topics": {
+      "message": "Topics",
+      "context": "Sidebar vertical section for topic filters",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.section.pinned": {
+      "message": "Pinned",
+      "context": "Sidebar vertical section for pinned chats",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.section.recent": {
+      "message": "Recent",
+      "context": "Sidebar vertical section for recent chats",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "sidebar.empty_filtered": {
+      "message": "No matching chats.",
+      "context": "Shown when sidebar search or topic filter finds nothing",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "sidebar.add_assistant": {
+      "message": "New assistant",
+      "context": "Action to create a custom assistant",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "sidebar.settings": {
+      "message": "Settings",
+      "context": "Sidebar footer button to open Settings",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.shortcuts": {
+      "message": "Shortcuts",
+      "context": "Sidebar footer button to view keyboard shortcuts",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.wallet_summary": {
+      "message": "{preset} · {spent} / {ceiling}",
+      "context": "Compact permission mode and daily spend summary",
+      "tone": "diagnostic",
+      "max_chars": 64,
+      "placeholders": {
+        "preset": {
+          "type": "string",
+          "example": "Balanced"
+        },
+        "spent": {
+          "type": "string",
+          "example": "$0.00"
+        },
+        "ceiling": {
+          "type": "string",
+          "example": "$5.00"
+        }
+      }
+    },
+    "topic.all": {
+      "message": "All chats",
+      "context": "Topic filter showing every chat",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "topic.general": {
+      "message": "General",
+      "context": "General chat topic",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "topic.code": {
+      "message": "Coding",
+      "context": "Software engineering topic",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "topic.writing": {
+      "message": "Writing",
+      "context": "Writing and editing topic",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "topic.research": {
+      "message": "Research",
+      "context": "Research and reading topic",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "topic.translate": {
+      "message": "Translation",
+      "context": "Translation topic",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "mode.chat": {
+      "message": "Chat",
+      "context": "General chat mode",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "mode.code": {
+      "message": "Code",
+      "context": "Coding mode",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "mode.write": {
+      "message": "Write",
+      "context": "Writing mode",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "mode.translate": {
+      "message": "Translate",
+      "context": "Translation mode",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "thread.pin": {
+      "message": "Pin chat",
+      "context": "Pin chat to top of sidebar",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "thread.unpin": {
+      "message": "Unpin chat",
+      "context": "Unpin chat from top of sidebar",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "thread.rename": {
+      "message": "Rename",
+      "context": "Rename chat action",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "thread.rename_placeholder": {
+      "message": "Chat title...",
+      "context": "Inline chat rename input placeholder",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "thread.delete": {
+      "message": "Delete chat",
+      "context": "Delete chat action",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "thread.confirm_delete": {
+      "message": "Confirm delete",
+      "context": "Second-click confirmation to delete chat",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "thread.cancel": {
+      "message": "Cancel",
+      "context": "Cancel action",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "thread.save": {
+      "message": "Save",
+      "context": "Save action",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.action.copy": {
+      "message": "Copy",
+      "context": "Copy full message text",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "chat.action.copied": {
+      "message": "Copied",
+      "context": "Brief feedback after copying",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "chat.action.reply": {
+      "message": "Reply",
+      "context": "Quote-reply to a message in composer",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "chat.action.regenerate": {
+      "message": "Try again",
+      "context": "Generate another version of an AI reply",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.action.stop": {
+      "message": "Stop",
+      "context": "Stop generating active reply",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.action.jump_latest": {
+      "message": "Jump to latest",
+      "context": "Floating button when scrolled up from bottom",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.replying_to": {
+      "message": "Replying to {excerpt}",
+      "context": "Quoted reply banner above composer",
+      "tone": "calm_editorial",
+      "max_chars": 96,
+      "placeholders": {
+        "excerpt": {
+          "type": "string",
+          "example": "SQLite WAL"
+        }
+      }
+    },
+    "chat.reply_clear": {
+      "message": "Clear reply",
+      "context": "Dismiss quoted reply banner",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.streaming_badge": {
+      "message": "Responding...",
+      "context": "Indicator while AI reply streams",
+      "tone": "diagnostic",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.branch_indicator": {
+      "message": "{current} / {total}",
+      "context": "Version indicator on regenerated replies",
+      "tone": "diagnostic",
+      "max_chars": 20,
+      "placeholders": {
+        "current": {
+          "type": "int",
+          "example": "1"
+        },
+        "total": {
+          "type": "int",
+          "example": "2"
+        }
+      }
+    },
+    "chat.branch_prev": {
+      "message": "Previous version",
+      "context": "Switch to earlier reply version",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.branch_next": {
+      "message": "Next version",
+      "context": "Switch to newer reply version",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.code_copy": {
+      "message": "Copy code",
+      "context": "Copy button on code block header",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.search_toggle": {
+      "message": "Search history",
+      "context": "Toggle chat history search bar",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.search_all_scope": {
+      "message": "All chats",
+      "context": "Search across every chat",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.search_thread_scope": {
+      "message": "This chat",
+      "context": "Search only inside the active chat",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt1.title": {
+      "message": "Debug or review code",
+      "context": "Starter suggestion 1 title",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt1.body": {
+      "message": "Review this function for edge cases, race conditions, and cleaner structure.",
+      "context": "Starter suggestion 1 prompt",
+      "tone": "calm_editorial",
+      "max_chars": 120,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt2.title": {
+      "message": "Draft a clear message",
+      "context": "Starter suggestion 2 title",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt2.body": {
+      "message": "Help me write a concise, thoughtful project update without corporate filler.",
+      "context": "Starter suggestion 2 prompt",
+      "tone": "calm_editorial",
+      "max_chars": 128,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt3.title": {
+      "message": "Break down a hard topic",
+      "context": "Starter suggestion 3 title",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt3.body": {
+      "message": "Explain how local-first SQLite WAL and branching chat history work in plain English.",
+      "context": "Starter suggestion 3 prompt",
+      "tone": "calm_editorial",
+      "max_chars": 120,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt4.title": {
+      "message": "Translate naturally",
+      "context": "Starter suggestion 4 title",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt4.body": {
+      "message": "Translate this text between English, Vietnamese, and Arabic while keeping the tone natural.",
+      "context": "Starter suggestion 4 prompt",
+      "tone": "calm_editorial",
+      "max_chars": 128,
+      "placeholders": {}
+    },
+    "provider.setup.title": {
+      "message": "Connect an AI provider",
+      "context": "Onboarding card title when no API key is saved yet",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.setup.body": {
+      "message": "Add an OpenAI, Google Gemini, Anthropic, or custom API key to start chatting. Keys stay encrypted on this device.",
+      "context": "Onboarding card body explaining where to add API keys",
+      "tone": "calm_editorial",
+      "max_chars": 160,
+      "placeholders": {}
+    },
+    "provider.setup.cta": {
+      "message": "Add API Key",
+      "context": "Primary onboarding CTA button opening Providers & Keys settings",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.status.connected": {
+      "message": "Connected",
+      "context": "Badge when provider has a saved API key",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.status.not_connected": {
+      "message": "No key",
+      "context": "Badge when Big 3 provider has no API key yet",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.status.custom_ready": {
+      "message": "Custom",
+      "context": "Badge for custom OpenAI-compatible provider",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.status.active": {
+      "message": "Active",
+      "context": "Badge indicating active selected provider",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "provider.status.count": {
+      "message": "{count, plural, =0{Add API key} one{1 provider ready} other{{count} providers ready}}",
+      "context": "Sidebar footer status summary for connected providers",
+      "tone": "concise_action",
+      "max_chars": 48,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "1"
+        }
+      }
+    },
+    "provider.field.api_key": {
+      "message": "API key",
+      "context": "Form label for API key input",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.field.api_key_placeholder": {
+      "message": "Paste your API key...",
+      "context": "Placeholder inside API key input",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "provider.field.base_url": {
+      "message": "API base URL",
+      "context": "Form label for provider endpoint URL",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.field.model": {
+      "message": "Model",
+      "context": "Form label for active model ID",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.field.model_placeholder": {
+      "message": "Select or type a model ID...",
+      "context": "Placeholder inside model ID field",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "provider.field.name": {
+      "message": "Provider name",
+      "context": "Form label when adding a custom provider",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.field.name_placeholder": {
+      "message": "e.g. Ollama, OpenRouter, or Company Proxy",
+      "context": "Placeholder for custom provider display name",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "provider.action.save_key": {
+      "message": "Save key",
+      "context": "Button saving API key to encrypted OS vault",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.action.clear_key": {
+      "message": "Remove key",
+      "context": "Button clearing saved API key from vault",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.action.save_config": {
+      "message": "Save settings",
+      "context": "Button saving base URL and model for provider",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.action.load_models": {
+      "message": "Load models",
+      "context": "Button fetching live models from provider API",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.action.loading_models": {
+      "message": "Loading...",
+      "context": "Button label while fetching live models",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.action.use_provider": {
+      "message": "Set active",
+      "context": "Button making this provider and model active for chats",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.action.add_custom": {
+      "message": "Add custom provider",
+      "context": "Button to create a custom OpenAI-compatible provider",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "provider.action.delete_custom": {
+      "message": "Delete provider",
+      "context": "Button deleting a custom provider",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.action.show_key": {
+      "message": "Show API key",
+      "context": "Accessibility label to reveal typed key",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.action.hide_key": {
+      "message": "Hide API key",
+      "context": "Accessibility label to mask typed key",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.vault_note": {
+      "message": "Keys are encrypted in your device vault and never stored in plain text.",
+      "context": "Security assurance note in Providers & Keys tab",
+      "tone": "calm_editorial",
+      "max_chars": 112,
+      "placeholders": {}
+    },
+    "provider.models_loaded": {
+      "message": "{count, plural, =0{No models returned} one{1 model loaded} other{{count} models loaded}}",
+      "context": "Summary after live /models fetch succeeds",
+      "tone": "diagnostic",
+      "max_chars": 56,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "24"
+        }
+      }
+    },
+    "provider.custom_heading": {
+      "message": "Add Custom Provider (OpenAI-Compatible)",
+      "context": "Heading for custom provider form",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "provider.dialect.openai": {
+      "message": "OpenAI Responses API",
+      "context": "Subtitle for OpenAI provider row",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.dialect.gemini": {
+      "message": "Google Gemini API",
+      "context": "Subtitle for Google Gemini provider row",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.dialect.anthropic": {
+      "message": "Anthropic Messages API",
+      "context": "Subtitle for Anthropic provider row",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.dialect.custom": {
+      "message": "Custom OpenAI-Compatible",
+      "context": "Subtitle for Custom provider row",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "palette.trigger": {
+      "message": "Command menu",
+      "context": "Button opening Ctrl+K command menu",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "palette.placeholder": {
+      "message": "Search commands, chats, or assistants...",
+      "context": "Search input inside Ctrl+K command menu",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "palette.empty": {
+      "message": "No matching commands.",
+      "context": "Empty state in command menu",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "palette.section.actions": {
+      "message": "Quick actions",
+      "context": "Command menu actions group heading",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "palette.section.folios": {
+      "message": "Switch chat",
+      "context": "Command menu chat list heading",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "palette.section.assistants": {
+      "message": "Switch assistant",
+      "context": "Command menu assistant list heading",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.title": {
+      "message": "Settings",
+      "context": "Settings modal header title",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.close": {
+      "message": "Close settings",
+      "context": "Accessibility label on close settings button",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.tab.providers": {
+      "message": "Providers & Keys",
+      "context": "Settings tab 1 label for API keys and models",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.tab.appearance": {
+      "message": "Appearance",
+      "context": "Settings tab label",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.tab.language": {
+      "message": "Language",
+      "context": "Settings tab label",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.tab.assistants": {
+      "message": "Assistants",
+      "context": "Settings tab label",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.tab.trust": {
+      "message": "Safety & Budget",
+      "context": "Settings tab label for permissions and spend limits",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.tab.shortcuts": {
+      "message": "Shortcuts",
+      "context": "Settings tab label",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.tab.engine": {
+      "message": "Storage & Engine",
+      "context": "Settings tab label for local database info",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.appearance.theme": {
+      "message": "Theme",
+      "context": "Setting row label for Light/Dark theme",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.appearance.layout": {
+      "message": "Chat layout",
+      "context": "Setting row label for Document vs Bubbles",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.appearance.scale": {
+      "message": "Text size",
+      "context": "Setting row label for font scaling",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.appearance.motion": {
+      "message": "Animations",
+      "context": "Setting row label for smooth vs reduced motion",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.appearance.motion_smooth": {
+      "message": "Smooth",
+      "context": "Option enabling smooth transitions",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.motion_reduced": {
+      "message": "Reduced",
+      "context": "Option minimizing motion",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.send_enter": {
+      "message": "Press Enter to send",
+      "context": "Toggle whether Enter sends a message",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.appearance.on": {
+      "message": "On",
+      "context": "Toggle enabled option",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.appearance.off": {
+      "message": "Off",
+      "context": "Toggle disabled option",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.language.heading": {
+      "message": "Interface language",
+      "context": "Language settings heading",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.language.note": {
+      "message": "Changes immediately without restarting and flips layout direction automatically for right-to-left languages.",
+      "context": "Explanatory note in Language settings tab",
+      "tone": "calm_editorial",
+      "max_chars": 160,
+      "placeholders": {}
+    },
+    "settings.assistants.create_title": {
+      "message": "Create custom assistant",
+      "context": "Form heading inside Assistants settings tab",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.assistants.name_placeholder": {
+      "message": "Name (e.g. Code Reviewer)",
+      "context": "Input placeholder for new assistant name",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.assistants.subtitle_placeholder": {
+      "message": "Short description",
+      "context": "Input placeholder for new assistant description",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.assistants.prompt_placeholder": {
+      "message": "Custom instructions for this assistant...",
+      "context": "Input placeholder for assistant system prompt",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.assistants.create_action": {
+      "message": "Add assistant",
+      "context": "Submit button creating custom assistant",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.trust.preset_heading": {
+      "message": "Tool permissions",
+      "context": "Heading for tool approval presets",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.trust.parchment": {
+      "message": "Strict",
+      "context": "Ask before any file edit or command",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.trust.guided": {
+      "message": "Balanced",
+      "context": "Default safe mode with easy undo",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.trust.unchained": {
+      "message": "Sandbox",
+      "context": "Auto-run inside isolated sandbox",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.trust.ceiling_heading": {
+      "message": "Daily spending limit",
+      "context": "Heading for daily API spend limit",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.trust.local_first": {
+      "message": "Prefer free local models",
+      "context": "Toggle prioritizing free local endpoints",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.trust.stateless": {
+      "message": "Private requests (do not store on provider servers)",
+      "context": "Toggle setting store: false by default",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.engine.heading": {
+      "message": "Local storage and engine",
+      "context": "Storage and engine tab heading",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.engine.telemetry": {
+      "message": "Zero telemetry · Encrypted local API keys · Offline SQLite storage",
+      "context": "Privacy note in Storage & Engine tab",
+      "tone": "calm_editorial",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "settings.engine.metrics": {
+      "message": "Core v{version} · Schema v{schema} · {threads} chats · {nodes} messages · Active: {runs}",
+      "context": "Live local engine metrics",
+      "tone": "diagnostic",
+      "max_chars": 128,
+      "placeholders": {
+        "version": {
+          "type": "string",
+          "example": "0.1.0"
+        },
+        "schema": {
+          "type": "int",
+          "example": "3"
+        },
+        "threads": {
+          "type": "int",
+          "example": "3"
+        },
+        "nodes": {
+          "type": "int",
+          "example": "12"
+        },
+        "runs": {
+          "type": "int",
+          "example": "0"
+        }
+      }
+    },
+    "shortcut.palette": {
+      "message": "Open command menu",
+      "context": "Shortcut description for Ctrl+K",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "shortcut.new_folio": {
+      "message": "New chat",
+      "context": "Shortcut description for Ctrl+N",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "shortcut.sidebar": {
+      "message": "Toggle sidebar",
+      "context": "Shortcut description for Ctrl+B",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "shortcut.settings": {
+      "message": "Open settings",
+      "context": "Shortcut description for Ctrl+,",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "shortcut.search": {
+      "message": "Search chat history",
+      "context": "Shortcut description for Ctrl+Shift+F",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "shortcut.theme": {
+      "message": "Switch Light / Dark theme",
+      "context": "Shortcut description for Ctrl+Shift+L",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "shortcut.layout": {
+      "message": "Switch Document / Bubbles layout",
+      "context": "Shortcut description for Ctrl+Shift+M",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "shortcut.shortcuts": {
+      "message": "Show keyboard shortcuts",
+      "context": "Shortcut description for Ctrl+/",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "shortcut.escape": {
+      "message": "Close overlay or stop reply",
+      "context": "Shortcut description for Escape",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "toast.copied": {
+      "message": "Copied to clipboard",
+      "context": "Toast after copying",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.pinned": {
+      "message": "Chat pinned",
+      "context": "Toast after pinning chat",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.unpinned": {
+      "message": "Chat unpinned",
+      "context": "Toast after unpinning chat",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.deleted": {
+      "message": "Chat deleted",
+      "context": "Toast after deleting chat",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "toast.assistant_created": {
+      "message": "Assistant added",
+      "context": "Toast after creating assistant",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.settings_saved": {
+      "message": "Settings saved",
+      "context": "Toast after saving settings",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.key_saved": {
+      "message": "API key saved securely",
+      "context": "Toast after saving API key in OS vault",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "toast.key_removed": {
+      "message": "API key removed",
+      "context": "Toast after deleting API key from vault",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.provider_added": {
+      "message": "Custom provider added",
+      "context": "Toast after adding a custom provider",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.provider_deleted": {
+      "message": "Provider removed",
+      "context": "Toast after deleting a custom provider",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "sidebar.tab.assistant": {
+      "message": "Assistant",
+      "context": "Left sidebar top segmented tab for assistants",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "sidebar.tab.chat": {
+      "message": "Chat",
+      "context": "Left sidebar top segmented tab for chats",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "sidebar.tab.pinned": {
+      "message": "Pinned",
+      "context": "Left sidebar top segmented tab for pinned chats",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "sidebar.pinned.empty": {
+      "message": "No pinned chats yet",
+      "context": "Empty state inside Pinned sidebar tab",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "sidebar.assistant.new": {
+      "message": "New assistant",
+      "context": "Action button inside Assistant sidebar tab",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.field.server_cache": {
+      "message": "Server response cache",
+      "context": "Optional toggle enabling provider-side conversation state caching",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.assistants.edit_title": {
+      "message": "Edit assistant",
+      "context": "Heading when editing an existing assistant",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.assistants.save_action": {
+      "message": "Save changes",
+      "context": "Primary button saving assistant edits",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.assistants.delete_action": {
+      "message": "Delete assistant",
+      "context": "Action deleting an assistant",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.trust.spend_today": {
+      "message": "Spent today: {spent} / {limit}",
+      "context": "Live daily spend meter in Safety & Budget",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "spent": {
+          "type": "string",
+          "example": "$0.00"
+        },
+        "limit": {
+          "type": "string",
+          "example": "$5.00"
+        }
+      }
+    },
+    "toast.assistant_updated": {
+      "message": "Assistant updated",
+      "context": "Toast after updating an assistant",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.assistant_deleted": {
+      "message": "Assistant deleted",
+      "context": "Toast after deleting an assistant",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "diag.ota.check_failed": {
+      "message": "Could not check for updates. Verify your connection or feed URL.",
+      "context": "Diagnostic when OTA manifest check fails",
+      "tone": "diagnostic",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "diag.ota.active_runs_deferred": {
+      "message": "Update ready, waiting for active chats to finish.",
+      "context": "Diagnostic when Track-B OTA defers until active runs reach zero",
+      "tone": "diagnostic",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "diag.ota.managed_externally": {
+      "message": "Updates are managed by your system package manager.",
+      "context": "Diagnostic when Linux app is installed via Flatpak, Snap, or /usr",
+      "tone": "diagnostic",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "diag.export.failed": {
+      "message": "Could not save or export file.",
+      "context": "Diagnostic when chat export or DB backup fails",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "shell.theme.system": {
+      "message": "System",
+      "context": "Follow OS light/dark theme",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.back_to_chat": {
+      "message": "Back to chat",
+      "context": "Button returning from full-window settings to chat",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.appearance.theme_section": {
+      "message": "Theme & Layout",
+      "context": "Appearance section header for theme and layout",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.appearance.accent": {
+      "message": "Accent color",
+      "context": "Label for primary accent color customization",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.appearance.accent_custom": {
+      "message": "Custom hex",
+      "context": "Custom hex color option label",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.appearance.accent_wax": {
+      "message": "Vermilion",
+      "context": "Warm vermilion accent preset",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.accent_brass": {
+      "message": "Amber",
+      "context": "Warm amber accent preset",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.accent_pine": {
+      "message": "Forest",
+      "context": "Deep forest green accent preset",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.accent_cobalt": {
+      "message": "Cobalt",
+      "context": "Deep cobalt blue accent preset",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.accent_plum": {
+      "message": "Plum",
+      "context": "Warm plum accent preset",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.typography_section": {
+      "message": "Typography & Fonts",
+      "context": "Section heading for font family and size controls",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.appearance.prose_font": {
+      "message": "Reading & UI font",
+      "context": "Label for local UI/reading font selector",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.appearance.mono_font": {
+      "message": "Code font",
+      "context": "Label for local monospace code font selector",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.appearance.font_default": {
+      "message": "Bundled default",
+      "context": "Default bundled font option",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.appearance.font_browse": {
+      "message": "Choose font file...",
+      "context": "Button opening native file picker for local TTF/OTF font",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.appearance.font_reset": {
+      "message": "Reset",
+      "context": "Button resetting control back to default value",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.font_size_px": {
+      "message": "Font size ({px} px)",
+      "context": "Continuous font size control label in logical pixels",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "px": {
+          "type": "int",
+          "example": "15"
+        }
+      }
+    },
+    "settings.appearance.line_height": {
+      "message": "Line spacing ({value})",
+      "context": "Line spacing multiplier control label",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "value": {
+          "type": "string",
+          "example": "1.60"
+        }
+      }
+    },
+    "settings.appearance.reading_width": {
+      "message": "Reading width ({px} px)",
+      "context": "Max reading column width slider label",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {
+        "px": {
+          "type": "int",
+          "example": "760"
+        }
+      }
+    },
+    "settings.appearance.preview_title": {
+      "message": "Live preview",
+      "context": "Header above live typography preview card",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.appearance.preview_body": {
+      "message": "Clear typography makes long reading and coding sessions effortless.",
+      "context": "Sample paragraph rendered inside live typography preview",
+      "tone": "calm_editorial",
+      "max_chars": 120,
+      "placeholders": {}
+    },
+    "settings.appearance.show_tokens": {
+      "message": "Show token & cost details",
+      "context": "Toggle displaying model token counts and estimated cost below replies",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "provider.add_button": {
+      "message": "Add provider",
+      "context": "Primary button opening add provider template picker",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "provider.add_title": {
+      "message": "Add an AI provider",
+      "context": "Title of add provider panel",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "provider.add_subtitle": {
+      "message": "Pick a template or connect any OpenAI-compatible server.",
+      "context": "Helper subtitle on add provider screen",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "provider.delete_button": {
+      "message": "Delete provider",
+      "context": "Button deleting any provider including starters",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "provider.delete_confirm": {
+      "message": "Click again to delete",
+      "context": "Second-click delete confirmation label",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "provider.icon_label": {
+      "message": "Provider icon",
+      "context": "Label above color lab icon picker for provider",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.icon_custom_upload": {
+      "message": "Choose local image...",
+      "context": "Button picking local PNG/WebP custom provider icon",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.icon_clear_custom": {
+      "message": "Use lab icon",
+      "context": "Button clearing custom local image icon",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "provider.empty_title": {
+      "message": "No providers configured",
+      "context": "Empty state title when user deleted all providers",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "provider.empty_body": {
+      "message": "Add OpenAI, Google Gemini, Anthropic, Ollama, or any custom endpoint to start chatting.",
+      "context": "Empty state body when provider list is empty",
+      "tone": "calm_editorial",
+      "max_chars": 140,
+      "placeholders": {}
+    },
+    "provider.enabled_toggle": {
+      "message": "Enabled",
+      "context": "Toggle enabling or disabling a provider",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.dialect_label": {
+      "message": "API protocol",
+      "context": "Label for provider wire dialect selector",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.assistants.default_provider": {
+      "message": "Default provider",
+      "context": "Optional default provider bound to an assistant",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.assistants.default_model": {
+      "message": "Default model",
+      "context": "Optional default model bound to an assistant",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.assistants.use_global_default": {
+      "message": "Use app default",
+      "context": "Option inheriting global active provider/model",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.assistants.icon_label": {
+      "message": "Assistant icon",
+      "context": "Optional icon label in assistant editor",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.assistants.temperature": {
+      "message": "Temperature",
+      "context": "Generation temperature parameter label",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.assistants.max_tokens": {
+      "message": "Max output tokens",
+      "context": "Generation max output tokens label",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.assistants.top_p": {
+      "message": "Top P",
+      "context": "Nucleus sampling top-p parameter label",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.assistants.params_default": {
+      "message": "Default",
+      "context": "Value label when numeric generation parameter is unset",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.budget.unlimited": {
+      "message": "Unlimited",
+      "context": "Unlimited daily spending badge/label",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.budget.unlimited_toggle": {
+      "message": "Unlimited spending",
+      "context": "Toggle disabling daily spending cap completely",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.budget.unlimited_badge": {
+      "message": "No daily spending cap is active.",
+      "context": "Subtitle when unlimited spending is enabled",
+      "tone": "calm_editorial",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "settings.budget.custom_amount": {
+      "message": "Custom daily limit (USD)",
+      "context": "Custom USD numeric input label",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.budget.apply_amount": {
+      "message": "Apply",
+      "context": "Apply custom daily limit button",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.budget.today_spend": {
+      "message": "Today's spend",
+      "context": "Heading for today Wallet Shield spend bar",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.tab.updates": {
+      "message": "Updates & Storage",
+      "context": "Settings navigation tab combining OTA updates and local storage",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.ota.section_title": {
+      "message": "Software & Data Updates",
+      "context": "OTA updates section heading",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {}
+    },
+    "settings.ota.section_subtitle": {
+      "message": "Zero-telemetry signed updates verified offline with Ed25519.",
+      "context": "OTA section subtitle explaining cryptographic verification",
+      "tone": "calm_editorial",
+      "max_chars": 120,
+      "placeholders": {}
+    },
+    "settings.ota.current_version": {
+      "message": "Installed version",
+      "context": "Current installed Bistre version row label",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.ota.channel": {
+      "message": "Release channel",
+      "context": "OTA release channel selector label",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.ota.channel_stable": {
+      "message": "Stable",
+      "context": "Stable release channel option",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.ota.channel_beta": {
+      "message": "Beta",
+      "context": "Beta release channel option",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.ota.feed_url": {
+      "message": "Update feed URL",
+      "context": "Configurable self-hostable OTA manifest URL input",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.ota.check_button": {
+      "message": "Check for updates",
+      "context": "Primary button triggering live zero-telemetry OTA check",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.ota.checking": {
+      "message": "Checking...",
+      "context": "Progress label while checking for updates",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.ota.up_to_date": {
+      "message": "Up to date (v{version})",
+      "context": "Status badge when already on newest version",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {
+        "version": {
+          "type": "string",
+          "example": "0.1.0"
+        }
+      }
+    },
+    "settings.ota.update_available": {
+      "message": "Update available: v{version}",
+      "context": "Status banner when newer signed version is available",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {
+        "version": {
+          "type": "string",
+          "example": "0.2.0"
+        }
+      }
+    },
+    "settings.ota.download_stage": {
+      "message": "Download & stage",
+      "context": "Button downloading and verifying OTA payload",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.ota.staging": {
+      "message": "Downloading...",
+      "context": "Progress label while downloading OTA artifact",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.ota.staged_ready": {
+      "message": "Update verified and staged. Restart Bistre to apply.",
+      "context": "Confirmation once update artifact is verified and staged",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "settings.ota.signature_verified": {
+      "message": "Ed25519 signature verified",
+      "context": "Badge indicating offline Ed25519 signature passed",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.ota.active_runs_notice": {
+      "message": "Active chats running — binary swap waits until idle.",
+      "context": "Deferral notice when active_runs > 0",
+      "tone": "diagnostic",
+      "max_chars": 100,
+      "placeholders": {}
+    },
+    "settings.storage.section_title": {
+      "message": "Local Storage & Backups",
+      "context": "Storage section heading",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {}
+    },
+    "settings.storage.data_dir": {
+      "message": "Data folder",
+      "context": "Active SQLite and encrypted vault path row",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.storage.dev_badge": {
+      "message": "Dev environment",
+      "context": "Badge shown when isolated inside .bistre-dev",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.storage.open_folder": {
+      "message": "Open folder",
+      "context": "Button opening active data folder in OS Explorer",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.storage.backup_db": {
+      "message": "Backup database...",
+      "context": "Button invoking WAL-safe VACUUM INTO backup",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.storage.db_size": {
+      "message": "Database size",
+      "context": "On-disk SQLite + WAL size metric label",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.inspector.title": {
+      "message": "Chat parameters",
+      "context": "Title of right-side collapsible chat inspector drawer",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.inspector.toggle": {
+      "message": "Chat parameters",
+      "context": "Tooltip/semantics for header inspector toggle button",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.inspector.override_prompt": {
+      "message": "System prompt override",
+      "context": "Per-chat system prompt override editor label",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "chat.inspector.override_prompt_hint": {
+      "message": "Leave empty to inherit the active assistant prompt...",
+      "context": "Placeholder for per-chat system prompt override",
+      "tone": "calm_editorial",
+      "max_chars": 90,
+      "placeholders": {}
+    },
+    "chat.inspector.reset_params": {
+      "message": "Reset overrides",
+      "context": "Button clearing all per-chat parameter overrides",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.inspector.export_section": {
+      "message": "Export conversation",
+      "context": "Section header for Markdown and JSON chat export",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.inspector.export_md": {
+      "message": "Export Markdown",
+      "context": "Export thread as Markdown button",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.inspector.export_json": {
+      "message": "Export JSON",
+      "context": "Export thread as JSON button",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.action.edit": {
+      "message": "Edit",
+      "context": "Hover action editing a user message and branching",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.action.delete": {
+      "message": "Delete",
+      "context": "Hover action deleting a single message node",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.action.save_resend": {
+      "message": "Save & resend",
+      "context": "Confirm edited user prompt and regenerate reply",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.tokens_meta": {
+      "message": "{input} in · {output} out",
+      "context": "Compact token count readout below assistant response",
+      "tone": "diagnostic",
+      "max_chars": 48,
+      "placeholders": {
+        "input": {
+          "type": "int",
+          "example": "412"
+        },
+        "output": {
+          "type": "int",
+          "example": "198"
+        }
+      }
+    },
+    "sidebar.group.today": {
+      "message": "Today",
+      "context": "Sidebar chronological chat group header",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.group.yesterday": {
+      "message": "Yesterday",
+      "context": "Sidebar chronological chat group header",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.group.week": {
+      "message": "Previous 7 days",
+      "context": "Sidebar chronological chat group header",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "sidebar.group.older": {
+      "message": "Older",
+      "context": "Sidebar chronological chat group header",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "shortcuts.record_hint": {
+      "message": "Press new shortcut...",
+      "context": "Prompt while recording a custom keyboard shortcut",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "shortcuts.reset_defaults": {
+      "message": "Reset defaults",
+      "context": "Button resetting custom keyboard shortcuts",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.exported": {
+      "message": "Conversation exported",
+      "context": "Toast after exporting chat",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "toast.backup_saved": {
+      "message": "Database backup saved",
+      "context": "Toast after VACUUM INTO DB backup",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "toast.font_loaded": {
+      "message": "Custom font applied",
+      "context": "Toast after loading local TTF/OTF font",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "toast.update_staged": {
+      "message": "Update verified and staged",
+      "context": "Toast after OTA artifact staging",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {}
+    },
+    "toast.node_deleted": {
+      "message": "Message deleted",
+      "context": "Toast after deleting a single message node",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "diag.run.indeterminate_halt": {
+      "message": "An external tool step was interrupted during sleep or restart. Review and confirm before continuing.",
+      "context": "Diagnostic message when Tier-2 tool recovery requires manual confirmation",
+      "tone": "calm_editorial",
+      "max_chars": 140,
+      "placeholders": {}
+    },
+    "diag.run.backoff_waiting": {
+      "message": "Provider rate limit reached. Waiting automatically before resuming.",
+      "context": "Diagnostic message during long-horizon rate-limit backoff",
+      "tone": "calm_editorial",
+      "max_chars": 100,
+      "placeholders": {}
+    },
+    "diag.power.guard_degraded": {
+      "message": "Could not acquire OS keep-awake lock. Active runs remain saved to disk.",
+      "context": "Diagnostic warning when sleep inhibitor could not be acquired",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "diag.daemon.unavailable": {
+      "message": "Background daemon unavailable. Running directly inside the app.",
+      "context": "Diagnostic message when desktop daemon IPC falls back to in-process",
+      "tone": "calm_editorial",
+      "max_chars": 100,
+      "placeholders": {}
+    },
+    "studio.title": {
+      "message": "Studio",
+      "context": "Toggle button and header for right-side Studio pane",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "studio.tab.runs": {
+      "message": "Runs",
+      "context": "Studio pane tab showing active runs and sleep guard",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "studio.awake_badge": {
+      "message": "Awake",
+      "context": "Compact status pill indicating OS sleep prevention is active",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "studio.running_count": {
+      "message": "{count} running",
+      "context": "Top-bar badge showing number of active agent runs",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "studio.power_guard_title": {
+      "message": "Sleep & disruption guard",
+      "context": "Card heading in Studio Runs panel",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "studio.power_active": {
+      "message": "Keeping device awake while active",
+      "context": "Status line when OS sleep inhibitor is held",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {}
+    },
+    "studio.power_idle": {
+      "message": "Standby · normal OS sleep allowed",
+      "context": "Status line when no runs are active",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {}
+    },
+    "studio.runs_empty": {
+      "message": "No active or recent runs yet. Long-running tasks appear here and resume automatically after sleep.",
+      "context": "Empty state inside Studio Runs panel",
+      "tone": "calm_editorial",
+      "max_chars": 140,
+      "placeholders": {}
+    },
+    "studio.confirm_completed": {
+      "message": "Confirm done",
+      "context": "Action resolving indeterminate halted step as already completed",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "studio.retry_step": {
+      "message": "Retry step",
+      "context": "Action retrying indeterminate halted step",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "composer.steer_placeholder": {
+      "message": "Type a follow-up to steer the active run...",
+      "context": "Composer placeholder while AI is actively streaming",
+      "tone": "calm_editorial",
+      "max_chars": 68,
+      "placeholders": {}
+    },
+    "composer.steer_queued": {
+      "message": "Queued ({count})",
+      "context": "Header for mid-stream steering queue strip above composer",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "composer.queue_action": {
+      "message": "Queue",
+      "context": "Button label to enqueue a mid-stream steering message",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.sleep.section_title": {
+      "message": "Background & sleep survival",
+      "context": "Settings section heading for long-horizon sleep/daemon controls",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.sleep.section_subtitle": {
+      "message": "Keep long-running agents alive across sleep, screen lock, and window close.",
+      "context": "Settings section subtitle for sleep survival controls",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "settings.sleep.keep_awake": {
+      "message": "Keep device awake during active runs",
+      "context": "Toggle enabling OS sleep inhibition while runs are active",
+      "tone": "calm_editorial",
+      "max_chars": 54,
+      "placeholders": {}
+    },
+    "settings.sleep.windows_battery": {
+      "message": "Force stay awake on battery (Windows)",
+      "context": "Opt-in toggle for Windows Modern Standby DC display-required",
+      "tone": "calm_editorial",
+      "max_chars": 58,
+      "placeholders": {}
+    },
+    "settings.sleep.windows_battery_desc": {
+      "message": "Prevents Windows Modern Standby from pausing runs after 5 minutes on battery.",
+      "context": "Description for Windows battery stay-awake toggle",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "settings.sleep.daemon_active": {
+      "message": "Keep background service alive while running",
+      "context": "Toggle keeping desktop daemon running after window close only during active runs",
+      "tone": "calm_editorial",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "settings.sleep.daemon_active_desc": {
+      "message": "Closing the window will not stop active agents; exits automatically when idle.",
+      "context": "Description for active-scoped daemon toggle",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "settings.sleep.unattended_policy": {
+      "message": "Unattended approval policy",
+      "context": "Setting label for handling approvals during background/overnight runs",
+      "tone": "calm_editorial",
+      "max_chars": 42,
+      "placeholders": {}
+    },
+    "settings.sleep.policy_pause": {
+      "message": "Pause & notify",
+      "context": "Unattended policy option to pause and alert user",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.sleep.policy_deny": {
+      "message": "Skip & continue",
+      "context": "Unattended policy option to deny external actions and continue",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.sleep.policy_sandbox": {
+      "message": "Sandbox auto",
+      "context": "Unattended policy option allowing actions inside isolated worktree",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.sleep.android_battery": {
+      "message": "Unrestricted battery (Android)",
+      "context": "Android battery optimization exemption row",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.sleep.android_battery_allow": {
+      "message": "Allow unrestricted",
+      "context": "Action opening Android battery exemption dialog",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.sleep.android_battery_ok": {
+      "message": "Unrestricted",
+      "context": "Badge when Android battery exemption is granted",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "toast.steering_queued": {
+      "message": "Steering message queued",
+      "context": "Toast after queuing a mid-stream steering message",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "mode.plan": {
+      "message": "Plan",
+      "context": "Read-only planning agent mode tab",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "mode.build": {
+      "message": "Build",
+      "context": "Write-capable coding agent mode tab",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "mode.write_rp": {
+      "message": "Write",
+      "context": "Creative writing and roleplay mode tab",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.thinking_label": {
+      "message": "Thinking",
+      "context": "Collapsible reasoning/thinking block header",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.thinking_seconds": {
+      "message": "Thinking · {seconds}s",
+      "context": "Collapsible reasoning block header with duration",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {
+        "seconds": {
+          "type": "string"
+        }
+      }
+    },
+    "chat.quote_thinking": {
+      "message": "Quote into composer",
+      "context": "Action quoting reasoning text into the input composer",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.reasoning_effort": {
+      "message": "Reasoning effort",
+      "context": "Label for reasoning depth control",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.effort_off": {
+      "message": "Off",
+      "context": "Reasoning effort disabled",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "chat.effort_low": {
+      "message": "Low",
+      "context": "Low reasoning effort",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "chat.effort_medium": {
+      "message": "Medium",
+      "context": "Medium reasoning effort",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "chat.effort_high": {
+      "message": "High",
+      "context": "High reasoning effort",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "tool.running": {
+      "message": "Running",
+      "context": "Tool step status badge while executing",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "tool.completed": {
+      "message": "Done",
+      "context": "Tool step status badge when succeeded",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "tool.failed": {
+      "message": "Failed",
+      "context": "Tool step status badge when failed",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "tool.rewind": {
+      "message": "Rewind",
+      "context": "1-click restore file from pre-edit checkpoint",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "tool.rewound_toast": {
+      "message": "File restored from checkpoint",
+      "context": "Toast after rewinding a file edit checkpoint",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "tool.approval_title": {
+      "message": "Approval needed",
+      "context": "Inline tool execution approval card title",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "tool.approve_once": {
+      "message": "Approve once",
+      "context": "Approve single tool invocation",
+      "tone": "concise_action",
+      "max_chars": 22,
+      "placeholders": {}
+    },
+    "tool.approve_chat": {
+      "message": "Approve for chat",
+      "context": "Approve tool category for current thread",
+      "tone": "concise_action",
+      "max_chars": 26,
+      "placeholders": {}
+    },
+    "tool.deny": {
+      "message": "Deny",
+      "context": "Reject tool invocation",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.compact_action": {
+      "message": "Compact context",
+      "context": "Action summarizing earlier chat history into a reversible node",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.compacted_title": {
+      "message": "Context summary",
+      "context": "Header on a reversible compaction summary node",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.undo_compaction": {
+      "message": "Undo compaction",
+      "context": "Button reverting a compaction summary node back to full history",
+      "tone": "concise_action",
+      "max_chars": 26,
+      "placeholders": {}
+    },
+    "chat.pin_context_start": {
+      "message": "Start context here",
+      "context": "Pin a message as the fixed start of model context",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.pinned_context_banner": {
+      "message": "Context starts from this message",
+      "context": "Banner indicating fixed context start pin",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.tab.agent": {
+      "message": "Agent & Tools",
+      "context": "Settings navigation tab for workspace tools, MCP, and search",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.agent.workspace_dir": {
+      "message": "Workspace folder",
+      "context": "Setting label for bound coding workspace path",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.workspace_pick": {
+      "message": "Choose folder",
+      "context": "Button to bind local workspace folder",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_title": {
+      "message": "MCP servers",
+      "context": "Settings section heading for Model Context Protocol servers",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_add": {
+      "message": "Add MCP server",
+      "context": "Button to configure a new MCP server",
+      "tone": "concise_action",
+      "max_chars": 26,
+      "placeholders": {}
+    },
+    "settings.agent.web_search": {
+      "message": "Web search provider",
+      "context": "Setting label for built-in web search backend",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.termux_title": {
+      "message": "Termux shell bridge (Android)",
+      "context": "Optional Android Termux integration heading",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.agent.termux_desc": {
+      "message": "Run local shell tools through Termux when external apps are allowed.",
+      "context": "Description for optional Android Termux bridge",
+      "tone": "calm_editorial",
+      "max_chars": 100,
+      "placeholders": {}
+    },
+    "chat.table.copy_csv": {
+      "message": "Copy CSV",
+      "context": "Action button to copy rendered Markdown table as CSV",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.table.copy_md": {
+      "message": "Copy Markdown",
+      "context": "Action button to copy rendered Markdown table as Markdown",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.math.copy_latex": {
+      "message": "Copy LaTeX",
+      "context": "Action button to copy rendered math formula as raw LaTeX",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.mermaid.copy_source": {
+      "message": "Copy Mermaid",
+      "context": "Action button to copy diagram source code",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.mermaid.diagram_title": {
+      "message": "Diagram",
+      "context": "Header label on a rendered vector diagram card",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "composer.attach_file": {
+      "message": "Attach file",
+      "context": "Composer button to attach an image, PDF, or text file",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "composer.attachments_count": {
+      "message": "{count} attached",
+      "context": "Summary pill showing number of attached files",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": 2
+        }
+      }
+    },
+    "composer.mention_title": {
+      "message": "Insert context",
+      "context": "Popover title when typing @ mentions in composer",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "composer.slash_title": {
+      "message": "Commands",
+      "context": "Popover title when typing / slash commands in composer",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.tree.title": {
+      "message": "Conversation tree",
+      "context": "Title of the visual branching session tree overlay",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.tree.jump_prompt": {
+      "message": "Jump to prompt",
+      "context": "Action / shortcut to jump directly to an earlier prompt",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.tree.empty": {
+      "message": "No messages in this chat yet.",
+      "context": "Empty state inside session tree overlay",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "shortcut.jump_prompt": {
+      "message": "Jump to earlier prompt",
+      "context": "Keyboard shortcut description for Ctrl+Alt+G",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "studio.tab.files": {
+      "message": "Files",
+      "context": "Studio pane tab for touched files, diffs, and inline comments",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "studio.tab.story": {
+      "message": "Story Bible",
+      "context": "Studio pane tab for characters, codex, and lorebook",
+      "tone": "concise_action",
+      "max_chars": 22,
+      "placeholders": {}
+    },
+    "studio.tab.prompt": {
+      "message": "Prompt",
+      "context": "Studio pane tab showing exact compiled prompt and lorebook trace",
+      "tone": "concise_action",
+      "max_chars": 22,
+      "placeholders": {}
+    },
+    "studio.files.empty": {
+      "message": "Edited workspace files and diffs will appear here.",
+      "context": "Empty state in Studio Files tab",
+      "tone": "calm_editorial",
+      "max_chars": 72,
+      "placeholders": {}
+    },
+    "studio.comment_add": {
+      "message": "Comment in chat",
+      "context": "Button to attach a file line-range reference into the composer",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.detect_local": {
+      "message": "Detect local servers",
+      "context": "Button to auto-detect Ollama, LM Studio, llama.cpp, KoboldCPP",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "provider.local_none": {
+      "message": "No local servers detected on localhost.",
+      "context": "Status shown when local loopback scan finds nothing",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "provider.custom_headers": {
+      "message": "Custom HTTP headers (JSON)",
+      "context": "Advanced provider field for custom HTTP headers JSON",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.custom_body": {
+      "message": "Extra JSON body fields",
+      "context": "Advanced provider field for custom request JSON body overrides",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.share_config": {
+      "message": "Copy share config",
+      "context": "Copies non-secret provider config JSON without API keys",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.tab.memory": {
+      "message": "Memory & Skills",
+      "context": "Settings tab for cross-chat memory, skills, hooks, and schedules",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "memory.title": {
+      "message": "Saved memory",
+      "context": "Heading for cross-chat local SQLite memory entries",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "memory.add_placeholder": {
+      "message": "Add a preference or fact to remember...",
+      "context": "Input placeholder for adding a memory item",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "memory.add_action": {
+      "message": "Save memory",
+      "context": "Button to save a new memory entry",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "memory.empty": {
+      "message": "No saved memory yet. Add facts or preferences you want remembered across chats.",
+      "context": "Empty state for cross-chat memory",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "skills.title": {
+      "message": "Workspace skills",
+      "context": "Heading for discovered SKILL.md progressive-disclosure skills",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "skills.empty": {
+      "message": "Bind a workspace folder containing SKILL.md files to discover local skills.",
+      "context": "Empty state for discovered skills",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "automations.title": {
+      "message": "Scheduled tasks",
+      "context": "Heading for background cron and timer automations",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "automations.add_action": {
+      "message": "Add schedule",
+      "context": "Button to create a scheduled task",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "automations.empty": {
+      "message": "No scheduled tasks yet. Create recurring summaries, checks, or reminders.",
+      "context": "Empty state for scheduled tasks",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "automations.schedule_placeholder": {
+      "message": "Cron (e.g. 0 9 * * *) or every 30m",
+      "context": "Placeholder for schedule expression input",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "automations.prompt_placeholder": {
+      "message": "What should the assistant do when this runs?",
+      "context": "Placeholder for scheduled task prompt",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "subagents.title": {
+      "message": "Background workers",
+      "context": "Heading for isolated worktree background subagents",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.characters_title": {
+      "message": "Characters",
+      "context": "Story Bible section for character cards",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "story.personas_title": {
+      "message": "Your persona",
+      "context": "Story Bible section for user persona",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "story.codex_title": {
+      "message": "World & Lorebook",
+      "context": "Story Bible section for unified codex and lorebook entries",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "story.import_card": {
+      "message": "Import card",
+      "context": "Imports a CCv3/V2 PNG, JSON, or .charx character card",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.export_card": {
+      "message": "Export card",
+      "context": "Exports character card as JSON or PNG",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.add_character": {
+      "message": "New character",
+      "context": "Creates a new character card",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.add_entry": {
+      "message": "New lore entry",
+      "context": "Creates a new Story Bible / Lorebook entry",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.author_note": {
+      "message": "Author's Note",
+      "context": "Floating guidance note injected at configurable depth",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.story_memory": {
+      "message": "Story memory",
+      "context": "Pinned static story summary preserved in prompt cache",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.progressions_title": {
+      "message": "Timeline updates",
+      "context": "Novelcrafter-style chronological updates gated by chapter order",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.regex_title": {
+      "message": "Text rules (Regex)",
+      "context": "Safe linear-time regex transforms for display or prompts",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.time_machine": {
+      "message": "Restore snapshot",
+      "context": "Time Machine rollback button for Story Bible entities",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "story.view_chat": {
+      "message": "Chat",
+      "context": "Toggle button for Chat / Roleplay view inside Write mode",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "story.view_manuscript": {
+      "message": "Manuscript",
+      "context": "Toggle button for Chapters & Scenes Manuscript view inside Write mode",
+      "tone": "concise_action",
+      "max_chars": 22,
+      "placeholders": {}
+    },
+    "story.add_chapter": {
+      "message": "New chapter",
+      "context": "Adds a new chapter to the manuscript",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.add_scene": {
+      "message": "New scene",
+      "context": "Adds a new scene to the active chapter",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.scene_beats": {
+      "message": "Scene outline & beats",
+      "context": "Heading for scene beats input that generates prose",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.generate_prose": {
+      "message": "Write prose from beats",
+      "context": "Generates full prose from the scene outline beats",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.laser_rewrite": {
+      "message": "Rewrite",
+      "context": "Inline selection rewrite tool",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "story.laser_expand": {
+      "message": "Expand",
+      "context": "Inline selection expand tool",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "story.laser_shorten": {
+      "message": "Shorten",
+      "context": "Inline selection shorten tool",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "story.laser_polish": {
+      "message": "Polish",
+      "context": "Inline selection polish tool",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "story.action_continue": {
+      "message": "Continue",
+      "context": "Continues the last assistant passage seamlessly",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "story.action_impersonate": {
+      "message": "Draft my reply",
+      "context": "Drafts a user reply in the active persona voice",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.alt_greeting": {
+      "message": "Opening {current} / {total}",
+      "context": "Turn-0 alternate greeting switcher",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {
+        "current": {
+          "type": "int",
+          "example": 1
+        },
+        "total": {
+          "type": "int",
+          "example": 3
+        }
+      }
+    },
+    "story.samplers_title": {
+      "message": "Creative samplers & phrase bans",
+      "context": "Expandable drawer for min_p, top_k, DRY, XTC, and phrase bans",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "story.dialogue_styling": {
+      "message": "Highlight dialogue & actions",
+      "context": "Toggle for editorial pure-TextSpan dialogue and action styling",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "story.inspector_title": {
+      "message": "Live Prompt Inspector",
+      "context": "Title of the Prompt & Lorebook Inspector panel",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "story.inspector_cache_boundary": {
+      "message": "Prompt cache boundary",
+      "context": "Marker separating static cached prefix from dynamic suffix",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "story.inspector_lore_trace": {
+      "message": "Lorebook trigger log",
+      "context": "Heading showing which lore entries fired or were skipped",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "diag.network.destination_blocked": {
+      "message": "That address is private or local, so Bistre will not open it.",
+      "context": "Rust DiagnosticKey::NetworkDestinationBlocked message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.rate_limited": {
+      "message": "The provider is busy right now. Trying again shortly.",
+      "context": "Rust DiagnosticKey::ProviderRateLimited message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.quota_exhausted": {
+      "message": "Your provider account is out of credit or daily quota.",
+      "context": "Rust DiagnosticKey::ProviderQuotaExhausted message (billing or daily quota, never retried)",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.stream_interrupted": {
+      "message": "The reply stopped before it finished. You can try again.",
+      "context": "Rust DiagnosticKey::ProviderStreamInterrupted message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.context_overflow": {
+      "message": "This chat is over the conversation limit. Shorten the conversation to continue.",
+      "context": "Rust DiagnosticKey::ProviderContextOverflow message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.request_healed": {
+      "message": "A setting this model does not support was turned off for this reply.",
+      "context": "Rust DiagnosticKey::ProviderRequestHealed message (an unsupported setting was removed and the request resent)",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.tool.stale_read": {
+      "message": "The file changed since it was read. Read it again before editing.",
+      "context": "Rust DiagnosticKey::ToolStaleRead message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.tool.approval_required": {
+      "message": "This action needs your approval again.",
+      "context": "Rust DiagnosticKey::ToolApprovalRequired message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.ota.integrity_failed": {
+      "message": "The update could not be verified, so it was not installed.",
+      "context": "Rust DiagnosticKey::OtaIntegrityFailed message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "toast.undo": {
+      "message": "Undo",
+      "context": "Action button on the toast shown after deleting a chat",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "toast.restored": {
+      "message": "Chat restored",
+      "context": "Toast after a deleted chat is restored with Undo",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.context_gauge.used": {
+      "message": "{used} tokens in this chat",
+      "context": "Screen-reader label of the composer token gauge when the model limit is unknown",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {
+        "used": {
+          "type": "string",
+          "example": "1.2k"
+        }
+      }
+    },
+    "chat.context_gauge.of_limit": {
+      "message": "{used} of {limit} tokens used",
+      "context": "Screen-reader label of the composer token gauge (conversation limit known)",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {
+        "used": {
+          "type": "string",
+          "example": "1.2k"
+        },
+        "limit": {
+          "type": "string",
+          "example": "128k"
+        }
+      }
+    },
+    "chat.backoff.notice": {
+      "message": "Trying again in {seconds}s",
+      "context": "Notice while a reply waits before trying again automatically",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "seconds": {
+          "type": "int"
+        }
+      }
+    },
+    "chat.action.retry_now": {
+      "message": "Retry now",
+      "context": "Inline button that retries immediately instead of waiting",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.code.wrap": {
+      "message": "Wrap lines",
+      "context": "Code block button: wrap long lines",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.code.no_wrap": {
+      "message": "Don't wrap lines",
+      "context": "Code block button: stop wrapping long lines",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.code_wrap": {
+      "message": "Wrap code",
+      "context": "Appearance setting label for wrapping long code lines",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.appearance.code_wrap_hint": {
+      "message": "Long lines in code blocks wrap instead of scrolling sideways. Automatic wraps on narrow screens.",
+      "context": "Hint under the Wrap code setting",
+      "tone": "calm_editorial",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "settings.appearance.code_wrap_auto": {
+      "message": "Automatic",
+      "context": "Wrap code option",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.appearance.code_wrap_on": {
+      "message": "On",
+      "context": "Wrap code option",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.appearance.code_wrap_off": {
+      "message": "Off",
+      "context": "Wrap code option",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.fix.shorten": {
+      "message": "Shorten the conversation",
+      "context": "Button on the conversation-limit error that shortens the conversation",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.fix.spending_limit": {
+      "message": "Spending limit",
+      "context": "Button on the spending-limit error that opens the limit setting",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.empty.intro": {
+      "message": "Start with a question, a draft, or a file.",
+      "context": "Empty chat invitation shown next to the single bold accent mark",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "app.window_title": {
+      "message": "{title} — Bistre",
+      "context": "Native window caption while a chat is open",
+      "tone": "concise_action",
+      "max_chars": 96,
+      "placeholders": {
+        "title": {
+          "type": "string",
+          "example": "Fix chat export"
+        }
+      }
+    },
+    "app.window_title_replying": {
+      "message": "Replying · {title} — Bistre",
+      "context": "Native window caption while the assistant is replying (live progress)",
+      "tone": "concise_action",
+      "max_chars": 96,
+      "placeholders": {
+        "title": {
+          "type": "string",
+          "example": "Fix chat export"
+        }
+      }
+    },
+    "app.window_title_settings": {
+      "message": "Settings — Bistre",
+      "context": "Native window caption while Settings is open",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "tool.diff_split": {
+      "message": "Split",
+      "context": "Button that shows a code diff as two side-by-side columns (old | new)",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "tool.diff_unified": {
+      "message": "Unified",
+      "context": "Button that shows a code diff as one combined column",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.cost_unavailable_title": {
+      "message": "Cost not available",
+      "context": "Title of the small popup (and icon label) explaining that a reply has no known price",
+      "tone": "diagnostic",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.cost_unavailable_body": {
+      "message": "This model has no published price yet, so this reply counts as $0 toward your daily spending limit.",
+      "context": "Popup body explaining why a reply has no price and how it counts toward the spending limit",
+      "tone": "diagnostic",
+      "max_chars": 160,
+      "placeholders": {}
+    },
+    "settings.agent.termux_missing": {
+      "message": "Termux not detected",
+      "context": "Status badge: the Termux app is not installed on this Android device",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.termux_permission": {
+      "message": "Permission required",
+      "context": "Status badge: Termux is installed but Bistre still needs permission to run commands in it",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.termux_ready": {
+      "message": "Termux ready",
+      "context": "Status badge: Termux is installed and allowed",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_tools_count": {
+      "message": "{count, plural, one{1 tool} other{{count} tools}}",
+      "context": "Number of tools a connected MCP server offers, shown in its summary line",
+      "tone": "diagnostic",
+      "max_chars": 24,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "6"
+        }
+      }
+    },
+    "settings.agent.mcp_server_placeholder": {
+      "message": "MCP server",
+      "context": "Placeholder in the MCP server name field",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.mermaid.kind_sequence": {
+      "message": "Sequence",
+      "context": "Diagram type label: sequence diagram",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.mermaid.kind_state": {
+      "message": "State",
+      "context": "Diagram type label: state diagram",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.mermaid.kind_er": {
+      "message": "Entity relationship",
+      "context": "Diagram type label: entity-relationship diagram",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.mermaid.kind_flowchart_lr": {
+      "message": "Flowchart (left to right)",
+      "context": "Diagram type label: flowchart that runs left to right",
+      "tone": "diagnostic",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.mermaid.kind_flowchart_td": {
+      "message": "Flowchart (top to bottom)",
+      "context": "Diagram type label: flowchart that runs top to bottom",
+      "tone": "diagnostic",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "story.request_prose_from_beats": {
+      "message": "Write vivid, grounded prose for the scene “{title}” that follows these exact beats:\n\n{beats}",
+      "context": "Message sent to the writing model (shown as the user message) asking for prose from scene beats",
+      "tone": "calm_editorial",
+      "max_chars": 400,
+      "placeholders": {
+        "title": {
+          "type": "string",
+          "example": "Night market"
+        },
+        "beats": {
+          "type": "string",
+          "example": "She finds the letter."
+        }
+      }
+    },
+    "story.request_rewrite": {
+      "message": "Rewrite this with fresher phrasing while keeping the plot beats:\n\n{excerpt}",
+      "context": "Message sent to the writing model asking it to rewrite the selected passage",
+      "tone": "calm_editorial",
+      "max_chars": 400,
+      "placeholders": {
+        "excerpt": {
+          "type": "string",
+          "example": "The lanterns swayed."
+        }
+      }
+    },
+    "story.request_expand": {
+      "message": "Expand this with sensory detail and pacing:\n\n{excerpt}",
+      "context": "Message sent to the writing model asking it to expand the selected passage",
+      "tone": "calm_editorial",
+      "max_chars": 400,
+      "placeholders": {
+        "excerpt": {
+          "type": "string",
+          "example": "The lanterns swayed."
+        }
+      }
+    },
+    "story.request_shorten": {
+      "message": "Tighten and shorten this while keeping its meaning:\n\n{excerpt}",
+      "context": "Message sent to the writing model asking it to shorten the selected passage",
+      "tone": "calm_editorial",
+      "max_chars": 400,
+      "placeholders": {
+        "excerpt": {
+          "type": "string",
+          "example": "The lanterns swayed."
+        }
+      }
+    },
+    "story.request_polish": {
+      "message": "Polish the rhythm, voice, and clarity of this:\n\n{excerpt}",
+      "context": "Message sent to the writing model asking it to polish the selected passage",
+      "tone": "calm_editorial",
+      "max_chars": 400,
+      "placeholders": {
+        "excerpt": {
+          "type": "string",
+          "example": "The lanterns swayed."
+        }
+      }
+    },
+    "story.request_continue": {
+      "message": "Continue directly from the last sentence without repeating earlier lines.",
+      "context": "Message sent to the roleplay model asking it to continue the story",
+      "tone": "calm_editorial",
+      "max_chars": 200,
+      "placeholders": {}
+    },
+    "story.request_impersonate": {
+      "message": "Draft the next in-character reply from {name}’s point of view that fits the current scene.",
+      "context": "Message sent to the roleplay model asking it to draft the user persona’s next reply",
+      "tone": "calm_editorial",
+      "max_chars": 200,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "Mara"
+        }
+      }
+    },
+    "story.default_persona_name": {
+      "message": "the user",
+      "context": "Name used for the user in roleplay requests when no persona is chosen",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    }
+  }
+}

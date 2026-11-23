@@ -1,0 +1,3573 @@
+{
+  "$schema": "../schema.json",
+  "locale": "vi",
+  "direction": "ltr",
+  "entries": {
+    "app.title": {
+      "message": "Bistre",
+      "context": "Application window title and root brand header",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "app.subtitle": {
+      "message": "Trợ lý AI cục bộ",
+      "context": "Short subtitle under brand title in sidebar",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "shell.theme.day": {
+      "message": "Sáng",
+      "context": "Light sepia theme option",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "shell.theme.night": {
+      "message": "Tối",
+      "context": "Dark sepia theme option",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "shell.layout.bubbles": {
+      "message": "Bong bóng",
+      "context": "Chat bubble message layout option",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "shell.layout.folio": {
+      "message": "Tài liệu",
+      "context": "Clean document-style reading layout option",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "shell.health.wal_ready": {
+      "message": "Lõi v{version} · {count, plural, =0{0 tin nhắn} other{{count} tin nhắn}}",
+      "context": "Compact engine and storage status label",
+      "tone": "diagnostic",
+      "max_chars": 120,
+      "placeholders": {
+        "version": {
+          "type": "string",
+          "example": "0.1.0"
+        },
+        "count": {
+          "type": "int",
+          "example": "4"
+        }
+      }
+    },
+    "shell.search.placeholder": {
+      "message": "Tìm tin nhắn...",
+      "context": "Inline chat history search input placeholder",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "shell.search.results": {
+      "message": "{count, plural, =0{Không có tin nhắn khớp} other{{count} tin nhắn khớp}}",
+      "context": "Search hit summary below search input",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "3"
+        }
+      }
+    },
+    "shell.composer.placeholder": {
+      "message": "Nhập tin nhắn...",
+      "context": "Bottom message composer placeholder",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "shell.composer.send": {
+      "message": "Gửi",
+      "context": "Primary message submit button label",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "shell.composer.draft_saved": {
+      "message": "Đã lưu nháp",
+      "context": "Indicator confirming unsent draft is saved locally",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "shell.empty.title": {
+      "message": "Bắt đầu trò chuyện",
+      "context": "Empty chat heading before first message",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "shell.empty.body": {
+      "message": "Nhanh, riêng tư, lưu cục bộ. Lịch sử chat và khóa API luôn được mã hóa trên thiết bị này.",
+      "context": "Empty chat helper subtitle",
+      "tone": "calm_editorial",
+      "max_chars": 128,
+      "placeholders": {}
+    },
+    "shell.role.user": {
+      "message": "Bạn",
+      "context": "Speaker label for user messages",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "shell.role.assistant": {
+      "message": "Bistre",
+      "context": "Speaker label for assistant replies",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "shell.selection.copy": {
+      "message": "Sao chép",
+      "context": "Custom text selection toolbar copy action",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "shell.selection.select_all": {
+      "message": "Chọn tất cả",
+      "context": "Custom text selection toolbar select-all action",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "shell.locale.switch_a11y": {
+      "message": "Chuyển ngôn ngữ sang {locale}",
+      "context": "Screen reader label for language selector",
+      "tone": "concise_action",
+      "max_chars": 48,
+      "placeholders": {
+        "locale": {
+          "type": "string",
+          "example": "vi"
+        }
+      }
+    },
+    "shell.locale.en": {
+      "message": "EN",
+      "context": "Short label for English",
+      "tone": "concise_action",
+      "max_chars": 8,
+      "placeholders": {}
+    },
+    "shell.locale.vi": {
+      "message": "VI",
+      "context": "Short label for Vietnamese",
+      "tone": "concise_action",
+      "max_chars": 8,
+      "placeholders": {}
+    },
+    "shell.locale.ar": {
+      "message": "AR",
+      "context": "Short label for Arabic RTL",
+      "tone": "concise_action",
+      "max_chars": 8,
+      "placeholders": {}
+    },
+    "shell.thread.default_title": {
+      "message": "Đoạn chat mới",
+      "context": "Default title for newly created chats",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "diag.ok": {
+      "message": "Sẵn sàng",
+      "context": "Rust DiagnosticKey::Ok status label",
+      "tone": "diagnostic",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "diag.storage.busy": {
+      "message": "Bộ nhớ cục bộ đang bận; sẽ thử lại ngay.",
+      "context": "Rust DiagnosticKey::StorageBusy message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.storage.disk_full": {
+      "message": "Đầy bộ nhớ — bản nháp vẫn được giữ an toàn trong RAM.",
+      "context": "Rust DiagnosticKey::StorageDiskFull message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.storage.migration_failed": {
+      "message": "Nâng cấp cơ sở dữ liệu không qua kiểm tra toàn vẹn.",
+      "context": "Rust DiagnosticKey::StorageMigrationFailed message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.storage.not_found": {
+      "message": "Không tìm thấy đoạn chat hoặc tin nhắn này.",
+      "context": "Rust DiagnosticKey::StorageNotFound message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.crypto.signature_invalid": {
+      "message": "Xác minh chữ ký thất bại.",
+      "context": "Rust DiagnosticKey::CryptoSignatureInvalid message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.crypto.vault_unavailable": {
+      "message": "Kho khóa mã hóa không khả dụng trên thiết bị này.",
+      "context": "Rust DiagnosticKey::CryptoVaultUnavailable message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.network.captive_portal": {
+      "message": "Trang đăng nhập Wi-Fi đang chặn kết nối.",
+      "context": "Rust DiagnosticKey::NetworkCaptivePortal message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.clock.skew_suspected": {
+      "message": "Đồng hồ thiết bị bị lệch; hãy kiểm tra ngày giờ.",
+      "context": "Rust DiagnosticKey::ClockSkewSuspected message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.tool.edit_hash_mismatch": {
+      "message": "Tệp đã thay đổi từ lần đọc trước; đã hủy sửa an toàn.",
+      "context": "Rust DiagnosticKey::ToolEditHashMismatch message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.wallet.ceiling_exceeded": {
+      "message": "Đã chặn yêu cầu: chạm giới hạn chi tiêu hằng ngày.",
+      "context": "Rust DiagnosticKey::WalletCeilingExceeded message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.not_configured": {
+      "message": "Chưa kết nối nhà cung cấp AI. Hãy thêm khóa API trong Cài đặt.",
+      "context": "Rust DiagnosticKey::ProviderNotConfigured message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.model_required": {
+      "message": "Hãy chọn hoặc nhập tên mô hình trong Cài đặt trước.",
+      "context": "Rust DiagnosticKey::ProviderModelRequired message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.auth_failed": {
+      "message": "Khóa API bị từ chối. Hãy kiểm tra lại trong Cài đặt.",
+      "context": "Rust DiagnosticKey::ProviderAuthFailed message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.request_failed": {
+      "message": "Không thể kết nối nhà cung cấp. Kiểm tra mạng hoặc URL.",
+      "context": "Rust DiagnosticKey::ProviderRequestFailed message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.validation.invalid_input": {
+      "message": "Vui lòng kiểm tra dữ liệu nhập và thử lại.",
+      "context": "Rust DiagnosticKey::InvalidInput message",
+      "tone": "diagnostic",
+      "max_chars": 72,
+      "placeholders": {}
+    },
+    "diag.runtime.already_running": {
+      "message": "Một tiến trình nền khác của Bistre đang chạy.",
+      "context": "Rust DiagnosticKey::RuntimeAlreadyRunning message",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "diag.runtime.not_initialized": {
+      "message": "Đang khởi động lõi cục bộ...",
+      "context": "Rust DiagnosticKey::RuntimeNotInitialized message",
+      "tone": "diagnostic",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "diag.internal.error": {
+      "message": "Đã xảy ra lỗi bên trong lõi cục bộ.",
+      "context": "Rust DiagnosticKey::InternalError message",
+      "tone": "diagnostic",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "sidebar.new_folio": {
+      "message": "Đoạn chat mới",
+      "context": "Primary sidebar button to start a new conversation",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "sidebar.toggle": {
+      "message": "Ẩn/hiện thanh bên",
+      "context": "Button to show or hide left sidebar",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "sidebar.filter_placeholder": {
+      "message": "Tìm đoạn chat...",
+      "context": "Filter box inside left sidebar",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "sidebar.section.assistants": {
+      "message": "Trợ lý",
+      "context": "Sidebar vertical section for assistants",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.section.topics": {
+      "message": "Chủ đề",
+      "context": "Sidebar vertical section for topic filters",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.section.pinned": {
+      "message": "Đã ghim",
+      "context": "Sidebar vertical section for pinned chats",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.section.recent": {
+      "message": "Gần đây",
+      "context": "Sidebar vertical section for recent chats",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "sidebar.empty_filtered": {
+      "message": "Không có đoạn chat khớp.",
+      "context": "Shown when sidebar search or topic filter finds nothing",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "sidebar.add_assistant": {
+      "message": "Trợ lý mới",
+      "context": "Action to create a custom assistant",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "sidebar.settings": {
+      "message": "Cài đặt",
+      "context": "Sidebar footer button to open Settings",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.shortcuts": {
+      "message": "Phím tắt",
+      "context": "Sidebar footer button to view keyboard shortcuts",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.wallet_summary": {
+      "message": "{preset} · {spent} / {ceiling}",
+      "context": "Compact permission mode and daily spend summary",
+      "tone": "diagnostic",
+      "max_chars": 64,
+      "placeholders": {
+        "preset": {
+          "type": "string",
+          "example": "Cân bằng"
+        },
+        "spent": {
+          "type": "string",
+          "example": "$0.00"
+        },
+        "ceiling": {
+          "type": "string",
+          "example": "$5.00"
+        }
+      }
+    },
+    "topic.all": {
+      "message": "Tất cả",
+      "context": "Topic filter showing every chat",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "topic.general": {
+      "message": "Chung",
+      "context": "General chat topic",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "topic.code": {
+      "message": "Lập trình",
+      "context": "Software engineering topic",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "topic.writing": {
+      "message": "Viết lách",
+      "context": "Writing and editing topic",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "topic.research": {
+      "message": "Nghiên cứu",
+      "context": "Research and reading topic",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "topic.translate": {
+      "message": "Dịch thuật",
+      "context": "Translation topic",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "mode.chat": {
+      "message": "Trò chuyện",
+      "context": "General chat mode",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "mode.code": {
+      "message": "Mã nguồn",
+      "context": "Coding mode",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "mode.write": {
+      "message": "Viết",
+      "context": "Writing mode",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "mode.translate": {
+      "message": "Dịch",
+      "context": "Translation mode",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "thread.pin": {
+      "message": "Ghim chat",
+      "context": "Pin chat to top of sidebar",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "thread.unpin": {
+      "message": "Bỏ ghim",
+      "context": "Unpin chat from top of sidebar",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "thread.rename": {
+      "message": "Đổi tên",
+      "context": "Rename chat action",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "thread.rename_placeholder": {
+      "message": "Tên đoạn chat...",
+      "context": "Inline chat rename input placeholder",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "thread.delete": {
+      "message": "Xóa chat",
+      "context": "Delete chat action",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "thread.confirm_delete": {
+      "message": "Xác nhận xóa",
+      "context": "Second-click confirmation to delete chat",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "thread.cancel": {
+      "message": "Hủy",
+      "context": "Cancel action",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "thread.save": {
+      "message": "Lưu",
+      "context": "Save action",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.action.copy": {
+      "message": "Sao chép",
+      "context": "Copy full message text",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "chat.action.copied": {
+      "message": "Đã chép",
+      "context": "Brief feedback after copying",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "chat.action.reply": {
+      "message": "Trả lời",
+      "context": "Quote-reply to a message in composer",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "chat.action.regenerate": {
+      "message": "Thử lại",
+      "context": "Generate another version of an AI reply",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.action.stop": {
+      "message": "Dừng",
+      "context": "Stop generating active reply",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.action.jump_latest": {
+      "message": "Xuống cuối",
+      "context": "Floating button when scrolled up from bottom",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.replying_to": {
+      "message": "Đang trả lời {excerpt}",
+      "context": "Quoted reply banner above composer",
+      "tone": "calm_editorial",
+      "max_chars": 96,
+      "placeholders": {
+        "excerpt": {
+          "type": "string",
+          "example": "SQLite WAL"
+        }
+      }
+    },
+    "chat.reply_clear": {
+      "message": "Xóa trích dẫn",
+      "context": "Dismiss quoted reply banner",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.streaming_badge": {
+      "message": "Đang trả lời...",
+      "context": "Indicator while AI reply streams",
+      "tone": "diagnostic",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.branch_indicator": {
+      "message": "{current} / {total}",
+      "context": "Version indicator on regenerated replies",
+      "tone": "diagnostic",
+      "max_chars": 20,
+      "placeholders": {
+        "current": {
+          "type": "int",
+          "example": "1"
+        },
+        "total": {
+          "type": "int",
+          "example": "2"
+        }
+      }
+    },
+    "chat.branch_prev": {
+      "message": "Bản trước",
+      "context": "Switch to earlier reply version",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.branch_next": {
+      "message": "Bản tiếp",
+      "context": "Switch to newer reply version",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.code_copy": {
+      "message": "Sao chép mã",
+      "context": "Copy button on code block header",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.search_toggle": {
+      "message": "Tìm lịch sử",
+      "context": "Toggle chat history search bar",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.search_all_scope": {
+      "message": "Tất cả chat",
+      "context": "Search across every chat",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.search_thread_scope": {
+      "message": "Chat này",
+      "context": "Search only inside the active chat",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt1.title": {
+      "message": "Tìm lỗi hoặc xem lại mã",
+      "context": "Starter suggestion 1 title",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt1.body": {
+      "message": "Kiểm tra hàm này để tìm lỗi biên, xung đột luồng và cách viết gọn hơn.",
+      "context": "Starter suggestion 1 prompt",
+      "tone": "calm_editorial",
+      "max_chars": 120,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt2.title": {
+      "message": "Soạn tin nhắn rõ ràng",
+      "context": "Starter suggestion 2 title",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt2.body": {
+      "message": "Giúp tôi viết cập nhật dự án ngắn gọn, mạch lạc và không dài dòng.",
+      "context": "Starter suggestion 2 prompt",
+      "tone": "calm_editorial",
+      "max_chars": 128,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt3.title": {
+      "message": "Giải thích khái niệm khó",
+      "context": "Starter suggestion 3 title",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt3.body": {
+      "message": "Giải thích dễ hiểu cách hoạt động của SQLite WAL và lịch sử nhánh hội thoại.",
+      "context": "Starter suggestion 3 prompt",
+      "tone": "calm_editorial",
+      "max_chars": 120,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt4.title": {
+      "message": "Dịch tự nhiên",
+      "context": "Starter suggestion 4 title",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.welcome.prompt4.body": {
+      "message": "Dịch đoạn này giữa tiếng Anh, tiếng Việt và tiếng Ả Rập mà vẫn giữ đúng sắc thái.",
+      "context": "Starter suggestion 4 prompt",
+      "tone": "calm_editorial",
+      "max_chars": 128,
+      "placeholders": {}
+    },
+    "provider.setup.title": {
+      "message": "Kết nối nhà cung cấp AI",
+      "context": "Onboarding card title when no API key is saved yet",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.setup.body": {
+      "message": "Thêm khóa API OpenAI, Google Gemini, Anthropic hoặc máy chủ tùy chỉnh để bắt đầu. Khóa được mã hóa trên máy.",
+      "context": "Onboarding card body explaining where to add API keys",
+      "tone": "calm_editorial",
+      "max_chars": 160,
+      "placeholders": {}
+    },
+    "provider.setup.cta": {
+      "message": "Thêm khóa API",
+      "context": "Primary onboarding CTA button opening Providers & Keys settings",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.status.connected": {
+      "message": "Đã kết nối",
+      "context": "Badge when provider has a saved API key",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.status.not_connected": {
+      "message": "Chưa có khóa",
+      "context": "Badge when Big 3 provider has no API key yet",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.status.custom_ready": {
+      "message": "Tùy chỉnh",
+      "context": "Badge for custom OpenAI-compatible provider",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.status.active": {
+      "message": "Đang dùng",
+      "context": "Badge indicating active selected provider",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "provider.status.count": {
+      "message": "{count, plural, =0{Thêm khóa API} other{{count} nhà cung cấp sẵn sàng}}",
+      "context": "Sidebar footer status summary for connected providers",
+      "tone": "concise_action",
+      "max_chars": 48,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "1"
+        }
+      }
+    },
+    "provider.field.api_key": {
+      "message": "Khóa API",
+      "context": "Form label for API key input",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.field.api_key_placeholder": {
+      "message": "Dán khóa API của bạn...",
+      "context": "Placeholder inside API key input",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "provider.field.base_url": {
+      "message": "Địa chỉ API (Base URL)",
+      "context": "Form label for provider endpoint URL",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.field.model": {
+      "message": "Mô hình",
+      "context": "Form label for active model ID",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.field.model_placeholder": {
+      "message": "Chọn hoặc nhập mã mô hình...",
+      "context": "Placeholder inside model ID field",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "provider.field.name": {
+      "message": "Tên nhà cung cấp",
+      "context": "Form label when adding a custom provider",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.field.name_placeholder": {
+      "message": "VD: Ollama, OpenRouter hoặc proxy nội bộ",
+      "context": "Placeholder for custom provider display name",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "provider.action.save_key": {
+      "message": "Lưu khóa",
+      "context": "Button saving API key to encrypted OS vault",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.action.clear_key": {
+      "message": "Xóa khóa",
+      "context": "Button clearing saved API key from vault",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.action.save_config": {
+      "message": "Lưu cấu hình",
+      "context": "Button saving base URL and model for provider",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.action.load_models": {
+      "message": "Tải mô hình",
+      "context": "Button fetching live models from provider API",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.action.loading_models": {
+      "message": "Đang tải...",
+      "context": "Button label while fetching live models",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.action.use_provider": {
+      "message": "Chọn dùng",
+      "context": "Button making this provider and model active for chats",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.action.add_custom": {
+      "message": "Thêm nhà cung cấp tùy chỉnh",
+      "context": "Button to create a custom OpenAI-compatible provider",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "provider.action.delete_custom": {
+      "message": "Xóa nhà cung cấp",
+      "context": "Button deleting a custom provider",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.action.show_key": {
+      "message": "Hiện khóa API",
+      "context": "Accessibility label to reveal typed key",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.action.hide_key": {
+      "message": "Ẩn khóa API",
+      "context": "Accessibility label to mask typed key",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.vault_note": {
+      "message": "Khóa được mã hóa trong kho bảo mật của hệ thống và không bao giờ lưu dạng chữ thường.",
+      "context": "Security assurance note in Providers & Keys tab",
+      "tone": "calm_editorial",
+      "max_chars": 112,
+      "placeholders": {}
+    },
+    "provider.models_loaded": {
+      "message": "{count, plural, =0{Không tìm thấy mô hình} other{Đã tải {count} mô hình}}",
+      "context": "Summary after live /models fetch succeeds",
+      "tone": "diagnostic",
+      "max_chars": 56,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "24"
+        }
+      }
+    },
+    "provider.custom_heading": {
+      "message": "Thêm nhà cung cấp tùy chỉnh (OpenAI-Compatible)",
+      "context": "Heading for custom provider form",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "provider.dialect.openai": {
+      "message": "OpenAI Responses API",
+      "context": "Subtitle for OpenAI provider row",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.dialect.gemini": {
+      "message": "Google Gemini API",
+      "context": "Subtitle for Google Gemini provider row",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.dialect.anthropic": {
+      "message": "Anthropic Messages API",
+      "context": "Subtitle for Anthropic provider row",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.dialect.custom": {
+      "message": "Tương thích OpenAI tùy chỉnh",
+      "context": "Subtitle for Custom provider row",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "palette.trigger": {
+      "message": "Bảng lệnh",
+      "context": "Button opening Ctrl+K command menu",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "palette.placeholder": {
+      "message": "Tìm lệnh, đoạn chat hoặc trợ lý...",
+      "context": "Search input inside Ctrl+K command menu",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "palette.empty": {
+      "message": "Không tìm thấy lệnh khớp.",
+      "context": "Empty state in command menu",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "palette.section.actions": {
+      "message": "Thao tác nhanh",
+      "context": "Command menu actions group heading",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "palette.section.folios": {
+      "message": "Chuyển đoạn chat",
+      "context": "Command menu chat list heading",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "palette.section.assistants": {
+      "message": "Đổi trợ lý",
+      "context": "Command menu assistant list heading",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.title": {
+      "message": "Cài đặt",
+      "context": "Settings modal header title",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.close": {
+      "message": "Đóng cài đặt",
+      "context": "Accessibility label on close settings button",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.tab.providers": {
+      "message": "Nhà cung cấp & Khóa",
+      "context": "Settings tab 1 label for API keys and models",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.tab.appearance": {
+      "message": "Giao diện",
+      "context": "Settings tab label",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.tab.language": {
+      "message": "Ngôn ngữ",
+      "context": "Settings tab label",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.tab.assistants": {
+      "message": "Trợ lý",
+      "context": "Settings tab label",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.tab.trust": {
+      "message": "An toàn & Ngân sách",
+      "context": "Settings tab label for permissions and spend limits",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.tab.shortcuts": {
+      "message": "Phím tắt",
+      "context": "Settings tab label",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.tab.engine": {
+      "message": "Lưu trữ & Lõi",
+      "context": "Settings tab label for local database info",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.appearance.theme": {
+      "message": "Giao diện màu",
+      "context": "Setting row label for Light/Dark theme",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.appearance.layout": {
+      "message": "Bố cục tin nhắn",
+      "context": "Setting row label for Document vs Bubbles",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.appearance.scale": {
+      "message": "Cỡ chữ",
+      "context": "Setting row label for font scaling",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.appearance.motion": {
+      "message": "Hiệu ứng chuyển động",
+      "context": "Setting row label for smooth vs reduced motion",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.appearance.motion_smooth": {
+      "message": "Mượt",
+      "context": "Option enabling smooth transitions",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.motion_reduced": {
+      "message": "Giảm",
+      "context": "Option minimizing motion",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.send_enter": {
+      "message": "Nhấn Enter để gửi",
+      "context": "Toggle whether Enter sends a message",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.appearance.on": {
+      "message": "Bật",
+      "context": "Toggle enabled option",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.appearance.off": {
+      "message": "Tắt",
+      "context": "Toggle disabled option",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.language.heading": {
+      "message": "Ngôn ngữ hiển thị",
+      "context": "Language settings heading",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.language.note": {
+      "message": "Chuyển đổi ngay lập tức không cần khởi động lại và tự động đảo chiều cho ngôn ngữ phải-sang-trái.",
+      "context": "Explanatory note in Language settings tab",
+      "tone": "calm_editorial",
+      "max_chars": 160,
+      "placeholders": {}
+    },
+    "settings.assistants.create_title": {
+      "message": "Tạo trợ lý tùy chỉnh",
+      "context": "Form heading inside Assistants settings tab",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.assistants.name_placeholder": {
+      "message": "Tên (VD: Trợ lý kiểm tra mã)",
+      "context": "Input placeholder for new assistant name",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.assistants.subtitle_placeholder": {
+      "message": "Mô tả ngắn",
+      "context": "Input placeholder for new assistant description",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.assistants.prompt_placeholder": {
+      "message": "Hướng dẫn riêng cho trợ lý này...",
+      "context": "Input placeholder for assistant system prompt",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.assistants.create_action": {
+      "message": "Thêm trợ lý",
+      "context": "Submit button creating custom assistant",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.trust.preset_heading": {
+      "message": "Quyền công cụ",
+      "context": "Heading for tool approval presets",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.trust.parchment": {
+      "message": "Nghiêm ngặt",
+      "context": "Ask before any file edit or command",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.trust.guided": {
+      "message": "Cân bằng",
+      "context": "Default safe mode with easy undo",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.trust.unchained": {
+      "message": "Hộp cát",
+      "context": "Auto-run inside isolated sandbox",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.trust.ceiling_heading": {
+      "message": "Giới hạn chi tiêu hằng ngày",
+      "context": "Heading for daily API spend limit",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.trust.local_first": {
+      "message": "Ưu tiên mô hình cục bộ miễn phí",
+      "context": "Toggle prioritizing free local endpoints",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.trust.stateless": {
+      "message": "Yêu cầu riêng tư (không lưu trên máy chủ nhà cung cấp)",
+      "context": "Toggle setting store: false by default",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.engine.heading": {
+      "message": "Lưu trữ cục bộ và lõi",
+      "context": "Storage and engine tab heading",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.engine.telemetry": {
+      "message": "Không thu thập dữ liệu · Khóa API mã hóa cục bộ · SQLite ngoại tuyến",
+      "context": "Privacy note in Storage & Engine tab",
+      "tone": "calm_editorial",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "settings.engine.metrics": {
+      "message": "Lõi v{version} · Schema v{schema} · {threads} chat · {nodes} tin nhắn · Đang chạy: {runs}",
+      "context": "Live local engine metrics",
+      "tone": "diagnostic",
+      "max_chars": 128,
+      "placeholders": {
+        "version": {
+          "type": "string",
+          "example": "0.1.0"
+        },
+        "schema": {
+          "type": "int",
+          "example": "3"
+        },
+        "threads": {
+          "type": "int",
+          "example": "3"
+        },
+        "nodes": {
+          "type": "int",
+          "example": "12"
+        },
+        "runs": {
+          "type": "int",
+          "example": "0"
+        }
+      }
+    },
+    "shortcut.palette": {
+      "message": "Mở bảng lệnh",
+      "context": "Shortcut description for Ctrl+K",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "shortcut.new_folio": {
+      "message": "Đoạn chat mới",
+      "context": "Shortcut description for Ctrl+N",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "shortcut.sidebar": {
+      "message": "Ẩn/hiện thanh bên",
+      "context": "Shortcut description for Ctrl+B",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "shortcut.settings": {
+      "message": "Mở cài đặt",
+      "context": "Shortcut description for Ctrl+,",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "shortcut.search": {
+      "message": "Tìm lịch sử chat",
+      "context": "Shortcut description for Ctrl+Shift+F",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "shortcut.theme": {
+      "message": "Đổi giao diện Sáng / Tối",
+      "context": "Shortcut description for Ctrl+Shift+L",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "shortcut.layout": {
+      "message": "Đổi bố cục Tài liệu / Bong bóng",
+      "context": "Shortcut description for Ctrl+Shift+M",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "shortcut.shortcuts": {
+      "message": "Xem phím tắt",
+      "context": "Shortcut description for Ctrl+/",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "shortcut.escape": {
+      "message": "Đóng hộp thoại hoặc dừng trả lời",
+      "context": "Shortcut description for Escape",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "toast.copied": {
+      "message": "Đã sao chép",
+      "context": "Toast after copying",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.pinned": {
+      "message": "Đã ghim đoạn chat",
+      "context": "Toast after pinning chat",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.unpinned": {
+      "message": "Đã bỏ ghim đoạn chat",
+      "context": "Toast after unpinning chat",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.deleted": {
+      "message": "Đã xóa đoạn chat",
+      "context": "Toast after deleting chat",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "toast.assistant_created": {
+      "message": "Đã thêm trợ lý",
+      "context": "Toast after creating assistant",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.settings_saved": {
+      "message": "Đã lưu cài đặt",
+      "context": "Toast after saving settings",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.key_saved": {
+      "message": "Đã lưu khóa API an toàn",
+      "context": "Toast after saving API key in OS vault",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "toast.key_removed": {
+      "message": "Đã xóa khóa API",
+      "context": "Toast after deleting API key from vault",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.provider_added": {
+      "message": "Đã thêm nhà cung cấp",
+      "context": "Toast after adding a custom provider",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.provider_deleted": {
+      "message": "Đã xóa nhà cung cấp",
+      "context": "Toast after deleting a custom provider",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "sidebar.tab.assistant": {
+      "message": "Trợ lý",
+      "context": "Left sidebar top segmented tab for assistants",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "sidebar.tab.chat": {
+      "message": "Trò chuyện",
+      "context": "Left sidebar top segmented tab for chats",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "sidebar.tab.pinned": {
+      "message": "Đã ghim",
+      "context": "Left sidebar top segmented tab for pinned chats",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "sidebar.pinned.empty": {
+      "message": "Chưa có cuộc trò chuyện được ghim",
+      "context": "Empty state inside Pinned sidebar tab",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "sidebar.assistant.new": {
+      "message": "Trợ lý mới",
+      "context": "Action button inside Assistant sidebar tab",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.field.server_cache": {
+      "message": "Bộ nhớ đệm phản hồi máy chủ",
+      "context": "Optional toggle enabling provider-side conversation state caching",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.assistants.edit_title": {
+      "message": "Sửa trợ lý",
+      "context": "Heading when editing an existing assistant",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.assistants.save_action": {
+      "message": "Lưu thay đổi",
+      "context": "Primary button saving assistant edits",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.assistants.delete_action": {
+      "message": "Xóa trợ lý",
+      "context": "Action deleting an assistant",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.trust.spend_today": {
+      "message": "Đã chi hôm nay: {spent} / {limit}",
+      "context": "Live daily spend meter in Safety & Budget",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "spent": {
+          "type": "string",
+          "example": "$0.00"
+        },
+        "limit": {
+          "type": "string",
+          "example": "$5.00"
+        }
+      }
+    },
+    "toast.assistant_updated": {
+      "message": "Đã cập nhật trợ lý",
+      "context": "Toast after updating an assistant",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.assistant_deleted": {
+      "message": "Đã xóa trợ lý",
+      "context": "Toast after deleting an assistant",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "diag.ota.check_failed": {
+      "message": "Không thể kiểm tra cập nhật. Hãy kiểm tra kết nối hoặc địa chỉ nguồn.",
+      "context": "Diagnostic when OTA manifest check fails",
+      "tone": "diagnostic",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "diag.ota.active_runs_deferred": {
+      "message": "Bản cập nhật đã sẵn sàng, đang chờ các cuộc trò chuyện hoàn tất.",
+      "context": "Diagnostic when Track-B OTA defers until active runs reach zero",
+      "tone": "diagnostic",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "diag.ota.managed_externally": {
+      "message": "Bản cập nhật được quản lý bởi trình quản lý gói hệ thống.",
+      "context": "Diagnostic when Linux app is installed via Flatpak, Snap, or /usr",
+      "tone": "diagnostic",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "diag.export.failed": {
+      "message": "Không thể lưu hoặc xuất tệp.",
+      "context": "Diagnostic when chat export or DB backup fails",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "shell.theme.system": {
+      "message": "Hệ thống",
+      "context": "Follow OS light/dark theme",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.back_to_chat": {
+      "message": "Quay lại trò chuyện",
+      "context": "Button returning from full-window settings to chat",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.appearance.theme_section": {
+      "message": "Giao diện & Bố cục",
+      "context": "Appearance section header for theme and layout",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.appearance.accent": {
+      "message": "Màu nhấn",
+      "context": "Label for primary accent color customization",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.appearance.accent_custom": {
+      "message": "Mã màu tùy chỉnh",
+      "context": "Custom hex color option label",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.appearance.accent_wax": {
+      "message": "Đỏ son",
+      "context": "Warm vermilion accent preset",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.accent_brass": {
+      "message": "Hổ phách",
+      "context": "Warm amber accent preset",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.accent_pine": {
+      "message": "Xanh rừng",
+      "context": "Deep forest green accent preset",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.accent_cobalt": {
+      "message": "Xanh cô-ban",
+      "context": "Deep cobalt blue accent preset",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.accent_plum": {
+      "message": "Tím mận",
+      "context": "Warm plum accent preset",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.typography_section": {
+      "message": "Kiểu chữ & Phông chữ",
+      "context": "Section heading for font family and size controls",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.appearance.prose_font": {
+      "message": "Phông chữ giao diện",
+      "context": "Label for local UI/reading font selector",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.appearance.mono_font": {
+      "message": "Phông chữ mã nguồn",
+      "context": "Label for local monospace code font selector",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.appearance.font_default": {
+      "message": "Mặc định tích hợp",
+      "context": "Default bundled font option",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.appearance.font_browse": {
+      "message": "Chọn tệp phông chữ...",
+      "context": "Button opening native file picker for local TTF/OTF font",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.appearance.font_reset": {
+      "message": "Đặt lại",
+      "context": "Button resetting control back to default value",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.font_size_px": {
+      "message": "Cỡ chữ ({px} px)",
+      "context": "Continuous font size control label in logical pixels",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "px": {
+          "type": "int",
+          "example": "15"
+        }
+      }
+    },
+    "settings.appearance.line_height": {
+      "message": "Giãn dòng ({value})",
+      "context": "Line spacing multiplier control label",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "value": {
+          "type": "string",
+          "example": "1.60"
+        }
+      }
+    },
+    "settings.appearance.reading_width": {
+      "message": "Độ rộng khung đọc ({px} px)",
+      "context": "Max reading column width slider label",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {
+        "px": {
+          "type": "int",
+          "example": "760"
+        }
+      }
+    },
+    "settings.appearance.preview_title": {
+      "message": "Xem trước trực tiếp",
+      "context": "Header above live typography preview card",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.appearance.preview_body": {
+      "message": "Kiểu chữ rõ ràng giúp việc đọc và lập trình lâu dài trở nên nhẹ nhàng.",
+      "context": "Sample paragraph rendered inside live typography preview",
+      "tone": "calm_editorial",
+      "max_chars": 120,
+      "placeholders": {}
+    },
+    "settings.appearance.show_tokens": {
+      "message": "Hiển thị token & chi phí",
+      "context": "Toggle displaying model token counts and estimated cost below replies",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "provider.add_button": {
+      "message": "Thêm nhà cung cấp",
+      "context": "Primary button opening add provider template picker",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "provider.add_title": {
+      "message": "Thêm nhà cung cấp AI",
+      "context": "Title of add provider panel",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "provider.add_subtitle": {
+      "message": "Chọn mẫu có sẵn hoặc kết nối máy chủ tương thích OpenAI.",
+      "context": "Helper subtitle on add provider screen",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "provider.delete_button": {
+      "message": "Xóa nhà cung cấp",
+      "context": "Button deleting any provider including starters",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "provider.delete_confirm": {
+      "message": "Nhấn lại để xóa",
+      "context": "Second-click delete confirmation label",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "provider.icon_label": {
+      "message": "Biểu tượng nhà cung cấp",
+      "context": "Label above color lab icon picker for provider",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.icon_custom_upload": {
+      "message": "Chọn ảnh từ máy...",
+      "context": "Button picking local PNG/WebP custom provider icon",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.icon_clear_custom": {
+      "message": "Dùng biểu tượng hãng",
+      "context": "Button clearing custom local image icon",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "provider.empty_title": {
+      "message": "Chưa có nhà cung cấp nào",
+      "context": "Empty state title when user deleted all providers",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "provider.empty_body": {
+      "message": "Thêm OpenAI, Google Gemini, Anthropic, Ollama hoặc máy chủ tùy chỉnh để bắt đầu.",
+      "context": "Empty state body when provider list is empty",
+      "tone": "calm_editorial",
+      "max_chars": 140,
+      "placeholders": {}
+    },
+    "provider.enabled_toggle": {
+      "message": "Đang bật",
+      "context": "Toggle enabling or disabling a provider",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.dialect_label": {
+      "message": "Giao thức API",
+      "context": "Label for provider wire dialect selector",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.assistants.default_provider": {
+      "message": "Nhà cung cấp mặc định",
+      "context": "Optional default provider bound to an assistant",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.assistants.default_model": {
+      "message": "Mô hình mặc định",
+      "context": "Optional default model bound to an assistant",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.assistants.use_global_default": {
+      "message": "Dùng mặc định ứng dụng",
+      "context": "Option inheriting global active provider/model",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.assistants.icon_label": {
+      "message": "Biểu tượng trợ lý",
+      "context": "Optional icon label in assistant editor",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.assistants.temperature": {
+      "message": "Độ sáng tạo (Temperature)",
+      "context": "Generation temperature parameter label",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.assistants.max_tokens": {
+      "message": "Giới hạn token đầu ra",
+      "context": "Generation max output tokens label",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.assistants.top_p": {
+      "message": "Top P",
+      "context": "Nucleus sampling top-p parameter label",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.assistants.params_default": {
+      "message": "Mặc định",
+      "context": "Value label when numeric generation parameter is unset",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.budget.unlimited": {
+      "message": "Không giới hạn",
+      "context": "Unlimited daily spending badge/label",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.budget.unlimited_toggle": {
+      "message": "Chi tiêu không giới hạn",
+      "context": "Toggle disabling daily spending cap completely",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.budget.unlimited_badge": {
+      "message": "Không áp dụng giới hạn chi tiêu hằng ngày.",
+      "context": "Subtitle when unlimited spending is enabled",
+      "tone": "calm_editorial",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "settings.budget.custom_amount": {
+      "message": "Giới hạn tùy chỉnh (USD)",
+      "context": "Custom USD numeric input label",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.budget.apply_amount": {
+      "message": "Áp dụng",
+      "context": "Apply custom daily limit button",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.budget.today_spend": {
+      "message": "Chi tiêu hôm nay",
+      "context": "Heading for today Wallet Shield spend bar",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.tab.updates": {
+      "message": "Cập nhật & Lưu trữ",
+      "context": "Settings navigation tab combining OTA updates and local storage",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.ota.section_title": {
+      "message": "Cập nhật ứng dụng & dữ liệu",
+      "context": "OTA updates section heading",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {}
+    },
+    "settings.ota.section_subtitle": {
+      "message": "Cập nhật có chữ ký không thu thập dữ liệu, xác minh ngoại tuyến bằng Ed25519.",
+      "context": "OTA section subtitle explaining cryptographic verification",
+      "tone": "calm_editorial",
+      "max_chars": 120,
+      "placeholders": {}
+    },
+    "settings.ota.current_version": {
+      "message": "Phiên bản hiện tại",
+      "context": "Current installed Bistre version row label",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.ota.channel": {
+      "message": "Kênh phát hành",
+      "context": "OTA release channel selector label",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.ota.channel_stable": {
+      "message": "Ổn định",
+      "context": "Stable release channel option",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.ota.channel_beta": {
+      "message": "Thử nghiệm",
+      "context": "Beta release channel option",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.ota.feed_url": {
+      "message": "Địa chỉ nguồn cập nhật",
+      "context": "Configurable self-hostable OTA manifest URL input",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.ota.check_button": {
+      "message": "Kiểm tra cập nhật",
+      "context": "Primary button triggering live zero-telemetry OTA check",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.ota.checking": {
+      "message": "Đang kiểm tra...",
+      "context": "Progress label while checking for updates",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.ota.up_to_date": {
+      "message": "Đã là bản mới nhất (v{version})",
+      "context": "Status badge when already on newest version",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {
+        "version": {
+          "type": "string",
+          "example": "0.1.0"
+        }
+      }
+    },
+    "settings.ota.update_available": {
+      "message": "Có bản cập nhật mới: v{version}",
+      "context": "Status banner when newer signed version is available",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {
+        "version": {
+          "type": "string",
+          "example": "0.2.0"
+        }
+      }
+    },
+    "settings.ota.download_stage": {
+      "message": "Tải xuống & chuẩn bị",
+      "context": "Button downloading and verifying OTA payload",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.ota.staging": {
+      "message": "Đang tải xuống...",
+      "context": "Progress label while downloading OTA artifact",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.ota.staged_ready": {
+      "message": "Đã xác minh và chuẩn bị bản cập nhật. Khởi động lại Bistre để áp dụng.",
+      "context": "Confirmation once update artifact is verified and staged",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "settings.ota.signature_verified": {
+      "message": "Đã xác minh chữ ký Ed25519",
+      "context": "Badge indicating offline Ed25519 signature passed",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.ota.active_runs_notice": {
+      "message": "Đang có cuộc trò chuyện hoạt động — sẽ cập nhật khi rảnh.",
+      "context": "Deferral notice when active_runs > 0",
+      "tone": "diagnostic",
+      "max_chars": 100,
+      "placeholders": {}
+    },
+    "settings.storage.section_title": {
+      "message": "Lưu trữ cục bộ & Sao lưu",
+      "context": "Storage section heading",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {}
+    },
+    "settings.storage.data_dir": {
+      "message": "Thư mục dữ liệu",
+      "context": "Active SQLite and encrypted vault path row",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.storage.dev_badge": {
+      "message": "Môi trường Dev",
+      "context": "Badge shown when isolated inside .bistre-dev",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.storage.open_folder": {
+      "message": "Mở thư mục",
+      "context": "Button opening active data folder in OS Explorer",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.storage.backup_db": {
+      "message": "Sao lưu cơ sở dữ liệu...",
+      "context": "Button invoking WAL-safe VACUUM INTO backup",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.storage.db_size": {
+      "message": "Dung lượng cơ sở dữ liệu",
+      "context": "On-disk SQLite + WAL size metric label",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.inspector.title": {
+      "message": "Tham số cuộc trò chuyện",
+      "context": "Title of right-side collapsible chat inspector drawer",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.inspector.toggle": {
+      "message": "Tham số cuộc trò chuyện",
+      "context": "Tooltip/semantics for header inspector toggle button",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.inspector.override_prompt": {
+      "message": "Ghi đè hướng dẫn hệ thống",
+      "context": "Per-chat system prompt override editor label",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "chat.inspector.override_prompt_hint": {
+      "message": "Để trống để dùng hướng dẫn của trợ lý hiện tại...",
+      "context": "Placeholder for per-chat system prompt override",
+      "tone": "calm_editorial",
+      "max_chars": 90,
+      "placeholders": {}
+    },
+    "chat.inspector.reset_params": {
+      "message": "Đặt lại ghi đè",
+      "context": "Button clearing all per-chat parameter overrides",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.inspector.export_section": {
+      "message": "Xuất cuộc trò chuyện",
+      "context": "Section header for Markdown and JSON chat export",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.inspector.export_md": {
+      "message": "Xuất Markdown",
+      "context": "Export thread as Markdown button",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.inspector.export_json": {
+      "message": "Xuất JSON",
+      "context": "Export thread as JSON button",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.action.edit": {
+      "message": "Sửa",
+      "context": "Hover action editing a user message and branching",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.action.delete": {
+      "message": "Xóa",
+      "context": "Hover action deleting a single message node",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.action.save_resend": {
+      "message": "Lưu & gửi lại",
+      "context": "Confirm edited user prompt and regenerate reply",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.tokens_meta": {
+      "message": "{input} vào · {output} ra",
+      "context": "Compact token count readout below assistant response",
+      "tone": "diagnostic",
+      "max_chars": 48,
+      "placeholders": {
+        "input": {
+          "type": "int",
+          "example": "412"
+        },
+        "output": {
+          "type": "int",
+          "example": "198"
+        }
+      }
+    },
+    "sidebar.group.today": {
+      "message": "Hôm nay",
+      "context": "Sidebar chronological chat group header",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.group.yesterday": {
+      "message": "Hôm qua",
+      "context": "Sidebar chronological chat group header",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.group.week": {
+      "message": "7 ngày trước",
+      "context": "Sidebar chronological chat group header",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "sidebar.group.older": {
+      "message": "Cũ hơn",
+      "context": "Sidebar chronological chat group header",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "shortcuts.record_hint": {
+      "message": "Nhấn tổ hợp phím mới...",
+      "context": "Prompt while recording a custom keyboard shortcut",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "shortcuts.reset_defaults": {
+      "message": "Khôi phục mặc định",
+      "context": "Button resetting custom keyboard shortcuts",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.exported": {
+      "message": "Đã xuất cuộc trò chuyện",
+      "context": "Toast after exporting chat",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "toast.backup_saved": {
+      "message": "Đã lưu bản sao lưu",
+      "context": "Toast after VACUUM INTO DB backup",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "toast.font_loaded": {
+      "message": "Đã áp dụng phông chữ mới",
+      "context": "Toast after loading local TTF/OTF font",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "toast.update_staged": {
+      "message": "Đã tải và xác minh cập nhật",
+      "context": "Toast after OTA artifact staging",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {}
+    },
+    "toast.node_deleted": {
+      "message": "Đã xóa tin nhắn",
+      "context": "Toast after deleting a single message node",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "diag.run.indeterminate_halt": {
+      "message": "Một bước công cụ bên ngoài bị gián đoạn khi ngủ hoặc khởi động lại. Hãy xác nhận trước khi tiếp tục.",
+      "context": "Diagnostic message when Tier-2 tool recovery requires manual confirmation",
+      "tone": "calm_editorial",
+      "max_chars": 140,
+      "placeholders": {}
+    },
+    "diag.run.backoff_waiting": {
+      "message": "Đã chạm giới hạn tốc độ nhà cung cấp. Đang tự động chờ để tiếp tục.",
+      "context": "Diagnostic message during long-horizon rate-limit backoff",
+      "tone": "calm_editorial",
+      "max_chars": 100,
+      "placeholders": {}
+    },
+    "diag.power.guard_degraded": {
+      "message": "Không thể giữ khóa thức hệ điều hành. Tác vụ vẫn được lưu an toàn.",
+      "context": "Diagnostic warning when sleep inhibitor could not be acquired",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "diag.daemon.unavailable": {
+      "message": "Dịch vụ nền không khả dụng. Đang chạy trực tiếp trong ứng dụng.",
+      "context": "Diagnostic message when desktop daemon IPC falls back to in-process",
+      "tone": "calm_editorial",
+      "max_chars": 100,
+      "placeholders": {}
+    },
+    "studio.title": {
+      "message": "Studio",
+      "context": "Toggle button and header for right-side Studio pane",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "studio.tab.runs": {
+      "message": "Tác vụ",
+      "context": "Studio pane tab showing active runs and sleep guard",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "studio.awake_badge": {
+      "message": "Đang thức",
+      "context": "Compact status pill indicating OS sleep prevention is active",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "studio.running_count": {
+      "message": "{count} đang chạy",
+      "context": "Top-bar badge showing number of active agent runs",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "studio.power_guard_title": {
+      "message": "Chống ngủ & gián đoạn",
+      "context": "Card heading in Studio Runs panel",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "studio.power_active": {
+      "message": "Đang giữ thiết bị thức khi chạy",
+      "context": "Status line when OS sleep inhibitor is held",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {}
+    },
+    "studio.power_idle": {
+      "message": "Chế độ chờ · cho phép ngủ bình thường",
+      "context": "Status line when no runs are active",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {}
+    },
+    "studio.runs_empty": {
+      "message": "Chưa có tác vụ nào. Các tác vụ dài hạn sẽ hiện ở đây và tự phục hồi sau khi ngủ.",
+      "context": "Empty state inside Studio Runs panel",
+      "tone": "calm_editorial",
+      "max_chars": 140,
+      "placeholders": {}
+    },
+    "studio.confirm_completed": {
+      "message": "Xác nhận xong",
+      "context": "Action resolving indeterminate halted step as already completed",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "studio.retry_step": {
+      "message": "Thử lại bước",
+      "context": "Action retrying indeterminate halted step",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "composer.steer_placeholder": {
+      "message": "Nhập chỉ dẫn bổ sung để điều hướng tác vụ đang chạy...",
+      "context": "Composer placeholder while AI is actively streaming",
+      "tone": "calm_editorial",
+      "max_chars": 68,
+      "placeholders": {}
+    },
+    "composer.steer_queued": {
+      "message": "Hàng đợi ({count})",
+      "context": "Header for mid-stream steering queue strip above composer",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "composer.queue_action": {
+      "message": "Xếp hàng",
+      "context": "Button label to enqueue a mid-stream steering message",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.sleep.section_title": {
+      "message": "Chạy nền & chống gián đoạn",
+      "context": "Settings section heading for long-horizon sleep/daemon controls",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.sleep.section_subtitle": {
+      "message": "Giữ tác vụ AI hoạt động bền bỉ khi khóa màn hình, ngủ máy hoặc đóng cửa sổ.",
+      "context": "Settings section subtitle for sleep survival controls",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "settings.sleep.keep_awake": {
+      "message": "Giữ máy thức khi tác vụ đang chạy",
+      "context": "Toggle enabling OS sleep inhibition while runs are active",
+      "tone": "calm_editorial",
+      "max_chars": 54,
+      "placeholders": {}
+    },
+    "settings.sleep.windows_battery": {
+      "message": "Ép giữ thức khi dùng pin (Windows)",
+      "context": "Opt-in toggle for Windows Modern Standby DC display-required",
+      "tone": "calm_editorial",
+      "max_chars": 58,
+      "placeholders": {}
+    },
+    "settings.sleep.windows_battery_desc": {
+      "message": "Ngăn Windows Modern Standby tạm dừng tác vụ sau 5 phút chạy pin.",
+      "context": "Description for Windows battery stay-awake toggle",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "settings.sleep.daemon_active": {
+      "message": "Giữ dịch vụ nền sống khi đang chạy",
+      "context": "Toggle keeping desktop daemon running after window close only during active runs",
+      "tone": "calm_editorial",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "settings.sleep.daemon_active_desc": {
+      "message": "Đóng cửa sổ không làm dừng tác vụ; tự thoát sạch khi xong việc.",
+      "context": "Description for active-scoped daemon toggle",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "settings.sleep.unattended_policy": {
+      "message": "Chính sách phê duyệt tự động",
+      "context": "Setting label for handling approvals during background/overnight runs",
+      "tone": "calm_editorial",
+      "max_chars": 42,
+      "placeholders": {}
+    },
+    "settings.sleep.policy_pause": {
+      "message": "Tạm dừng & báo",
+      "context": "Unattended policy option to pause and alert user",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.sleep.policy_deny": {
+      "message": "Bỏ qua & tiếp",
+      "context": "Unattended policy option to deny external actions and continue",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.sleep.policy_sandbox": {
+      "message": "Tự chạy Sandbox",
+      "context": "Unattended policy option allowing actions inside isolated worktree",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.sleep.android_battery": {
+      "message": "Pin không giới hạn (Android)",
+      "context": "Android battery optimization exemption row",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.sleep.android_battery_allow": {
+      "message": "Cho phép không giới hạn",
+      "context": "Action opening Android battery exemption dialog",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.sleep.android_battery_ok": {
+      "message": "Không giới hạn",
+      "context": "Badge when Android battery exemption is granted",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "toast.steering_queued": {
+      "message": "Đã thêm chỉ dẫn vào hàng đợi",
+      "context": "Toast after queuing a mid-stream steering message",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "mode.plan": {
+      "message": "Lập kế hoạch",
+      "context": "Read-only planning agent mode tab",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "mode.build": {
+      "message": "Xây dựng",
+      "context": "Write-capable coding agent mode tab",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "mode.write_rp": {
+      "message": "Viết",
+      "context": "Creative writing and roleplay mode tab",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.thinking_label": {
+      "message": "Suy luận",
+      "context": "Collapsible reasoning/thinking block header",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.thinking_seconds": {
+      "message": "Suy luận · {seconds}s",
+      "context": "Collapsible reasoning block header with duration",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {
+        "seconds": {
+          "type": "string"
+        }
+      }
+    },
+    "chat.quote_thinking": {
+      "message": "Trích dẫn vào ô nhập",
+      "context": "Action quoting reasoning text into the input composer",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.reasoning_effort": {
+      "message": "Mức độ suy luận",
+      "context": "Label for reasoning depth control",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.effort_off": {
+      "message": "Tắt",
+      "context": "Reasoning effort disabled",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "chat.effort_low": {
+      "message": "Thấp",
+      "context": "Low reasoning effort",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "chat.effort_medium": {
+      "message": "Vừa",
+      "context": "Medium reasoning effort",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "chat.effort_high": {
+      "message": "Cao",
+      "context": "High reasoning effort",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "tool.running": {
+      "message": "Đang chạy",
+      "context": "Tool step status badge while executing",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "tool.completed": {
+      "message": "Xong",
+      "context": "Tool step status badge when succeeded",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "tool.failed": {
+      "message": "Lỗi",
+      "context": "Tool step status badge when failed",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "tool.rewind": {
+      "message": "Hoàn tác",
+      "context": "1-click restore file from pre-edit checkpoint",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "tool.rewound_toast": {
+      "message": "Đã khôi phục tệp từ điểm lưu",
+      "context": "Toast after rewinding a file edit checkpoint",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "tool.approval_title": {
+      "message": "Cần phê duyệt",
+      "context": "Inline tool execution approval card title",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "tool.approve_once": {
+      "message": "Duyệt lần này",
+      "context": "Approve single tool invocation",
+      "tone": "concise_action",
+      "max_chars": 22,
+      "placeholders": {}
+    },
+    "tool.approve_chat": {
+      "message": "Duyệt cho hội thoại",
+      "context": "Approve tool category for current thread",
+      "tone": "concise_action",
+      "max_chars": 26,
+      "placeholders": {}
+    },
+    "tool.deny": {
+      "message": "Từ chối",
+      "context": "Reject tool invocation",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.compact_action": {
+      "message": "Nén ngữ cảnh",
+      "context": "Action summarizing earlier chat history into a reversible node",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.compacted_title": {
+      "message": "Tóm tắt ngữ cảnh",
+      "context": "Header on a reversible compaction summary node",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.undo_compaction": {
+      "message": "Hoàn tác nén",
+      "context": "Button reverting a compaction summary node back to full history",
+      "tone": "concise_action",
+      "max_chars": 26,
+      "placeholders": {}
+    },
+    "chat.pin_context_start": {
+      "message": "Bắt đầu ngữ cảnh từ đây",
+      "context": "Pin a message as the fixed start of model context",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.pinned_context_banner": {
+      "message": "Ngữ cảnh bắt đầu từ tin nhắn này",
+      "context": "Banner indicating fixed context start pin",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.tab.agent": {
+      "message": "Tác nhân & Công cụ",
+      "context": "Settings navigation tab for workspace tools, MCP, and search",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.agent.workspace_dir": {
+      "message": "Thư mục làm việc",
+      "context": "Setting label for bound coding workspace path",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.workspace_pick": {
+      "message": "Chọn thư mục",
+      "context": "Button to bind local workspace folder",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_title": {
+      "message": "Máy chủ MCP",
+      "context": "Settings section heading for Model Context Protocol servers",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_add": {
+      "message": "Thêm máy chủ MCP",
+      "context": "Button to configure a new MCP server",
+      "tone": "concise_action",
+      "max_chars": 26,
+      "placeholders": {}
+    },
+    "settings.agent.web_search": {
+      "message": "Tìm kiếm web",
+      "context": "Setting label for built-in web search backend",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.termux_title": {
+      "message": "Cầu nối Termux (Android)",
+      "context": "Optional Android Termux integration heading",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.agent.termux_desc": {
+      "message": "Chạy lệnh cục bộ qua Termux khi đã bật cho phép ứng dụng ngoài.",
+      "context": "Description for optional Android Termux bridge",
+      "tone": "calm_editorial",
+      "max_chars": 100,
+      "placeholders": {}
+    },
+    "chat.table.copy_csv": {
+      "message": "Sao chép CSV",
+      "context": "Action button to copy rendered Markdown table as CSV",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.table.copy_md": {
+      "message": "Sao chép Markdown",
+      "context": "Action button to copy rendered Markdown table as Markdown",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.math.copy_latex": {
+      "message": "Sao chép LaTeX",
+      "context": "Action button to copy rendered math formula as raw LaTeX",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.mermaid.copy_source": {
+      "message": "Sao chép Mermaid",
+      "context": "Action button to copy diagram source code",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.mermaid.diagram_title": {
+      "message": "Sơ đồ",
+      "context": "Header label on a rendered vector diagram card",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "composer.attach_file": {
+      "message": "Đính kèm tệp",
+      "context": "Composer button to attach an image, PDF, or text file",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "composer.attachments_count": {
+      "message": "Đã đính kèm {count}",
+      "context": "Summary pill showing number of attached files",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": 2
+        }
+      }
+    },
+    "composer.mention_title": {
+      "message": "Chèn ngữ cảnh",
+      "context": "Popover title when typing @ mentions in composer",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "composer.slash_title": {
+      "message": "Lệnh nhanh",
+      "context": "Popover title when typing / slash commands in composer",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.tree.title": {
+      "message": "Cây hội thoại",
+      "context": "Title of the visual branching session tree overlay",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.tree.jump_prompt": {
+      "message": "Đi tới câu hỏi",
+      "context": "Action / shortcut to jump directly to an earlier prompt",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.tree.empty": {
+      "message": "Chưa có tin nhắn nào trong đoạn chat này.",
+      "context": "Empty state inside session tree overlay",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "shortcut.jump_prompt": {
+      "message": "Đi tới câu hỏi trước đó",
+      "context": "Keyboard shortcut description for Ctrl+Alt+G",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "studio.tab.files": {
+      "message": "Tệp",
+      "context": "Studio pane tab for touched files, diffs, and inline comments",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "studio.tab.story": {
+      "message": "Hồ sơ truyện",
+      "context": "Studio pane tab for characters, codex, and lorebook",
+      "tone": "concise_action",
+      "max_chars": 22,
+      "placeholders": {}
+    },
+    "studio.tab.prompt": {
+      "message": "Ngữ cảnh",
+      "context": "Studio pane tab showing exact compiled prompt and lorebook trace",
+      "tone": "concise_action",
+      "max_chars": 22,
+      "placeholders": {}
+    },
+    "studio.files.empty": {
+      "message": "Các tệp và bản diff đã chỉnh sửa sẽ hiển thị tại đây.",
+      "context": "Empty state in Studio Files tab",
+      "tone": "calm_editorial",
+      "max_chars": 72,
+      "placeholders": {}
+    },
+    "studio.comment_add": {
+      "message": "Bình luận vào chat",
+      "context": "Button to attach a file line-range reference into the composer",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "provider.detect_local": {
+      "message": "Tìm máy chủ cục bộ",
+      "context": "Button to auto-detect Ollama, LM Studio, llama.cpp, KoboldCPP",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "provider.local_none": {
+      "message": "Không tìm thấy máy chủ cục bộ nào đang chạy.",
+      "context": "Status shown when local loopback scan finds nothing",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "provider.custom_headers": {
+      "message": "HTTP header tùy chỉnh (JSON)",
+      "context": "Advanced provider field for custom HTTP headers JSON",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.custom_body": {
+      "message": "Trường JSON bổ sung",
+      "context": "Advanced provider field for custom request JSON body overrides",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.share_config": {
+      "message": "Sao chép cấu hình",
+      "context": "Copies non-secret provider config JSON without API keys",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.tab.memory": {
+      "message": "Bộ nhớ & Kỹ năng",
+      "context": "Settings tab for cross-chat memory, skills, hooks, and schedules",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "memory.title": {
+      "message": "Bộ nhớ đã lưu",
+      "context": "Heading for cross-chat local SQLite memory entries",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "memory.add_placeholder": {
+      "message": "Thêm sở thích hoặc thông tin cần ghi nhớ...",
+      "context": "Input placeholder for adding a memory item",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "memory.add_action": {
+      "message": "Lưu ghi nhớ",
+      "context": "Button to save a new memory entry",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "memory.empty": {
+      "message": "Chưa có mục ghi nhớ nào. Hãy thêm thông tin bạn muốn trợ lý nhớ qua các cuộc trò chuyện.",
+      "context": "Empty state for cross-chat memory",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "skills.title": {
+      "message": "Kỹ năng không gian làm việc",
+      "context": "Heading for discovered SKILL.md progressive-disclosure skills",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "skills.empty": {
+      "message": "Gắn thư mục chứa tệp SKILL.md để tự động phát hiện kỹ năng cục bộ.",
+      "context": "Empty state for discovered skills",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "automations.title": {
+      "message": "Tác vụ định kỳ",
+      "context": "Heading for background cron and timer automations",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "automations.add_action": {
+      "message": "Thêm lịch chạy",
+      "context": "Button to create a scheduled task",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "automations.empty": {
+      "message": "Chưa có tác vụ định kỳ nào. Hãy tạo lịch tóm tắt, kiểm tra hoặc nhắc việc tự động.",
+      "context": "Empty state for scheduled tasks",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "automations.schedule_placeholder": {
+      "message": "Cron (vd: 0 9 * * *) hoặc mỗi 30 phút",
+      "context": "Placeholder for schedule expression input",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "automations.prompt_placeholder": {
+      "message": "Trợ lý cần làm gì khi lịch này chạy?",
+      "context": "Placeholder for scheduled task prompt",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "subagents.title": {
+      "message": "Tác vụ song song",
+      "context": "Heading for isolated worktree background subagents",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.characters_title": {
+      "message": "Nhân vật",
+      "context": "Story Bible section for character cards",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "story.personas_title": {
+      "message": "Hồ sơ của bạn",
+      "context": "Story Bible section for user persona",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "story.codex_title": {
+      "message": "Thế giới & Sổ tay cốt truyện",
+      "context": "Story Bible section for unified codex and lorebook entries",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "story.import_card": {
+      "message": "Nhập thẻ nhân vật",
+      "context": "Imports a CCv3/V2 PNG, JSON, or .charx character card",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.export_card": {
+      "message": "Xuất thẻ",
+      "context": "Exports character card as JSON or PNG",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.add_character": {
+      "message": "Nhân vật mới",
+      "context": "Creates a new character card",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.add_entry": {
+      "message": "Mục cốt truyện mới",
+      "context": "Creates a new Story Bible / Lorebook entry",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.author_note": {
+      "message": "Ghi chú hướng dẫn cảnh",
+      "context": "Floating guidance note injected at configurable depth",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.story_memory": {
+      "message": "Tóm tắt cốt truyện",
+      "context": "Pinned static story summary preserved in prompt cache",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.progressions_title": {
+      "message": "Diễn biến theo chương",
+      "context": "Novelcrafter-style chronological updates gated by chapter order",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.regex_title": {
+      "message": "Quy tắc văn bản (Regex)",
+      "context": "Safe linear-time regex transforms for display or prompts",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.time_machine": {
+      "message": "Khôi phục bản lưu",
+      "context": "Time Machine rollback button for Story Bible entities",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "story.view_chat": {
+      "message": "Trò chuyện",
+      "context": "Toggle button for Chat / Roleplay view inside Write mode",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "story.view_manuscript": {
+      "message": "Bản thảo",
+      "context": "Toggle button for Chapters & Scenes Manuscript view inside Write mode",
+      "tone": "concise_action",
+      "max_chars": 22,
+      "placeholders": {}
+    },
+    "story.add_chapter": {
+      "message": "Chương mới",
+      "context": "Adds a new chapter to the manuscript",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.add_scene": {
+      "message": "Cảnh mới",
+      "context": "Adds a new scene to the active chapter",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.scene_beats": {
+      "message": "Dàn ý & nhịp cảnh",
+      "context": "Heading for scene beats input that generates prose",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.generate_prose": {
+      "message": "Viết đoạn văn từ dàn ý",
+      "context": "Generates full prose from the scene outline beats",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.laser_rewrite": {
+      "message": "Viết lại",
+      "context": "Inline selection rewrite tool",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "story.laser_expand": {
+      "message": "Mở rộng",
+      "context": "Inline selection expand tool",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "story.laser_shorten": {
+      "message": "Rút gọn",
+      "context": "Inline selection shorten tool",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "story.laser_polish": {
+      "message": "Trau chuốt",
+      "context": "Inline selection polish tool",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "story.action_continue": {
+      "message": "Viết tiếp",
+      "context": "Continues the last assistant passage seamlessly",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "story.action_impersonate": {
+      "message": "Gợi ý lời thoại",
+      "context": "Drafts a user reply in the active persona voice",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.alt_greeting": {
+      "message": "Mở đầu {current} / {total}",
+      "context": "Turn-0 alternate greeting switcher",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {
+        "current": {
+          "type": "int",
+          "example": 1
+        },
+        "total": {
+          "type": "int",
+          "example": 3
+        }
+      }
+    },
+    "story.samplers_title": {
+      "message": "Tham số sáng tạo & từ bị cấm",
+      "context": "Expandable drawer for min_p, top_k, DRY, XTC, and phrase bans",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "story.dialogue_styling": {
+      "message": "Làm nổi hội thoại & hành động",
+      "context": "Toggle for editorial pure-TextSpan dialogue and action styling",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "story.inspector_title": {
+      "message": "Kiểm tra ngữ cảnh gửi đi",
+      "context": "Title of the Prompt & Lorebook Inspector panel",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "story.inspector_cache_boundary": {
+      "message": "Ranh giới bộ nhớ đệm ngữ cảnh",
+      "context": "Marker separating static cached prefix from dynamic suffix",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "story.inspector_lore_trace": {
+      "message": "Nhật ký kích hoạt sổ tay",
+      "context": "Heading showing which lore entries fired or were skipped",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "diag.network.destination_blocked": {
+      "message": "Địa chỉ này là riêng tư hoặc cục bộ nên Bistre sẽ không mở.",
+      "context": "Rust DiagnosticKey::NetworkDestinationBlocked message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.rate_limited": {
+      "message": "Nhà cung cấp đang bận. Sẽ thử lại sau ít phút.",
+      "context": "Rust DiagnosticKey::ProviderRateLimited message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.quota_exhausted": {
+      "message": "Tài khoản nhà cung cấp đã hết tín dụng hoặc hạn mức trong ngày.",
+      "context": "Rust DiagnosticKey::ProviderQuotaExhausted message (billing or daily quota, never retried)",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.stream_interrupted": {
+      "message": "Câu trả lời bị dừng trước khi xong. Bạn có thể thử lại.",
+      "context": "Rust DiagnosticKey::ProviderStreamInterrupted message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.context_overflow": {
+      "message": "Cuộc trò chuyện vượt giới hạn. Hãy rút gọn cuộc trò chuyện để tiếp tục.",
+      "context": "Rust DiagnosticKey::ProviderContextOverflow message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.request_healed": {
+      "message": "Một tùy chọn mô hình này không hỗ trợ đã được tắt cho câu trả lời này.",
+      "context": "Rust DiagnosticKey::ProviderRequestHealed message (an unsupported setting was removed and the request resent)",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.tool.stale_read": {
+      "message": "Tệp đã thay đổi kể từ lần đọc. Hãy đọc lại trước khi sửa.",
+      "context": "Rust DiagnosticKey::ToolStaleRead message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.tool.approval_required": {
+      "message": "Thao tác này cần bạn cho phép lại.",
+      "context": "Rust DiagnosticKey::ToolApprovalRequired message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.ota.integrity_failed": {
+      "message": "Không thể xác minh bản cập nhật nên đã không cài đặt.",
+      "context": "Rust DiagnosticKey::OtaIntegrityFailed message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "toast.undo": {
+      "message": "Hoàn tác",
+      "context": "Action button on the toast shown after deleting a chat",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "toast.restored": {
+      "message": "Đã khôi phục cuộc trò chuyện",
+      "context": "Toast after a deleted chat is restored with Undo",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.context_gauge.used": {
+      "message": "{used} token trong cuộc trò chuyện này",
+      "context": "Screen-reader label of the composer token gauge when the model limit is unknown",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {
+        "used": {
+          "type": "string",
+          "example": "1.2k"
+        }
+      }
+    },
+    "chat.context_gauge.of_limit": {
+      "message": "Đã dùng {used} trên {limit} token",
+      "context": "Screen-reader label of the composer token gauge (conversation limit known)",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {
+        "used": {
+          "type": "string",
+          "example": "1.2k"
+        },
+        "limit": {
+          "type": "string",
+          "example": "128k"
+        }
+      }
+    },
+    "chat.backoff.notice": {
+      "message": "Thử lại sau {seconds} giây",
+      "context": "Notice while a reply waits before trying again automatically",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "seconds": {
+          "type": "int"
+        }
+      }
+    },
+    "chat.action.retry_now": {
+      "message": "Thử lại ngay",
+      "context": "Inline button that retries immediately instead of waiting",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.code.wrap": {
+      "message": "Ngắt dòng",
+      "context": "Code block button: wrap long lines",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.code.no_wrap": {
+      "message": "Không ngắt dòng",
+      "context": "Code block button: stop wrapping long lines",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.code_wrap": {
+      "message": "Ngắt dòng mã",
+      "context": "Appearance setting label for wrapping long code lines",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.appearance.code_wrap_hint": {
+      "message": "Dòng dài trong khối mã sẽ xuống dòng thay vì cuộn ngang. Tự động sẽ ngắt dòng trên màn hình hẹp.",
+      "context": "Hint under the Wrap code setting",
+      "tone": "calm_editorial",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "settings.appearance.code_wrap_auto": {
+      "message": "Tự động",
+      "context": "Wrap code option",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.appearance.code_wrap_on": {
+      "message": "Bật",
+      "context": "Wrap code option",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.appearance.code_wrap_off": {
+      "message": "Tắt",
+      "context": "Wrap code option",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.fix.shorten": {
+      "message": "Rút gọn cuộc trò chuyện",
+      "context": "Button on the conversation-limit error that shortens the conversation",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.fix.spending_limit": {
+      "message": "Giới hạn chi tiêu",
+      "context": "Button on the spending-limit error that opens the limit setting",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.empty.intro": {
+      "message": "Hãy bắt đầu bằng một câu hỏi, bản nháp hoặc tệp.",
+      "context": "Empty chat invitation shown next to the single bold accent mark",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "app.window_title": {
+      "message": "{title} — Bistre",
+      "context": "Native window caption while a chat is open",
+      "tone": "concise_action",
+      "max_chars": 96,
+      "placeholders": {
+        "title": {
+          "type": "string",
+          "example": "Fix chat export"
+        }
+      }
+    },
+    "app.window_title_replying": {
+      "message": "Đang trả lời · {title} — Bistre",
+      "context": "Native window caption while the assistant is replying (live progress)",
+      "tone": "concise_action",
+      "max_chars": 96,
+      "placeholders": {
+        "title": {
+          "type": "string",
+          "example": "Fix chat export"
+        }
+      }
+    },
+    "app.window_title_settings": {
+      "message": "Cài đặt — Bistre",
+      "context": "Native window caption while Settings is open",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "tool.diff_split": {
+      "message": "Chia đôi",
+      "context": "Button that shows a code diff as two side-by-side columns (old | new)",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "tool.diff_unified": {
+      "message": "Gộp chung",
+      "context": "Button that shows a code diff as one combined column",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.cost_unavailable_title": {
+      "message": "Chưa có giá",
+      "context": "Title of the small popup (and icon label) explaining that a reply has no known price",
+      "tone": "diagnostic",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.cost_unavailable_body": {
+      "message": "Mô hình này chưa công bố giá, nên câu trả lời này được tính là $0 vào hạn mức chi tiêu hằng ngày.",
+      "context": "Popup body explaining why a reply has no price and how it counts toward the spending limit",
+      "tone": "diagnostic",
+      "max_chars": 160,
+      "placeholders": {}
+    },
+    "settings.agent.termux_missing": {
+      "message": "Chưa thấy Termux",
+      "context": "Status badge: the Termux app is not installed on this Android device",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.termux_permission": {
+      "message": "Cần cấp quyền",
+      "context": "Status badge: Termux is installed but Bistre still needs permission to run commands in it",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.termux_ready": {
+      "message": "Termux đã sẵn sàng",
+      "context": "Status badge: Termux is installed and allowed",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_tools_count": {
+      "message": "{count, plural, other{{count} công cụ}}",
+      "context": "Number of tools a connected MCP server offers, shown in its summary line",
+      "tone": "diagnostic",
+      "max_chars": 24,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "6"
+        }
+      }
+    },
+    "settings.agent.mcp_server_placeholder": {
+      "message": "Máy chủ MCP",
+      "context": "Placeholder in the MCP server name field",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.mermaid.kind_sequence": {
+      "message": "Trình tự",
+      "context": "Diagram type label: sequence diagram",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.mermaid.kind_state": {
+      "message": "Trạng thái",
+      "context": "Diagram type label: state diagram",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.mermaid.kind_er": {
+      "message": "Quan hệ thực thể",
+      "context": "Diagram type label: entity-relationship diagram",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.mermaid.kind_flowchart_lr": {
+      "message": "Lưu đồ (trái sang phải)",
+      "context": "Diagram type label: flowchart that runs left to right",
+      "tone": "diagnostic",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.mermaid.kind_flowchart_td": {
+      "message": "Lưu đồ (trên xuống dưới)",
+      "context": "Diagram type label: flowchart that runs top to bottom",
+      "tone": "diagnostic",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "story.request_prose_from_beats": {
+      "message": "Hãy viết đoạn văn sống động, chân thực cho cảnh “{title}” theo đúng các nhịp truyện sau:\n\n{beats}",
+      "context": "Message sent to the writing model (shown as the user message) asking for prose from scene beats",
+      "tone": "calm_editorial",
+      "max_chars": 400,
+      "placeholders": {
+        "title": {
+          "type": "string",
+          "example": "Night market"
+        },
+        "beats": {
+          "type": "string",
+          "example": "She finds the letter."
+        }
+      }
+    },
+    "story.request_rewrite": {
+      "message": "Viết lại đoạn này với cách diễn đạt mới mẻ hơn nhưng giữ nguyên các nhịp truyện:\n\n{excerpt}",
+      "context": "Message sent to the writing model asking it to rewrite the selected passage",
+      "tone": "calm_editorial",
+      "max_chars": 400,
+      "placeholders": {
+        "excerpt": {
+          "type": "string",
+          "example": "The lanterns swayed."
+        }
+      }
+    },
+    "story.request_expand": {
+      "message": "Mở rộng đoạn này với chi tiết giác quan và nhịp kể hợp lý:\n\n{excerpt}",
+      "context": "Message sent to the writing model asking it to expand the selected passage",
+      "tone": "calm_editorial",
+      "max_chars": 400,
+      "placeholders": {
+        "excerpt": {
+          "type": "string",
+          "example": "The lanterns swayed."
+        }
+      }
+    },
+    "story.request_shorten": {
+      "message": "Rút gọn và làm chặt đoạn này nhưng giữ nguyên ý nghĩa:\n\n{excerpt}",
+      "context": "Message sent to the writing model asking it to shorten the selected passage",
+      "tone": "calm_editorial",
+      "max_chars": 400,
+      "placeholders": {
+        "excerpt": {
+          "type": "string",
+          "example": "The lanterns swayed."
+        }
+      }
+    },
+    "story.request_polish": {
+      "message": "Trau chuốt nhịp điệu, giọng văn và độ rõ ràng của đoạn này:\n\n{excerpt}",
+      "context": "Message sent to the writing model asking it to polish the selected passage",
+      "tone": "calm_editorial",
+      "max_chars": 400,
+      "placeholders": {
+        "excerpt": {
+          "type": "string",
+          "example": "The lanterns swayed."
+        }
+      }
+    },
+    "story.request_continue": {
+      "message": "Viết tiếp ngay từ câu cuối cùng, không lặp lại các dòng trước.",
+      "context": "Message sent to the roleplay model asking it to continue the story",
+      "tone": "calm_editorial",
+      "max_chars": 200,
+      "placeholders": {}
+    },
+    "story.request_impersonate": {
+      "message": "Soạn câu trả lời tiếp theo đúng vai, theo góc nhìn của {name}, phù hợp với cảnh hiện tại.",
+      "context": "Message sent to the roleplay model asking it to draft the user persona’s next reply",
+      "tone": "calm_editorial",
+      "max_chars": 200,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "Mara"
+        }
+      }
+    },
+    "story.default_persona_name": {
+      "message": "người dùng",
+      "context": "Name used for the user in roleplay requests when no persona is chosen",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    }
+  }
+}

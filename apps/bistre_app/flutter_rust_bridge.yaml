@@ -1,0 +1,5 @@
+rust_input: crate::api
+rust_root: ../../crates/bistre-ffi
+dart_output: lib/bridge
+dart_entrypoint_class_name: BistreRustLib
+default_external_library_loader_web_prefix: pkg/

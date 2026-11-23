@@ -1,0 +1,520 @@
+import 'dart:io';
+
+import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
+
+import 'bistre_theme.dart';
+import 'ink_primitives.dart';
+
+/// Bistre's 57 bespoke editorial `.vec` UI icons (`assets/icons/ui/*.vec`).
+enum BistreUiIcon {
+  sidebar('sidebar'),
+  newChat('new_chat'),
+  plus('plus'),
+  pin('pin'),
+  pinFilled('pin_filled'),
+  search('search'),
+  settings('settings'),
+  command('command'),
+  send('send'),
+  stop('stop'),
+  copy('copy'),
+  check('check'),
+  reply('reply'),
+  refresh('refresh'),
+  trash('trash'),
+  edit('edit'),
+  close('close'),
+  arrowBack('arrow_back'),
+  chevronStart('chevron_start'),
+  chevronEnd('chevron_end'),
+  chevronDown('chevron_down'),
+  chevronUp('chevron_up'),
+  assistant('assistant'),
+  sliders('sliders'),
+  globe('globe'),
+  shield('shield'),
+  keyboard('keyboard'),
+  sun('sun'),
+  moon('moon'),
+  systemTheme('system_theme'),
+  document('document'),
+  bubbles('bubbles'),
+  key('key'),
+  server('server'),
+  eye('eye'),
+  eyeOff('eye_off'),
+  download('download'),
+  folder('folder'),
+  font('font'),
+  exportIcon('export'),
+  palette('palette'),
+  code('code'),
+  chat('chat'),
+  think('think'),
+  terminal('terminal'),
+  branchTree('branch_tree'),
+  rewind('rewind'),
+  paperclip('paperclip'),
+  awake('awake'),
+  schedule('schedule'),
+  worktree('worktree'),
+  mcpPlug('mcp_plug'),
+  tableGrid('table_grid'),
+  diagram('diagram'),
+  memory('memory'),
+  bookOpen('book_open'),
+  info('info');
+
+  const BistreUiIcon(this.fileStem);
+  final String fileStem;
+
+  String get assetPath => 'assets/icons/ui/$fileStem.vec';
+}
+
+/// Renders one of Bistre's bespoke `.vec` UI icons tinted cleanly to the active ink color.
+class BistreIcon extends StatelessWidget {
+  const BistreIcon(
+    this.icon, {
+    super.key,
+    this.size = 16,
+    this.color,
+    this.semanticsLabel = '',
+  });
+
+  final BistreUiIcon icon;
+  final double size;
+  final Color? color;
+  final String semanticsLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = BistreTheme.of(context);
+    return EngravedIcon(
+      assetPath: icon.assetPath,
+      semanticsLabel: semanticsLabel,
+      size: size,
+      color: color ?? theme.inkSecondary,
+    );
+  }
+}
+
+/// Keyboard-accessible tactile icon button with brass focus ring and subtle hover surface.
+class BistreIconButton extends StatefulWidget {
+  const BistreIconButton({
+    super.key,
+    required this.icon,
+    required this.semanticsLabel,
+    required this.onPressed,
+    this.size = 17,
+    this.dimension = 34,
+    this.color,
+    this.active = false,
+  });
+
+  final BistreUiIcon icon;
+  final String semanticsLabel;
+  final VoidCallback? onPressed;
+  final double size;
+  final double dimension;
+  final Color? color;
+  final bool active;
+
+  @override
+  State<BistreIconButton> createState() => _BistreIconButtonState();
+}
+
+class _BistreIconButtonState extends State<BistreIconButton> {
+  bool _hovered = false;
+  bool _focused = false;
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = BistreTheme.of(context);
+    final enabled = widget.onPressed != null;
+    final fg =
+        widget.color ??
+        (widget.active
+            ? theme.accentBrass
+            : _hovered
+            ? theme.inkPrimary
+            : theme.inkSecondary);
+
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: widget.semanticsLabel,
+      child: FocusableActionDetector(
+        enabled: enabled,
+        onShowHoverHighlight: (v) => setState(() => _hovered = v),
+        onShowFocusHighlight: (v) => setState(() => _focused = v),
+        shortcuts: const <ShortcutActivator, Intent>{
+          SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+          SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+        },
+        actions: <Type, Action<Intent>>{
+          ActivateIntent: CallbackAction<ActivateIntent>(
+            onInvoke: (_) {
+              widget.onPressed?.call();
+              return null;
+            },
+          ),
+        },
+        child: MouseRegion(
+          cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
+            onTapUp: enabled
+                ? (_) {
+                    setState(() => _pressed = false);
+                    widget.onPressed?.call();
+                  }
+                : null,
+            onTapCancel: () => setState(() => _pressed = false),
+            child: Opacity(
+              opacity: !enabled
+                  ? 0.40
+                  : _pressed
+                  ? 0.72
+                  : 1.0,
+              child: SizedBox.square(
+                dimension: widget.dimension,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: widget.active
+                        ? theme.hoverTint
+                        : (_hovered ? theme.hoverTint : null),
+                    borderRadius: BorderRadius.circular(8),
+                    border: _focused
+                        ? Border.all(color: theme.accentBrass, width: 1.6)
+                        : null,
+                  ),
+                  child: Center(
+                    child: BistreIcon(
+                      widget.icon,
+                      size: widget.size,
+                      color: fg,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Entry describing one offline-compiled AI lab/provider `.vec` mark.
+@immutable
+class LabIconEntry {
+  const LabIconEntry({
+    required this.slug,
+    required this.displayName,
+    this.isMonochromeBrand = false,
+  });
+
+  final String slug;
+  final String displayName;
+  final bool isMonochromeBrand;
+
+  String get assetPath => 'assets/icons/labs/$slug.vec';
+}
+
+/// Pure offline registry of 42 pre-compiled `.vec` AI lab icons (zero external references).
+class LabIconCatalog {
+  const LabIconCatalog._();
+
+  static const List<LabIconEntry> all = <LabIconEntry>[
+    LabIconEntry(
+      slug: 'openai',
+      displayName: 'OpenAI',
+      isMonochromeBrand: true,
+    ),
+    LabIconEntry(slug: 'gemini', displayName: 'Gemini'),
+    LabIconEntry(slug: 'google', displayName: 'Google'),
+    LabIconEntry(slug: 'claude', displayName: 'Claude'),
+    LabIconEntry(
+      slug: 'anthropic',
+      displayName: 'Anthropic',
+      isMonochromeBrand: true,
+    ),
+    LabIconEntry(slug: 'deepseek', displayName: 'DeepSeek'),
+    LabIconEntry(slug: 'qwen', displayName: 'Qwen'),
+    LabIconEntry(slug: 'mistral', displayName: 'Mistral'),
+    LabIconEntry(slug: 'meta', displayName: 'Meta'),
+    LabIconEntry(
+      slug: 'ollama',
+      displayName: 'Ollama',
+      isMonochromeBrand: true,
+    ),
+    LabIconEntry(slug: 'openrouter', displayName: 'OpenRouter'),
+    LabIconEntry(slug: 'xai', displayName: 'xAI', isMonochromeBrand: true),
+    LabIconEntry(slug: 'grok', displayName: 'Grok', isMonochromeBrand: true),
+    LabIconEntry(slug: 'groq', displayName: 'Groq', isMonochromeBrand: true),
+    LabIconEntry(slug: 'cohere', displayName: 'Cohere'),
+    LabIconEntry(slug: 'perplexity', displayName: 'Perplexity'),
+    LabIconEntry(slug: 'together', displayName: 'Together'),
+    LabIconEntry(slug: 'fireworks', displayName: 'Fireworks'),
+    LabIconEntry(slug: 'huggingface', displayName: 'Hugging Face'),
+    LabIconEntry(slug: 'azureai', displayName: 'Azure AI'),
+    LabIconEntry(slug: 'azure', displayName: 'Azure'),
+    LabIconEntry(slug: 'bedrock', displayName: 'Bedrock'),
+    LabIconEntry(slug: 'vertexai', displayName: 'Vertex AI'),
+    LabIconEntry(slug: 'kimi', displayName: 'Kimi'),
+    LabIconEntry(
+      slug: 'moonshot',
+      displayName: 'Moonshot',
+      isMonochromeBrand: true,
+    ),
+    LabIconEntry(slug: 'zhipu', displayName: 'Zhipu'),
+    LabIconEntry(slug: 'nvidia', displayName: 'NVIDIA'),
+    LabIconEntry(slug: 'cloudflare', displayName: 'Cloudflare'),
+    LabIconEntry(
+      slug: 'github',
+      displayName: 'GitHub',
+      isMonochromeBrand: true,
+    ),
+    LabIconEntry(
+      slug: 'lmstudio',
+      displayName: 'LM Studio',
+      isMonochromeBrand: true,
+    ),
+    LabIconEntry(slug: 'vllm', displayName: 'vLLM'),
+    LabIconEntry(slug: 'sambanova', displayName: 'SambaNova'),
+    LabIconEntry(slug: 'cerebras', displayName: 'Cerebras'),
+    LabIconEntry(slug: 'reka', displayName: 'Reka', isMonochromeBrand: true),
+    LabIconEntry(slug: 'yi', displayName: 'Yi'),
+    LabIconEntry(slug: 'minimax', displayName: 'MiniMax'),
+    LabIconEntry(slug: 'siliconcloud', displayName: 'SiliconCloud'),
+    LabIconEntry(
+      slug: 'vercel',
+      displayName: 'Vercel',
+      isMonochromeBrand: true,
+    ),
+    LabIconEntry(slug: 'deepinfra', displayName: 'DeepInfra'),
+    LabIconEntry(slug: 'novita', displayName: 'Novita'),
+    LabIconEntry(
+      slug: 'replicate',
+      displayName: 'Replicate',
+      isMonochromeBrand: true,
+    ),
+    LabIconEntry(slug: 'hyperbolic', displayName: 'Hyperbolic'),
+  ];
+
+  static final Map<String, LabIconEntry> _bySlug = <String, LabIconEntry>{
+    for (final e in all) e.slug: e,
+  };
+
+  /// Resolves an opaque local icon slug, provider dialect, provider name, or model ID
+  /// to a bundled offline `.vec` entry.
+  static LabIconEntry? resolve({
+    String? iconSlug,
+    String? dialect,
+    String? providerName,
+    String? modelId,
+  }) {
+    final s = iconSlug?.trim().toLowerCase() ?? '';
+    if (s.isNotEmpty && _bySlug.containsKey(s)) {
+      return _bySlug[s];
+    }
+
+    final probe = '${modelId ?? ''} ${providerName ?? ''} ${dialect ?? ''}'
+        .toLowerCase();
+    if (probe.contains('claude')) return _bySlug['claude'];
+    if (probe.contains('anthropic')) return _bySlug['claude'];
+    if (probe.contains('gemini')) return _bySlug['gemini'];
+    if (probe.contains('google')) return _bySlug['google'];
+    if (probe.contains('deepseek')) return _bySlug['deepseek'];
+    if (probe.contains('qwen')) return _bySlug['qwen'];
+    if (probe.contains('mistral') || probe.contains('mixtral')) {
+      return _bySlug['mistral'];
+    }
+    if (probe.contains('llama') || probe.contains('meta')) {
+      return _bySlug['meta'];
+    }
+    if (probe.contains('ollama')) return _bySlug['ollama'];
+    if (probe.contains('openrouter')) return _bySlug['openrouter'];
+    if (probe.contains('grok')) return _bySlug['grok'];
+    if (probe.contains('xai') || probe.contains('x.ai')) return _bySlug['xai'];
+    if (probe.contains('groq')) return _bySlug['groq'];
+    if (probe.contains('cohere') || probe.contains('command-r')) {
+      return _bySlug['cohere'];
+    }
+    if (probe.contains('perplexity') || probe.contains('sonar')) {
+      return _bySlug['perplexity'];
+    }
+    if (probe.contains('together')) return _bySlug['together'];
+    if (probe.contains('fireworks')) return _bySlug['fireworks'];
+    if (probe.contains('hugging')) return _bySlug['huggingface'];
+    if (probe.contains('kimi')) return _bySlug['kimi'];
+    if (probe.contains('moonshot')) return _bySlug['moonshot'];
+    if (probe.contains('zhipu') || probe.contains('glm')) {
+      return _bySlug['zhipu'];
+    }
+    if (probe.contains('nvidia')) return _bySlug['nvidia'];
+    if (probe.contains('bedrock')) return _bySlug['bedrock'];
+    if (probe.contains('vertex')) return _bySlug['vertexai'];
+    if (probe.contains('azure')) return _bySlug['azureai'];
+    if (probe.contains('lmstudio') || probe.contains('lm studio')) {
+      return _bySlug['lmstudio'];
+    }
+    if (probe.contains('vllm')) return _bySlug['vllm'];
+    if (probe.contains('openai') ||
+        probe.contains('gpt-') ||
+        probe.contains('o1') ||
+        probe.contains('o3') ||
+        probe.contains('o4')) {
+      return _bySlug['openai'];
+    }
+    return null;
+  }
+}
+
+/// Renders an authentic full-color (or theme-adaptive monochrome brand) AI lab icon,
+/// with optional user-provided local `.png`/`.webp` custom image support.
+class LabIcon extends StatelessWidget {
+  const LabIcon({
+    super.key,
+    this.iconSlug,
+    this.customIconPath,
+    this.dialect,
+    this.providerName,
+    this.modelId,
+    this.size = 18,
+    this.framed = false,
+  });
+
+  final String? iconSlug;
+  final String? customIconPath;
+  final String? dialect;
+  final String? providerName;
+  final String? modelId;
+  final double size;
+  final bool framed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = BistreTheme.of(context);
+    final customPath = customIconPath?.trim() ?? '';
+    Widget mark;
+
+    if (customPath.isNotEmpty && File(customPath).existsSync()) {
+      mark = ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: Image.file(
+          File(customPath),
+          width: size,
+          height: size,
+          fit: BoxFit.contain,
+          errorBuilder: (_, _, _) =>
+              BistreIcon(BistreUiIcon.server, size: size),
+        ),
+      );
+    } else {
+      final entry = LabIconCatalog.resolve(
+        iconSlug: iconSlug,
+        dialect: dialect,
+        providerName: providerName,
+        modelId: modelId,
+      );
+      if (entry != null) {
+        mark = EngravedIcon(
+          assetPath: entry.assetPath,
+          semanticsLabel: entry.displayName,
+          size: size,
+          // Full-color labs keep native brand colors; monochrome brands adapt to active ink.
+          color: entry.isMonochromeBrand ? theme.inkPrimary : null,
+        );
+      } else {
+        mark = BistreIcon(
+          BistreUiIcon.server,
+          size: size,
+          color: theme.inkSecondary,
+        );
+      }
+    }
+
+    if (!framed) return mark;
+
+    return SizedBox.square(
+      dimension: size + 12,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: theme.bgElevated,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: theme.borderHairline),
+        ),
+        child: Center(child: mark),
+      ),
+    );
+  }
+}
+
+/// Archival hairline rule tapering delicately toward both ends with a brass diamond center.
+class BistreOrnamentalRule extends StatelessWidget {
+  const BistreOrnamentalRule({super.key, this.width = 160});
+
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = BistreTheme.of(context);
+    return Center(
+      child: SizedBox(
+        width: width,
+        height: 9,
+        child: CustomPaint(
+          painter: _OrnamentalRulePainter(
+            lineColor: theme.borderHairline,
+            accentColor: theme.accentBrass.withValues(alpha: 0.65),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OrnamentalRulePainter extends CustomPainter {
+  const _OrnamentalRulePainter({
+    required this.lineColor,
+    required this.accentColor,
+  });
+
+  final Color lineColor;
+  final Color accentColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cy = size.height / 2;
+    final cx = size.width / 2;
+    final leftPaint = Paint()
+      ..strokeWidth = 1
+      ..shader = LinearGradient(
+        colors: <Color>[lineColor.withValues(alpha: 0), lineColor],
+      ).createShader(Rect.fromLTWH(0, cy - 1, cx - 10, 2));
+    canvas.drawLine(Offset(0, cy), Offset(cx - 10, cy), leftPaint);
+
+    final rightPaint = Paint()
+      ..strokeWidth = 1
+      ..shader = LinearGradient(
+        colors: <Color>[lineColor, lineColor.withValues(alpha: 0)],
+      ).createShader(Rect.fromLTWH(cx + 10, cy - 1, cx - 10, 2));
+    canvas.drawLine(Offset(cx + 10, cy), Offset(size.width, cy), rightPaint);
+
+    final diamond = Path()
+      ..moveTo(cx, cy - 3.2)
+      ..lineTo(cx + 3.2, cy)
+      ..lineTo(cx, cy + 3.2)
+      ..lineTo(cx - 3.2, cy)
+      ..close();
+    canvas.drawPath(diamond, Paint()..color = accentColor);
+  }
+
+  @override
+  bool shouldRepaint(_OrnamentalRulePainter old) =>
+      old.lineColor != lineColor || old.accentColor != accentColor;
+}

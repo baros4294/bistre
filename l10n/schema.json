@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bistre Localization Catalog",
+  "type": "object",
+  "required": ["locale", "direction", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "locale": { "type": "string", "minLength": 2, "maxLength": 35 },
+    "direction": { "type": "string", "enum": ["ltr", "rtl"] },
+    "entries": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["message", "context", "tone", "max_chars", "placeholders"],
+        "additionalProperties": false,
+        "properties": {
+          "message": { "type": "string", "minLength": 1 },
+          "context": { "type": "string", "minLength": 4 },
+          "tone": {
+            "type": "string",
+            "enum": ["calm_editorial", "concise_action", "diagnostic"]
+          },
+          "max_chars": { "type": "integer", "minimum": 4, "maximum": 500 },
+          "placeholders": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": ["type", "example"],
+              "additionalProperties": false,
+              "properties": {
+                "type": { "type": "string", "enum": ["string", "int", "number"] },
+                "example": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

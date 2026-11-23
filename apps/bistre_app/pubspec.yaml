@@ -1,0 +1,50 @@
+name: bistre_app
+description: Bistre cross-platform Sepia Book AI client (pure package:flutter/widgets.dart).
+publish_to: none
+version: 0.1.0+1
+resolution: workspace
+
+environment:
+  sdk: ^3.14.0
+  flutter: ">=3.50.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_rust_bridge: 2.13.0
+  flutter_rust_bridge_hooks: 2.13.0
+  hooks: ^2.0.2
+  path_provider: ^2.1.5
+  vector_graphics: ^1.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  vector_graphics_compiler: ^1.1.19
+
+flutter:
+  uses-material-design: false
+  assets:
+    - assets/l10n/
+    - assets/icons/
+    - assets/icons/ui/
+    - assets/icons/labs/
+    # Registered lazily on the first math block (lib/design/math_font_gate.dart).
+    - assets/fonts/NotoSansMath-Regular.ttf
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/JetBrainsMono-Medium.ttf
+          weight: 500
