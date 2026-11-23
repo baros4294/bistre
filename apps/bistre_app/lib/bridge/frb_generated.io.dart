@@ -74,6 +74,9 @@ abstract class BistreRustLibApiImplPlatform
   FfiAssistantRecord dco_decode_ffi_assistant_record(dynamic raw);
 
   @protected
+  FfiCheckpoint dco_decode_ffi_checkpoint(dynamic raw);
+
+  @protected
   FfiCronJob dco_decode_ffi_cron_job(dynamic raw);
 
   @protected
@@ -84,6 +87,9 @@ abstract class BistreRustLibApiImplPlatform
 
   @protected
   FfiHealthSnapshot dco_decode_ffi_health_snapshot(dynamic raw);
+
+  @protected
+  FfiMemoryEntry dco_decode_ffi_memory_entry(dynamic raw);
 
   @protected
   FfiNodeRecord dco_decode_ffi_node_record(dynamic raw);
@@ -122,7 +128,13 @@ abstract class BistreRustLibApiImplPlatform
   List<FfiAssistantRecord> dco_decode_list_ffi_assistant_record(dynamic raw);
 
   @protected
+  List<FfiCheckpoint> dco_decode_list_ffi_checkpoint(dynamic raw);
+
+  @protected
   List<FfiCronJob> dco_decode_list_ffi_cron_job(dynamic raw);
+
+  @protected
+  List<FfiMemoryEntry> dco_decode_list_ffi_memory_entry(dynamic raw);
 
   @protected
   List<FfiNodeRecord> dco_decode_list_ffi_node_record(dynamic raw);
@@ -243,6 +255,9 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  FfiCheckpoint sse_decode_ffi_checkpoint(SseDeserializer deserializer);
+
+  @protected
   FfiCronJob sse_decode_ffi_cron_job(SseDeserializer deserializer);
 
   @protected
@@ -255,6 +270,9 @@ abstract class BistreRustLibApiImplPlatform
   FfiHealthSnapshot sse_decode_ffi_health_snapshot(
     SseDeserializer deserializer,
   );
+
+  @protected
+  FfiMemoryEntry sse_decode_ffi_memory_entry(SseDeserializer deserializer);
 
   @protected
   FfiNodeRecord sse_decode_ffi_node_record(SseDeserializer deserializer);
@@ -307,7 +325,17 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  List<FfiCheckpoint> sse_decode_list_ffi_checkpoint(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<FfiCronJob> sse_decode_list_ffi_cron_job(SseDeserializer deserializer);
+
+  @protected
+  List<FfiMemoryEntry> sse_decode_list_ffi_memory_entry(
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<FfiNodeRecord> sse_decode_list_ffi_node_record(
@@ -464,6 +492,9 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  void sse_encode_ffi_checkpoint(FfiCheckpoint self, SseSerializer serializer);
+
+  @protected
   void sse_encode_ffi_cron_job(FfiCronJob self, SseSerializer serializer);
 
   @protected
@@ -481,6 +512,12 @@ abstract class BistreRustLibApiImplPlatform
   @protected
   void sse_encode_ffi_health_snapshot(
     FfiHealthSnapshot self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_ffi_memory_entry(
+    FfiMemoryEntry self,
     SseSerializer serializer,
   );
 
@@ -548,8 +585,20 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  void sse_encode_list_ffi_checkpoint(
+    List<FfiCheckpoint> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_ffi_cron_job(
     List<FfiCronJob> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_ffi_memory_entry(
+    List<FfiMemoryEntry> self,
     SseSerializer serializer,
   );
 

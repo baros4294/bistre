@@ -75,7 +75,7 @@ class BistreRustLib
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -2036359960;
+  int get rustContentHash => -1753901636;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -262,14 +262,16 @@ abstract class BistreRustLibApi extends BaseApi {
 
   Future<String> crateApiStoryListCharacterCardsJson();
 
-  Future<String> crateApiHarnessListCheckpointsJson({
+  Future<List<FfiCheckpoint>> crateApiHarnessListCheckpoints({
     required String threadId,
     required int limit,
   });
 
   Future<List<FfiCronJob>> crateApiHarnessListCronJobs();
 
-  Future<String> crateApiHarnessListMemoryEntriesJson({String? scope});
+  Future<List<FfiMemoryEntry>> crateApiHarnessListMemoryEntries({
+    String? scope,
+  });
 
   Future<List<FfiNodeRecord>> crateApiListNodes({required String threadId});
 
@@ -453,7 +455,7 @@ abstract class BistreRustLibApi extends BaseApi {
 
   Future<FfiCronJob> crateApiHarnessUpsertCronJob({required FfiCronJob job});
 
-  Future<String> crateApiHarnessUpsertMemoryEntryJson({
+  Future<FfiMemoryEntry> crateApiHarnessUpsertMemoryEntry({
     String? id,
     required String scope,
     required String scopeId,
@@ -1967,7 +1969,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "list_character_cards_json", argNames: []);
 
   @override
-  Future<String> crateApiHarnessListCheckpointsJson({
+  Future<List<FfiCheckpoint>> crateApiHarnessListCheckpoints({
     required String threadId,
     required int limit,
   }) {
@@ -1985,19 +1987,19 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
+          decodeSuccessData: sse_decode_list_ffi_checkpoint,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiHarnessListCheckpointsJsonConstMeta,
+        constMeta: kCrateApiHarnessListCheckpointsConstMeta,
         argValues: [threadId, limit],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiHarnessListCheckpointsJsonConstMeta =>
+  TaskConstMeta get kCrateApiHarnessListCheckpointsConstMeta =>
       const TaskConstMeta(
-        debugName: "list_checkpoints_json",
+        debugName: "list_checkpoints",
         argNames: ["threadId", "limit"],
       );
 
@@ -2029,7 +2031,9 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "list_cron_jobs", argNames: []);
 
   @override
-  Future<String> crateApiHarnessListMemoryEntriesJson({String? scope}) {
+  Future<List<FfiMemoryEntry>> crateApiHarnessListMemoryEntries({
+    String? scope,
+  }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -2043,19 +2047,19 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
+          decodeSuccessData: sse_decode_list_ffi_memory_entry,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiHarnessListMemoryEntriesJsonConstMeta,
+        constMeta: kCrateApiHarnessListMemoryEntriesConstMeta,
         argValues: [scope],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiHarnessListMemoryEntriesJsonConstMeta =>
+  TaskConstMeta get kCrateApiHarnessListMemoryEntriesConstMeta =>
       const TaskConstMeta(
-        debugName: "list_memory_entries_json",
+        debugName: "list_memory_entries",
         argNames: ["scope"],
       );
 
@@ -3546,7 +3550,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "upsert_cron_job", argNames: ["job"]);
 
   @override
-  Future<String> crateApiHarnessUpsertMemoryEntryJson({
+  Future<FfiMemoryEntry> crateApiHarnessUpsertMemoryEntry({
     String? id,
     required String scope,
     required String scopeId,
@@ -3572,19 +3576,19 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
+          decodeSuccessData: sse_decode_ffi_memory_entry,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiHarnessUpsertMemoryEntryJsonConstMeta,
+        constMeta: kCrateApiHarnessUpsertMemoryEntryConstMeta,
         argValues: [id, scope, scopeId, key, content, pinned],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiHarnessUpsertMemoryEntryJsonConstMeta =>
+  TaskConstMeta get kCrateApiHarnessUpsertMemoryEntryConstMeta =>
       const TaskConstMeta(
-        debugName: "upsert_memory_entry_json",
+        debugName: "upsert_memory_entry",
         argNames: ["id", "scope", "scopeId", "key", "content", "pinned"],
       );
 
@@ -3968,6 +3972,22 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  FfiCheckpoint dco_decode_ffi_checkpoint(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return FfiCheckpoint(
+      id: dco_decode_String(arr[0]),
+      threadId: dco_decode_String(arr[1]),
+      filePath: dco_decode_String(arr[2]),
+      beforeBlake3: dco_decode_String(arr[3]),
+      afterBlake3: dco_decode_String(arr[4]),
+      createdAtMs: dco_decode_i_64(arr[5]),
+    );
+  }
+
+  @protected
   FfiCronJob dco_decode_ffi_cron_job(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -4039,6 +4059,24 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       nodeCount: dco_decode_u_64(arr[4]),
       activeRuns: dco_decode_u_32(arr[5]),
       statusKey: dco_decode_String(arr[6]),
+    );
+  }
+
+  @protected
+  FfiMemoryEntry dco_decode_ffi_memory_entry(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    return FfiMemoryEntry(
+      id: dco_decode_String(arr[0]),
+      scope: dco_decode_String(arr[1]),
+      scopeId: dco_decode_String(arr[2]),
+      key: dco_decode_String(arr[3]),
+      content: dco_decode_String(arr[4]),
+      sourceThreadId: dco_decode_opt_String(arr[5]),
+      pinned: dco_decode_bool(arr[6]),
+      updatedAtMs: dco_decode_i_64(arr[7]),
     );
   }
 
@@ -4230,9 +4268,21 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  List<FfiCheckpoint> dco_decode_list_ffi_checkpoint(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_ffi_checkpoint).toList();
+  }
+
+  @protected
   List<FfiCronJob> dco_decode_list_ffi_cron_job(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_ffi_cron_job).toList();
+  }
+
+  @protected
+  List<FfiMemoryEntry> dco_decode_list_ffi_memory_entry(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_ffi_memory_entry).toList();
   }
 
   @protected
@@ -4599,6 +4649,25 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  FfiCheckpoint sse_decode_ffi_checkpoint(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_threadId = sse_decode_String(deserializer);
+    var var_filePath = sse_decode_String(deserializer);
+    var var_beforeBlake3 = sse_decode_String(deserializer);
+    var var_afterBlake3 = sse_decode_String(deserializer);
+    var var_createdAtMs = sse_decode_i_64(deserializer);
+    return FfiCheckpoint(
+      id: var_id,
+      threadId: var_threadId,
+      filePath: var_filePath,
+      beforeBlake3: var_beforeBlake3,
+      afterBlake3: var_afterBlake3,
+      createdAtMs: var_createdAtMs,
+    );
+  }
+
+  @protected
   FfiCronJob sse_decode_ffi_cron_job(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_id = sse_decode_String(deserializer);
@@ -4695,6 +4764,29 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       nodeCount: var_nodeCount,
       activeRuns: var_activeRuns,
       statusKey: var_statusKey,
+    );
+  }
+
+  @protected
+  FfiMemoryEntry sse_decode_ffi_memory_entry(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_scope = sse_decode_String(deserializer);
+    var var_scopeId = sse_decode_String(deserializer);
+    var var_key = sse_decode_String(deserializer);
+    var var_content = sse_decode_String(deserializer);
+    var var_sourceThreadId = sse_decode_opt_String(deserializer);
+    var var_pinned = sse_decode_bool(deserializer);
+    var var_updatedAtMs = sse_decode_i_64(deserializer);
+    return FfiMemoryEntry(
+      id: var_id,
+      scope: var_scope,
+      scopeId: var_scopeId,
+      key: var_key,
+      content: var_content,
+      sourceThreadId: var_sourceThreadId,
+      pinned: var_pinned,
+      updatedAtMs: var_updatedAtMs,
     );
   }
 
@@ -4961,6 +5053,20 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  List<FfiCheckpoint> sse_decode_list_ffi_checkpoint(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <FfiCheckpoint>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_ffi_checkpoint(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<FfiCronJob> sse_decode_list_ffi_cron_job(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -4968,6 +5074,20 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     var ans_ = <FfiCronJob>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_ffi_cron_job(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<FfiMemoryEntry> sse_decode_list_ffi_memory_entry(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <FfiMemoryEntry>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_ffi_memory_entry(deserializer));
     }
     return ans_;
   }
@@ -5376,6 +5496,17 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  void sse_encode_ffi_checkpoint(FfiCheckpoint self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.threadId, serializer);
+    sse_encode_String(self.filePath, serializer);
+    sse_encode_String(self.beforeBlake3, serializer);
+    sse_encode_String(self.afterBlake3, serializer);
+    sse_encode_i_64(self.createdAtMs, serializer);
+  }
+
+  @protected
   void sse_encode_ffi_cron_job(FfiCronJob self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.id, serializer);
@@ -5437,6 +5568,22 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     sse_encode_u_64(self.nodeCount, serializer);
     sse_encode_u_32(self.activeRuns, serializer);
     sse_encode_String(self.statusKey, serializer);
+  }
+
+  @protected
+  void sse_encode_ffi_memory_entry(
+    FfiMemoryEntry self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.scope, serializer);
+    sse_encode_String(self.scopeId, serializer);
+    sse_encode_String(self.key, serializer);
+    sse_encode_String(self.content, serializer);
+    sse_encode_opt_String(self.sourceThreadId, serializer);
+    sse_encode_bool(self.pinned, serializer);
+    sse_encode_i_64(self.updatedAtMs, serializer);
   }
 
   @protected
@@ -5618,6 +5765,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  void sse_encode_list_ffi_checkpoint(
+    List<FfiCheckpoint> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_ffi_checkpoint(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_ffi_cron_job(
     List<FfiCronJob> self,
     SseSerializer serializer,
@@ -5626,6 +5785,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_ffi_cron_job(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_ffi_memory_entry(
+    List<FfiMemoryEntry> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_ffi_memory_entry(item, serializer);
     }
   }
 

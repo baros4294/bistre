@@ -169,7 +169,6 @@ void main() {
         scheduleExpr: '0 3 * * *',
         prompt: 'Summarize yesterday',
         mode: 'plan',
-        unattendedPolicy: 'pause_and_notify',
       ),
     );
     expect(savedJob.id, isNotEmpty);
@@ -179,6 +178,22 @@ void main() {
     expect(
       jobs.firstWhere((j) => j.id == savedJob.id).scheduleExpr,
       '0 3 * * *',
+    );
+
+    // Typed memory DTOs round-trip through Rust.
+    final memory = await gateway.upsertMemoryEntry(
+      scope: 'global',
+      scopeId: 'default',
+      key: 'tone',
+      content: 'Prefers short answers',
+      pinned: true,
+    );
+    expect(memory.id, isNotEmpty);
+    expect(
+      (await gateway.listMemoryEntries())
+          .firstWhere((m) => m.id == memory.id)
+          .pinned,
+      isTrue,
     );
 
     // Core's conversation-limit estimate for the branch (the gauge's number).

@@ -8,7 +8,7 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `fmt`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`
 
 /// Records the user's approval of one exact tool call and returns its one-use permit id.
 Future<String> approveToolCall({
@@ -47,10 +47,10 @@ Future<String> rewindCheckpoint({
 );
 
 /// Lists persisted file-edit pre-image checkpoints for `thread_id` as JSON.
-Future<String> listCheckpointsJson({
+Future<List<FfiCheckpoint>> listCheckpoints({
   required String threadId,
   required int limit,
-}) => BistreRustLib.instance.api.crateApiHarnessListCheckpointsJson(
+}) => BistreRustLib.instance.api.crateApiHarnessListCheckpoints(
   threadId: threadId,
   limit: limit,
 );
@@ -120,20 +120,18 @@ Future<void> setKvMeta({required String key, required String value}) =>
     BistreRustLib.instance.api.crateApiHarnessSetKvMeta(key: key, value: value);
 
 /// Lists persistent cross-chat SQLite memory entries as JSON.
-Future<String> listMemoryEntriesJson({String? scope}) => BistreRustLib
-    .instance
-    .api
-    .crateApiHarnessListMemoryEntriesJson(scope: scope);
+Future<List<FfiMemoryEntry>> listMemoryEntries({String? scope}) =>
+    BistreRustLib.instance.api.crateApiHarnessListMemoryEntries(scope: scope);
 
-/// Upserts a persistent cross-chat SQLite memory entry and returns it as JSON.
-Future<String> upsertMemoryEntryJson({
+/// Upserts a persistent cross-chat SQLite memory entry and returns the saved entry.
+Future<FfiMemoryEntry> upsertMemoryEntry({
   String? id,
   required String scope,
   required String scopeId,
   required String key,
   required String content,
   required bool pinned,
-}) => BistreRustLib.instance.api.crateApiHarnessUpsertMemoryEntryJson(
+}) => BistreRustLib.instance.api.crateApiHarnessUpsertMemoryEntry(
   id: id,
   scope: scope,
   scopeId: scopeId,
@@ -180,6 +178,47 @@ Future<String> prepareSubagentSandboxJson({required String workspaceRoot}) =>
     BistreRustLib.instance.api.crateApiHarnessPrepareSubagentSandboxJson(
       workspaceRoot: workspaceRoot,
     );
+
+/// One file checkpoint in a chat's edit history. The pre-image bytes stay in core: rewinding
+/// uses the id, so the list never ships file contents across FFI.
+class FfiCheckpoint {
+  final String id;
+  final String threadId;
+  final String filePath;
+  final String beforeBlake3;
+  final String afterBlake3;
+  final PlatformInt64 createdAtMs;
+
+  const FfiCheckpoint({
+    required this.id,
+    required this.threadId,
+    required this.filePath,
+    required this.beforeBlake3,
+    required this.afterBlake3,
+    required this.createdAtMs,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      threadId.hashCode ^
+      filePath.hashCode ^
+      beforeBlake3.hashCode ^
+      afterBlake3.hashCode ^
+      createdAtMs.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FfiCheckpoint &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          threadId == other.threadId &&
+          filePath == other.filePath &&
+          beforeBlake3 == other.beforeBlake3 &&
+          afterBlake3 == other.afterBlake3 &&
+          createdAtMs == other.createdAtMs;
+}
 
 /// Scheduled automation job (`CronJobRecord`); enums travel as their stable keys.
 class FfiCronJob {
@@ -247,4 +286,52 @@ class FfiCronJob {
           nextRunMs == other.nextRunMs &&
           lastRunId == other.lastRunId &&
           lastStatus == other.lastStatus;
+}
+
+/// Persistent cross-chat memory entry (`MemoryEntryRecord`).
+class FfiMemoryEntry {
+  final String id;
+  final String scope;
+  final String scopeId;
+  final String key;
+  final String content;
+  final String? sourceThreadId;
+  final bool pinned;
+  final PlatformInt64 updatedAtMs;
+
+  const FfiMemoryEntry({
+    required this.id,
+    required this.scope,
+    required this.scopeId,
+    required this.key,
+    required this.content,
+    this.sourceThreadId,
+    required this.pinned,
+    required this.updatedAtMs,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      scope.hashCode ^
+      scopeId.hashCode ^
+      key.hashCode ^
+      content.hashCode ^
+      sourceThreadId.hashCode ^
+      pinned.hashCode ^
+      updatedAtMs.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FfiMemoryEntry &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          scope == other.scope &&
+          scopeId == other.scopeId &&
+          key == other.key &&
+          content == other.content &&
+          sourceThreadId == other.sourceThreadId &&
+          pinned == other.pinned &&
+          updatedAtMs == other.updatedAtMs;
 }
