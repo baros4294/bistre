@@ -82,7 +82,9 @@ void main() {
     expect(timings, isNotEmpty, reason: 'no frame timings were reported');
     final build = p99(timings.map((t) => t.buildDuration));
     final raster = p99(timings.map((t) => t.rasterDuration));
-    binding.reportData = <String, Object>{
+    // Merge, never replace: traceAction stored the timeline under 'timeline'.
+    binding.reportData = <String, dynamic>{
+      ...?binding.reportData,
       'frames': timings.length,
       'build_p99_ms': build,
       'raster_p99_ms': raster,
