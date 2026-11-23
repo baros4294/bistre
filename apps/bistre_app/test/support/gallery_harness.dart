@@ -10,6 +10,7 @@ import 'dart:ui' as ui;
 import 'package:bistre_app/bridge/bistre_engine.dart';
 import 'package:bistre_app/design/math_font_gate.dart';
 import 'package:bistre_app/l10n/bistre_localizations.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -77,12 +78,20 @@ BistreLocalizationController loadDiskCatalogs() {
   return BistreLocalizationController(catalogs: catalogs);
 }
 
+/// `BISTRE_GOLDENS=compare` (Linux CI only, Spec 08 §4): every capture must equal its committed
+/// baseline in `test/goldens/linux/` byte for byte. The same renderer and bundled fonts give
+/// identical PNGs there, so any difference is a visual change to review. Elsewhere captures are
+/// only written to `build/ui_gallery/` for review.
+final bool _compareGoldens =
+    Platform.isLinux && Platform.environment['BISTRE_GOLDENS'] == 'compare';
+
 Future<void> capturePng(
   WidgetTester tester,
   GlobalKey boundaryKey,
   Directory outDir,
   String fileName,
 ) async {
+  Uint8List? captured;
   await tester.pumpAndSettle();
   await tester.runAsync(() async {
     final renderObject =
@@ -92,10 +101,28 @@ Future<void> capturePng(
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
     image.dispose();
     if (byteData != null) {
-      File('${outDir.path}/$fileName')
-          .writeAsBytesSync(byteData.buffer.asUint8List());
+      captured = byteData.buffer.asUint8List();
+      File('${outDir.path}/$fileName').writeAsBytesSync(captured!);
     }
   });
+  final bytes = captured;
+  expect(bytes, isNotNull, reason: 'could not encode $fileName');
+  if (!_compareGoldens || bytes == null) return;
+  final golden = File('test/goldens/linux/$fileName');
+  expect(
+    golden.existsSync(),
+    isTrue,
+    reason:
+        'No Linux baseline for $fileName. Review the ui-gallery-linux artifact and commit the '
+        'PNG to apps/bistre_app/test/goldens/linux/.',
+  );
+  expect(
+    listEquals(golden.readAsBytesSync(), bytes),
+    isTrue,
+    reason:
+        '$fileName differs from its Linux baseline. Review the ui-gallery-linux artifact; if '
+        'the change is intended, replace the baseline in the same pull request.',
+  );
 }
 
 class GalleryGateway implements BistreEngineGateway {

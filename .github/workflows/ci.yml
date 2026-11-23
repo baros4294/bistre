@@ -298,7 +298,17 @@ jobs:
           # Linux runners have no Secret Service; a fixed test-only passphrase gives the FFI
           # round-trip a vault key (Spec 06). Never a real secret.
           BISTRE_VAULT_PASSPHRASE: ci-test-only-vault-passphrase
+          # Linux compares gallery captures with apps/bistre_app/test/goldens/linux/ (Spec 08).
+          BISTRE_GOLDENS: ${{ runner.os == 'Linux' && 'compare' || '' }}
         run: flutter test
+      - name: Upload the Linux gallery captures for review
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: ui-gallery-linux
+          path: apps/bistre_app/build/ui_gallery/
+          if-no-files-found: error
+          retention-days: 14
       - name: Build Linux release bundle
         if: runner.os == 'Linux'
         working-directory: apps/bistre_app
