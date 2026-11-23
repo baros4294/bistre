@@ -9,6 +9,7 @@ import '../../design/bistre_decorations.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
@@ -167,9 +168,12 @@ class _FolioSidebarState extends State<FolioSidebar> {
               child: ListenableBuilder(
                 listenable: ctrl.sidebarFilterQuery,
                 builder: (context, _) => switch (ctrl.sidebarTab) {
-                  SidebarTab.assistant => SingleChildScrollView(
-                    padding: _kListPadding,
-                    child: _buildAssistantsList(theme, l10n, ctrl),
+                  SidebarTab.assistant => SmoothScrollable(
+                    builder: (_, scroll) => SingleChildScrollView(
+                      controller: scroll,
+                      padding: _kListPadding,
+                      child: _buildAssistantsList(theme, l10n, ctrl),
+                    ),
                   ),
                   SidebarTab.chat => _buildGroupedChatsList(
                     theme,
@@ -287,29 +291,32 @@ class _FolioSidebarState extends State<FolioSidebar> {
     bool groupByDate = true,
   }) {
     if (threads.isEmpty) {
-      return SingleChildScrollView(
-        padding: _kListPadding,
-        child: Padding(
-          padding: const EdgeInsetsDirectional.symmetric(
-            horizontal: 14,
-            vertical: 36,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              BistreIcon(
-                isPinnedEmpty ? BistreUiIcon.pin : BistreUiIcon.chat,
-                size: 20,
-                color: theme.inkMuted.withValues(alpha: 0.6),
-              ),
-              const SizedBox(height: 8),
-              InkText(
-                emptyText,
-                role: InkTextRole.captionMeta,
-                color: theme.inkMuted,
-                textAlign: TextAlign.center,
-              ),
-            ],
+      return SmoothScrollable(
+        builder: (_, scroll) => SingleChildScrollView(
+          controller: scroll,
+          padding: _kListPadding,
+          child: Padding(
+            padding: const EdgeInsetsDirectional.symmetric(
+              horizontal: 14,
+              vertical: 36,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                BistreIcon(
+                  isPinnedEmpty ? BistreUiIcon.pin : BistreUiIcon.chat,
+                  size: 20,
+                  color: theme.inkMuted.withValues(alpha: 0.6),
+                ),
+                const SizedBox(height: 8),
+                InkText(
+                  emptyText,
+                  role: InkTextRole.captionMeta,
+                  color: theme.inkMuted,
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -318,20 +325,23 @@ class _FolioSidebarState extends State<FolioSidebar> {
     final showAssistantSubtitle = ctrl.assistants.length > 1;
     // Lazily laid out: with hundreds of chats only the visible rows are built.
     if (!groupByDate) {
-      return ListView(
-        padding: _kListPadding,
-        children: [
-          for (final t in threads)
-            _buildThreadRow(
-              theme,
-              l10n,
-              ctrl,
-              t,
-              subtitle: showAssistantSubtitle
-                  ? ctrl.assistantNameFor(t.assistantId)
-                  : null,
-            ),
-        ],
+      return SmoothScrollable(
+        builder: (_, scroll) => ListView(
+          controller: scroll,
+          padding: _kListPadding,
+          children: [
+            for (final t in threads)
+              _buildThreadRow(
+                theme,
+                l10n,
+                ctrl,
+                t,
+                subtitle: showAssistantSubtitle
+                    ? ctrl.assistantNameFor(t.assistantId)
+                    : null,
+              ),
+          ],
+        ),
       );
     }
 
@@ -384,7 +394,13 @@ class _FolioSidebarState extends State<FolioSidebar> {
       );
     }
 
-    return ListView(padding: _kListPadding, children: widgets);
+    return SmoothScrollable(
+      builder: (_, scroll) => ListView(
+        controller: scroll,
+        padding: _kListPadding,
+        children: widgets,
+      ),
+    );
   }
 
   Widget _buildThreadRow(

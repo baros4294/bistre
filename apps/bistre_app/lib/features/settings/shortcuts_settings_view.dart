@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import '../../design/bistre_controls.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
@@ -100,54 +101,57 @@ class _ShortcutsSettingsViewState extends State<ShortcutsSettingsView> {
     return Focus(
       focusNode: _captureFocus,
       onKeyEvent: _handleKeyCapture,
-      child: SingleChildScrollView(
-        padding: const EdgeInsetsDirectional.fromSTEB(28, 22, 28, 40),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            BistreSettingsSection(
-              title: l10n.t(L10nKey.settingsTabShortcuts),
-              children: [
-                for (final spec in ShortcutActionSpec.defaults)
-                  _ShortcutRow(
-                    label: l10n.t(spec.labelKey),
-                    combo: ctrl.shortcutFor(spec.id),
-                    recording: _recordingActionId == spec.id,
-                    recordHint: l10n.t(L10nKey.shortcutsRecordHint),
-                    onTap: () => _startRecording(spec.id),
-                  ),
-                Padding(
-                  padding: const EdgeInsetsDirectional.symmetric(
-                    horizontal: BistreSpacing.s16,
-                    vertical: 14,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: InkText(
-                          l10n.t(L10nKey.shortcutEscape),
-                          role: InkTextRole.bodyCompact,
-                          color: theme.inkSecondary,
+      child: SmoothScrollable(
+        builder: (_, scroll) => SingleChildScrollView(
+          controller: scroll,
+          padding: const EdgeInsetsDirectional.fromSTEB(28, 22, 28, 40),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              BistreSettingsSection(
+                title: l10n.t(L10nKey.settingsTabShortcuts),
+                children: [
+                  for (final spec in ShortcutActionSpec.defaults)
+                    _ShortcutRow(
+                      label: l10n.t(spec.labelKey),
+                      combo: ctrl.shortcutFor(spec.id),
+                      recording: _recordingActionId == spec.id,
+                      recordHint: l10n.t(L10nKey.shortcutsRecordHint),
+                      onTap: () => _startRecording(spec.id),
+                    ),
+                  Padding(
+                    padding: const EdgeInsetsDirectional.symmetric(
+                      horizontal: BistreSpacing.s16,
+                      vertical: 14,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: InkText(
+                            l10n.t(L10nKey.shortcutEscape),
+                            role: InkTextRole.bodyCompact,
+                            color: theme.inkSecondary,
+                          ),
                         ),
-                      ),
-                      const _KeycapStrip(combo: _kEscCombo),
-                    ],
+                        const _KeycapStrip(combo: _kEscCombo),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: BistreSpacing.s16),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: EngravedButton(
-                label: l10n.t(L10nKey.shortcutsResetDefaults),
-                onPressed: () {
-                  setState(() => _recordingActionId = null);
-                  unawaited(ctrl.resetShortcuts());
-                },
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: BistreSpacing.s16),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: EngravedButton(
+                  label: l10n.t(L10nKey.shortcutsResetDefaults),
+                  onPressed: () {
+                    setState(() => _recordingActionId = null);
+                    unawaited(ctrl.resetShortcuts());
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

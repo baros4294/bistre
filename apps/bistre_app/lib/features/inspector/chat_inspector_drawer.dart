@@ -8,6 +8,7 @@ import '../../design/bistre_icons.dart';
 import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../chat/reasoning_block.dart';
@@ -119,354 +120,361 @@ class _ChatInspectorDrawerState extends State<ChatInspectorDrawer> {
               ),
               const FolioDivider(),
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsetsDirectional.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Provider override
-                      InkText(
-                        l10n.t(L10nKey.settingsAssistantsDefaultProvider),
-                        role: InkTextRole.captionMeta,
-                        color: theme.inkMuted,
-                      ),
-                      const SizedBox(height: 6),
-                      _ProviderOverrideList(
-                        providers: ctrl.providers,
-                        selectedId: thread?.providerIdOverride,
-                        defaultLabel: l10n.t(
-                          L10nKey.settingsAssistantsUseGlobalDefault,
+                child: SmoothScrollable(
+                  builder: (_, scroll) => SingleChildScrollView(
+                    controller: scroll,
+                    padding: const EdgeInsetsDirectional.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Provider override
+                        InkText(
+                          l10n.t(L10nKey.settingsAssistantsDefaultProvider),
+                          role: InkTextRole.captionMeta,
+                          color: theme.inkMuted,
                         ),
-                        onSelect: (pid) {
-                          if (pid == null) {
-                            unawaited(
-                              ctrl.updateActiveThreadOverrides(
-                                clearProviderOverride: true,
-                              ),
-                            );
-                          } else {
-                            unawaited(
-                              ctrl.updateActiveThreadOverrides(
-                                providerIdOverride: pid,
-                              ),
-                            );
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Model override
-                      InkText(
-                        l10n.t(L10nKey.providerFieldModel),
-                        role: InkTextRole.captionMeta,
-                        color: theme.inkMuted,
-                      ),
-                      const SizedBox(height: 6),
-                      QuillInput(
-                        controller: _modelOverrideCtrl,
-                        focusNode: _modelOverrideFocus,
-                        placeholder: ctrl.activeModelId.isNotEmpty
-                            ? ctrl.activeModelId
-                            : l10n.t(L10nKey.providerFieldModelPlaceholder),
-                        maxLines: 1,
-                        compact: true,
-                        onSubmitted: () {
-                          final v = _modelOverrideCtrl.text.trim();
-                          unawaited(
-                            ctrl.updateActiveThreadOverrides(
-                              modelIdOverride: v.isEmpty ? null : v,
-                              clearModelOverride: v.isEmpty,
-                            ),
-                          );
-                        },
-                        onChanged: (v) {
-                          final trimmed = v.trim();
-                          unawaited(
-                            ctrl.updateActiveThreadOverrides(
-                              modelIdOverride: trimmed.isEmpty ? null : trimmed,
-                              clearModelOverride: trimmed.isEmpty,
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // System prompt override
-                      InkText(
-                        l10n.t(L10nKey.chatInspectorOverridePrompt),
-                        role: InkTextRole.captionMeta,
-                        color: theme.inkMuted,
-                      ),
-                      const SizedBox(height: 6),
-                      QuillInput(
-                        controller: _promptCtrl,
-                        focusNode: _promptFocus,
-                        placeholder: l10n.t(
-                          L10nKey.chatInspectorOverridePromptHint,
-                        ),
-                        minLines: 3,
-                        submitOnEnter: false,
-                        onSubmitted: () {},
-                        onChanged: (v) {
-                          final trimmed = v.trim();
-                          unawaited(
-                            ctrl.updateActiveThreadOverrides(
-                              systemPromptOverride: trimmed.isEmpty
-                                  ? null
-                                  : trimmed,
-                              clearSystemPromptOverride: trimmed.isEmpty,
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 18),
-
-                      // Temperature slider
-                      Row(
-                        children: [
-                          Expanded(
-                            child: InkText(
-                              l10n.t(L10nKey.settingsAssistantsTemperature),
-                              role: InkTextRole.captionMeta,
-                              color: theme.inkSecondary,
-                            ),
+                        const SizedBox(height: 6),
+                        _ProviderOverrideList(
+                          providers: ctrl.providers,
+                          selectedId: thread?.providerIdOverride,
+                          defaultLabel: l10n.t(
+                            L10nKey.settingsAssistantsUseGlobalDefault,
                           ),
-                          InkText(
-                            tempMilli != null
-                                ? (tempMilli / 1000.0).toStringAsFixed(2)
-                                : l10n.t(
-                                    L10nKey.settingsAssistantsParamsDefault,
-                                  ),
-                            role: InkTextRole.captionMeta,
-                            color: theme.accentBrass,
-                          ),
-                        ],
-                      ),
-                      BistreSlider(
-                        value: (tempMilli ?? 700) / 1000.0,
-                        min: 0.0,
-                        max: 2.0,
-                        step: 0.05,
-                        semanticsLabel: l10n.t(
-                          L10nKey.settingsAssistantsTemperature,
-                        ),
-                        onChanged: (v) => unawaited(
-                          ctrl.updateActiveThreadOverrides(
-                            temperatureMilli: (v * 1000).round(),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-
-                      // Max output tokens slider
-                      Row(
-                        children: [
-                          Expanded(
-                            child: InkText(
-                              l10n.t(L10nKey.settingsAssistantsMaxTokens),
-                              role: InkTextRole.captionMeta,
-                              color: theme.inkSecondary,
-                            ),
-                          ),
-                          InkText(
-                            maxTok != null
-                                ? maxTok.toString()
-                                : l10n.t(
-                                    L10nKey.settingsAssistantsParamsDefault,
-                                  ),
-                            role: InkTextRole.captionMeta,
-                            color: theme.accentBrass,
-                          ),
-                        ],
-                      ),
-                      BistreSlider(
-                        value: (maxTok ?? 4096).toDouble().clamp(256, 32768),
-                        min: 256,
-                        max: 32768,
-                        step: 256,
-                        semanticsLabel: l10n.t(
-                          L10nKey.settingsAssistantsMaxTokens,
-                        ),
-                        onChanged: (v) => unawaited(
-                          ctrl.updateActiveThreadOverrides(
-                            maxOutputTokens: v.round(),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-
-                      // Top-P slider
-                      Row(
-                        children: [
-                          Expanded(
-                            child: InkText(
-                              l10n.t(L10nKey.settingsAssistantsTopP),
-                              role: InkTextRole.captionMeta,
-                              color: theme.inkSecondary,
-                            ),
-                          ),
-                          InkText(
-                            topPMilli != null
-                                ? (topPMilli / 1000.0).toStringAsFixed(2)
-                                : l10n.t(
-                                    L10nKey.settingsAssistantsParamsDefault,
-                                  ),
-                            role: InkTextRole.captionMeta,
-                            color: theme.accentBrass,
-                          ),
-                        ],
-                      ),
-                      BistreSlider(
-                        value: (topPMilli ?? 1000) / 1000.0,
-                        min: 0.1,
-                        max: 1.0,
-                        step: 0.05,
-                        semanticsLabel: l10n.t(L10nKey.settingsAssistantsTopP),
-                        onChanged: (v) => unawaited(
-                          ctrl.updateActiveThreadOverrides(
-                            topPMilli: (v * 1000).round(),
-                          ),
-                        ),
-                      ),
-
-                      if (thread?.hasAnyOverride == true) ...[
-                        const SizedBox(height: 10),
-                        EngravedButton(
-                          label: l10n.t(L10nKey.chatInspectorResetParams),
-                          compact: true,
-                          onPressed: () {
-                            _promptCtrl.clear();
-                            _modelOverrideCtrl.clear();
-                            unawaited(ctrl.resetActiveThreadOverrides());
+                          onSelect: (pid) {
+                            if (pid == null) {
+                              unawaited(
+                                ctrl.updateActiveThreadOverrides(
+                                  clearProviderOverride: true,
+                                ),
+                              );
+                            } else {
+                              unawaited(
+                                ctrl.updateActiveThreadOverrides(
+                                  providerIdOverride: pid,
+                                ),
+                              );
+                            }
                           },
                         ),
-                      ],
+                        const SizedBox(height: 16),
 
-                      const SizedBox(height: 18),
-                      const FolioDivider(),
-                      const SizedBox(height: 14),
-
-                      // Reasoning effort & reversible context compaction
-                      InkText(
-                        l10n.t(L10nKey.chatReasoningEffort),
-                        role: InkTextRole.captionMeta,
-                        color: theme.inkMuted,
-                      ),
-                      const SizedBox(height: 8),
-                      ReasoningEffortSelector(
-                        value: ctrl.settings.reasoningEffort,
-                        onChanged: (effort) =>
-                            unawaited(ctrl.setReasoningEffort(effort)),
-                      ),
-                      const SizedBox(height: 12),
-                      EngravedButton(
-                        label: l10n.t(L10nKey.chatCompactAction),
-                        compact: true,
-                        leading: BistreIcon(
-                          BistreUiIcon.document,
-                          size: 13,
-                          color: theme.inkSecondary,
+                        // Model override
+                        InkText(
+                          l10n.t(L10nKey.providerFieldModel),
+                          role: InkTextRole.captionMeta,
+                          color: theme.inkMuted,
                         ),
-                        onPressed:
-                            !ctrl.isStreaming &&
-                                ctrl.visibleBranchNodes.length > 4
-                            ? () => unawaited(ctrl.compactActiveThread())
-                            : null,
-                      ),
-
-                      const SizedBox(height: 20),
-                      const FolioDivider(),
-                      const SizedBox(height: 16),
-
-                      // Export section
-                      InkText(
-                        l10n.t(L10nKey.chatInspectorExportSection),
-                        role: InkTextRole.captionMeta,
-                        color: theme.inkMuted,
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: EngravedButton(
-                              label: l10n.t(L10nKey.chatInspectorExportMd),
-                              compact: true,
-                              leading: const BistreIcon(
-                                BistreUiIcon.exportIcon,
-                                size: 13,
+                        const SizedBox(height: 6),
+                        QuillInput(
+                          controller: _modelOverrideCtrl,
+                          focusNode: _modelOverrideFocus,
+                          placeholder: ctrl.activeModelId.isNotEmpty
+                              ? ctrl.activeModelId
+                              : l10n.t(L10nKey.providerFieldModelPlaceholder),
+                          maxLines: 1,
+                          compact: true,
+                          onSubmitted: () {
+                            final v = _modelOverrideCtrl.text.trim();
+                            unawaited(
+                              ctrl.updateActiveThreadOverrides(
+                                modelIdOverride: v.isEmpty ? null : v,
+                                clearModelOverride: v.isEmpty,
                               ),
-                              onPressed: () => unawaited(
-                                ctrl.exportActiveThreadToFileOrClipboard(
-                                  'markdown',
-                                  saveTitle: l10n.t(
-                                    L10nKey.chatInspectorExportMd,
-                                  ),
-                                ),
+                            );
+                          },
+                          onChanged: (v) {
+                            final trimmed = v.trim();
+                            unawaited(
+                              ctrl.updateActiveThreadOverrides(
+                                modelIdOverride: trimmed.isEmpty
+                                    ? null
+                                    : trimmed,
+                                clearModelOverride: trimmed.isEmpty,
                               ),
-                            ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        // System prompt override
+                        InkText(
+                          l10n.t(L10nKey.chatInspectorOverridePrompt),
+                          role: InkTextRole.captionMeta,
+                          color: theme.inkMuted,
+                        ),
+                        const SizedBox(height: 6),
+                        QuillInput(
+                          controller: _promptCtrl,
+                          focusNode: _promptFocus,
+                          placeholder: l10n.t(
+                            L10nKey.chatInspectorOverridePromptHint,
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: EngravedButton(
-                              label: l10n.t(L10nKey.chatInspectorExportJson),
-                              compact: true,
-                              leading: const BistreIcon(
-                                BistreUiIcon.code,
-                                size: 13,
+                          minLines: 3,
+                          submitOnEnter: false,
+                          onSubmitted: () {},
+                          onChanged: (v) {
+                            final trimmed = v.trim();
+                            unawaited(
+                              ctrl.updateActiveThreadOverrides(
+                                systemPromptOverride: trimmed.isEmpty
+                                    ? null
+                                    : trimmed,
+                                clearSystemPromptOverride: trimmed.isEmpty,
                               ),
-                              onPressed: () => unawaited(
-                                ctrl.exportActiveThreadToFileOrClipboard(
-                                  'json',
-                                  saveTitle: l10n.t(
-                                    L10nKey.chatInspectorExportJson,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      if (totalIn > 0 || totalOut > 0) ...[
+                            );
+                          },
+                        ),
                         const SizedBox(height: 18),
-                        FolioSurface(
-                          tone: FolioTone.canvas,
-                          padding: const EdgeInsetsDirectional.all(10),
-                          borderRadius: 9,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              InkText(
-                                l10n.t(
-                                  L10nKey.chatTokensMeta,
-                                  <String, Object?>{
-                                    'input': totalIn,
-                                    'output': totalOut,
-                                  },
-                                ),
+
+                        // Temperature slider
+                        Row(
+                          children: [
+                            Expanded(
+                              child: InkText(
+                                l10n.t(L10nKey.settingsAssistantsTemperature),
                                 role: InkTextRole.captionMeta,
                                 color: theme.inkSecondary,
                               ),
-                              if (totalMicros > 0) ...[
-                                const SizedBox(height: 2),
-                                InkText(
-                                  FolioController.formatMicrosUsd(
-                                    totalMicros,
-                                    showSubCent: true,
-                                  ),
-                                  role: InkTextRole.labelStrong,
-                                  color: theme.accentBrass,
-                                ),
-                              ],
-                            ],
+                            ),
+                            InkText(
+                              tempMilli != null
+                                  ? (tempMilli / 1000.0).toStringAsFixed(2)
+                                  : l10n.t(
+                                      L10nKey.settingsAssistantsParamsDefault,
+                                    ),
+                              role: InkTextRole.captionMeta,
+                              color: theme.accentBrass,
+                            ),
+                          ],
+                        ),
+                        BistreSlider(
+                          value: (tempMilli ?? 700) / 1000.0,
+                          min: 0.0,
+                          max: 2.0,
+                          step: 0.05,
+                          semanticsLabel: l10n.t(
+                            L10nKey.settingsAssistantsTemperature,
+                          ),
+                          onChanged: (v) => unawaited(
+                            ctrl.updateActiveThreadOverrides(
+                              temperatureMilli: (v * 1000).round(),
+                            ),
                           ),
                         ),
+                        const SizedBox(height: 10),
+
+                        // Max output tokens slider
+                        Row(
+                          children: [
+                            Expanded(
+                              child: InkText(
+                                l10n.t(L10nKey.settingsAssistantsMaxTokens),
+                                role: InkTextRole.captionMeta,
+                                color: theme.inkSecondary,
+                              ),
+                            ),
+                            InkText(
+                              maxTok != null
+                                  ? maxTok.toString()
+                                  : l10n.t(
+                                      L10nKey.settingsAssistantsParamsDefault,
+                                    ),
+                              role: InkTextRole.captionMeta,
+                              color: theme.accentBrass,
+                            ),
+                          ],
+                        ),
+                        BistreSlider(
+                          value: (maxTok ?? 4096).toDouble().clamp(256, 32768),
+                          min: 256,
+                          max: 32768,
+                          step: 256,
+                          semanticsLabel: l10n.t(
+                            L10nKey.settingsAssistantsMaxTokens,
+                          ),
+                          onChanged: (v) => unawaited(
+                            ctrl.updateActiveThreadOverrides(
+                              maxOutputTokens: v.round(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Top-P slider
+                        Row(
+                          children: [
+                            Expanded(
+                              child: InkText(
+                                l10n.t(L10nKey.settingsAssistantsTopP),
+                                role: InkTextRole.captionMeta,
+                                color: theme.inkSecondary,
+                              ),
+                            ),
+                            InkText(
+                              topPMilli != null
+                                  ? (topPMilli / 1000.0).toStringAsFixed(2)
+                                  : l10n.t(
+                                      L10nKey.settingsAssistantsParamsDefault,
+                                    ),
+                              role: InkTextRole.captionMeta,
+                              color: theme.accentBrass,
+                            ),
+                          ],
+                        ),
+                        BistreSlider(
+                          value: (topPMilli ?? 1000) / 1000.0,
+                          min: 0.1,
+                          max: 1.0,
+                          step: 0.05,
+                          semanticsLabel: l10n.t(
+                            L10nKey.settingsAssistantsTopP,
+                          ),
+                          onChanged: (v) => unawaited(
+                            ctrl.updateActiveThreadOverrides(
+                              topPMilli: (v * 1000).round(),
+                            ),
+                          ),
+                        ),
+
+                        if (thread?.hasAnyOverride == true) ...[
+                          const SizedBox(height: 10),
+                          EngravedButton(
+                            label: l10n.t(L10nKey.chatInspectorResetParams),
+                            compact: true,
+                            onPressed: () {
+                              _promptCtrl.clear();
+                              _modelOverrideCtrl.clear();
+                              unawaited(ctrl.resetActiveThreadOverrides());
+                            },
+                          ),
+                        ],
+
+                        const SizedBox(height: 18),
+                        const FolioDivider(),
+                        const SizedBox(height: 14),
+
+                        // Reasoning effort & reversible context compaction
+                        InkText(
+                          l10n.t(L10nKey.chatReasoningEffort),
+                          role: InkTextRole.captionMeta,
+                          color: theme.inkMuted,
+                        ),
+                        const SizedBox(height: 8),
+                        ReasoningEffortSelector(
+                          value: ctrl.settings.reasoningEffort,
+                          onChanged: (effort) =>
+                              unawaited(ctrl.setReasoningEffort(effort)),
+                        ),
+                        const SizedBox(height: 12),
+                        EngravedButton(
+                          label: l10n.t(L10nKey.chatCompactAction),
+                          compact: true,
+                          leading: BistreIcon(
+                            BistreUiIcon.document,
+                            size: 13,
+                            color: theme.inkSecondary,
+                          ),
+                          onPressed:
+                              !ctrl.isStreaming &&
+                                  ctrl.visibleBranchNodes.length > 4
+                              ? () => unawaited(ctrl.compactActiveThread())
+                              : null,
+                        ),
+
+                        const SizedBox(height: 20),
+                        const FolioDivider(),
+                        const SizedBox(height: 16),
+
+                        // Export section
+                        InkText(
+                          l10n.t(L10nKey.chatInspectorExportSection),
+                          role: InkTextRole.captionMeta,
+                          color: theme.inkMuted,
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: EngravedButton(
+                                label: l10n.t(L10nKey.chatInspectorExportMd),
+                                compact: true,
+                                leading: const BistreIcon(
+                                  BistreUiIcon.exportIcon,
+                                  size: 13,
+                                ),
+                                onPressed: () => unawaited(
+                                  ctrl.exportActiveThreadToFileOrClipboard(
+                                    'markdown',
+                                    saveTitle: l10n.t(
+                                      L10nKey.chatInspectorExportMd,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: EngravedButton(
+                                label: l10n.t(L10nKey.chatInspectorExportJson),
+                                compact: true,
+                                leading: const BistreIcon(
+                                  BistreUiIcon.code,
+                                  size: 13,
+                                ),
+                                onPressed: () => unawaited(
+                                  ctrl.exportActiveThreadToFileOrClipboard(
+                                    'json',
+                                    saveTitle: l10n.t(
+                                      L10nKey.chatInspectorExportJson,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        if (totalIn > 0 || totalOut > 0) ...[
+                          const SizedBox(height: 18),
+                          FolioSurface(
+                            tone: FolioTone.canvas,
+                            padding: const EdgeInsetsDirectional.all(10),
+                            borderRadius: 9,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                InkText(
+                                  l10n.t(
+                                    L10nKey.chatTokensMeta,
+                                    <String, Object?>{
+                                      'input': totalIn,
+                                      'output': totalOut,
+                                    },
+                                  ),
+                                  role: InkTextRole.captionMeta,
+                                  color: theme.inkSecondary,
+                                ),
+                                if (totalMicros > 0) ...[
+                                  const SizedBox(height: 2),
+                                  InkText(
+                                    FolioController.formatMicrosUsd(
+                                      totalMicros,
+                                      showSubCent: true,
+                                    ),
+                                    role: InkTextRole.labelStrong,
+                                    color: theme.accentBrass,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),

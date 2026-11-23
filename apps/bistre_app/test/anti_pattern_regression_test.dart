@@ -6,6 +6,7 @@ import 'package:bistre_app/design/bistre_icons.dart';
 import 'package:bistre_app/design/bistre_theme.dart';
 import 'package:bistre_app/design/ink_primitives.dart';
 import 'package:bistre_app/design/press_feedback.dart';
+import 'package:bistre_app/design/smooth_scroll.dart';
 import 'package:bistre_app/features/chat/code_wrap_scope.dart';
 import 'package:bistre_app/features/chat/content_direction.dart';
 import 'package:bistre_app/features/chat/folio_message_feed.dart';
@@ -585,6 +586,52 @@ void main() {
       await tester.pump();
       expect(scaleOf(), 1.0);
       await still.up();
+    },
+  );
+
+  testWidgets(
+    'a wheel notch glides to its target; trackpad deltas and reduced motion jump',
+    (WidgetTester tester) async {
+      final controller = SmoothScrollController();
+      addTearDown(controller.dispose);
+      Future<void> pumpList({required bool reduceMotion}) => tester.pumpWidget(
+        MediaQuery(
+          data: MediaQueryData(disableAnimations: reduceMotion),
+          child: Directionality(
+            textDirection: TextDirection.ltr,
+            child: ListView.builder(
+              controller: controller,
+              itemCount: 200,
+              itemBuilder: (_, i) => SizedBox(height: 40, child: Text('$i')),
+            ),
+          ),
+        ),
+      );
+      final mouse = TestPointer(1, PointerDeviceKind.mouse);
+      Future<void> wheel(double dy) async {
+        mouse.hover(tester.getCenter(find.byType(ListView)));
+        await tester.sendEventToBinding(mouse.scroll(Offset(0, dy)));
+      }
+
+      await pumpList(reduceMotion: false);
+      await wheel(120);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
+      final mid = controller.offset;
+      expect(mid, greaterThan(0));
+      expect(mid, lessThan(120));
+      await wheel(120); // a quick second notch extends the same glide
+      await tester.pumpAndSettle();
+      expect(controller.offset, 240);
+
+      await wheel(8); // trackpad-sized delta stays 1:1
+      await tester.pump();
+      expect(controller.offset, 248);
+
+      await pumpList(reduceMotion: true);
+      await wheel(120);
+      await tester.pump();
+      expect(controller.offset, 368);
     },
   );
 }

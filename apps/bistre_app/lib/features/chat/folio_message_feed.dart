@@ -11,6 +11,7 @@ import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_selection_controls.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
@@ -46,7 +47,7 @@ class FolioMessageFeed extends StatefulWidget {
 }
 
 class _FolioMessageFeedState extends State<FolioMessageFeed> {
-  final ScrollController _scrollController = ScrollController();
+  final ScrollController _scrollController = SmoothScrollController();
   final CodeWrapOverrides _codeWrapOverrides = CodeWrapOverrides();
   final BistreSelectionControls _selectionControls = BistreSelectionControls();
   bool _autoFollow = true;
