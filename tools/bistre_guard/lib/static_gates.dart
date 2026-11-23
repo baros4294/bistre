@@ -620,13 +620,14 @@ void checkNoSilentRustSkips(
   List<String> errors,
 ) {
   final silentSkip = RegExp(
-    r'let (\w+) = [^;]*?\.ok\(\);\s*let Some\((?:mut )?\w+\) = \1 else \{\s*return\b',
+    r'let (\w+) = [^;]*?\.ok\(\);\s*let Some\((?:mut )?\w+\) = \1 else \{\s*return\b'
+    r'|let Ok\((?:mut )?(\w+)\) = \w+ else \{\s*return\b',
   );
   for (final rel in files) {
     if (!rel.endsWith('.rs')) continue;
     for (final m in silentSkip.allMatches(_read(root, rel))) {
       errors.add(
-        '[silent-skip] $rel: `${m.group(1)}` drops its error and returns early; use `?` or handle the error.',
+        '[silent-skip] $rel: `${m.group(1) ?? m.group(2)}` drops its error and returns early; use `?` or handle the error.',
       );
     }
   }
