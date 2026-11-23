@@ -383,7 +383,7 @@ impl InProcessEngine {
             parent_run_id: None,
             root_node_id: Some(parent_user_node_id.clone()),
             mode: thread.mode,
-            max_steps: 24,
+            max_steps: engine_runs::MAX_RUN_STEPS,
             unattended_policy: settings.unattended_policy,
             worktree_path: None,
         })?;

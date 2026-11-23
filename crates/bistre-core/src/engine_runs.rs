@@ -477,7 +477,7 @@ pub(crate) async fn execute_durable_stream_loop(
             }
         }
 
-        if cancelled || step_index >= 16 {
+        if cancelled || step_index >= MAX_RUN_STEPS {
             break;
         }
 
@@ -680,6 +680,9 @@ pub(crate) fn utc_day_start_unix_ms() -> i64 {
 
 /// Walks parent pointers backward from `leaf_id` to root so branching threads send
 /// only the active conversation branch (never sibling branches) to the LLM provider.
+/// Upper bound on model and steering steps in one run (also stored as the run's `max_steps`).
+pub(crate) const MAX_RUN_STEPS: u32 = 24;
+
 /// Minimum interval between partial-text checkpoints of a streaming reply.
 const CHECKPOINT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
 /// Minimum new text before a checkpoint is written.
