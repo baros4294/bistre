@@ -41,3 +41,20 @@ Unsupported features (e.g., structured outputs, strict tools, reasoning effort, 
 - **History hygiene**: replay sends only user/assistant/summary turns (UI interruption state lives in `provider_meta_json`, never in content); `compaction::enforce_role_alternation` merges consecutive same-role turns and drops assistant tails before dispatch; tool-call IDs are sanitized to `[A-Za-z0-9_-]{1,64}` and de-duplicated (`tools::sanitize_tool_call_id`).
 - **Deferred until native tool / reasoning replay lands** (contract, not yet code): `tools` must serialize first in request bodies (enable `serde_json/preserve_order`), opaque signatures replay only for the same provider + model + dialect with a Franken-signature guard on Gemini chunks, cross-provider reasoning handoff is clipped to `8,000` chars (25% head / 75% tail), and historical tool outputs compact in quantized batches of `16`.
 - **Property test**: `chunk_boundaries_never_change_the_events` (`crates/bistre-core/src/sse.rs`, `proptest 1.12`, test-only dependency) checks that any split of an SSE byte stream yields the same events as the whole stream.
+
+## Thinking Effort (2026-11-24)
+`GenerationParams.reasoning_effort` is a typed `ReasoningEffort`: `ModelDefault`, `Off`, `Low`, `Medium`, `High`, `ExtraHigh`, or `Max`. It is parsed once from the `reasoning_effort` setting (`default`, `off`, `low`, `medium`, `high`, `xhigh`, `max`), and the default sends nothing. It reaches the wire only when the registry marks the model reasoning-capable (Spec 03); otherwise a model that cannot think would reject it with a 400 on every message. Field names below were verified against the live docs on 2026-11-24 unless marked otherwise.
+
+| Dialect | Field | Off | Low to Max |
+|---|---|---|---|
+| OpenAI Responses | `reasoning: {effort, summary: "auto"}` | `none` | `low`, `medium`, `high`, `xhigh`, `max` |
+| OpenAI-compatible Chat | `reasoning_effort` | `none` | as above |
+| Anthropic Messages | `thinking: {type: "adaptive", display: "summarized"}` + `output_config: {effort}` | `thinking: {type: "disabled"}` `[UNVERIFIED]` | `low` to `max` |
+| Gemini Interactions | `generation_config: {thinking_level, thinking_summaries}` | `low` + summaries `none` | `low`, `medium`, `high`, `xhigh` (Max maps to `xhigh`) |
+| Gemini generateContent (fallback) | `generationConfig.thinkingConfig: {includeThoughts, thinkingLevel}` `[UNVERIFIED]` | `LOW`, thoughts hidden | uppercase levels |
+
+The 400 heal ladder covers each field:
+- `StepDownReasoningEffort` steps `reasoning.effort`, `reasoning_effort`, `output_config.effort`, and `generation_config.thinking_level` down (`max`→`xhigh`→`high`).
+- `DropReasoning` removes `reasoning`, `reasoning_effort`, `thinking`, `output_config`, `thinkingConfig`, `thinking_level`, and `thinking_summaries`.
+
+Tests: `providers_tests::reasoning_effort_reaches_each_dialect_in_its_own_wire_field` and `error_policy::tests::effort_heals_cover_anthropic_and_gemini_interactions_fields`.

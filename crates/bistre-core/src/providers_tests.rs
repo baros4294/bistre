@@ -488,3 +488,71 @@ fn replay_never_carries_reasoning_signatures_or_provider_metadata() {
         }
     }
 }
+
+#[test]
+fn reasoning_effort_reaches_each_dialect_in_its_own_wire_field() {
+    use bistre_protocol::ReasoningEffort;
+    let history: Vec<NodeRecord> = Vec::new();
+    let body = |dialect: ProviderDialect, effort: ReasoningEffort| {
+        let params = GenerationParams {
+            reasoning_effort: effort,
+            ..GenerationParams::default()
+        };
+        let req = build_stream_request(dialect, "https://x", "m", "", &history, params, false);
+        req.body.unwrap_or(Value::Null)
+    };
+
+    let openai = body(ProviderDialect::OpenAi, ReasoningEffort::High);
+    assert_eq!(openai["reasoning"]["effort"], "high");
+    assert_eq!(openai["reasoning"]["summary"], "auto");
+    assert_eq!(
+        body(ProviderDialect::OpenAi, ReasoningEffort::Off)["reasoning"]["effort"],
+        "none"
+    );
+    assert_eq!(
+        body(ProviderDialect::CustomOpenAi, ReasoningEffort::Max)["reasoning_effort"],
+        "max"
+    );
+
+    let anthropic = body(ProviderDialect::Anthropic, ReasoningEffort::ExtraHigh);
+    assert_eq!(anthropic["thinking"]["type"], "adaptive");
+    assert_eq!(anthropic["output_config"]["effort"], "xhigh");
+    let anthropic_off = body(ProviderDialect::Anthropic, ReasoningEffort::Off);
+    assert_eq!(anthropic_off["thinking"]["type"], "disabled");
+    assert!(anthropic_off.get("output_config").is_none());
+
+    // Gemini: Interactions (primary) and generateContent (fallback); no `max` level exists.
+    let gemini = build_stream_request(
+        ProviderDialect::GoogleGemini,
+        "https://x",
+        "m",
+        "",
+        &history,
+        GenerationParams {
+            reasoning_effort: ReasoningEffort::Max,
+            ..GenerationParams::default()
+        },
+        false,
+    );
+    let primary = gemini.body.clone().unwrap_or(Value::Null);
+    assert_eq!(primary["generation_config"]["thinking_level"], "xhigh");
+    assert_eq!(primary["generation_config"]["thinking_summaries"], "auto");
+    let fallback = gemini.fallback.and_then(|f| f.body).unwrap_or(Value::Null);
+    assert_eq!(
+        fallback["generationConfig"]["thinkingConfig"]["thinkingLevel"],
+        "XHIGH"
+    );
+
+    // The model default sends no effort field in any dialect.
+    for dialect in [
+        ProviderDialect::OpenAi,
+        ProviderDialect::CustomOpenAi,
+        ProviderDialect::Anthropic,
+        ProviderDialect::GoogleGemini,
+    ] {
+        let b = body(dialect, ReasoningEffort::ModelDefault).to_string();
+        for field in ["reasoning", "output_config", "thinking", "thinking_level"] {
+            assert!(!b.contains(field), "{dialect:?} sent {field}: {b}");
+        }
+    }
+}

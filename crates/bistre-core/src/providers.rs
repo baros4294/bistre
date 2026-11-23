@@ -16,7 +16,7 @@ use std::time::{Duration, SystemTime};
 
 use bistre_protocol::{
     BistreError, BistreResult, DiagnosticKey, GenerationParams, MoneyMicros, NodeRecord, NodeRole,
-    ProviderDialect, ProviderModelInfo, ProviderProfile, UsageMetrics,
+    ProviderDialect, ProviderModelInfo, ProviderProfile, ReasoningEffort, UsageMetrics,
 };
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde_json::{Value, json};
@@ -663,8 +663,35 @@ fn openai_responses_body(
         if let Some(p) = gen_params.top_p_milli {
             obj.insert("top_p".to_owned(), milli_to_json_number(p));
         }
+        if let Some(effort) = openai_effort(gen_params.reasoning_effort) {
+            obj.insert(
+                "reasoning".to_owned(),
+                json!({ "effort": effort, "summary": "auto" }),
+            );
+        }
     }
     payload
+}
+
+/// `OpenAI` `reasoning.effort` / `reasoning_effort` value (`none` turns thinking off).
+fn openai_effort(effort: ReasoningEffort) -> Option<&'static str> {
+    match effort {
+        ReasoningEffort::ModelDefault => None,
+        ReasoningEffort::Off => Some("none"),
+        other => Some(other.as_str()),
+    }
+}
+
+/// Gemini thinking level (lowercase; Gemini has no `max`, and Off asks for the lowest level
+/// with thought summaries hidden).
+fn gemini_level(effort: ReasoningEffort) -> Option<&'static str> {
+    match effort {
+        ReasoningEffort::ModelDefault => None,
+        ReasoningEffort::Off | ReasoningEffort::Low => Some("low"),
+        ReasoningEffort::Medium => Some("medium"),
+        ReasoningEffort::High => Some("high"),
+        ReasoningEffort::ExtraHigh | ReasoningEffort::Max => Some("xhigh"),
+    }
 }
 
 fn gemini_interactions_body(
@@ -701,6 +728,15 @@ fn gemini_interactions_body(
         if let Some(p) = gen_params.top_p_milli {
             gen_cfg.insert("top_p".to_owned(), milli_to_json_number(p));
         }
+        if let Some(level) = gemini_level(gen_params.reasoning_effort) {
+            gen_cfg.insert("thinking_level".to_owned(), Value::from(level));
+            let summaries = if gen_params.reasoning_effort == ReasoningEffort::Off {
+                "none"
+            } else {
+                "auto"
+            };
+            gen_cfg.insert("thinking_summaries".to_owned(), Value::from(summaries));
+        }
         if !gen_cfg.is_empty() {
             obj.insert("generation_config".to_owned(), Value::Object(gen_cfg));
         }
@@ -734,6 +770,15 @@ fn gemini_generate_content_body(
         }
         if let Some(p) = gen_params.top_p_milli {
             gen_cfg.insert("topP".to_owned(), milli_to_json_number(p));
+        }
+        if let Some(level) = gemini_level(gen_params.reasoning_effort) {
+            gen_cfg.insert(
+                "thinkingConfig".to_owned(),
+                json!({
+                    "includeThoughts": gen_params.reasoning_effort != ReasoningEffort::Off,
+                    "thinkingLevel": level.to_ascii_uppercase(),
+                }),
+            );
         }
         if !gen_cfg.is_empty() {
             obj.insert("generationConfig".to_owned(), Value::Object(gen_cfg));
@@ -769,6 +814,22 @@ fn anthropic_messages_body(
         if let Some(p) = gen_params.top_p_milli {
             obj.insert("top_p".to_owned(), milli_to_json_number(p));
         }
+        match gen_params.reasoning_effort {
+            ReasoningEffort::ModelDefault => {}
+            ReasoningEffort::Off => {
+                obj.insert("thinking".to_owned(), json!({ "type": "disabled" }));
+            }
+            effort => {
+                obj.insert(
+                    "thinking".to_owned(),
+                    json!({ "type": "adaptive", "display": "summarized" }),
+                );
+                obj.insert(
+                    "output_config".to_owned(),
+                    json!({ "effort": effort.as_str() }),
+                );
+            }
+        }
     }
     payload
 }
@@ -795,6 +856,9 @@ fn openai_compat_chat_body(
         "stream_options": { "include_usage": true },
     });
     if let Some(obj) = payload.as_object_mut() {
+        if let Some(effort) = openai_effort(gen_params.reasoning_effort) {
+            obj.insert("reasoning_effort".to_owned(), Value::from(effort));
+        }
         if let Some(t) = gen_params.temperature_milli {
             obj.insert("temperature".to_owned(), milli_to_json_number(t));
         }

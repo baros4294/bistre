@@ -35,3 +35,12 @@ When Wallet Shield "$0 Local Priority" is enabled, local probed models satisfyin
 - The merged table is cached in `<data_dir>/pricing_cache.json` with `PRICE_CACHE_FORMAT`; a cache from another format version is ignored and rebuilt, and a fresh cache counts as the last successful sync. Writes are atomic (temp → `sync_all` → rename).
 - With automatic updates off and no cache, unknown prices show the quiet "price unavailable" info and count as `$0` toward the daily limit (Spec 06).
 - Each entry also records the model's conversation limit when its source reports one (`context_length`, `context_window`, `max_input_tokens`, `limit.context`); `EngineClient::model_context_tokens` serves it to the composer ring. The cache format is `2`.
+
+## Reasoning Capability (2026-11-24)
+`ModelRates.reasoning` records whether a model accepts a thinking effort, taken from each public list:
+- `OpenRouter` `supported_parameters` contains `reasoning`;
+- Vercel `tags` contains `reasoning`;
+- `LiteLLM` `supports_reasoning`;
+- models.dev `reasoning`.
+
+Earlier sources win per field, and later sources fill fields an earlier one lacked. A lookup by `vendor/model` also fills missing fields from the plain `model` entry. The cache gains a fifth column, so `PRICE_CACHE_FORMAT` is 3 and older caches rebuild. Test: `registry::tests::reasoning_capability_comes_from_each_source_shape`.
