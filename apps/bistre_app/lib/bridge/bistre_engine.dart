@@ -842,12 +842,18 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
     String threadId, {
     int limit = 50,
   }) async {
-    final raw = await frb.listCheckpointsJson(threadId: threadId, limit: limit);
-    final decoded = jsonDecode(raw);
-    if (decoded is! List<Object?>) return const <EngineCheckpoint>[];
-    return decoded
-        .whereType<Map<String, Object?>>()
-        .map(EngineCheckpoint.fromJson)
+    final cps = await frb.listCheckpoints(threadId: threadId, limit: limit);
+    return cps
+        .map(
+          (c) => EngineCheckpoint(
+            id: c.id,
+            threadId: c.threadId,
+            filePath: c.filePath,
+            preHashBlake3: c.beforeBlake3,
+            postHashBlake3: c.afterBlake3,
+            createdAtMs: c.createdAtMs,
+          ),
+        )
         .toList(growable: false);
   }
 
@@ -914,14 +920,20 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
 
   @override
   Future<List<EngineMemoryEntry>> listMemoryEntries({String? scope}) async {
-    final raw = await frb.listMemoryEntriesJson(scope: scope);
-    final decoded = jsonDecode(raw);
-    if (decoded is! List<Object?>) return const <EngineMemoryEntry>[];
-    return decoded
-        .whereType<Map<String, Object?>>()
-        .map(EngineMemoryEntry.fromJson)
-        .toList(growable: false);
+    final items = await frb.listMemoryEntries(scope: scope);
+    return items.map(_mapMemoryEntry).toList(growable: false);
   }
+
+  static EngineMemoryEntry _mapMemoryEntry(frb.FfiMemoryEntry m) =>
+      EngineMemoryEntry(
+        id: m.id,
+        scope: m.scope,
+        scopeId: m.scopeId,
+        key: m.key,
+        content: m.content,
+        pinned: m.pinned,
+        updatedAtMs: m.updatedAtMs,
+      );
 
   @override
   Future<EngineMemoryEntry> upsertMemoryEntry({
@@ -932,7 +944,7 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
     required String content,
     bool pinned = false,
   }) async {
-    final raw = await frb.upsertMemoryEntryJson(
+    final saved = await frb.upsertMemoryEntry(
       id: id,
       scope: scope,
       scopeId: scopeId,
@@ -940,7 +952,7 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
       content: content,
       pinned: pinned,
     );
-    return EngineMemoryEntry.fromJson(jsonDecode(raw) as Map<String, Object?>);
+    return _mapMemoryEntry(saved);
   }
 
   @override

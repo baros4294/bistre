@@ -60,13 +60,35 @@ pub async fn rewind_checkpoint(
 
 /// Lists persisted file-edit pre-image checkpoints for `thread_id` as JSON.
 #[frb]
-pub async fn list_checkpoints_json(thread_id: String, limit: u32) -> Result<String, String> {
-    let engine = current_engine()?;
-    let cps = engine
+pub async fn list_checkpoints(thread_id: String, limit: u32) -> Result<Vec<FfiCheckpoint>, String> {
+    let cps = current_engine()?
         .list_checkpoints(thread_id, limit)
         .await
         .map_err(crate::dto_mapping::ffi_err)?;
-    serde_json::to_string(&cps).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
+    Ok(cps
+        .into_iter()
+        .map(|c| FfiCheckpoint {
+            id: c.id,
+            thread_id: c.thread_id,
+            file_path: c.file_path,
+            before_blake3: c.before_blake3,
+            after_blake3: c.after_blake3,
+            created_at_ms: c.created_at_ms,
+        })
+        .collect())
+}
+
+/// One file checkpoint in a chat's edit history. The pre-image bytes stay in core: rewinding
+/// uses the id, so the list never ships file contents across FFI.
+#[frb]
+#[derive(Debug, Clone)]
+pub struct FfiCheckpoint {
+    pub id: String,
+    pub thread_id: String,
+    pub file_path: String,
+    pub before_blake3: String,
+    pub after_blake3: String,
+    pub created_at_ms: i64,
 }
 
 /// Inserts a reversible `CompactionSummary` DAG node without deleting original history.
@@ -179,31 +201,58 @@ pub async fn set_kv_meta(key: String, value: String) -> Result<(), String> {
 
 /// Lists persistent cross-chat SQLite memory entries as JSON.
 #[frb]
-pub async fn list_memory_entries_json(scope: Option<String>) -> Result<String, String> {
-    let engine = current_engine()?;
-    let items = engine
+pub async fn list_memory_entries(scope: Option<String>) -> Result<Vec<FfiMemoryEntry>, String> {
+    let items = current_engine()?
         .list_memory_entries(scope)
         .await
         .map_err(crate::dto_mapping::ffi_err)?;
-    serde_json::to_string(&items).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
+    Ok(items.into_iter().map(FfiMemoryEntry::from).collect())
 }
 
-/// Upserts a persistent cross-chat SQLite memory entry and returns it as JSON.
+/// Persistent cross-chat memory entry (`MemoryEntryRecord`).
 #[frb]
-pub async fn upsert_memory_entry_json(
+#[derive(Debug, Clone)]
+pub struct FfiMemoryEntry {
+    pub id: String,
+    pub scope: String,
+    pub scope_id: String,
+    pub key: String,
+    pub content: String,
+    pub source_thread_id: Option<String>,
+    pub pinned: bool,
+    pub updated_at_ms: i64,
+}
+
+impl From<bistre_protocol::MemoryEntryRecord> for FfiMemoryEntry {
+    fn from(r: bistre_protocol::MemoryEntryRecord) -> Self {
+        Self {
+            id: r.id,
+            scope: r.scope,
+            scope_id: r.scope_id,
+            key: r.key,
+            content: r.content,
+            source_thread_id: r.source_thread_id,
+            pinned: r.pinned,
+            updated_at_ms: r.updated_at_ms,
+        }
+    }
+}
+
+/// Upserts a persistent cross-chat SQLite memory entry and returns the saved entry.
+#[frb]
+pub async fn upsert_memory_entry(
     id: Option<String>,
     scope: String,
     scope_id: String,
     key: String,
     content: String,
     pinned: bool,
-) -> Result<String, String> {
-    let engine = current_engine()?;
-    let item = engine
+) -> Result<FfiMemoryEntry, String> {
+    let item = current_engine()?
         .upsert_memory_entry(id, scope, scope_id, key, content, pinned)
         .await
         .map_err(crate::dto_mapping::ffi_err)?;
-    serde_json::to_string(&item).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
+    Ok(item.into())
 }
 
 /// Deletes a persistent memory entry by ID.

@@ -734,15 +734,6 @@ class EngineCheckpoint {
   final String preHashBlake3;
   final String postHashBlake3;
   final int createdAtMs;
-
-  static EngineCheckpoint fromJson(Map<String, Object?> m) => EngineCheckpoint(
-    id: m['id'] as String? ?? '',
-    threadId: m['thread_id'] as String? ?? '',
-    filePath: m['file_path'] as String? ?? '',
-    preHashBlake3: m['pre_hash_blake3'] as String? ?? '',
-    postHashBlake3: m['post_hash_blake3'] as String? ?? '',
-    createdAtMs: (m['created_at_ms'] as num?)?.toInt() ?? 0,
-  );
 }
 
 /// Auto-discovered local loopback inference server (`$0` priority).
@@ -865,17 +856,6 @@ class EngineMemoryEntry {
   final String content;
   final bool pinned;
   final int updatedAtMs;
-
-  static EngineMemoryEntry fromJson(Map<String, Object?> m) =>
-      EngineMemoryEntry(
-        id: m['id'] as String? ?? '',
-        scope: m['scope'] as String? ?? 'global',
-        scopeId: m['scope_id'] as String? ?? 'default',
-        key: m['key'] as String? ?? '',
-        content: m['content'] as String? ?? '',
-        pinned: m['pinned'] as bool? ?? false,
-        updatedAtMs: (m['updated_at_ms'] as num?)?.toInt() ?? 0,
-      );
 }
 
 /// Progressive-disclosure `SKILL.md` frontmatter index entry.

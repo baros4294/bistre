@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -2036359960;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1753901636;
 
 // Section: executor
 
@@ -1746,7 +1746,7 @@ fn wire__crate__api__story__list_character_cards_json_impl(
         },
     )
 }
-fn wire__crate__api__harness__list_checkpoints_json_impl(
+fn wire__crate__api__harness__list_checkpoints_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -1754,7 +1754,7 @@ fn wire__crate__api__harness__list_checkpoints_json_impl(
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "list_checkpoints_json",
+            debug_name: "list_checkpoints",
             port: Some(port_),
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
@@ -1775,8 +1775,7 @@ fn wire__crate__api__harness__list_checkpoints_json_impl(
                 transform_result_sse::<_, String>(
                     (move || async move {
                         let output_ok =
-                            crate::api::harness::list_checkpoints_json(api_thread_id, api_limit)
-                                .await?;
+                            crate::api::harness::list_checkpoints(api_thread_id, api_limit).await?;
                         std::result::Result::Ok(output_ok)
                     })()
                     .await,
@@ -1820,7 +1819,7 @@ fn wire__crate__api__harness__list_cron_jobs_impl(
         },
     )
 }
-fn wire__crate__api__harness__list_memory_entries_json_impl(
+fn wire__crate__api__harness__list_memory_entries_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -1828,7 +1827,7 @@ fn wire__crate__api__harness__list_memory_entries_json_impl(
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "list_memory_entries_json",
+            debug_name: "list_memory_entries",
             port: Some(port_),
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
@@ -1847,8 +1846,7 @@ fn wire__crate__api__harness__list_memory_entries_json_impl(
             move |context| async move {
                 transform_result_sse::<_, String>(
                     (move || async move {
-                        let output_ok =
-                            crate::api::harness::list_memory_entries_json(api_scope).await?;
+                        let output_ok = crate::api::harness::list_memory_entries(api_scope).await?;
                         std::result::Result::Ok(output_ok)
                     })()
                     .await,
@@ -3512,7 +3510,7 @@ fn wire__crate__api__harness__upsert_cron_job_impl(
         },
     )
 }
-fn wire__crate__api__harness__upsert_memory_entry_json_impl(
+fn wire__crate__api__harness__upsert_memory_entry_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -3520,7 +3518,7 @@ fn wire__crate__api__harness__upsert_memory_entry_json_impl(
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "upsert_memory_entry_json",
+            debug_name: "upsert_memory_entry",
             port: Some(port_),
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
@@ -3544,7 +3542,7 @@ fn wire__crate__api__harness__upsert_memory_entry_json_impl(
             move |context| async move {
                 transform_result_sse::<_, String>(
                     (move || async move {
-                        let output_ok = crate::api::harness::upsert_memory_entry_json(
+                        let output_ok = crate::api::harness::upsert_memory_entry(
                             api_id,
                             api_scope,
                             api_scope_id,
@@ -3985,6 +3983,26 @@ impl SseDecode for crate::api::FfiAssistantRecord {
     }
 }
 
+impl SseDecode for crate::api::harness::FfiCheckpoint {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_id = <String>::sse_decode(deserializer);
+        let mut var_threadId = <String>::sse_decode(deserializer);
+        let mut var_filePath = <String>::sse_decode(deserializer);
+        let mut var_beforeBlake3 = <String>::sse_decode(deserializer);
+        let mut var_afterBlake3 = <String>::sse_decode(deserializer);
+        let mut var_createdAtMs = <i64>::sse_decode(deserializer);
+        return crate::api::harness::FfiCheckpoint {
+            id: var_id,
+            thread_id: var_threadId,
+            file_path: var_filePath,
+            before_blake3: var_beforeBlake3,
+            after_blake3: var_afterBlake3,
+            created_at_ms: var_createdAtMs,
+        };
+    }
+}
+
 impl SseDecode for crate::api::harness::FfiCronJob {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4083,6 +4101,30 @@ impl SseDecode for crate::api::FfiHealthSnapshot {
             node_count: var_nodeCount,
             active_runs: var_activeRuns,
             status_key: var_statusKey,
+        };
+    }
+}
+
+impl SseDecode for crate::api::harness::FfiMemoryEntry {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_id = <String>::sse_decode(deserializer);
+        let mut var_scope = <String>::sse_decode(deserializer);
+        let mut var_scopeId = <String>::sse_decode(deserializer);
+        let mut var_key = <String>::sse_decode(deserializer);
+        let mut var_content = <String>::sse_decode(deserializer);
+        let mut var_sourceThreadId = <Option<String>>::sse_decode(deserializer);
+        let mut var_pinned = <bool>::sse_decode(deserializer);
+        let mut var_updatedAtMs = <i64>::sse_decode(deserializer);
+        return crate::api::harness::FfiMemoryEntry {
+            id: var_id,
+            scope: var_scope,
+            scope_id: var_scopeId,
+            key: var_key,
+            content: var_content,
+            source_thread_id: var_sourceThreadId,
+            pinned: var_pinned,
+            updated_at_ms: var_updatedAtMs,
         };
     }
 }
@@ -4348,6 +4390,20 @@ impl SseDecode for Vec<crate::api::FfiAssistantRecord> {
     }
 }
 
+impl SseDecode for Vec<crate::api::harness::FfiCheckpoint> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::harness::FfiCheckpoint>::sse_decode(
+                deserializer,
+            ));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<crate::api::harness::FfiCronJob> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4355,6 +4411,20 @@ impl SseDecode for Vec<crate::api::harness::FfiCronJob> {
         let mut ans_ = Vec::with_capacity(len_ as usize);
         for idx_ in 0..len_ {
             ans_.push(<crate::api::harness::FfiCronJob>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::harness::FfiMemoryEntry> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::harness::FfiMemoryEntry>::sse_decode(
+                deserializer,
+            ));
         }
         return ans_;
     }
@@ -4660,16 +4730,11 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        45 => {
-            wire__crate__api__harness__list_checkpoints_json_impl(port, ptr, rust_vec_len, data_len)
-        }
+        45 => wire__crate__api__harness__list_checkpoints_impl(port, ptr, rust_vec_len, data_len),
         46 => wire__crate__api__harness__list_cron_jobs_impl(port, ptr, rust_vec_len, data_len),
-        47 => wire__crate__api__harness__list_memory_entries_json_impl(
-            port,
-            ptr,
-            rust_vec_len,
-            data_len,
-        ),
+        47 => {
+            wire__crate__api__harness__list_memory_entries_impl(port, ptr, rust_vec_len, data_len)
+        }
         48 => wire__crate__api__list_nodes_impl(port, ptr, rust_vec_len, data_len),
         49 => wire__crate__api__list_pending_steering_impl(port, ptr, rust_vec_len, data_len),
         50 => wire__crate__api__list_providers_impl(port, ptr, rust_vec_len, data_len),
@@ -4757,12 +4822,9 @@ fn pde_ffi_dispatcher_primary_impl(
             data_len,
         ),
         89 => wire__crate__api__harness__upsert_cron_job_impl(port, ptr, rust_vec_len, data_len),
-        90 => wire__crate__api__harness__upsert_memory_entry_json_impl(
-            port,
-            ptr,
-            rust_vec_len,
-            data_len,
-        ),
+        90 => {
+            wire__crate__api__harness__upsert_memory_entry_impl(port, ptr, rust_vec_len, data_len)
+        }
         91 => {
             wire__crate__api__story__upsert_regex_rule_json_impl(port, ptr, rust_vec_len, data_len)
         }
@@ -4928,6 +4990,31 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::FfiAssistantRecord>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::harness::FfiCheckpoint {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.id.into_into_dart().into_dart(),
+            self.thread_id.into_into_dart().into_dart(),
+            self.file_path.into_into_dart().into_dart(),
+            self.before_blake3.into_into_dart().into_dart(),
+            self.after_blake3.into_into_dart().into_dart(),
+            self.created_at_ms.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::harness::FfiCheckpoint
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::harness::FfiCheckpoint>
+    for crate::api::harness::FfiCheckpoint
+{
+    fn into_into_dart(self) -> crate::api::harness::FfiCheckpoint {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::harness::FfiCronJob {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -5022,6 +5109,33 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::FfiHealthSnapshot>
     for crate::api::FfiHealthSnapshot
 {
     fn into_into_dart(self) -> crate::api::FfiHealthSnapshot {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::harness::FfiMemoryEntry {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.id.into_into_dart().into_dart(),
+            self.scope.into_into_dart().into_dart(),
+            self.scope_id.into_into_dart().into_dart(),
+            self.key.into_into_dart().into_dart(),
+            self.content.into_into_dart().into_dart(),
+            self.source_thread_id.into_into_dart().into_dart(),
+            self.pinned.into_into_dart().into_dart(),
+            self.updated_at_ms.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::harness::FfiMemoryEntry
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::harness::FfiMemoryEntry>
+    for crate::api::harness::FfiMemoryEntry
+{
+    fn into_into_dart(self) -> crate::api::harness::FfiMemoryEntry {
         self
     }
 }
@@ -5377,6 +5491,18 @@ impl SseEncode for crate::api::FfiAssistantRecord {
     }
 }
 
+impl SseEncode for crate::api::harness::FfiCheckpoint {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.id, serializer);
+        <String>::sse_encode(self.thread_id, serializer);
+        <String>::sse_encode(self.file_path, serializer);
+        <String>::sse_encode(self.before_blake3, serializer);
+        <String>::sse_encode(self.after_blake3, serializer);
+        <i64>::sse_encode(self.created_at_ms, serializer);
+    }
+}
+
 impl SseEncode for crate::api::harness::FfiCronJob {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -5433,6 +5559,20 @@ impl SseEncode for crate::api::FfiHealthSnapshot {
         <u64>::sse_encode(self.node_count, serializer);
         <u32>::sse_encode(self.active_runs, serializer);
         <String>::sse_encode(self.status_key, serializer);
+    }
+}
+
+impl SseEncode for crate::api::harness::FfiMemoryEntry {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.id, serializer);
+        <String>::sse_encode(self.scope, serializer);
+        <String>::sse_encode(self.scope_id, serializer);
+        <String>::sse_encode(self.key, serializer);
+        <String>::sse_encode(self.content, serializer);
+        <Option<String>>::sse_encode(self.source_thread_id, serializer);
+        <bool>::sse_encode(self.pinned, serializer);
+        <i64>::sse_encode(self.updated_at_ms, serializer);
     }
 }
 
@@ -5596,12 +5736,32 @@ impl SseEncode for Vec<crate::api::FfiAssistantRecord> {
     }
 }
 
+impl SseEncode for Vec<crate::api::harness::FfiCheckpoint> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::harness::FfiCheckpoint>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<crate::api::harness::FfiCronJob> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <crate::api::harness::FfiCronJob>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::harness::FfiMemoryEntry> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::harness::FfiMemoryEntry>::sse_encode(item, serializer);
         }
     }
 }
