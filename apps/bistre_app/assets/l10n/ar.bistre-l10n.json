@@ -3631,6 +3631,34 @@
       "tone": "concise_action",
       "max_chars": 24,
       "placeholders": {}
+    },
+    "shell.model_on_provider": {
+      "message": "{model} على {provider}",
+      "context": "Header subtitle naming the active model and its provider; opens the model picker",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {
+        "model": {
+          "type": "string",
+          "example": "gpt-4.1"
+        },
+        "provider": {
+          "type": "string",
+          "example": "OpenAI"
+        }
+      }
+    },
+    "composer.placeholder_assistant": {
+      "message": "راسل {name}...",
+      "context": "Composer placeholder naming the active assistant",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "Default"
+        }
+      }
     }
   }
 }

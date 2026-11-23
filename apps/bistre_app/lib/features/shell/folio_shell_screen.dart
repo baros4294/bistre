@@ -511,21 +511,6 @@ class _FolioShellScreenState extends State<FolioShellScreen> {
     );
   }
 
-  static String _activeRunBadgeLabel(
-    BistreLocalizationController l10n,
-    FolioController ctrl,
-  ) {
-    if (!ctrl.powerStatus.keepAwakeActive) {
-      return l10n.t(L10nKey.chatStreamingBadge);
-    }
-    final count = ctrl.activeRunCount > 0 ? ctrl.activeRunCount : 1;
-    final runLabel = l10n.t(L10nKey.studioRunningCount, <String, Object?>{
-      'count': count,
-    });
-    final awakeLabel = l10n.t(L10nKey.studioAwakeBadge);
-    return '$runLabel · $awakeLabel';
-  }
-
   Widget _buildHeader(
     BistreThemeData theme,
     BistreLocalizationController l10n,
@@ -549,16 +534,15 @@ class _FolioShellScreenState extends State<FolioShellScreen> {
         children: [
           LayoutBuilder(
             builder: (context, headerConstraints) {
-              final headerW = headerConstraints.maxWidth;
-              final showModeBar = headerW >= 740;
-              final showRunPill = headerW >= 560;
-              final showModelLabel = headerW >= 520;
-              final showTreeIcon = headerW >= 460;
               // At >= 135% text in a narrow effective width (width / text scale < 600 px),
               // secondary actions stack below a full-width title.
               final scale = textScaleOf(context);
+              final headerW = headerConstraints.maxWidth;
               final stackActions =
                   scale >= kHeaderStackTextScale && headerW / scale < 600;
+              // One bar (DESIGN §10, Parchment v2.6.0): title with the model as an interactive
+              // subtitle; trailing new chat, Studio, and settings. Mode, branches, inspector,
+              // search, and the palette live in the composer, Ctrl+K, and shortcuts.
               final leading = <Widget>[
                 if (showSidebarButton) ...[
                   BistreIconButton(
@@ -569,114 +553,129 @@ class _FolioShellScreenState extends State<FolioShellScreen> {
                   const SizedBox(width: BistreSpacing.s8),
                 ],
                 Expanded(
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (_renamingTitle && active != null)
-                        Expanded(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 320),
-                            child: QuillInput(
-                              controller: _titleRenameCtrl,
-                              focusNode: _titleRenameFocus,
-                              placeholder: l10n.t(
-                                L10nKey.threadRenamePlaceholder,
+                      Row(
+                        children: [
+                          if (_renamingTitle && active != null)
+                            Expanded(
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: 320,
+                                ),
+                                child: QuillInput(
+                                  controller: _titleRenameCtrl,
+                                  focusNode: _titleRenameFocus,
+                                  placeholder: l10n.t(
+                                    L10nKey.threadRenamePlaceholder,
+                                  ),
+                                  maxLines: 1,
+                                  submitOnEnter: false,
+                                  onSubmitted: () =>
+                                      _commitInlineTitleRename(active),
+                                ),
                               ),
-                              maxLines: 1,
-                              submitOnEnter: false,
-                              onSubmitted: () =>
-                                  _commitInlineTitleRename(active),
+                            )
+                          else
+                            Flexible(
+                              child: _HeaderPressable(
+                                semanticsLabel: l10n.t(
+                                  L10nKey.threadRenamePlaceholder,
+                                ),
+                                cursor: SystemMouseCursors.text,
+                                onPressed: active != null
+                                    ? () => _startInlineTitleRename(active)
+                                    : null,
+                                child: InkText(
+                                  active?.title ??
+                                      l10n.t(L10nKey.shellThreadDefaultTitle),
+                                  role: InkTextRole.titleMedium,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
                             ),
+                          if (active != null && !_renamingTitle) ...[
+                            const SizedBox(width: 4),
+                            BistreIconButton(
+                              icon: active.isPinned
+                                  ? BistreUiIcon.pinFilled
+                                  : BistreUiIcon.pin,
+                              size: 15,
+                              color: active.isPinned
+                                  ? theme.accentBrass
+                                  : theme.inkMuted,
+                              semanticsLabel: active.isPinned
+                                  ? l10n.t(L10nKey.threadUnpin)
+                                  : l10n.t(L10nKey.threadPin),
+                              onPressed: () =>
+                                  unawaited(ctrl.togglePinThread(active.id)),
+                            ),
+                          ],
+                        ],
+                      ),
+                      // The one model picker: `model on Provider ▾` under the title.
+                      if (hasProvider && activeProv != null)
+                        FolioOverlay(
+                          controller: _providerPopoverCtrl,
+                          overlayBuilder: (ctx) => _buildProviderQuickSwitcher(
+                            ctx,
+                            theme,
+                            l10n,
+                            ctrl,
                           ),
-                        )
-                      else
-                        Flexible(
-                          child: MouseRegion(
-                            cursor: active != null
-                                ? SystemMouseCursors.text
-                                : SystemMouseCursors.basic,
-                            child: GestureDetector(
-                              onTap: active != null
-                                  ? () => _startInlineTitleRename(active)
-                                  : null,
-                              child: InkText(
-                                active?.title ??
-                                    l10n.t(L10nKey.shellThreadDefaultTitle),
-                                role: InkTextRole.titleMedium,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                          child: CompositedTransformTarget(
+                            link: _providerPillLink,
+                            child: _HeaderPressable(
+                              semanticsLabel: l10n.t(
+                                L10nKey.shellModelOnProvider,
+                                <String, Object?>{
+                                  'model': modelDisplay,
+                                  'provider': activeProv.name,
+                                },
+                              ),
+                              onPressed: _providerPopoverCtrl.toggle,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: InkText(
+                                      l10n.t(
+                                        L10nKey.shellModelOnProvider,
+                                        <String, Object?>{
+                                          'model': modelDisplay,
+                                          'provider': activeProv.name,
+                                        },
+                                      ),
+                                      role: InkTextRole.captionMeta,
+                                      color: theme.inkSecondary,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  BistreIcon(
+                                    BistreUiIcon.chevronDown,
+                                    size: 11,
+                                    color: theme.inkMuted,
+                                  ),
+                                ],
                               ),
                             ),
                           ),
                         ),
-                      if (active != null && !_renamingTitle) ...[
-                        const SizedBox(width: 4),
-                        BistreIconButton(
-                          icon: active.isPinned
-                              ? BistreUiIcon.pinFilled
-                              : BistreUiIcon.pin,
-                          size: 15,
-                          dimension: 28,
-                          color: active.isPinned
-                              ? theme.accentBrass
-                              : theme.inkMuted,
-                          semanticsLabel: active.isPinned
-                              ? l10n.t(L10nKey.threadUnpin)
-                              : l10n.t(L10nKey.threadPin),
-                          onPressed: () =>
-                              unawaited(ctrl.togglePinThread(active.id)),
-                        ),
-                      ],
                     ],
                   ),
                 ),
               ];
               final trailing = <Widget>[
-                if (showModeBar && active != null) ...[
-                  _HeaderModeSelector(
-                    activeMode: ctrl.activeThreadMode,
-                    onSelect: (m) => unawaited(ctrl.setActiveThreadMode(m)),
-                  ),
-                  const SizedBox(width: BistreSpacing.s8),
-                ],
-                if (showRunPill &&
-                    (ctrl.isStreaming || ctrl.activeRunCount > 0)) ...[
-                  GestureDetector(
-                    onTap: ctrl.toggleStudioPane,
-                    child: WaxSealBadge(
-                      label: _activeRunBadgeLabel(l10n, ctrl),
-                      status: WaxSealStatus.warn,
-                    ),
-                  ),
-                  const SizedBox(width: BistreSpacing.s8),
-                ],
-                // Strictly render model pill ONLY when a provider is configured —
-                // zero duplicate "Add API Key" header button when unconfigured!
-                if (hasProvider && activeProv != null) ...[
-                  Flexible(
-                    flex: 0,
-                    child: FolioOverlay(
-                      controller: _providerPopoverCtrl,
-                      overlayBuilder: (ctx) =>
-                          _buildProviderQuickSwitcher(ctx, theme, l10n, ctrl),
-                      child: CompositedTransformTarget(
-                        link: _providerPillLink,
-                        child: _HeaderModelPill(
-                          provider: activeProv,
-                          label: showModelLabel ? modelDisplay : '',
-                          onTap: _providerPopoverCtrl.toggle,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                ],
-                if (showTreeIcon)
-                  BistreIconButton(
-                    icon: BistreUiIcon.branchTree,
-                    active: ctrl.sessionTreeOpen,
-                    semanticsLabel: l10n.t(L10nKey.chatTreeTitle),
-                    onPressed: ctrl.openSessionTree,
-                  ),
+                BistreIconButton(
+                  icon: BistreUiIcon.newChat,
+                  semanticsLabel: l10n.t(L10nKey.sidebarNewFolio),
+                  onPressed: () => unawaited(ctrl.createNewFolio()),
+                ),
                 BistreIconButton(
                   icon: BistreUiIcon.server,
                   active: ctrl.studioPaneOpen,
@@ -684,22 +683,9 @@ class _FolioShellScreenState extends State<FolioShellScreen> {
                   onPressed: ctrl.toggleStudioPane,
                 ),
                 BistreIconButton(
-                  icon: BistreUiIcon.sliders,
-                  active: ctrl.inspectorOpen,
-                  semanticsLabel: l10n.t(L10nKey.chatInspectorToggle),
-                  onPressed: ctrl.toggleInspector,
-                ),
-                BistreIconButton(
-                  icon: BistreUiIcon.search,
-                  active: ctrl.searchPanelOpen,
-                  semanticsLabel: l10n.t(L10nKey.chatSearchToggle),
-                  onPressed: _toggleSearch,
-                ),
-                BistreIconButton(
-                  icon: BistreUiIcon.command,
-                  active: ctrl.commandPaletteOpen,
-                  semanticsLabel: l10n.t(L10nKey.paletteTrigger),
-                  onPressed: ctrl.toggleCommandPalette,
+                  icon: BistreUiIcon.settings,
+                  semanticsLabel: l10n.t(L10nKey.sidebarSettings),
+                  onPressed: ctrl.openSettings,
                 ),
               ];
               if (stackActions) {
@@ -915,92 +901,6 @@ class _FolioShellScreenState extends State<FolioShellScreen> {
   }
 }
 
-class _HeaderModelPill extends StatefulWidget {
-  const _HeaderModelPill({
-    required this.provider,
-    required this.label,
-    required this.onTap,
-  });
-
-  final EngineProvider provider;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  State<_HeaderModelPill> createState() => _HeaderModelPillState();
-}
-
-class _HeaderModelPillState extends State<_HeaderModelPill> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    return Semantics(
-      button: true,
-      label: widget.label,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: _hovered
-                  ? theme.bgElevated
-                  : theme.bgSurface.withValues(alpha: 0.80),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                color: _hovered
-                    ? theme.borderHairline
-                    : theme.borderHairline.withValues(alpha: 0.6),
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.symmetric(
-                horizontal: 10,
-                vertical: 5,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  LabIcon(
-                    iconSlug: widget.provider.iconSlug,
-                    customIconPath: widget.provider.customIconPath,
-                    dialect: widget.provider.dialect,
-                    providerName: widget.provider.name,
-                    modelId: widget.label,
-                    size: 15,
-                  ),
-                  const SizedBox(width: 7),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 196),
-                    child: InkText(
-                      widget.label,
-                      role: InkTextRole.captionMeta,
-                      color: theme.inkPrimary,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 5),
-                  BistreIcon(
-                    BistreUiIcon.chevronDown,
-                    size: 11,
-                    color: theme.inkMuted,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _QuickProviderOption extends StatefulWidget {
   const _QuickProviderOption({
     required this.provider,
@@ -1203,90 +1103,6 @@ class _QuickActionFooterRowState extends State<_QuickActionFooterRow> {
   }
 }
 
-class _HeaderModeSelector extends StatelessWidget {
-  const _HeaderModeSelector({required this.activeMode, required this.onSelect});
-
-  final String activeMode;
-  final ValueChanged<String> onSelect;
-
-  static const List<(String, L10nKey)> _modes = <(String, L10nKey)>[
-    ('chat', L10nKey.modeChat),
-    ('plan', L10nKey.modePlan),
-    ('code', L10nKey.modeBuild),
-    ('write', L10nKey.modeWrite),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    final l10n = BistreLocalizations.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: theme.bgSurface,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: theme.borderHairline),
-      ),
-      child: Padding(
-        padding: const EdgeInsetsDirectional.all(2),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final m in _modes)
-              _ModeSegmentPill(
-                label: l10n.t(m.$2),
-                selected: activeMode == m.$1,
-                onTap: () => onSelect(m.$1),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ModeSegmentPill extends StatelessWidget {
-  const _ModeSegmentPill({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: selected ? theme.bgElevated : null,
-            borderRadius: BorderRadius.circular(999),
-            boxShadow: selected ? theme.cardShadow : null,
-          ),
-          child: Padding(
-            padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: 9,
-              vertical: 3,
-            ),
-            child: InkText(
-              label,
-              role: InkTextRole.captionMeta,
-              color: selected ? theme.inkPrimary : theme.inkMuted,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Shown when the local engine could not open; offers the one action that can fix it.
 class _BootFailedPage extends StatelessWidget {
   const _BootFailedPage({required this.onRetry});
 
@@ -1319,6 +1135,73 @@ class _BootFailedPage extends StatelessWidget {
                 onPressed: onRetry,
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A focusable, labelled header control (title rename, model picker): keyboard Enter/Space
+/// activates it, and a 2 px focus ring appears only for keyboard focus.
+class _HeaderPressable extends StatefulWidget {
+  const _HeaderPressable({
+    required this.child,
+    required this.semanticsLabel,
+    required this.onPressed,
+    this.cursor = SystemMouseCursors.click,
+  });
+
+  final Widget child;
+  final String semanticsLabel;
+  final VoidCallback? onPressed;
+  final MouseCursor cursor;
+
+  @override
+  State<_HeaderPressable> createState() => _HeaderPressableState();
+}
+
+class _HeaderPressableState extends State<_HeaderPressable> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = BistreTheme.of(context);
+    final onPressed = widget.onPressed;
+    return Semantics(
+      button: onPressed != null,
+      label: widget.semanticsLabel,
+      child: FocusableActionDetector(
+        enabled: onPressed != null,
+        mouseCursor: onPressed != null ? widget.cursor : MouseCursor.defer,
+        onShowFocusHighlight: (v) => setState(() => _focused = v),
+        actions: <Type, Action<Intent>>{
+          ActivateIntent: CallbackAction<ActivateIntent>(
+            onInvoke: (_) {
+              onPressed?.call();
+              return null;
+            },
+          ),
+        },
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onPressed,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(6),
+              border: _focused
+                  ? Border.all(color: theme.accentBrass, width: 2)
+                  : null,
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 24),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                widthFactor: 1,
+                heightFactor: 1,
+                child: widget.child,
+              ),
+            ),
           ),
         ),
       ),

@@ -11,6 +11,7 @@ import '../../design/ink_primitives.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
+import 'chat_mode_selector.dart';
 import 'context_gauge_ring.dart';
 
 /// Unified floating composer sheet respecting user reading width:
@@ -543,6 +544,11 @@ class _FolioComposerState extends State<FolioComposer> {
                         focusNode: widget.focusNode,
                         placeholder: ctrl.isStreaming
                             ? l10n.t(L10nKey.composerSteerPlaceholder)
+                            : assistant != null
+                            ? l10n.t(
+                                L10nKey.composerPlaceholderAssistant,
+                                <String, Object?>{'name': assistant.name},
+                              )
                             : l10n.t(L10nKey.shellComposerPlaceholder),
                         submitOnEnter: ctrl.sendOnEnter,
                         frameless: true,
@@ -577,6 +583,14 @@ class _FolioComposerState extends State<FolioComposer> {
                             ),
                           ),
                           const SizedBox(width: 4),
+                          if (ctrl.activeThread != null) ...[
+                            ChatModeSelector(
+                              activeMode: ctrl.activeThreadMode,
+                              onSelect: (m) =>
+                                  unawaited(ctrl.setActiveThreadMode(m)),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
                           if (assistant != null)
                             FolioOverlay(
                               controller: _assistantMenuCtrl,
@@ -629,14 +643,15 @@ class _FolioComposerState extends State<FolioComposer> {
                                   unawaited(ctrl.cancelStreaming()),
                             ),
                           ] else
+                            // A quiet Send (Parchment v2.6.0): the message, not the button, is
+                            // the focal point.
                             EngravedButton(
                               label: l10n.t(L10nKey.shellComposerSend),
-                              primary: true,
                               compact: true,
                               leading: BistreIcon(
                                 BistreUiIcon.send,
                                 size: 13,
-                                color: theme.onAccentWax,
+                                color: theme.inkSecondary,
                               ),
                               onPressed: () => unawaited(_submit()),
                             ),
