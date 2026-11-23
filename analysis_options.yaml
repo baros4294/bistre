@@ -1,0 +1,70 @@
+analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+  errors:
+    avoid_dynamic_calls: error
+    avoid_print: error
+    cancel_subscriptions: error
+    close_sinks: error
+    dead_code: error
+    deprecated_member_use: error
+    document_ignores: error
+    missing_return: error
+    unawaited_futures: error
+    unnecessary_ignore: error
+    unused_element: error
+    unused_field: error
+    unused_import: error
+    unused_local_variable: error
+  exclude:
+    - "**/*.g.dart"
+    - "**/frb_generated*.dart"
+    - "**/lib/bridge/api.dart"
+    - "**/lib/bridge/api/**"
+    - "**/build/**"
+
+plugins:
+  bistre_lints:
+    path: tools/bistre_lints
+    diagnostics:
+      bistre_forbid_ui_kits: true
+      bistre_forbid_hardcoded_ui_strings: true
+      bistre_forbid_layout_animations: true
+      bistre_forbid_raw_colors: true
+      bistre_forbid_non_directional_geometry: true
+
+linter:
+  rules:
+    - always_declare_return_types
+    - avoid_dynamic_calls
+    - avoid_print
+    - avoid_redundant_argument_values
+    - avoid_unnecessary_containers
+    - avoid_unused_constructor_parameters
+    - cancel_subscriptions
+    - close_sinks
+    - directives_ordering
+    - discarded_futures
+    - document_ignores
+    - no_adjacent_strings_in_list
+    - only_throw_errors
+    - prefer_const_constructors
+    - prefer_const_declarations
+    - prefer_final_fields
+    - prefer_final_in_for_each
+    - prefer_final_locals
+    - prefer_single_quotes
+    - sized_box_for_whitespace
+    - sort_child_properties_last
+    - throw_in_finally
+    - unawaited_futures
+    - unnecessary_await_in_return
+    - unnecessary_breaks
+    - unnecessary_lambdas
+    - unnecessary_null_checks
+    - use_colored_box
+    - use_decorated_box
+    - use_key_in_widget_constructors
+    - use_super_parameters

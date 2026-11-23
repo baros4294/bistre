@@ -1,0 +1,26 @@
+* text=auto eol=lf
+
+# Windows batch scripts require CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Windows resource scripts and installer scripts require CRLF
+*.rc text eol=crlf
+*.iss text eol=crlf
+
+# Binary assets
+*.png binary
+*.ico binary
+*.icns binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ttf binary
+*.otf binary
+*.woff2 binary
+*.vec binary
+*.so binary
+*.dll binary
+*.exe binary
+*.apk binary
+*.aab binary

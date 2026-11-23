@@ -1,0 +1,17 @@
+# Cap parallel rustc/LLVM jobs so 7.7 GB reference laptops never thrash the pagefile (Spec 11 §4).
+[build]
+jobs = 4
+
+# Supply-chain cooldown: resolver ignores crate versions published less than 3 days ago (Cargo 1.100+).
+[registry]
+global-min-publish-age = "3 days"
+
+[target.aarch64-linux-android]
+# 16 KiB ELF LOAD alignment for Android 15+ (ADR-0002) plus size slimming: no forced unwind tables,
+# section garbage collection, and safe identical-code folding. Mirrored in apps/bistre_app/hook/build.dart.
+rustflags = [
+  "-C", "force-unwind-tables=no",
+  "-C", "link-arg=-Wl,--gc-sections",
+  "-C", "link-arg=-Wl,--icf=safe",
+  "-C", "link-arg=-Wl,-z,max-page-size=16384",
+]

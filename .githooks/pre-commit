@@ -1,0 +1,28 @@
+#!/usr/bin/env sh
+# Bistre pre-commit hook (install with `just install-hooks`).
+#
+# Git for Windows prepends /usr/bin and /mingw64/bin to PATH inside hooks. /usr/bin/link.exe is
+# GNU coreutils `link`, which shadows the MSVC linker and breaks every Cargo link step. Move those
+# directories to the back of PATH so MSVC link.exe wins again.
+set -eu
+
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    front=""
+    back=""
+    old_ifs="$IFS"
+    IFS=":"
+    for entry in $PATH; do
+      case "$entry" in
+        /usr/bin|/bin|/mingw64/bin|/usr/local/bin) back="${back:+$back:}$entry" ;;
+        *) front="${front:+$front:}$entry" ;;
+      esac
+    done
+    IFS="$old_ifs"
+    PATH="${front}${back:+:$back}"
+    export PATH
+    ;;
+esac
+
+just fmt-check
+just guard

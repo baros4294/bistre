@@ -1,0 +1,35 @@
+title = "Bistre gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "bistre-openai-api-key"
+description = "OpenAI API Key"
+regex = '''\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{20,}\b'''
+tags = ["key", "openai"]
+
+[[rules]]
+id = "bistre-anthropic-api-key"
+description = "Anthropic API Key"
+regex = '''\bsk-ant-[A-Za-z0-9_-]{20,}\b'''
+tags = ["key", "anthropic"]
+
+[[rules]]
+id = "bistre-google-api-key"
+description = "Google Gemini API Key"
+regex = '''\bAIza[0-9A-Za-z\-_]{35}\b'''
+tags = ["key", "gemini"]
+
+[[rules]]
+id = "bistre-minisign-secret-key"
+description = "Minisign Private Signing Key"
+regex = '''untrusted comment: minisign encrypted secret key'''
+tags = ["key", "ota-signing"]
+
+[allowlist]
+description = "Allow only explicitly named dummy test tokens (never blanket-exempt test directories)"
+regexes = [
+  '''dummy-secret-value''',
+  '''sk-(?:test|dummy|example)-[A-Za-z0-9_-]+''',
+]

@@ -1,0 +1,23 @@
+# Bistre workspace Clippy anti-slop configuration (enforced in `just lint-rust` & CI).
+msrv = "1.100.0"
+
+# Enforce zero unwrap/expect/panic/dbg/print even in test helpers so test code stays deterministic.
+allow-unwrap-in-tests = false
+allow-expect-in-tests = false
+allow-panic-in-tests = false
+allow-dbg-in-tests = false
+allow-print-in-tests = false
+
+# Guard against monolithic AI-generated functions.
+too-many-lines-threshold = 120
+cognitive-complexity-threshold = 25
+
+disallowed-methods = [
+  { path = "std::process::exit", reason = "Return ExitCode from main so Drop impls and SQLite WAL checkpoints run." },
+  { path = "std::mem::forget", reason = "Prevent silent leaks of kernel locks, Job Objects, and WAL handles." },
+  { path = "std::process::Command::new", reason = "Spawn children via bistre_core::process_util::no_window_command (CREATE_NO_WINDOW + process group)." },
+  { path = "tokio::process::Command::new", reason = "Spawn children via bistre_core::process_util::no_window_command (CREATE_NO_WINDOW + process group)." },
+  { path = "tokio::process::Command::spawn", reason = "Spawn via bistre_core::process_util::spawn_contained (kill-on-close Job Object)." },
+  { path = "tokio::process::Command::output", reason = "Use bistre_core::process_util::run_bounded (contained, bounded, tree-kill on timeout)." },
+  { path = "tokio::process::Command::status", reason = "Use bistre_core::process_util::run_bounded (contained, bounded, tree-kill on timeout)." },
+]

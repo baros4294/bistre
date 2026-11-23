@@ -1,0 +1,11 @@
+name: bistre_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.14.0
+
+workspace:
+  - apps/bistre_app
+  - tools/bistre_lints
+  - tools/bistre_i18n
+  - tools/bistre_guard

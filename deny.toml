@@ -1,0 +1,63 @@
+# Bistre cargo-deny supply-chain & architecture boundary fortress (ADR-0008, ADR-0010)
+[graph]
+all-features = false
+no-default-features = false
+
+[advisories]
+version = 2
+ignore = []
+
+[licenses]
+version = 2
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-3.0",
+  "Zlib",
+  "MPL-2.0",
+  "CC0-1.0",
+  "BSL-1.0",
+  "Unlicense",
+  "0BSD",
+  "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.8
+unused-allowed-license = "allow"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+highlight = "all"
+deny = [
+  # Enforce pure rustls + rustls-platform-verifier; forbid OpenSSL & native-tls bindings.
+  { crate = "openssl-sys", reason = "Use rustls + rustls-platform-verifier instead of OpenSSL." },
+  { crate = "openssl", reason = "Use rustls + rustls-platform-verifier instead of OpenSSL." },
+  { crate = "native-tls", reason = "Use rustls + rustls-platform-verifier instead of native-tls." },
+  # Enforce strict hexagonal layer boundaries across workspace crates.
+  { crate = "flutter_rust_bridge", wrappers = ["bistre-ffi"], reason = "Only bistre-ffi may depend on flutter_rust_bridge." },
+  { crate = "rusqlite", wrappers = ["bistre-storage"], reason = "Only bistre-storage may execute SQLite queries directly." },
+  { crate = "libsqlite3-sys", wrappers = ["rusqlite"], reason = "SQLite FFI must remain isolated inside rusqlite / bistre-storage." },
+  { crate = "minisign-verify", wrappers = ["bistre-crypto"], reason = "All Minisign verification must route through bistre-crypto." },
+  { crate = "reqwest", wrappers = ["bistre-core", "bistre-daemon"], reason = "HTTP clients are forbidden in protocol, crypto, storage, FFI, and updater crates." },
+  { crate = "tokio-tungstenite", wrappers = ["bistre-core", "bistre-daemon"], reason = "WebSocket transport belongs strictly in bistre-core / bistre-daemon." },
+  # Forbid GUI toolkits and tray crates outside the desktop daemon boundary.
+  { crate = "ksni", wrappers = ["bistre-daemon"], reason = "System tray integration is isolated strictly to bistre-daemon." },
+  { crate = "tray-icon", reason = "Use pure-Rust ksni (Linux) / Win32 Shell_NotifyIconW (Windows) inside bistre-daemon (ADR-0003)." },
+  { crate = "tao", reason = "GUI event loops are forbidden in Rust crates." },
+  { crate = "winit", reason = "GUI event loops are forbidden in Rust crates." },
+  { crate = "eframe", reason = "GUI toolkits are forbidden in Rust crates." },
+  { crate = "iced", reason = "GUI toolkits are forbidden in Rust crates." },
+  { crate = "gtk", reason = "GUI toolkits are forbidden in Rust crates." },
+  { crate = "gtk4", reason = "GUI toolkits are forbidden in Rust crates." },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

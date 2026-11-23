@@ -1,0 +1,50 @@
+# Rust
+/target/
+**/target/
+**/*.rs.bk
+
+# Flutter / Dart
+.dart_tool/
+**/.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+**/build/
+*.iml
+.idea/
+.vscode/
+
+# Android
+**/android/local.properties
+**/android/.gradle/
+**/android/captures/
+**/android/gradlew.bat.bak
+**/android/key.properties
+*.jks
+*.keystore
+
+# Windows / Linux build outputs
+**/windows/flutter/ephemeral/
+**/linux/flutter/ephemeral/
+
+# Runtime data, secrets, and local databases
+.bistre-dev/
+.env
+.env.*
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-wal
+*.db-shm
+*.key
+*.sec
+minisign.key
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local verification ledger, run lock, and logs
+.bistre-local/
