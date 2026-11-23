@@ -201,7 +201,7 @@ void main() {
       expect(horizontalScroll, findsNothing);
 
       // The per-fence toggle switches this fence to horizontal scrolling.
-      await tester.tap(find.text(l10n.t(L10nKey.chatCodeNoWrap)));
+      await tester.tap(find.bySemanticsLabel(l10n.t(L10nKey.chatCodeNoWrap)).first);
       await tester.pump();
       expect(horizontalScroll, findsOneWidget);
       expect(tester.takeException(), isNull);

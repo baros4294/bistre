@@ -247,6 +247,33 @@ extension FolioCatalogActions on FolioController {
     }
   }
 
+  /// Saves one code block to a file (native save dialog on Windows; elsewhere it is copied).
+  Future<void> saveCodeBlock(
+    String code,
+    String language, {
+    required String saveTitle,
+  }) async {
+    final lang = language.trim().toLowerCase();
+    final ext = RegExp(r'^[a-z0-9]{1,8}$').hasMatch(lang) ? lang : 'txt';
+    if (!Platform.isWindows) {
+      await copyText(code);
+      return;
+    }
+    final path = await BistreDesktopHost.saveLocalFile(
+      title: saveTitle,
+      defaultName: 'snippet.$ext',
+      filterLabel: saveTitle,
+      filterSpec: '*.$ext',
+    );
+    if (path == null) return;
+    try {
+      await File(path).writeAsString(code, flush: true);
+      showToast(L10nKey.toastSettingsSaved);
+    } on FileSystemException catch (e) {
+      _noteNonFatal('save_code_block', e);
+    }
+  }
+
   Future<String?> exportActiveThread(String format) async {
     final tid = _activeThread?.id;
     if (tid == null) return null;

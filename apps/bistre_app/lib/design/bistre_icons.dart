@@ -66,7 +66,8 @@ enum BistreUiIcon {
   diagram('diagram'),
   memory('memory'),
   bookOpen('book_open'),
-  info('info');
+  info('info'),
+  wrap('wrap');
 
   const BistreUiIcon(this.fileStem);
   final String fileStem;

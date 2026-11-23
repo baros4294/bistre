@@ -3695,6 +3695,27 @@
           "example": "0"
         }
       }
+    },
+    "chat.code.fold": {
+      "message": "Fold code",
+      "context": "Hides the body of a code block",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.code.unfold": {
+      "message": "Show code",
+      "context": "Shows a folded code block again",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.code.save": {
+      "message": "Save as file",
+      "context": "Saves a code block to a file",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
     }
   }
 }

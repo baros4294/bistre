@@ -20,11 +20,15 @@ class MarkdownFolioView extends StatelessWidget {
     super.key,
     required this.markdown,
     required this.onCopyCode,
+    this.onSaveCode,
     this.editorialDialogueStyling = false,
   });
 
   final String markdown;
   final ValueChanged<String> onCopyCode;
+
+  /// Saves a code block to a file (`code`, `language`); hidden when null.
+  final void Function(String code, String language)? onSaveCode;
   final bool editorialDialogueStyling;
 
   @override
@@ -134,6 +138,7 @@ class MarkdownFolioView extends StatelessWidget {
                 language: block.language,
                 code: block.code,
                 onCopy: () => onCopyCode(block.code),
+                onSave: onSaveCode,
               ),
       _MdMathBlock() => MathFolioView(
         latex: block.latex,
@@ -628,11 +633,13 @@ class _FencedCodeCard extends StatefulWidget {
     required this.language,
     required this.code,
     required this.onCopy,
+    this.onSave,
   });
 
   final String language;
   final String code;
   final VoidCallback onCopy;
+  final void Function(String code, String language)? onSave;
 
   @override
   State<_FencedCodeCard> createState() => _FencedCodeCardState();
@@ -640,6 +647,7 @@ class _FencedCodeCard extends StatefulWidget {
 
 class _FencedCodeCardState extends State<_FencedCodeCard> {
   bool _copied = false;
+  bool _folded = false;
 
   /// Completed chunk texts and the widgets built for them. While a fence streams, only the
   /// growing tail chunk is re-highlighted; identical widget instances let Flutter skip rebuild,
@@ -769,30 +777,37 @@ class _FencedCodeCardState extends State<_FencedCodeCard> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      // Parchment v2.6.0: wrap, fold, download, and copy as equal icon buttons.
                       if (overrides != null)
-                        Flexible(
-                          child: Align(
-                            alignment: AlignmentDirectional.centerEnd,
-                            child: Padding(
-                              padding: const EdgeInsetsDirectional.only(end: 4),
-                              child: EngravedButton(
-                                label: wrap
-                                    ? l10n.t(L10nKey.chatCodeNoWrap)
-                                    : l10n.t(L10nKey.chatCodeWrap),
-                                compact: true,
-                                onPressed: () => overrides.set(fenceKey, !wrap),
-                              ),
-                            ),
-                          ),
+                        BistreIconButton(
+                          icon: BistreUiIcon.wrap,
+                          size: 13,
+                          dimension: 26,
+                          active: wrap,
+                          semanticsLabel: wrap
+                              ? l10n.t(L10nKey.chatCodeNoWrap)
+                              : l10n.t(L10nKey.chatCodeWrap),
+                          onPressed: () => overrides.set(fenceKey, !wrap),
                         ),
-                      if (_copied)
-                        Padding(
-                          padding: const EdgeInsetsDirectional.only(end: 6),
-                          child: InkText(
-                            l10n.t(L10nKey.chatActionCopied),
-                            role: InkTextRole.captionMeta,
-                            color: theme.statusOk,
-                          ),
+                      BistreIconButton(
+                        icon: _folded
+                            ? BistreUiIcon.chevronDown
+                            : BistreUiIcon.chevronUp,
+                        size: 13,
+                        dimension: 26,
+                        semanticsLabel: _folded
+                            ? l10n.t(L10nKey.chatCodeUnfold)
+                            : l10n.t(L10nKey.chatCodeFold),
+                        onPressed: () => setState(() => _folded = !_folded),
+                      ),
+                      if (widget.onSave != null)
+                        BistreIconButton(
+                          icon: BistreUiIcon.download,
+                          size: 13,
+                          dimension: 26,
+                          semanticsLabel: l10n.t(L10nKey.chatCodeSave),
+                          onPressed: () =>
+                              widget.onSave!(widget.code, widget.language),
                         ),
                       BistreIconButton(
                         icon: _copied ? BistreUiIcon.check : BistreUiIcon.copy,
@@ -808,8 +823,10 @@ class _FencedCodeCardState extends State<_FencedCodeCard> {
                   ),
                 ),
               ),
-              const FolioDivider(),
-              if (wrap)
+              if (!_folded) const FolioDivider(),
+              if (_folded)
+                const SizedBox.shrink()
+              else if (wrap)
                 Padding(
                   padding: const EdgeInsetsDirectional.fromSTEB(14, 12, 18, 12),
                   child: codeText,
