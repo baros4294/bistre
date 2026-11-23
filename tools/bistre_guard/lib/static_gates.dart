@@ -88,6 +88,7 @@ void runStaticGates(
   checkSourceLineCap(repoRoot, workspaceFiles, errors);
   checkErrorSilencing(repoRoot, workspaceFiles, errors);
   checkNoTestRetries(repoRoot, workspaceFiles, errors);
+  checkNoSilentRustSkips(repoRoot, workspaceFiles, errors);
   checkAgentsBudget(repoRoot, errors);
   checkMarkdownAnchors(repoRoot, workspaceFiles, errors);
   checkSingleVersionSource(repoRoot, errors);
@@ -605,6 +606,27 @@ void checkNoTestRetries(
         nextestRetry.hasMatch(_read(root, rel))) {
       errors.add(
         '[test-retry] $rel configures nextest retries; find and fix the root cause instead.',
+      );
+    }
+  }
+}
+
+/// 7d. `let x = e.ok(); let Some(x) = x else { return };` turns an error into a silent early
+/// return; in a test it passes the test without running its checks (34 such sites were found
+/// on 2026-11-24). Use `?` (tests return `TestResult`) or handle the error.
+void checkNoSilentRustSkips(
+  Directory root,
+  List<String> files,
+  List<String> errors,
+) {
+  final silentSkip = RegExp(
+    r'let (\w+) = [^;]*?\.ok\(\);\s*let Some\((?:mut )?\w+\) = \1 else \{\s*return\b',
+  );
+  for (final rel in files) {
+    if (!rel.endsWith('.rs')) continue;
+    for (final m in silentSkip.allMatches(_read(root, rel))) {
+      errors.add(
+        '[silent-skip] $rel: `${m.group(1)}` drops its error and returns early; use `?` or handle the error.',
       );
     }
   }
