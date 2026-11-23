@@ -13,7 +13,7 @@ fi
 log_file="$(mktemp)"
 trap 'rm -f "$log_file"' EXIT
 
-transient='(Connection (reset|refused|timed out)|Could not resolve host|Temporary failure in name resolution|TLS handshake timeout|SocketException|HandshakeException|Failed to download|Read timed out|HTTP(/[0-9.]+)? 5[0-9][0-9]|50[0234] (Bad Gateway|Service Unavailable|Gateway Time-?out|Internal Server Error)|unexpected EOF)'
+transient='(Too Many Requests|status code 429|Connection (reset|refused|timed out)|Could not resolve host|Temporary failure in name resolution|TLS handshake timeout|SocketException|HandshakeException|Failed to download|Read timed out|HTTP(/[0-9.]+)? 5[0-9][0-9]|50[0234] (Bad Gateway|Service Unavailable|Gateway Time-?out|Internal Server Error)|unexpected EOF)'
 fatal='(error\[E[0-9]+\]|error: could not compile|test result: FAILED|Some tests failed|checksum|sha256sum: WARNING|signature verification|FAILED:)'
 
 for attempt in 1 2 3 4; do
