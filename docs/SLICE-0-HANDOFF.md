@@ -212,3 +212,13 @@ Recorded **2026-11-21** after completing Commit-1 Repo Fortress, Spec Pack, Day-
 
 ## 20. Rust Tests Without .ok() (2026-11-24)
 - Every remaining `.ok()` in Rust test code (93 sites) and the three `let Ok(x) = x else { return }` sites now propagate with `?`. Test code has zero `.ok()` left, and the `[silent-skip]` guard rejects both early-return forms. 105/105 Rust tests pass; clippy is clean on Windows and for `x86_64-unknown-linux-gnu` (crypto, protocol).
+
+## 21. Measurements Outside xvfb, Profile Frames, Remaining Gaps (2026-11-24)
+- **M0 baseline**: confirmed on `main`. The history starts with the layered baseline commits (`chore: repo fortress`, `docs`, one `feat(<crate>)` per crate, then tools).
+- **Windows release launch in CI** (`baros4294/bistre#19`): the Windows job runs `perf --strict --rss-report-only` on its release build and uploads it as `windows-release-bundle`.
+- **Idle RSS on a GPU machine**: the CI bundle run on a Windows laptop (Impeller, OpenGL ES) measured 88 MB at the boot frame and ~240-255 MB within 3 s of the full render, then flat (no leak). The price sync is ~13 MB of it. Windows CI (WARP) measured 55 -> 172 MB and Linux xvfb 378 MB. Every environment is over the `120 MB` budget. Attribution needs a profile build with DevTools, which needs Visual Studio Build Tools on the developer machine.
+- **Profile-mode streaming** (`baros4294/bistre#21`): `flutter drive --profile` on Linux CI measured UI-thread build p99 10.18 ms. That meets the 60 Hz budget (12 ms) and the 16 ms hard fail (enforced), but not the 120 Hz budget (7.5 ms). Parsing and code chunks are already memoized, so the next step is a timeline trace to find the per-frame cost (the open fence's Column relayout and scroll-follow are the suspects).
+- **Idle frames**: ~26-29 per 10 s on the GPU machine, ~20 of them the composer's blinking caret.
+- **Rust tests** (`baros4294/bistre#20`): zero `.ok()` in test code.
+- **Needs the owner**: (1) the minisign release key; (2) whether to install Visual Studio Build Tools for RSS attribution, or how to restate the RSS budget; (3) whether to pursue 120 Hz now; (4) the native tool calling slice, which unblocks the tool count, tool timeline, quantized compaction, and reasoning handoff.
+
