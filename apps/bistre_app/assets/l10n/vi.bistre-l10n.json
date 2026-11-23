@@ -3582,6 +3582,13 @@
       "tone": "diagnostic",
       "max_chars": 96,
       "placeholders": {}
+    },
+    "diag.tool.tier_blocked": {
+      "message": "Thao tác này chạm tới tệp hoặc lệnh được bảo vệ nên bị chặn.",
+      "context": "Rust DiagnosticKey::ToolTierBlocked message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
     }
   }
 }

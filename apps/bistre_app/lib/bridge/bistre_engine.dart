@@ -174,11 +174,22 @@ abstract interface class BistreEngineGateway {
     required String runId,
     required bool confirmCompleted,
   });
+
+  /// Records the user's approval of one exact call; returns a one-use permit id.
+  Future<String> approveToolCall({
+    required String threadId,
+    required String toolName,
+    required Map<String, Object?> arguments,
+  });
+
+  /// Runs a tool. Read-only tools need no permit; every other tool needs the
+  /// [permitId] from [approveToolCall] for exactly these [arguments].
   Future<EngineToolOutput> executeWorkspaceTool({
     required String workspaceRoot,
     required String threadId,
     required String toolName,
     required Map<String, Object?> arguments,
+    String? permitId,
   });
   Future<String> rewindCheckpoint({
     required String workspaceRoot,
@@ -756,17 +767,30 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
   );
 
   @override
+  Future<String> approveToolCall({
+    required String threadId,
+    required String toolName,
+    required Map<String, Object?> arguments,
+  }) => frb.approveToolCall(
+    threadId: threadId,
+    toolName: toolName,
+    argumentsJson: jsonEncode(arguments),
+  );
+
+  @override
   Future<EngineToolOutput> executeWorkspaceTool({
     required String workspaceRoot,
     required String threadId,
     required String toolName,
     required Map<String, Object?> arguments,
+    String? permitId,
   }) async {
     final raw = await frb.executeWorkspaceToolJson(
       workspaceRoot: workspaceRoot,
       threadId: threadId,
       toolName: toolName,
       argumentsJson: jsonEncode(arguments),
+      permitId: permitId,
     );
     final decoded = jsonDecode(raw) as Map<String, Object?>;
     return EngineToolOutput.fromJson(decoded);

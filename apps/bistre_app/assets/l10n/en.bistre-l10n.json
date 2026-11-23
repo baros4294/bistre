@@ -3582,6 +3582,13 @@
       "tone": "diagnostic",
       "max_chars": 96,
       "placeholders": {}
+    },
+    "diag.tool.tier_blocked": {
+      "message": "This action touches a protected file or command, so it is blocked.",
+      "context": "Rust DiagnosticKey::ToolTierBlocked message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
     }
   }
 }

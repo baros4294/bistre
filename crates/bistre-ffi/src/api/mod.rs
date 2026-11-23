@@ -1181,17 +1181,39 @@ pub async fn resolve_indeterminate_run(
     Ok(map_agent_run(run))
 }
 
+/// Records the user's approval of one exact tool call and returns its one-use permit id.
+#[frb]
+pub async fn approve_tool_call(
+    thread_id: String,
+    tool_name: String,
+    arguments_json: String,
+) -> Result<String, String> {
+    let engine = current_engine()?;
+    engine
+        .approve_tool_call(thread_id, tool_name, arguments_json)
+        .await
+        .map_err(|e| e.key.as_key().to_owned())
+}
+
 /// Executes a capability-scoped built-in workspace or web tool and returns a JSON `ToolExecutionOutput`.
+/// Non-read-only tools need the `permit_id` returned by `approve_tool_call`.
 #[frb]
 pub async fn execute_workspace_tool_json(
     workspace_root: String,
     thread_id: String,
     tool_name: String,
     arguments_json: String,
+    permit_id: Option<String>,
 ) -> Result<String, String> {
     let engine = current_engine()?;
     let output = engine
-        .execute_workspace_tool(workspace_root, thread_id, tool_name, arguments_json)
+        .execute_workspace_tool(
+            workspace_root,
+            thread_id,
+            tool_name,
+            arguments_json,
+            permit_id,
+        )
         .await
         .map_err(|e| e.key.as_key().to_owned())?;
     serde_json::to_string(&output).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())

@@ -129,6 +129,7 @@ enum L10nKey {
   diagToolApprovalRequired('diag.tool.approval_required'),
   diagToolEditHashMismatch('diag.tool.edit_hash_mismatch'),
   diagToolStaleRead('diag.tool.stale_read'),
+  diagToolTierBlocked('diag.tool.tier_blocked'),
   diagValidationInvalidInput('diag.validation.invalid_input'),
   diagWalletCeilingExceeded('diag.wallet.ceiling_exceeded'),
   diagWalletCheckUnavailable('diag.wallet.check_unavailable'),

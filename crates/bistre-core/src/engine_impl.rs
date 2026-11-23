@@ -752,27 +752,51 @@ impl EngineClient for InProcessEngine {
         Box::pin(async move { self.storage.latest_event_cursor() })
     }
 
+    fn approve_tool_call(
+        &self,
+        thread_id: String,
+        tool_name: String,
+        arguments_json: String,
+    ) -> BoxFuture<'_, BistreResult<String>> {
+        Box::pin(async move {
+            let args = parse_tool_args(&arguments_json)?;
+            if tools::classify_tool_risk(&tool_name, &args) == ToolRiskTier::Tier3Blocked {
+                return Err(BistreError::with_detail(
+                    DiagnosticKey::ToolTierBlocked,
+                    "tier3_blocked",
+                ));
+            }
+            self.broker.approve(&thread_id, &tool_name, &args)
+        })
+    }
+
     fn execute_workspace_tool(
         &self,
         workspace_root: String,
         thread_id: String,
         tool_name: String,
         arguments_json: String,
+        permit_id: Option<String>,
     ) -> BoxFuture<'_, BistreResult<tools::ToolExecutionOutput>> {
         Box::pin(async move {
-            let args: serde_json::Value = serde_json::from_str(&arguments_json).map_err(|_| {
-                BistreError::with_detail(DiagnosticKey::InvalidInput, "tool_args_json")
-            })?;
+            let args = parse_tool_args(&arguments_json)?;
             let risk = tools::classify_tool_risk(&tool_name, &args);
             if risk == ToolRiskTier::Tier3Blocked {
                 return Err(BistreError::with_detail(
-                    DiagnosticKey::ToolEditHashMismatch,
-                    "tier3_secret_path_blocked",
+                    DiagnosticKey::ToolTierBlocked,
+                    "tier3_blocked",
                 ));
             }
-            // The UI's approval (or Tier-0 auto-approval) becomes an exact one-use permit that is
-            // claimed here, so a policy change between approval and dispatch revokes it.
-            let permit = self.broker.issue(&thread_id, &tool_name, &args);
+            // Tier 0 is auto-approved by core policy; anything else must present the permit the
+            // user's approval produced, for exactly these arguments and this policy revision.
+            let permit = if risk == ToolRiskTier::Tier0ReadOnly {
+                self.broker.issue(&thread_id, &tool_name, &args)
+            } else {
+                let id = permit_id.ok_or_else(|| {
+                    BistreError::with_detail(DiagnosticKey::ToolApprovalRequired, "permit_missing")
+                })?;
+                self.broker.take_approved(&id)?
+            };
             self.broker.claim(&permit, &thread_id, &tool_name, &args)?;
             let root_path = PathBuf::from(&workspace_root);
             match tool_name.as_str() {
@@ -1317,4 +1341,9 @@ impl EngineClient for InProcessEngine {
             Ok(())
         })
     }
+}
+
+fn parse_tool_args(arguments_json: &str) -> BistreResult<serde_json::Value> {
+    serde_json::from_str(arguments_json)
+        .map_err(|_| BistreError::with_detail(DiagnosticKey::InvalidInput, "tool_args_json"))
 }

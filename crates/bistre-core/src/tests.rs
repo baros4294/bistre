@@ -506,3 +506,51 @@ async fn mid_stream_steering_queue_drives_follow_up_turn_without_cancel() {
     );
     assert!(engine.shutdown().await.is_ok());
 }
+
+#[tokio::test]
+async fn non_read_only_tools_require_an_exact_user_approval() -> BistreResult<()> {
+    let dir = tempdir().map_err(|_| BistreError::new(DiagnosticKey::InternalError))?;
+    let engine = InProcessEngine::open(dir.path(), VaultKey::generate().ok())?;
+    let ws = dir.path().join("ws");
+    std::fs::create_dir_all(&ws).map_err(|_| BistreError::new(DiagnosticKey::InternalError))?;
+    std::fs::write(ws.join("a.txt"), "one\n")
+        .map_err(|_| BistreError::new(DiagnosticKey::InternalError))?;
+    let root = ws.to_string_lossy().into_owned();
+    let args = r#"{"path":"a.txt","content":"two\n"}"#.to_owned();
+
+    // Without approval the write is refused before touching the file.
+    let denied = engine
+        .execute_workspace_tool(root.clone(), "t".into(), "edit".into(), args.clone(), None)
+        .await;
+    assert_eq!(
+        denied.err().map(|e| e.key),
+        Some(DiagnosticKey::ToolApprovalRequired)
+    );
+
+    // An approval for different arguments cannot be reused.
+    let other = engine
+        .approve_tool_call(
+            "t".into(),
+            "edit".into(),
+            r#"{"path":"b.txt","start_line":1,"end_line":1,"replacement":"x"}"#.into(),
+        )
+        .await?;
+    let mismatched = engine
+        .execute_workspace_tool(
+            root.clone(),
+            "t".into(),
+            "edit".into(),
+            args.clone(),
+            Some(other),
+        )
+        .await;
+    assert_eq!(
+        mismatched.err().map(|e| e.key),
+        Some(DiagnosticKey::ToolApprovalRequired)
+    );
+    assert_eq!(
+        std::fs::read_to_string(ws.join("a.txt")).ok().as_deref(),
+        Some("one\n")
+    );
+    engine.shutdown().await
+}

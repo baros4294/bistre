@@ -93,7 +93,7 @@ fn normalize_rel(rel_path: &str) -> String {
 pub fn file_digest(workspace_root: &Path, rel_path: &str) -> BistreResult<String> {
     if is_forbidden_secret_path(rel_path) {
         return Err(BistreError::with_detail(
-            DiagnosticKey::ToolEditHashMismatch,
+            DiagnosticKey::ToolTierBlocked,
             "tier3_secret_path_blocked",
         ));
     }
@@ -343,7 +343,7 @@ pub fn tool_read(
     let started = Instant::now();
     if is_forbidden_secret_path(rel_path) {
         return Err(BistreError::with_detail(
-            DiagnosticKey::ToolEditHashMismatch,
+            DiagnosticKey::ToolTierBlocked,
             "tier3_secret_path_blocked",
         ));
     }
@@ -445,7 +445,7 @@ pub fn tool_edit(
     let started = Instant::now();
     if is_forbidden_secret_path(rel_path) {
         return Err(BistreError::with_detail(
-            DiagnosticKey::ToolEditHashMismatch,
+            DiagnosticKey::ToolTierBlocked,
             "tier3_secret_path_blocked",
         ));
     }
@@ -532,7 +532,7 @@ pub fn tool_rewind_checkpoint(
         .ok_or_else(|| BistreError::new(DiagnosticKey::StorageNotFound))?;
     if is_forbidden_secret_path(&cp.file_path) {
         return Err(BistreError::with_detail(
-            DiagnosticKey::ToolEditHashMismatch,
+            DiagnosticKey::ToolTierBlocked,
             "tier3_secret_path_blocked",
         ));
     }
@@ -595,7 +595,7 @@ pub fn tool_grep(
         && is_forbidden_secret_path(sub)
     {
         return Err(BistreError::with_detail(
-            DiagnosticKey::ToolEditHashMismatch,
+            DiagnosticKey::ToolTierBlocked,
             "tier3_secret_path_blocked",
         ));
     }
@@ -733,7 +733,7 @@ pub async fn tool_shell(
     if classify_tool_risk("shell", &json!({ "command": command_str })) == ToolRiskTier::Tier3Blocked
     {
         return Err(BistreError::with_detail(
-            DiagnosticKey::ToolEditHashMismatch,
+            DiagnosticKey::ToolTierBlocked,
             "tier3_shell_blocked",
         ));
     }

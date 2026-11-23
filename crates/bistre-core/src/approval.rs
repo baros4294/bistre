@@ -7,6 +7,8 @@
 //! - `RunActivity` measures active run time on a monotonic clock, skipping gaps longer than
 //!   5 s (OS sleep / suspended app) so elapsed-time budgets never jump after a laptop wakes.
 
+use std::collections::HashMap;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
@@ -15,6 +17,11 @@ use serde_json::Value;
 
 /// Gap above which time between activity ticks is treated as sleep and not counted.
 pub const SLEEP_GAP_THRESHOLD: Duration = Duration::from_secs(5);
+
+/// How long an approval stays claimable.
+pub const APPROVAL_TTL: Duration = Duration::from_secs(60);
+/// Maximum outstanding approvals; the oldest is evicted beyond this.
+pub const MAX_PENDING_APPROVALS: usize = 64;
 
 /// One-use permission for one exact tool call.
 #[derive(Debug)]
@@ -34,10 +41,11 @@ fn args_digest(args: &Value) -> String {
         .to_owned()
 }
 
-/// Issues and verifies permits; owns the policy revision.
+/// Issues and verifies permits; owns the policy revision and the approved-permit store.
 #[derive(Debug, Default)]
 pub struct ToolApprovalBroker {
     revision: AtomicU64,
+    approved: Mutex<HashMap<String, (Instant, ToolExecutionPermit)>>,
 }
 
 impl ToolApprovalBroker {
@@ -81,6 +89,49 @@ impl ToolApprovalBroker {
             ));
         }
         Ok(())
+    }
+
+    /// Records the user's approval of one exact call and returns its permit id.
+    pub fn approve(&self, scope: &str, tool: &str, args: &Value) -> BistreResult<String> {
+        let id = uuid::Uuid::now_v7().to_string();
+        let permit = self.issue(scope, tool, args);
+        let mut map = self.lock_approved()?;
+        let now = Instant::now();
+        map.retain(|_, (at, _)| now.duration_since(*at) < APPROVAL_TTL);
+        while map.len() >= MAX_PENDING_APPROVALS {
+            let oldest = map
+                .iter()
+                .min_by_key(|(_, (at, _))| *at)
+                .map(|(k, _)| k.clone());
+            let Some(oldest) = oldest else { break };
+            map.remove(&oldest);
+        }
+        map.insert(id.clone(), (now, permit));
+        Ok(id)
+    }
+
+    /// Removes and returns an approved, unexpired permit. Each id works at most once.
+    pub fn take_approved(&self, permit_id: &str) -> BistreResult<ToolExecutionPermit> {
+        let (at, permit) = self.lock_approved()?.remove(permit_id).ok_or_else(|| {
+            BistreError::with_detail(DiagnosticKey::ToolApprovalRequired, "permit_missing")
+        })?;
+        if at.elapsed() >= APPROVAL_TTL {
+            return Err(BistreError::with_detail(
+                DiagnosticKey::ToolApprovalRequired,
+                "permit_expired",
+            ));
+        }
+        Ok(permit)
+    }
+
+    fn lock_approved(
+        &self,
+    ) -> BistreResult<std::sync::MutexGuard<'_, HashMap<String, (Instant, ToolExecutionPermit)>>>
+    {
+        // A poisoned store denies (fail closed) instead of silently approving.
+        self.approved
+            .lock()
+            .map_err(|_| BistreError::with_detail(DiagnosticKey::InternalError, "approval_lock"))
     }
 
     /// Synchronously revokes every outstanding permit (permission, mode, or workspace change).
@@ -166,6 +217,30 @@ mod tests {
         );
         let fresh = broker.issue("thread-1", "shell", &args);
         assert!(broker.claim(&fresh, "thread-1", "shell", &args).is_ok());
+    }
+
+    #[test]
+    fn approved_permits_are_single_use_exact_and_revocable() -> BistreResult<()> {
+        let broker = ToolApprovalBroker::new();
+        let args = json!({"path": "a.txt"});
+        // No approval: nothing to take.
+        assert!(broker.take_approved("nope").is_err());
+        let id = broker.approve("t", "edit", &args)?;
+        let permit = broker.take_approved(&id)?;
+        // Arguments changed after approval: the claim fails.
+        assert!(
+            broker
+                .claim(&permit, "t", "edit", &json!({"path": "b.txt"}))
+                .is_err()
+        );
+        // The id was consumed by the first take.
+        assert!(broker.take_approved(&id).is_err());
+        // A policy change between approval and dispatch revokes it.
+        let id = broker.approve("t", "edit", &args)?;
+        broker.invalidate();
+        let permit = broker.take_approved(&id)?;
+        assert!(broker.claim(&permit, "t", "edit", &args).is_err());
+        Ok(())
     }
 
     #[test]

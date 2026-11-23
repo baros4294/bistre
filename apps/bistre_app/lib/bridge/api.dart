@@ -436,17 +436,31 @@ Future<FfiAgentRunRecord> resolveIndeterminateRun({
   confirmCompleted: confirmCompleted,
 );
 
+/// Records the user's approval of one exact tool call and returns its one-use permit id.
+Future<String> approveToolCall({
+  required String threadId,
+  required String toolName,
+  required String argumentsJson,
+}) => BistreRustLib.instance.api.crateApiApproveToolCall(
+  threadId: threadId,
+  toolName: toolName,
+  argumentsJson: argumentsJson,
+);
+
 /// Executes a capability-scoped built-in workspace or web tool and returns a JSON `ToolExecutionOutput`.
+/// Non-read-only tools need the `permit_id` returned by `approve_tool_call`.
 Future<String> executeWorkspaceToolJson({
   required String workspaceRoot,
   required String threadId,
   required String toolName,
   required String argumentsJson,
+  String? permitId,
 }) => BistreRustLib.instance.api.crateApiExecuteWorkspaceToolJson(
   workspaceRoot: workspaceRoot,
   threadId: threadId,
   toolName: toolName,
   argumentsJson: argumentsJson,
+  permitId: permitId,
 );
 
 /// Rewinds a single file edit cleanly from a persisted SQLite pre-image checkpoint.

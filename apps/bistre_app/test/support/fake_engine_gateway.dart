@@ -747,11 +747,19 @@ class FakeEngineGateway implements BistreEngineGateway {
   final Map<String, String> _contextPins = <String, String>{};
 
   @override
+  Future<String> approveToolCall({
+    required String threadId,
+    required String toolName,
+    required Map<String, Object?> arguments,
+  }) async => 'permit-$toolName';
+
+  @override
   Future<EngineToolOutput> executeWorkspaceTool({
     required String workspaceRoot,
     required String threadId,
     required String toolName,
     required Map<String, Object?> arguments,
+    String? permitId,
   }) async => EngineToolOutput(
     toolName: toolName,
     riskTier: 'tier0_read_only',

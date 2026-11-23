@@ -193,12 +193,22 @@ pub trait EngineClient: Send + Sync {
         limit: u32,
     ) -> BoxFuture<'_, BistreResult<Vec<CursorEventRecord>>>;
     fn latest_event_cursor(&self) -> BoxFuture<'_, BistreResult<u64>>;
+    /// Records the user's approval of one exact tool call; returns a one-use permit id.
+    fn approve_tool_call(
+        &self,
+        thread_id: String,
+        tool_name: String,
+        arguments_json: String,
+    ) -> BoxFuture<'_, BistreResult<String>>;
+    /// Runs a tool. Tier 0 is auto-approved by core policy; every other tier needs the
+    /// `permit_id` from `approve_tool_call` for exactly these arguments.
     fn execute_workspace_tool(
         &self,
         workspace_root: String,
         thread_id: String,
         tool_name: String,
         arguments_json: String,
+        permit_id: Option<String>,
     ) -> BoxFuture<'_, BistreResult<tools::ToolExecutionOutput>>;
     fn rewind_checkpoint(
         &self,

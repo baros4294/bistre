@@ -3582,6 +3582,13 @@
       "tone": "diagnostic",
       "max_chars": 96,
       "placeholders": {}
+    },
+    "diag.tool.tier_blocked": {
+      "message": "هذا الإجراء يمس ملفًا أو أمرًا محميًا، لذلك تم حظره.",
+      "context": "Rust DiagnosticKey::ToolTierBlocked message",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
     }
   }
 }
