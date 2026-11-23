@@ -325,6 +325,12 @@ jobs:
           sudo apt-get install -y xvfb
           cargo build --locked --release -p bistre-daemon
           xvfb-run -a dart run tools/bistre_guard/bin/bistre_guard.dart perf --strict --rss-report-only
+      - name: Profile-mode streaming benchmark (Spec 11 frame timings, xvfb)
+        if: runner.os == 'Linux'
+        working-directory: apps/bistre_app
+        shell: bash
+        # UI-thread build p99 over 16 ms fails; raster p99 is reported (software GL on xvfb).
+        run: xvfb-run -a flutter drive --profile -d linux --driver=test_driver/integration_test.dart --target=integration_test/streaming_perf_test.dart
       - name: Build Windows release bundle
         if: runner.os == 'Windows'
         working-directory: apps/bistre_app
