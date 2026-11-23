@@ -361,6 +361,21 @@ jobs:
           path: apps/bistre_app/build/windows/x64/runner/Release/
           if-no-files-found: error
           retention-days: 7
+      - name: Build and upload a Windows profile bundle (DevTools on a developer machine)
+        if: runner.os == 'Windows'
+        working-directory: apps/bistre_app
+        shell: bash
+        # A profile build exposes the VM service, so DevTools can attribute memory and frame time
+        # on real GPU hardware without Visual Studio on that machine.
+        run: flutter build windows --profile
+      - name: Upload the Windows profile bundle
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: windows-profile-bundle
+          path: apps/bistre_app/build/windows/x64/runner/Profile/
+          if-no-files-found: error
+          retention-days: 7
 
   android-arm64-16kb:
     name: android-arm64-16kb
