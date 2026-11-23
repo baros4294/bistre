@@ -76,4 +76,4 @@ jobs:
             echo "Could not parse any version bump for PR #${number}; review manually."
             exit 0
           fi
-          gh pr merge "$number" --repo "$REPO" --squash --match-head-commit "$TESTED_SHA"
+          gh pr merge "$number" --repo "$REPO" --rebase --match-head-commit "$TESTED_SHA"

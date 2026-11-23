@@ -66,3 +66,7 @@ Local build caches are budgeted like runtime memory (`ADR-0016`), so a 7.7 GB la
 ## 7. Fonts & Low-Memory Probes (Measured)
 - Bundled fonts: `3.22 MB -> 1.58 MB` after OFL subsetting (Inter 4 x ~200 KB, JetBrains Mono 2 x ~133 KB, Noto Sans Math ~506 KB); `NotoSansMath` is no longer a pubspec font family — `MathFontGate` registers it on the first math block.
 - Low-memory detection runs after startup without blocking `bootstrap`; unknown memory is treated as normal.
+
+## CI Enforcement (2026-11-23)
+- `flutter-desktop (ubuntu-24.04)` builds the Linux release bundle and the daemon, then runs `xvfb-run -a dart run tools/bistre_guard/bin/bistre_guard.dart perf --strict`: the release app must launch and report its probe (Parchment `042627b7`), and any metric above its hard-fail limit (first paint `> 600 ms`, idle RSS `> 160 MB`, streaming probe) fails the job. `--strict` also fails when a section cannot run, so a broken launch is never reported as `SKIP`.
+- Windows and Android device timings remain manual (`just perf`, `just perf --android`).

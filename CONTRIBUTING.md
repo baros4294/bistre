@@ -25,3 +25,6 @@ Bistre is an MIT open-source project built around strict layer boundaries, zero 
    dart run tools/bistre_i18n/bin/bistre_i18n.dart gen
    ```
 5. Verify tests pass: `cd apps/bistre_app && flutter test`.
+
+## CI at a glance
+Every pull request runs `.github/workflows/ci.yml`: security and hygiene (actionlint, zizmor, gitleaks), repo guard and docs, Rust on Linux and Windows (fmt, clippy `-D warnings`, nextest, doctests, crate-boundary `cargo tree`, `cargo deny` on Linux), Flutter on Linux and Windows (analyze, tests, release build; Linux also launches the release build and enforces Spec 11 budgets), and Android (target clippy, release APK, 16 KB alignment, size budgets). Releases reuse the same workflow, then sign the OTA manifest (Spec 10).

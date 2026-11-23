@@ -29,3 +29,8 @@ Covers non-executable JSON/binary data only: AIO model catalog snapshots, hot-lo
 - Feeds, signatures, and payloads require `https://` (plain `http://` only for loopback test feeds); manifests and signatures are read with a `1 MiB` cap.
 - A payload without a SHA-256 (`<64 hex>` or GitHub `asset.digest` `sha256:<hex>`) is never staged (`DiagnosticKey::OtaIntegrityFailed`). Downloads stream chunk by chunk into `bistre_crypto::Sha256Stream` and a `.partial` file with a hard `256 MiB` cap (also checked against `Content-Length` and the manifest size); only a verified payload is renamed into place, and an unverified partial file is deleted.
 - Version precedence follows SemVer 2.0 including prereleases (`1.0.0 > 1.0.0-rc.10 > 1.0.0-rc.2`; build metadata ignored).
+
+## Release Pipeline (2026-11-23)
+- `.github/workflows/release.yml` first runs `ci.yml` unchanged (`workflow_call`), so a tag ships only after the same gates as a pull request, including the release-build launch and Spec 11 budgets.
+- Android release artifacts enforce the same `32 MiB` APK and `10 MiB` `libbistre_ffi.so` budgets as CI.
+- `sign-and-publish` (tags only, `release` environment with required reviewers) builds `manifest.json` (SemVer, track, per-asset SHA-256 and size), signs it with `minisign 0.12` (checksum-pinned) using `MINISIGN_SECRET_KEY` / `MINISIGN_PASSWORD`, and creates the GitHub Release. Without the secret the job fails: there are no unsigned releases. The matching public key must be embedded as `OFFICIAL_RELEASE_PUBKEY_B64` (`crates/bistre-core/src/ota.rs`); until then OTA stays disabled in the app.
