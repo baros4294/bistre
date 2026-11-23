@@ -12,14 +12,15 @@
 //! - Catalog GETs carry no identifiers and go through `PublicWebTransport`.
 
 use bistre_protocol::lock_or_recover;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use bistre_protocol::MoneyMicros;
-use serde_json::Value;
+use serde::Deserialize;
+use serde::de::IgnoredAny;
 use tokio::sync::watch;
 
 use crate::ssrf::PublicWebTransport;
@@ -117,134 +118,205 @@ pub fn parse_decimal_scaled(text: &str, scale: u32) -> Option<i64> {
     i64::try_from(value).ok()
 }
 
-/// Per-token USD price → micro-USD per 1M tokens (`× 10^12`).
-fn per_token_to_mtok(v: &Value) -> Option<i64> {
-    match v {
-        Value::String(s) => parse_decimal_scaled(s, 12),
-        Value::Number(n) => parse_decimal_scaled(&n.to_string(), 12),
-        _ => None,
+// Typed views of the four public price lists. Only the fields used here are read; every other
+// field is skipped without allocating, so a multi-megabyte list never becomes a full
+// `serde_json::Value` tree (which held hundreds of MB in worker malloc arenas on Linux).
+
+/// A field or entry of unexpected shape is skipped instead of failing the whole list.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Lenient<T> {
+    Parsed(T),
+    Skipped(IgnoredAny),
+}
+
+impl<T> Lenient<T> {
+    fn get(self) -> Option<T> {
+        match self {
+            Self::Parsed(v) => Some(v),
+            Self::Skipped(_) => None,
+        }
     }
+}
+
+type Field<T> = Option<Lenient<T>>;
+
+fn field<T>(f: Field<T>) -> Option<T> {
+    f.and_then(Lenient::get)
+}
+
+/// A price as JSON text or number; numbers are re-read from their shortest decimal text.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Decimal {
+    Text(String),
+    Number(serde_json::Number),
+}
+
+impl Decimal {
+    fn scaled(&self, scale: u32) -> Option<i64> {
+        match self {
+            Self::Text(s) => parse_decimal_scaled(s, scale),
+            Self::Number(n) => parse_decimal_scaled(&n.to_string(), scale),
+        }
+    }
+}
+
+/// Per-token USD price → micro-USD per 1M tokens (`× 10^12`).
+fn per_token(f: Field<Decimal>) -> Option<i64> {
+    field(f).and_then(|d| d.scaled(12))
 }
 
 /// Per-1M-token USD price → micro-USD per 1M tokens (`× 10^6`).
-fn per_mtok_to_mtok(v: &Value) -> Option<i64> {
-    match v {
-        Value::String(s) => parse_decimal_scaled(s, 6),
-        Value::Number(n) => parse_decimal_scaled(&n.to_string(), 6),
-        _ => None,
-    }
-}
-
-/// Parses one source document into `(model_id, rates)` pairs.
-pub fn parse_source(source: &str, doc: &Value) -> Vec<(String, ModelRates)> {
-    let mut out = Vec::new();
-    match source {
-        "openrouter" | "vercel" => {
-            let (input_key, output_key, cache_key) = if source == "openrouter" {
-                ("prompt", "completion", "input_cache_read")
-            } else {
-                ("input", "output", "input_cache_read")
-            };
-            for item in doc
-                .get("data")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-            {
-                let (Some(id), Some(pricing)) =
-                    (item.get("id").and_then(Value::as_str), item.get("pricing"))
-                else {
-                    continue;
-                };
-                if let (Some(input), Some(output)) = (
-                    pricing.get(input_key).and_then(per_token_to_mtok),
-                    pricing.get(output_key).and_then(per_token_to_mtok),
-                ) {
-                    out.push((
-                        id.to_owned(),
-                        ModelRates {
-                            input_per_mtok: input,
-                            output_per_mtok: output,
-                            cached_input_per_mtok: pricing
-                                .get(cache_key)
-                                .and_then(per_token_to_mtok),
-                            context_tokens: item
-                                .get(if source == "openrouter" {
-                                    "context_length"
-                                } else {
-                                    "context_window"
-                                })
-                                .and_then(json_u32),
-                        },
-                    ));
-                }
-            }
-        }
-        "litellm" => {
-            for (id, spec) in doc.as_object().into_iter().flatten() {
-                if let (Some(input), Some(output)) = (
-                    spec.get("input_cost_per_token").and_then(per_token_to_mtok),
-                    spec.get("output_cost_per_token")
-                        .and_then(per_token_to_mtok),
-                ) {
-                    out.push((
-                        id.clone(),
-                        ModelRates {
-                            input_per_mtok: input,
-                            output_per_mtok: output,
-                            cached_input_per_mtok: spec
-                                .get("cache_read_input_token_cost")
-                                .and_then(per_token_to_mtok),
-                            context_tokens: spec
-                                .get("max_input_tokens")
-                                .or_else(|| spec.get("max_tokens"))
-                                .and_then(json_u32),
-                        },
-                    ));
-                }
-            }
-        }
-        "models_dev" => {
-            for provider in doc.as_object().into_iter().flatten().map(|(_, p)| p) {
-                for (id, model) in provider
-                    .get("models")
-                    .and_then(Value::as_object)
-                    .into_iter()
-                    .flatten()
-                {
-                    let Some(cost) = model.get("cost") else {
-                        continue;
-                    };
-                    if let (Some(input), Some(output)) = (
-                        cost.get("input").and_then(per_mtok_to_mtok),
-                        cost.get("output").and_then(per_mtok_to_mtok),
-                    ) {
-                        out.push((
-                            id.clone(),
-                            ModelRates {
-                                input_per_mtok: input,
-                                output_per_mtok: output,
-                                cached_input_per_mtok: cost
-                                    .get("cache_read")
-                                    .and_then(per_mtok_to_mtok),
-                                context_tokens: model
-                                    .get("limit")
-                                    .and_then(|l| l.get("context"))
-                                    .and_then(json_u32),
-                            },
-                        ));
-                    }
-                }
-            }
-        }
-        _ => {}
-    }
-    out
+fn per_mtok(f: Field<Decimal>) -> Option<i64> {
+    field(f).and_then(|d| d.scaled(6))
 }
 
 /// A non-negative JSON integer that fits `u32` (context limits).
-fn json_u32(v: &Value) -> Option<u32> {
-    v.as_u64().and_then(|n| u32::try_from(n).ok())
+fn count(f: Field<u64>) -> Option<u32> {
+    field(f).and_then(|n| u32::try_from(n).ok())
+}
+
+#[derive(Deserialize)]
+struct ListDoc {
+    #[serde(default)]
+    data: Vec<Lenient<ListItem>>,
+}
+
+#[derive(Deserialize)]
+struct ListItem {
+    id: String,
+    pricing: Field<ListPricing>,
+    context_length: Field<u64>,
+    context_window: Field<u64>,
+}
+
+#[derive(Deserialize)]
+struct ListPricing {
+    prompt: Field<Decimal>,
+    completion: Field<Decimal>,
+    input: Field<Decimal>,
+    output: Field<Decimal>,
+    input_cache_read: Field<Decimal>,
+}
+
+#[derive(Deserialize)]
+struct LiteSpec {
+    input_cost_per_token: Field<Decimal>,
+    output_cost_per_token: Field<Decimal>,
+    cache_read_input_token_cost: Field<Decimal>,
+    max_input_tokens: Field<u64>,
+    max_tokens: Field<u64>,
+}
+
+#[derive(Deserialize)]
+struct DevProvider {
+    models: Field<BTreeMap<String, Lenient<DevModel>>>,
+}
+
+#[derive(Deserialize)]
+struct DevModel {
+    cost: Field<DevCost>,
+    limit: Field<DevLimit>,
+}
+
+#[derive(Deserialize)]
+struct DevCost {
+    input: Field<Decimal>,
+    output: Field<Decimal>,
+    cache_read: Field<Decimal>,
+}
+
+#[derive(Deserialize)]
+struct DevLimit {
+    context: Field<u64>,
+}
+
+/// Parses one source's raw JSON into `(model_id, rates)` pairs; an unreadable list yields none.
+pub fn parse_source(source: &str, body: &[u8]) -> Vec<(String, ModelRates)> {
+    let parsed = match source {
+        "openrouter" | "vercel" => parse_list(source == "openrouter", body),
+        "litellm" => parse_litellm(body),
+        "models_dev" => parse_models_dev(body),
+        _ => return Vec::new(),
+    };
+    parsed.unwrap_or_else(|err| {
+        tracing::warn!(source, %err, "price list unreadable");
+        Vec::new()
+    })
+}
+
+fn parse_list(openrouter: bool, body: &[u8]) -> serde_json::Result<Vec<(String, ModelRates)>> {
+    let doc: ListDoc = serde_json::from_slice(body)?;
+    Ok(doc
+        .data
+        .into_iter()
+        .filter_map(Lenient::get)
+        .filter_map(|item| {
+            let p = field(item.pricing)?;
+            let (input, output) = if openrouter {
+                (per_token(p.prompt)?, per_token(p.completion)?)
+            } else {
+                (per_token(p.input)?, per_token(p.output)?)
+            };
+            let context = if openrouter {
+                item.context_length
+            } else {
+                item.context_window
+            };
+            Some((
+                item.id,
+                ModelRates {
+                    input_per_mtok: input,
+                    output_per_mtok: output,
+                    cached_input_per_mtok: per_token(p.input_cache_read),
+                    context_tokens: count(context),
+                },
+            ))
+        })
+        .collect())
+}
+
+fn parse_litellm(body: &[u8]) -> serde_json::Result<Vec<(String, ModelRates)>> {
+    let doc: BTreeMap<String, Lenient<LiteSpec>> = serde_json::from_slice(body)?;
+    Ok(doc
+        .into_iter()
+        .filter_map(|(id, spec)| {
+            let spec = spec.get()?;
+            Some((
+                id,
+                ModelRates {
+                    input_per_mtok: per_token(spec.input_cost_per_token)?,
+                    output_per_mtok: per_token(spec.output_cost_per_token)?,
+                    cached_input_per_mtok: per_token(spec.cache_read_input_token_cost),
+                    context_tokens: count(spec.max_input_tokens).or(count(spec.max_tokens)),
+                },
+            ))
+        })
+        .collect())
+}
+
+fn parse_models_dev(body: &[u8]) -> serde_json::Result<Vec<(String, ModelRates)>> {
+    let doc: BTreeMap<String, Lenient<DevProvider>> = serde_json::from_slice(body)?;
+    Ok(doc
+        .into_values()
+        .filter_map(Lenient::get)
+        .filter_map(|p| field(p.models))
+        .flatten()
+        .filter_map(|(id, model)| {
+            let model = model.get()?;
+            let cost = field(model.cost)?;
+            Some((
+                id,
+                ModelRates {
+                    input_per_mtok: per_mtok(cost.input)?,
+                    output_per_mtok: per_mtok(cost.output)?,
+                    cached_input_per_mtok: per_mtok(cost.cache_read),
+                    context_tokens: field(model.limit).and_then(|l| count(l.context)),
+                },
+            ))
+        })
+        .collect())
 }
 
 fn normalize_id(id: &str) -> String {
@@ -461,10 +533,7 @@ impl PricingRegistry {
                 if fetched.truncated || !(200..300).contains(&fetched.status) {
                     continue;
                 }
-                let Ok(doc) = serde_json::from_slice::<Value>(&fetched.body) else {
-                    continue;
-                };
-                let entries = parse_source(name, &doc);
+                let entries = parse_source(name, &fetched.body);
                 any |= !entries.is_empty();
                 registry.publish(entries);
             }
@@ -512,7 +581,11 @@ impl PricingRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use serde_json::{Value, json};
+
+    fn parse(source: &str, doc: &Value) -> Vec<(String, ModelRates)> {
+        parse_source(source, doc.to_string().as_bytes())
+    }
 
     #[test]
     fn decimal_scaling_is_exact_integer_math() {
@@ -534,10 +607,10 @@ mod tests {
         let models_dev = json!({"prov": {"models": {"model-d": {"cost": {"input": 0.5, "output": 1.5, "cache_read": 0.05}}}}});
 
         let registry = PricingRegistry::new();
-        registry.publish(parse_source("openrouter", &openrouter));
-        registry.publish(parse_source("vercel", &vercel));
-        registry.publish(parse_source("litellm", &litellm));
-        registry.publish(parse_source("models_dev", &models_dev));
+        registry.publish(parse("openrouter", &openrouter));
+        registry.publish(parse("vercel", &vercel));
+        registry.publish(parse("litellm", &litellm));
+        registry.publish(parse("models_dev", &models_dev));
         let table = registry.snapshot();
 
         let a = table.lookup("vendor/model-a");
@@ -629,13 +702,27 @@ mod tests {
         let openrouter = json!({"data": [{"id": "v/a", "context_length": 128_000, "pricing": {"prompt": "0.000001", "completion": "0.000002"}}]});
         let litellm = json!({"b": {"input_cost_per_token": 0.000_001, "output_cost_per_token": 0.000_002, "max_input_tokens": 200_000}});
         let models_dev = json!({"p": {"models": {"c": {"cost": {"input": 1, "output": 2}, "limit": {"context": 64000}}}}});
-        let ctx = |src: &str, doc: &Value| {
-            parse_source(src, doc)
-                .first()
-                .and_then(|(_, r)| r.context_tokens)
-        };
+        let ctx =
+            |src: &str, doc: &Value| parse(src, doc).first().and_then(|(_, r)| r.context_tokens);
         assert_eq!(ctx("openrouter", &openrouter), Some(128_000));
         assert_eq!(ctx("litellm", &litellm), Some(200_000));
         assert_eq!(ctx("models_dev", &models_dev), Some(64_000));
+    }
+
+    #[test]
+    fn one_malformed_entry_never_drops_the_rest_of_a_list() {
+        let openrouter = json!({"data": ["junk", {"id": "x/bad", "pricing": "free"}, {"id": "x/ok", "context_length": "big", "pricing": {"prompt": "0.000001", "completion": {"odd": 1}}}, {"id": "x/good", "pricing": {"prompt": 1e-6, "completion": "0.000002"}}]});
+        let litellm = json!({"sample_spec": {"max_tokens": "legacy", "input_cost_per_token": "n/a"}, "broken": "text", "m": {"input_cost_per_token": 1e-6, "output_cost_per_token": 2e-6, "max_tokens": 8192}});
+        let models_dev = json!({"p1": "text", "p2": {"models": {"m1": 5, "m2": {"cost": {"input": 1, "output": 2}, "limit": {"context": -1}}}}});
+        let ids =
+            |v: Vec<(String, ModelRates)>| v.into_iter().map(|(id, _)| id).collect::<Vec<_>>();
+        assert_eq!(ids(parse("openrouter", &openrouter)), vec!["x/good"]);
+        let lite = parse("litellm", &litellm);
+        assert_eq!(lite.len(), 1);
+        assert_eq!(lite.first().and_then(|(_, r)| r.context_tokens), Some(8192));
+        let dev = parse("models_dev", &models_dev);
+        assert_eq!(ids(dev.clone()), vec!["m2"]);
+        assert_eq!(dev.first().and_then(|(_, r)| r.context_tokens), None);
+        assert_eq!(parse_source("openrouter", b"not json"), Vec::new());
     }
 }
