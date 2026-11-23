@@ -257,6 +257,7 @@ class EngineSettings {
     this.reasoningEffort = 'medium',
     this.termuxBridgeEnabled = false,
     this.codeWrapMode = 'auto',
+    this.pricingAutoRefresh = true,
   });
 
   final String theme;
@@ -300,6 +301,9 @@ class EngineSettings {
   /// Code-fence wrapping: `auto` (soft-wrap below 640 px), `on`, or `off`.
   final String codeWrapMode;
 
+  /// Refresh public model prices automatically (at most once a day).
+  final bool pricingAutoRefresh;
+
   bool get isWalletUnlimited => walletDailyCeilingMicros == null;
 
   EngineSettings copyWith({
@@ -340,6 +344,7 @@ class EngineSettings {
     String? reasoningEffort,
     bool? termuxBridgeEnabled,
     String? codeWrapMode,
+    bool? pricingAutoRefresh,
   }) {
     return EngineSettings(
       theme: theme ?? this.theme,
@@ -385,6 +390,7 @@ class EngineSettings {
       reasoningEffort: reasoningEffort ?? this.reasoningEffort,
       termuxBridgeEnabled: termuxBridgeEnabled ?? this.termuxBridgeEnabled,
       codeWrapMode: codeWrapMode ?? this.codeWrapMode,
+      pricingAutoRefresh: pricingAutoRefresh ?? this.pricingAutoRefresh,
     );
   }
 }

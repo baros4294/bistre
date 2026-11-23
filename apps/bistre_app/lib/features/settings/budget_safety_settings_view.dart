@@ -287,6 +287,34 @@ class _BudgetSafetySettingsViewState extends State<BudgetSafetySettingsView> {
               ),
               const SizedBox(height: BistreSpacing.s24),
 
+              // Model prices (public price lists; Spec 06)
+              BistreSettingsSection(
+                title: l10n.t(L10nKey.settingsPricesHeading),
+                children: [
+                  BistreSettingRow(
+                    label: l10n.t(L10nKey.settingsPricesAutoRefresh),
+                    description: l10n.t(L10nKey.settingsPricesAutoRefreshHint),
+                    trailing: BistreSwitch(
+                      value: s.pricingAutoRefresh,
+                      semanticsLabel: l10n.t(L10nKey.settingsPricesAutoRefresh),
+                      reduceMotionOverride: ctrl.reduceMotionOverride,
+                      onChanged: (on) => unawaited(
+                        ctrl.updateSettings(s.copyWith(pricingAutoRefresh: on)),
+                      ),
+                    ),
+                  ),
+                  BistreSettingRow(
+                    label: l10n.t(L10nKey.settingsPricesRefreshNow),
+                    trailing: EngravedButton(
+                      label: l10n.t(L10nKey.settingsPricesRefreshNow),
+                      compact: true,
+                      onPressed: () => unawaited(ctrl.refreshPrices()),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: BistreSpacing.s24),
+
               // Permissions & Privacy
               BistreSettingsSection(
                 title: l10n.t(L10nKey.settingsTrustPresetHeading),

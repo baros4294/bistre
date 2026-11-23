@@ -745,6 +745,13 @@ impl EngineClient for InProcessEngine {
         Box::pin(async move { self.storage.latest_event_cursor() })
     }
 
+    fn refresh_prices(&self) -> BoxFuture<'_, BistreResult<()>> {
+        Box::pin(async move {
+            self.pricing.force_refresh(&self.web);
+            Ok(())
+        })
+    }
+
     fn approve_tool_call(
         &self,
         thread_id: String,

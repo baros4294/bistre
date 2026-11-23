@@ -3589,6 +3589,34 @@
       "tone": "diagnostic",
       "max_chars": 96,
       "placeholders": {}
+    },
+    "settings.prices.heading": {
+      "message": "Model prices",
+      "context": "Settings section heading for public model price lists",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.prices.auto_refresh": {
+      "message": "Update prices automatically",
+      "context": "Toggle for the daily public price-list check",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.prices.auto_refresh_hint": {
+      "message": "Checks public price lists at most once a day to show costs and enforce your spending limit. No personal data is sent.",
+      "context": "Explains what the automatic price update does and that it sends no personal data",
+      "tone": "calm_editorial",
+      "max_chars": 160,
+      "placeholders": {}
+    },
+    "settings.prices.refresh_now": {
+      "message": "Update prices now",
+      "context": "Button that starts a price-list update immediately",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
     }
   }
 }

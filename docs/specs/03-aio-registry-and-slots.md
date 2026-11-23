@@ -29,3 +29,8 @@ When Wallet Shield "$0 Local Priority" is enabled, local probed models satisfyin
 - Earlier sources win; later ones fill gaps; each source publishes incrementally via `tokio::sync::watch`. Freshness TTL `30 min`, empty-sync cooldown `60 s`, at most a `2.5 s` wait for one model's rate (the download is never cancelled).
 - Prices convert once, with integer decimal parsing only, to `MoneyMicros` per 1M tokens (JSON floats are re-read from their shortest decimal text, never multiplied as `f64`). Unknown models are `cost_known: false` (never a guessed rate); loopback providers are always `$0`.
 - Catalog GETs run through `PublicWebTransport`, carry no identifiers, and start only when a non-loopback provider streams.
+
+## Pricing Refresh Policy (2026-11-23)
+- Public price lists (`PRICING_SOURCES` in `crates/bistre-core/src/registry.rs`) are fetched at most once per `24 h`: at engine start when `AppSettings.pricing_auto_refresh` is on (default), or when the user presses **Update prices now** (Settings → Safety & Budget). A run never starts a fetch.
+- The merged table is cached in `<data_dir>/pricing_cache.json` with `PRICE_CACHE_FORMAT`; a cache from another format version is ignored and rebuilt, and a fresh cache counts as the last successful sync. Writes are atomic (temp → `sync_all` → rename).
+- With automatic updates off and no cache, unknown prices show the quiet "price unavailable" info and count as `$0` toward the daily limit (Spec 06).

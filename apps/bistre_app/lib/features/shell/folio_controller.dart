@@ -752,6 +752,16 @@ class FolioController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Starts a public price-list refresh now (Settings → Safety & Budget).
+  Future<void> refreshPrices() async {
+    try {
+      await _gateway.refreshPrices();
+    } catch (e) {
+      _lastDiagnosticKey = extractDiagnosticKey(e);
+      notifyListeners();
+    }
+  }
+
   Future<bool> applyLocalProseFont({
     required String familyLabel,
     required String filePath,

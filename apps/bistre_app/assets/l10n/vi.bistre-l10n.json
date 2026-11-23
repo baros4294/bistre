@@ -3589,6 +3589,34 @@
       "tone": "diagnostic",
       "max_chars": 96,
       "placeholders": {}
+    },
+    "settings.prices.heading": {
+      "message": "Giá mô hình",
+      "context": "Settings section heading for public model price lists",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.prices.auto_refresh": {
+      "message": "Tự động cập nhật giá",
+      "context": "Toggle for the daily public price-list check",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.prices.auto_refresh_hint": {
+      "message": "Kiểm tra bảng giá công khai tối đa mỗi ngày một lần để hiện chi phí và áp dụng hạn mức chi tiêu. Không gửi dữ liệu cá nhân.",
+      "context": "Explains what the automatic price update does and that it sends no personal data",
+      "tone": "calm_editorial",
+      "max_chars": 160,
+      "placeholders": {}
+    },
+    "settings.prices.refresh_now": {
+      "message": "Cập nhật giá ngay",
+      "context": "Button that starts a price-list update immediately",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
     }
   }
 }

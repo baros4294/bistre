@@ -5,7 +5,7 @@ use super::{
     HashMap, KeyRing, MoneyMicros, NodeRecord, NodeRole, Notify, Ordering, ProviderProfile,
     RunStatus, RunStepKind, StorageHandle, StreamChunk, SystemTime, ThreadMode, ToolRiskTier,
     UNIX_EPOCH, Uuid, agent, approval, broadcast, compaction, error_policy, providers, registry,
-    ssrf, story,
+    story,
 };
 use crate::events::{emit, emit_logged, note_write};
 use crate::wallet;
@@ -15,7 +15,6 @@ use bistre_protocol::{BistreResult, UsageMetrics};
 #[derive(Debug)]
 pub(crate) struct StreamServices {
     pub(crate) http: reqwest::Client,
-    pub(crate) web: ssrf::PublicWebTransport,
     pub(crate) pricing: Arc<registry::PricingRegistry>,
     pub(crate) wake: Arc<Notify>,
 }
@@ -151,9 +150,6 @@ pub(crate) async fn execute_durable_stream_loop(
         let mut pending_delta = String::new();
         let mut last_delta_emit = std::time::Instant::now();
 
-        if !is_local {
-            services.pricing.ensure_fresh(&services.web);
-        }
         let outcome = providers::stream_completion_with_thinking(
             &services.http,
             provider,
