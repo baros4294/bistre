@@ -179,6 +179,7 @@ Future<List<PerfMetric>> runDesktopColdStart(Directory repoRoot) async {
           if (probe.containsKey(waitFor)) break;
         }
       }
+      if (run == 0 && Platform.isLinux) printRssByMapping(proc.pid);
       proc.kill();
       await proc.exitCode.timeout(
         const Duration(seconds: 10),
@@ -221,6 +222,40 @@ Future<List<PerfMetric>> runDesktopColdStart(Directory repoRoot) async {
     } on FileSystemException {
       stderr.writeln('note: could not remove ${scratch.path}');
     }
+  }
+}
+
+/// Prints the ten largest resident mappings of [pid] (`/proc/<pid>/smaps`, Rss summed per
+/// pathname; anonymous memory as `[anon]`) so an RSS budget failure names its owner.
+void printRssByMapping(int pid) {
+  final List<String> lines;
+  try {
+    lines = File('/proc/$pid/smaps').readAsLinesSync();
+  } on FileSystemException catch (e) {
+    stderr.writeln('note: smaps unavailable for $pid: ${e.message}');
+    return;
+  }
+  final header = RegExp(r'^[0-9a-f]+-[0-9a-f]+ \S+ \S+ \S+ \S+\s*(.*)$');
+  final kb = <String, int>{};
+  var current = '[anon]';
+  for (final line in lines) {
+    final h = header.firstMatch(line);
+    if (h != null) {
+      final name = h.group(1)!.trim();
+      current = name.isEmpty ? '[anon]' : name;
+      continue;
+    }
+    if (line.startsWith('Rss:')) {
+      final v = int.tryParse(line.split(RegExp(r'\s+'))[1]);
+      if (v != null) kb[current] = (kb[current] ?? 0) + v;
+    }
+  }
+  final top = kb.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+  stdout.writeln('RSS by mapping (top 10 of ${kb.length}):');
+  for (final e in top.take(10)) {
+    stdout.writeln(
+      '  ${(e.value / 1024).toStringAsFixed(1).padLeft(7)} MB  ${e.key}',
+    );
   }
 }
 
