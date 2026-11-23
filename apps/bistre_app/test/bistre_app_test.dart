@@ -285,7 +285,7 @@ void main() {
           ),
         ),
       );
-      expect(defaultDuration, const Duration(milliseconds: 160));
+      expect(defaultDuration, BistreMotion.arriving);
       expect(overrideDuration, Duration.zero);
 
       await tester.pumpWidget(

@@ -548,7 +548,22 @@ class BistreMotion {
     return reduceMotion || disableAnimations || accessibleNav;
   }
 
-  /// Crisp ease-out entrance for overlays, popovers, and message reveals (transform/opacity only).
+  /// Motion timings match Parchment v2.6.0 (`docs/design/DESIGN.md` §6): 150 ms arriving,
+  /// 110 ms leaving, 180 ms travelling. Overlays and drawers disappear instantly when closed, so
+  /// closing never waits on an animation.
+  static const Duration arriving = Duration(milliseconds: 150);
+  static const Duration leaving = Duration(milliseconds: 110);
+  static const Duration travelling = Duration(milliseconds: 180);
+
+  /// `leaving`, or zero under reduced motion.
+  static Duration leaveDuration(
+    BuildContext context, {
+    bool reduceMotionOverride = false,
+  }) => shouldReduceMotion(context, reduceMotionOverride: reduceMotionOverride)
+      ? Duration.zero
+      : leaving;
+
+  /// Crisp ease-out entrance for overlays, popovers, and toasts (transform/opacity only).
   static Duration overlayDuration(
     BuildContext context, {
     bool reduceMotionOverride = false,
@@ -559,7 +574,7 @@ class BistreMotion {
     )) {
       return Duration.zero;
     }
-    return const Duration(milliseconds: 160);
+    return arriving;
   }
 
   /// Smooth GPU-composited slide/fade duration for drawers and spatial panels (transform/opacity only).
@@ -573,7 +588,7 @@ class BistreMotion {
     )) {
       return Duration.zero;
     }
-    return const Duration(milliseconds: 200);
+    return travelling;
   }
 
   static const Curve easeOut = Curves.easeOutCubic;

@@ -30,6 +30,7 @@ enum L10nKey {
   chatBranchIndicator('chat.branch_indicator'),
   chatBranchNext('chat.branch_next'),
   chatBranchPrev('chat.branch_prev'),
+  chatCodeHeader('chat.code.header'),
   chatCodeNoWrap('chat.code.no_wrap'),
   chatCodeWrap('chat.code.wrap'),
   chatCodeCopy('chat.code_copy'),

@@ -3659,6 +3659,22 @@
           "example": "Default"
         }
       }
+    },
+    "chat.code.header": {
+      "message": "{language} ({count, plural, other{{count} dòng}})",
+      "context": "Code card header: language name and line count",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "language": {
+          "type": "string",
+          "example": "kotlin"
+        },
+        "count": {
+          "type": "int",
+          "example": "2"
+        }
+      }
     }
   }
 }

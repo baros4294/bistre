@@ -713,9 +713,13 @@ class _FencedCodeCardState extends State<_FencedCodeCard> {
     final l10n = BistreLocalizations.of(context);
     final codeSurface = theme.isDark ? theme.bgCanvas : theme.bgElevated;
     final headerSurface = theme.bgSurface;
-    final langLabel = widget.language.isEmpty
-        ? l10n.t(L10nKey.modeCode)
-        : widget.language;
+    // `kotlin (2 lines)` (Parchment v2.6.0 code card header).
+    final langLabel = l10n.t(L10nKey.chatCodeHeader, <String, Object?>{
+      'language': widget.language.isEmpty
+          ? l10n.t(L10nKey.modeCode)
+          : widget.language,
+      'count': '\n'.allMatches(widget.code.trimRight()).length + 1,
+    });
     // Stable per-fence key (language + opening text) so the toggle survives streaming growth
     // and list virtualization.
     final head = widget.code.length > 64

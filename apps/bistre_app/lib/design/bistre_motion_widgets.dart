@@ -34,7 +34,7 @@ class _FolioFadeSlideState extends State<FolioFadeSlide>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 180),
+      duration: BistreMotion.arriving,
     );
     final curved = CurvedAnimation(
       parent: _controller,
@@ -209,7 +209,7 @@ class _FolioDrawerFrameState extends State<FolioDrawerFrame>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 210),
+      duration: BistreMotion.travelling,
     );
     _fade = CurvedAnimation(parent: _controller, curve: BistreMotion.easeOut);
   }

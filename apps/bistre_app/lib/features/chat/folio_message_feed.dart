@@ -432,175 +432,62 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
     BistreLocalizationController l10n,
     FolioController ctrl,
   ) {
-    final allStarters = <(L10nKey, L10nKey, BistreUiIcon)>[
-      (
-        L10nKey.chatWelcomePrompt1Title,
-        L10nKey.chatWelcomePrompt1Body,
-        BistreUiIcon.code,
-      ),
-      (
-        L10nKey.chatWelcomePrompt2Title,
-        L10nKey.chatWelcomePrompt2Body,
-        BistreUiIcon.edit,
-      ),
-      (
-        L10nKey.chatWelcomePrompt3Title,
-        L10nKey.chatWelcomePrompt3Body,
-        BistreUiIcon.assistant,
-      ),
-      (
-        L10nKey.chatWelcomePrompt4Title,
-        L10nKey.chatWelcomePrompt4Body,
-        BistreUiIcon.globe,
-      ),
-    ];
-    final starters = ctrl.hasConfiguredProvider
-        ? allStarters
-        : allStarters.take(3).toList(growable: false);
     final activeProv = ctrl.activeProvider;
     final activeModel = ctrl.activeModelId;
-    final activeModelSummary = activeProv == null
-        ? ''
-        : (activeModel.isNotEmpty
-              ? '${activeProv.name} · $activeModel'
-              : activeProv.name);
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          controller: _scrollController,
-          padding: const EdgeInsetsDirectional.symmetric(
-            vertical: BistreSpacing.s16,
-          ),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: (constraints.maxHeight - 32).clamp(0, double.infinity),
-            ),
-            child: Center(
-              child: FolioFadeSlide(
-                reduceMotionOverride: ctrl.reduceMotionOverride,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 580),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Center(
-                        child: EngravedIcon(
-                          assetPath: 'assets/icons/bistre_icon.vec',
-                          semanticsLabel: l10n.t(L10nKey.appTitle),
-                          size: 40,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
+    // Parchment v2.6.0 empty chat: one rubric-marked line with the model beneath it at the top
+    // of the reading column; without a key, one setup card. Opening a new chat is a 100+/day
+    // action, so nothing animates in.
+    return SingleChildScrollView(
+      controller: _scrollController,
+      padding: const EdgeInsetsDirectional.fromSTEB(
+        0,
+        48,
+        0,
+        BistreSpacing.s16,
+      ),
+      child: _ReadingColumn(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            DecoratedBox(
+              decoration: rubricMark(theme),
+              child: Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                  BistreSpacing.s12,
+                  BistreSpacing.s4,
+                  BistreSpacing.s8,
+                  BistreSpacing.s4,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    InkText(
+                      l10n.t(L10nKey.chatEmptyIntro),
+                      role: InkTextRole.titleMedium,
+                    ),
+                    if (ctrl.hasConfiguredProvider &&
+                        activeProv != null &&
+                        activeModel.isNotEmpty) ...[
+                      const SizedBox(height: 2),
                       InkText(
-                        l10n.t(L10nKey.shellEmptyTitle),
-                        role: InkTextRole.titleLarge,
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: BistreSpacing.s12),
-                      // Empty states teach the next step, marked by the single bold rubric.
-                      DecoratedBox(
-                        decoration: rubricMark(theme),
-                        child: Padding(
-                          padding: const EdgeInsetsDirectional.fromSTEB(
-                            BistreSpacing.s12,
-                            BistreSpacing.s4,
-                            BistreSpacing.s8,
-                            BistreSpacing.s4,
-                          ),
-                          child: InkText(
-                            l10n.t(L10nKey.chatEmptyIntro),
-                            role: InkTextRole.bodyCompact,
-                            color: theme.inkSecondary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      if (ctrl.hasConfiguredProvider && activeProv != null)
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            LabIcon(
-                              iconSlug: activeProv.iconSlug,
-                              customIconPath: activeProv.customIconPath,
-                              dialect: activeProv.dialect,
-                              providerName: activeProv.name,
-                              modelId: activeModel,
-                              size: 15,
-                            ),
-                            const SizedBox(width: 7),
-                            Flexible(
-                              child: InkText(
-                                activeModelSummary,
-                                role: InkTextRole.bodyCompact,
-                                color: theme.inkSecondary,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        )
-                      else
-                        InkText(
-                          l10n.t(L10nKey.shellEmptyBody),
-                          role: InkTextRole.bodyCompact,
-                          color: theme.inkSecondary,
-                          textAlign: TextAlign.center,
-                        ),
-                      const SizedBox(height: 16),
-                      const BistreOrnamentalRule(width: 140),
-                      if (!ctrl.hasConfiguredProvider) ...[
-                        const SizedBox(height: 20),
-                        _ProviderSetupBanner(
-                          onOpenProviders: ctrl.openSettings,
-                        ),
-                      ],
-                      const SizedBox(height: 20),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          for (var i = 0; i < starters.length; i++) ...[
-                            _StarterPromptRow(
-                              icon: starters[i].$3,
-                              title: l10n.t(starters[i].$1),
-                              body: l10n.t(starters[i].$2),
-                              onTap: () {
-                                if (!ctrl.hasConfiguredProvider) {
-                                  ctrl.openSettings();
-                                } else {
-                                  widget.onSubmitStarterPrompt(
-                                    l10n.t(starters[i].$2),
-                                  );
-                                }
-                              },
-                            ),
-                            if (i + 1 < starters.length)
-                              Padding(
-                                padding: const EdgeInsetsDirectional.symmetric(
-                                  horizontal: 12,
-                                ),
-                                child: SizedBox(
-                                  height: 1,
-                                  child: ColoredBox(
-                                    color: theme.borderHairline.withValues(
-                                      alpha: 0.55,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ],
+                        activeModel,
+                        role: InkTextRole.captionMeta,
+                        color: theme.inkMuted,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
-                  ),
+                  ],
                 ),
               ),
             ),
-          ),
-        );
-      },
+            if (!ctrl.hasConfiguredProvider) ...[
+              const SizedBox(height: BistreSpacing.s24),
+              _ProviderSetupBanner(onOpenProviders: ctrl.openSettings),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -635,8 +522,9 @@ class _ProviderSetupBanner extends StatelessWidget {
         ),
         child: DecoratedBox(
           decoration: BoxDecoration(
+            // One bold mark per view: the intro line carries it, not this card.
             border: BorderDirectional(
-              start: BorderSide(color: theme.accentBrass, width: 3.5),
+              start: BorderSide(color: theme.borderHairline, width: 0),
             ),
           ),
           child: Padding(
@@ -688,98 +576,6 @@ class _ProviderSetupBanner extends StatelessWidget {
                   ],
                 ),
               ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StarterPromptRow extends StatefulWidget {
-  const _StarterPromptRow({
-    required this.icon,
-    required this.title,
-    required this.body,
-    required this.onTap,
-  });
-
-  final BistreUiIcon icon;
-  final String title;
-  final String body;
-  final VoidCallback onTap;
-
-  @override
-  State<_StarterPromptRow> createState() => _StarterPromptRowState();
-}
-
-class _StarterPromptRowState extends State<_StarterPromptRow> {
-  bool _hovered = false;
-  bool _focused = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    return Semantics(
-      button: true,
-      label: widget.title,
-      child: FocusableActionDetector(
-        onShowHoverHighlight: (v) => setState(() => _hovered = v),
-        onShowFocusHighlight: (v) => setState(() => _focused = v),
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.onTap,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: _hovered || _focused
-                    ? theme.bgSurface.withValues(alpha: 0.72)
-                    : null,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Padding(
-                padding: const EdgeInsetsDirectional.symmetric(
-                  horizontal: 12,
-                  vertical: 11,
-                ),
-                child: Row(
-                  children: [
-                    BistreIcon(
-                      widget.icon,
-                      size: 15,
-                      color: _hovered ? theme.accentBrass : theme.inkMuted,
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          InkText(
-                            widget.title,
-                            role: InkTextRole.labelStrong,
-                            color: theme.inkPrimary,
-                          ),
-                          const SizedBox(height: 1),
-                          InkText(
-                            widget.body,
-                            role: InkTextRole.captionMeta,
-                            color: theme.inkSecondary,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: BistreSpacing.s8),
-                    BistreIcon(
-                      BistreUiIcon.chevronEnd,
-                      size: 13,
-                      color: _hovered ? theme.accentBrass : theme.inkMuted,
-                    ),
-                  ],
-                ),
-              ),
             ),
           ),
         ),

@@ -223,7 +223,12 @@ class _BistreSwitchState extends State<BistreSwitch>
         context,
         reduceMotionOverride: widget.reduceMotionOverride,
       );
-      _ctrl.duration = dur;
+      _ctrl
+        ..duration = dur
+        ..reverseDuration = BistreMotion.leaveDuration(
+          context,
+          reduceMotionOverride: widget.reduceMotionOverride,
+        );
       if (dur == Duration.zero) {
         _ctrl.value = widget.value ? 1.0 : 0.0;
       } else {
