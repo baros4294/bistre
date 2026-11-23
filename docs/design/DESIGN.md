@@ -70,7 +70,7 @@ Bundled static OFL weights serve as zero-network defaults (zero Google Fonts run
 ## 4. 8pt Spacing, Radii & Layout Modes
 - **Spacing Scale**: `4`, `8`, `12`, `16`, `24`, `32`, `48` logical px (strictly `EdgeInsetsDirectional` for RTL).
 - **Radii**: `6` (chips/inputs), `10` (surfaces/bubbles), `14` (composer/modals), `999` (wax seal pills).
-- **Reading Measure**: Max prose width `740px` centered; **full-width breakouts** expand wide tables, diffs, and code blocks up to `1160px` on desktop.
+- **Reading Measure**: Max prose width `740px` centered, for chat prose only; **full-width breakouts** expand wide tables, diffs, and code blocks up to `1160px` on desktop. **Settings and other tool pages fill the content width** (24-28 px gutters), as in `v2.6.0`, so wide windows show more, not more empty space.
 - **Dual Layout Modes**:
   - **Sepia Bubbles**: User utterances aligned `AlignmentDirectional.centerEnd` in warm `bgSurface` cards; assistant responses aligned `AlignmentDirectional.centerStart` with hairline ink border.
   - **Open Folio**: Full book-spread editorial column where user and assistant turns alternate with engraved hairline rules, speaker rubric labels, and generous typographic breathing room.
@@ -88,12 +88,31 @@ Every screen in `apps/bistre_app` composes exclusively from these 10 reusable wi
 9. `FolioOverlay` — `OverlayPortal`-backed modal/popover with Escape dismiss and focus trap.
 10. `EngravedIcon` — Unified `.vec` (`vector_graphics`) resolution-independent GPU `ui.Picture` renderer (`vg.loadPicture` + `CustomPaint`, zero low-res raster downsampling/bilinear blur, zero Material Icons, zero emojis).
 
-## 6. Frequency-Aware Motion Rules
-- **100+/day & all keyboard-initiated actions** (typing, sending, toggling focus, switching threads): **0ms (instant)**.
-- **Message arrival, sending, thread switching, and scrolling back** count as 100+/day: messages appear instantly and never replay an entrance animation.
-- **Timings (Parchment v2.6.0 parity)**: `BistreMotion.arriving` **150 ms**, `leaving` **110 ms**, `travelling` **180 ms**, all `Curves.easeOutCubic`. Bistre improves on v2.6.0 in two places: closed overlays and drawers disappear instantly (v2.6.0 spends 250 ms fading them out), and size changes (expanding Thinking, a code fold) snap to their new size while the revealed content fades in over `arriving`, instead of v2.6.0's size springs, so layout never animates.
-- **Occasional spatial transitions** (modals `FolioModalBackdrop`, toast entrances `FolioFadeSlide`, mobile drawer `FolioDrawerFrame`, streaming nib pulse `FolioStreamingCursor`): `arriving` (overlays, toasts) or `travelling` (drawers, panels); reversible controls such as `BistreSwitch` return over `leaving`, animating **only `transform` and `opacity`** (never `width`, `height`, `padding`, or layout). Fast input interrupts any animation without corrupting state or focus.
-- **Reduced Motion**: If `MediaQuery.maybeReduceMotionOf(context)`, `MediaQuery.maybeDisableAnimationsOf(context)`, `MediaQuery.maybeAccessibleNavigationOf(context)`, or the user's persisted `reduceMotionOverride` setting is true, all durations resolve to `Duration.zero`, including animations already running.
+## 6. Motion: Instant Where You Act, Alive Where You Look
+Owner decisions (2026-11-24): Bistre should feel at least as alive as Parchment `v2.6.0`, and never slower to use. Animation never delays an action: the action fires on the event, and motion only describes it.
+- **Instant (0 ms)**: typing, sending, every keyboard-initiated action, thread switching, and message arrival. A committed message never replays an entrance animation.
+- **Timings**: `BistreMotion.arriving` **150 ms**, `leaving` **110 ms**, `travelling` **180 ms**, `Curves.easeOutCubic`. Springs are used where `v2.6.0` uses them.
+- **Pointer feedback on every clickable** (buttons, chips, icon buttons, rows, tabs, header pressables), built into the shared primitives so every screen gets it:
+  - press scales to **0.96** (spring damping 0.78, stiffness 680);
+  - hover scales to **1.012** and lifts **0.75 dp** (spring, no bounce, stiffness 560);
+  - the focus ring shows for keyboard focus only, never after a pointer press.
+- **Disclosures animate their height** (Thinking, the context breakdown, the tools drawer, code fold, settings sections, inspector panels): the size eases on a critically damped spring while the content fades in over `arriving` and out over `leaving`. Fast input interrupts it cleanly.
+- **Overlays and pills**:
+  - modals, menus, and popovers fade and rise in over `arriving`, and leave over `leaving`. That is quicker than `v2.6.0`'s 250 ms, but never an abrupt snap.
+  - Floating pills (toasts, Jump to latest) pop in from half their height, scale 0.90 to 1 and fade, on a brisk spring (stiffness 580).
+  - Side drawers slide over `travelling`.
+- **State changes**: selection, toggle, chip, and accent colours cross-fade over `travelling`; progress and token counters ease to their new value.
+- **Scrolling**:
+  - on desktop, mouse-wheel scrolling is smooth: notches accumulate into a target that the view eases toward (~150 ms);
+  - trackpad and touch scrolling stay 1:1;
+  - programmatic scrolls (Jump to latest, search hits, branch switches) glide over `travelling`.
+- **Streaming text is paced**: replies and thinking reveal in step with the display frame clock:
+  - ~92 characters per second, carrying fractional characters between frames;
+  - elastic catch-up when more than 28 characters are waiting;
+  - a fast drain when the stream ends.
+  The text never lags the stream by more than a fraction of a second.
+- **Reduced motion**: if `MediaQuery.maybeReduceMotionOf(context)`, `maybeDisableAnimationsOf`, `maybeAccessibleNavigationOf`, or the user's `reduceMotionOverride` is true, every duration and spring above resolves to an instant change, including ones already running, and streamed text appears as it arrives.
+- **Lint**: the `bistre_lints` layout-animation rule allows height animation for disclosures; it is narrowed in the same change that implements them.
 
 ## 7. Accessibility, IME & RTL Non-Negotiables
 - All interactive controls are keyboard-focusable (`FocusableActionDetector`; never a bare `GestureDetector`) and expose `Semantics` labels, **keyboard-only** 2px `accentBrass` focus rings (shown when focus arrived by keyboard, never after a pointer click), and minimum `40x40` touch/click targets (`48x48` on Android). Small icon buttons keep their visual size and take taps across the full target through `TapTargetExpander` (`apps/bistre_app/lib/design/bistre_icons.dart`). Disabled buttons keep their hairline outline.
