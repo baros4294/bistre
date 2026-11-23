@@ -255,4 +255,56 @@ void main() {
     ctrl.dispose();
     await gw.shutdown();
   });
+
+  test(
+    'toasts and ordinary notifications do not change the root appearance',
+    () async {
+      final (ctrl, gw, _) = await boot();
+      var rootRebuildSignals = 0;
+      ctrl.appearance.addListener(() => rootRebuildSignals++);
+      ctrl.showToast(L10nKey.toastDeleted);
+      ctrl.dismissToast();
+      await ctrl.updateSearch('');
+      expect(rootRebuildSignals, 0);
+      ctrl.dispose();
+      await gw.shutdown();
+    },
+  );
+
+  test(
+    'a fast thread switch never shows the previous chat\'s messages',
+    () async {
+      final (ctrl, gw, _) = await boot();
+      final threads = ctrl.threads;
+      expect(threads.length, greaterThanOrEqualTo(2));
+      final slow = threads[0].id;
+      final fast = threads[1].id;
+      gw.listNodesDelays[slow] = const Duration(milliseconds: 40);
+      final slowSwitch = ctrl.selectThread(slow);
+      await ctrl.selectThread(fast);
+      await slowSwitch;
+      expect(ctrl.activeThread?.id, fast);
+      expect(ctrl.nodes.every((n) => n.threadId == fast), isTrue);
+      ctrl.dispose();
+      await gw.shutdown();
+    },
+  );
+
+  test(
+    'chats deleted inside the Undo window are committed when the app closes',
+    () async {
+      final (ctrl, gw, _) = await boot();
+      final victim = ctrl.threads.first.id;
+      await ctrl.deleteThread(victim);
+      expect(
+        gw.deletedThreadIds,
+        isEmpty,
+        reason: 'still inside the Undo window',
+      );
+      await ctrl.flushPendingDeletes();
+      expect(gw.deletedThreadIds, <String>[victim]);
+      ctrl.dispose();
+      await gw.shutdown();
+    },
+  );
 }

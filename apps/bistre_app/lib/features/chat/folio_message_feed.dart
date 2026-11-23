@@ -304,63 +304,58 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
             final isPinnedStart = ctrl.pinnedContextNodeId == node.id;
             return _ReadingColumn(
               child: RepaintBoundary(
-                child: FolioFadeSlide(
-                  key: ValueKey<String>(node.id),
-                  beginOffset: const Offset(0, 0.02),
-                  reduceMotionOverride: ctrl.reduceMotionOverride,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (isPinnedStart)
-                        _PinnedContextBanner(
-                          onClear: () =>
-                              unawaited(ctrl.toggleContextStartPin(node.id)),
-                        ),
-                      _PassageItem(
-                        node: node,
-                        assistantName:
-                            ctrl.activeAssistant?.name ??
-                            l10n.t(L10nKey.shellRoleAssistant),
-                        activeProvider: activeProv,
-                        layoutMode: ctrl.layoutMode,
-                        showTokenMetrics: ctrl.showTokenMetrics,
-                        editorialDialogueStyling:
-                            ctrl.activeThreadMode == 'write' &&
-                            ctrl.storyState.dialogueStyling,
-                        isPinnedContextStart: isPinnedStart,
-                        branchInfo: branchInfo,
-                        showBottomDivider: !isLast && node.role == 'assistant',
-                        reduceMotionOverride: ctrl.reduceMotionOverride,
-                        onCopy: () => unawaited(ctrl.copyText(node.content)),
-                        onCopyCode: (code) => unawaited(ctrl.copyText(code)),
-                        onReply: () => widget.onReplyToPassage(node.content),
-                        onQuoteThinking: widget.onReplyToPassage,
-                        onToggleContextPin: !ctrl.isStreaming
-                            ? () =>
-                                  unawaited(ctrl.toggleContextStartPin(node.id))
-                            : null,
-                        onEditResend: node.role == 'user' && !ctrl.isStreaming
-                            ? (edited) =>
-                                  ctrl.editUserMessageAndResend(node.id, edited)
-                            : null,
-                        onRegenerate:
-                            node.role == 'assistant' && !ctrl.isStreaming
-                            ? () => unawaited(
-                                ctrl.regenerateFromAssistantNode(node),
-                              )
-                            : null,
-                        onDelete: !ctrl.isStreaming
-                            ? () => unawaited(ctrl.deleteMessageNode(node.id))
-                            : null,
-                        onBranchDelta: branchInfo != null
-                            ? (delta) => ctrl.selectSiblingBranch(
-                                branchInfo.parentKey,
-                                delta,
-                              )
-                            : null,
+                key: ValueKey<String>(node.id),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (isPinnedStart)
+                      _PinnedContextBanner(
+                        onClear: () =>
+                            unawaited(ctrl.toggleContextStartPin(node.id)),
                       ),
-                    ],
-                  ),
+                    _PassageItem(
+                      node: node,
+                      assistantName:
+                          ctrl.activeAssistant?.name ??
+                          l10n.t(L10nKey.shellRoleAssistant),
+                      activeProvider: activeProv,
+                      layoutMode: ctrl.layoutMode,
+                      showTokenMetrics: ctrl.showTokenMetrics,
+                      editorialDialogueStyling:
+                          ctrl.activeThreadMode == 'write' &&
+                          ctrl.storyState.dialogueStyling,
+                      isPinnedContextStart: isPinnedStart,
+                      branchInfo: branchInfo,
+                      showBottomDivider: !isLast && node.role == 'assistant',
+                      reduceMotionOverride: ctrl.reduceMotionOverride,
+                      onCopy: () => unawaited(ctrl.copyText(node.content)),
+                      onCopyCode: (code) => unawaited(ctrl.copyText(code)),
+                      onReply: () => widget.onReplyToPassage(node.content),
+                      onQuoteThinking: widget.onReplyToPassage,
+                      onToggleContextPin: !ctrl.isStreaming
+                          ? () => unawaited(ctrl.toggleContextStartPin(node.id))
+                          : null,
+                      onEditResend: node.role == 'user' && !ctrl.isStreaming
+                          ? (edited) =>
+                                ctrl.editUserMessageAndResend(node.id, edited)
+                          : null,
+                      onRegenerate:
+                          node.role == 'assistant' && !ctrl.isStreaming
+                          ? () => unawaited(
+                              ctrl.regenerateFromAssistantNode(node),
+                            )
+                          : null,
+                      onDelete: !ctrl.isStreaming
+                          ? () => unawaited(ctrl.deleteMessageNode(node.id))
+                          : null,
+                      onBranchDelta: branchInfo != null
+                          ? (delta) => ctrl.selectSiblingBranch(
+                              branchInfo.parentKey,
+                              delta,
+                            )
+                          : null,
+                    ),
+                  ],
                 ),
               ),
             );

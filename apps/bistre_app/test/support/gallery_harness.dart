@@ -566,7 +566,15 @@ flowchart LR
   }
 
   @override
-  Future<void> deleteThread(String threadId) async {}
+  Future<void> deleteThread(String threadId) async {
+    deletedThreadIds.add(threadId);
+  }
+
+  /// Thread ids whose delete reached the engine (tests of the Undo window).
+  final List<String> deletedThreadIds = <String>[];
+
+  /// Artificial `listNodes` latency per thread id (thread-switch race tests).
+  final Map<String, Duration> listNodesDelays = <String, Duration>{};
 
   @override
   Future<List<EngineThread>> listThreads() async => _threads;
@@ -612,8 +620,11 @@ flowchart LR
   Future<bool> retryRunNow(String threadId) async => false;
 
   @override
-  Future<List<EngineNode>> listNodes(String threadId) async =>
-      _nodes.where((n) => n.threadId == threadId).toList(growable: false);
+  Future<List<EngineNode>> listNodes(String threadId) async {
+    final delay = listNodesDelays[threadId];
+    if (delay != null) await Future<void>.delayed(delay);
+    return _nodes.where((n) => n.threadId == threadId).toList(growable: false);
+  }
 
   @override
   Future<void> saveDraft(String threadId, String text) async {

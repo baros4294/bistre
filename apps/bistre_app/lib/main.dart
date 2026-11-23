@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'app/app_appearance.dart';
 import 'bridge/bistre_engine.dart';
 import 'design/bistre_theme.dart';
 import 'features/shell/folio_controller.dart';
@@ -157,13 +158,20 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _syncSystemBrightness();
     BistreDesktopHost.attachSystemThemeListener(_syncSystemBrightness);
+    widget.folioController.addListener(_syncWindowTitle);
+    _syncWindowTitle();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    BistreDesktopHost.detachSystemThemeListener(_syncSystemBrightness);
+    widget.folioController.removeListener(_syncWindowTitle);
     super.dispose();
   }
+
+  void _syncWindowTitle() =>
+      _scheduleWindowTitle(_windowTitle(widget.folioController));
 
   @override
   void didChangePlatformBrightness() {
@@ -176,6 +184,7 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       unawaited(widget.folioController.persistCurrentWindowBounds());
+      unawaited(widget.folioController.flushPendingDeletes());
     }
   }
 
@@ -186,6 +195,22 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
   }
 
   String? _lastWindowTitle;
+  AppAppearance? _themeKey;
+  BistreThemeData? _theme;
+
+  /// Theme resolution runs contrast adjustment; reuse it until the appearance changes.
+  BistreThemeData _themeFor(AppAppearance look) {
+    final cached = _theme;
+    if (cached != null && _themeKey == look) return cached;
+    _themeKey = look;
+    return _theme = BistreThemeData.resolve(
+      isDark: look.isDark,
+      accentPreset: look.accentPreset,
+      customAccentHex: look.customAccentHex,
+      typography: look.typography,
+      reducedEffects: look.reducedEffects,
+    );
+  }
 
   /// `<chat title> — Bistre`, `Settings — Bistre`, or a live `Replying · …` caption.
   String _windowTitle(FolioController ctrl) {
@@ -224,23 +249,20 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return BistreLocalizations(
       controller: widget.l10nController,
+      // Rebuild the app only for appearance or locale changes; the shell listens to the
+      // controller itself.
       child: ListenableBuilder(
         listenable: Listenable.merge(<Listenable>[
           widget.l10nController,
-          widget.folioController,
+          widget.folioController.appearance,
         ]),
         builder: (context, _) {
           final ctrl = widget.folioController;
-          final typography = ctrl.resolvedTypography;
-          final themeData = BistreThemeData.resolve(
-            isDark: ctrl.isDark,
-            accentPreset: ctrl.settings.accentPreset,
-            customAccentHex: ctrl.settings.customAccentHex,
-            typography: typography,
-            reducedEffects: ctrl.lowMemoryMode,
-          );
+          final look = ctrl.appearance.value;
+          final typography = look.typography;
+          final themeData = _themeFor(look);
           _scheduleDesktopThemeSync(themeData);
-          _scheduleWindowTitle(_windowTitle(ctrl));
+          _syncWindowTitle();
 
           return BistreTheme(
             data: themeData,

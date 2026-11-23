@@ -439,8 +439,13 @@ extension FolioCatalogActions on FolioController {
     _pendingThreadDeletes.remove(threadId)?.cancel();
     final remaining = _threads.where((t) => t.id != threadId).toList();
     _threads = remaining;
-    if (_activeThread?.id == threadId && remaining.isNotEmpty) {
-      await _activateThread(remaining.first);
+    if (_activeThread?.id == threadId) {
+      if (remaining.isNotEmpty) {
+        await _activateThread(remaining.first);
+      } else {
+        // Deleting the last chat must not leave it on screen.
+        await createNewFolio();
+      }
     }
     _pendingThreadDeletes[threadId] = Timer(
       const Duration(seconds: 8),
@@ -473,6 +478,19 @@ extension FolioCatalogActions on FolioController {
       _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
     }
     _notify();
+  }
+
+  /// Commits every chat still inside its Undo window (app pause, close, or dispose).
+  Future<void> flushPendingDeletes() async {
+    final ids = _pendingThreadDeletes.keys.toList();
+    for (final id in ids) {
+      _pendingThreadDeletes.remove(id)?.cancel();
+      try {
+        await _gateway.deleteThread(id);
+      } catch (e) {
+        _noteNonFatal('flush_pending_delete', e);
+      }
+    }
   }
 
   Future<void> _commitThreadDelete(String threadId) async {
