@@ -7,6 +7,8 @@ on:
     branches: ["main"]
   merge_group:
   workflow_dispatch:
+  # release.yml runs exactly these gates before building release artifacts.
+  workflow_call:
 
 permissions: {}
 
@@ -203,12 +205,16 @@ jobs:
       - name: Rust clippy anti-slop gate (locked)
         shell: bash
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
-      - name: Supply-chain and hexagonal boundary check (cargo-deny)
+      - name: Supply-chain and hexagonal boundary check (cargo-deny, same result on every OS)
+        if: runner.os == 'Linux'
         shell: bash
         run: cargo deny --locked check
       - name: Rust unit and integration tests (locked)
         shell: bash
         run: cargo nextest run --locked --workspace
+      - name: Rust doctests (nextest does not run them)
+        shell: bash
+        run: cargo test --doc --locked --workspace
       - name: Verify strict crate boundary isolation via cargo tree
         shell: bash
         run: |
@@ -254,7 +260,7 @@ jobs:
       matrix:
         os: [ubuntu-24.04, windows-2025]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
     steps:
@@ -302,6 +308,16 @@ jobs:
         working-directory: apps/bistre_app
         shell: bash
         run: flutter build linux --release
+      - name: Launch the release build and enforce Spec 11 performance budgets (xvfb)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Parchment 042627b7: a release build that never launched in CI shipped broken.
+          # --strict fails when the app does not start; budgets fail on Spec 11 hard limits.
+          sudo apt-get install -y xvfb
+          cargo build --locked --release -p bistre-daemon
+          xvfb-run -a dart run tools/bistre_guard/bin/bistre_guard.dart perf --strict
       - name: Build Windows release bundle
         if: runner.os == 'Windows'
         working-directory: apps/bistre_app
@@ -327,7 +343,7 @@ jobs:
       - name: Install pinned Rust toolchain
         shell: bash
         run: |
-          rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update --target aarch64-linux-android
+          rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update --component clippy --target aarch64-linux-android
           rustup default "$RUST_VERSION"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
@@ -364,6 +380,15 @@ jobs:
       - name: Resolve Dart Pub Workspace (enforcing pubspec.lock)
         shell: bash
         run: bash .github/scripts/with-download-retry.sh flutter pub get --enforce-lockfile
+      - name: Clippy for Android-only code paths (aarch64-linux-android)
+        shell: bash
+        run: |
+          set -euo pipefail
+          tc="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="${tc}/aarch64-linux-android24-clang"
+          export AR_aarch64_linux_android="${tc}/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="${tc}/aarch64-linux-android24-clang"
+          cargo clippy --locked --target aarch64-linux-android -p bistre-crypto -p bistre-core -p bistre-ffi -- -D warnings
       - name: Build Android arm64-v8a direct release APK
         working-directory: apps/bistre_app
         shell: bash

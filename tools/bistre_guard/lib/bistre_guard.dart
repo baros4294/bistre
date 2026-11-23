@@ -661,7 +661,10 @@ void checkWorkflowSecurity(Directory repoRoot, List<String> errors) {
           currentJobLine = i + 1;
           hasTimeout = false;
         } else if (currentJob != null &&
-            RegExp(r'^    timeout-minutes:\s*\d+').hasMatch(line)) {
+            (RegExp(r'^    timeout-minutes:\s*\d+').hasMatch(line) ||
+                // A reusable-workflow call cannot set a timeout; its own jobs do.
+                RegExp(r'^    uses:\s*\./\.github/workflows/')
+                    .hasMatch(line))) {
           hasTimeout = true;
         }
       }

@@ -18,8 +18,9 @@ Commands:
   record               Record current file fingerprints after a green verification run
   locked <cmd> [args]  Run a heavy command under the single-run lock, then enforce budgets
   verify-elf <path>    Verify 16 KiB PT_LOAD alignment of a .so, directory, or APK
-  perf [--android] [--skip-desktop]
+  perf [--android] [--skip-desktop] [--strict]
                        Streaming frame probe + 300-chat desktop cold start / idle RSS
+                       (--strict: a section that cannot run, e.g. the app never starts, fails)
 ''';
 
 Future<void> main(List<String> args) async {
@@ -75,6 +76,7 @@ Future<void> main(List<String> args) async {
         repoRoot,
         android: args.contains('--android'),
         desktop: !args.contains('--skip-desktop'),
+        strict: args.contains('--strict'),
       );
     default:
       stderr.write(_usage);
@@ -86,6 +88,7 @@ Future<int> _perf(
   Directory repoRoot, {
   required bool android,
   required bool desktop,
+  bool strict = false,
 }) async {
   final metrics = <PerfMetric>[];
   final notes = <String>[];
@@ -106,6 +109,7 @@ Future<int> _perf(
   for (final n in notes) {
     stdout.writeln(n);
   }
+  if (strict && notes.isNotEmpty) return 1;
   return metrics.any((m) => m.failed) ? 1 : 0;
 }
 
