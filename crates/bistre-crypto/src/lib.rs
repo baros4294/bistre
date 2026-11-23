@@ -561,16 +561,17 @@ wLMDjy9FLAuxZ3q4NlEvkgtyhrr0gtTu6KC4KBJdITbbOeAi1zBIYo0v4iTgt8jJpIidRJnp94ABQkJA
     }
 
     #[test]
-    fn ephemeral_vault_round_trips_and_deletes() {
+    fn ephemeral_vault_round_trips_and_deletes() -> TestResult {
         let vault = EphemeralVault::new();
         assert!(vault.put("openai_key", b"dummy-secret-value").is_ok());
-        let fetched = vault.get("openai_key").ok().flatten();
+        let fetched = vault.get("openai_key")?;
         assert_eq!(
             fetched.as_deref().map(Vec::as_slice),
             Some(b"dummy-secret-value".as_slice())
         );
         assert!(vault.delete("openai_key").is_ok());
-        assert_eq!(vault.get("openai_key").ok().flatten(), None);
+        assert_eq!(vault.get("openai_key")?, None);
+        Ok(())
     }
 
     #[cfg(windows)]
@@ -582,11 +583,11 @@ wLMDjy9FLAuxZ3q4NlEvkgtyhrr0gtTu6KC4KBJdITbbOeAi1zBIYo0v4iTgt8jJpIidRJnp94ABQkJA
         let vault = LocalSecretVault::open(dir.path(), None)?;
 
         assert!(vault.put("provider:openai", secret).is_ok());
-        assert_eq!(vault.contains("provider:openai").ok(), Some(true));
+        assert!(vault.contains("provider:openai")?);
 
         // Reopen fresh handle to verify durability across restarts.
         let reopened = LocalSecretVault::open(dir.path(), None)?;
-        let decrypted = reopened.get("provider:openai").ok().flatten();
+        let decrypted = reopened.get("provider:openai")?;
         assert_eq!(
             decrypted.as_deref().map(Vec::as_slice),
             Some(secret.as_slice())
@@ -599,33 +600,29 @@ wLMDjy9FLAuxZ3q4NlEvkgtyhrr0gtTu6KC4KBJdITbbOeAi1zBIYo0v4iTgt8jJpIidRJnp94ABQkJA
         }
 
         assert!(reopened.delete("provider:openai").is_ok());
-        assert_eq!(reopened.get("provider:openai").ok().flatten(), None);
+        assert_eq!(reopened.get("provider:openai")?, None);
         Ok(())
     }
 
-    fn sealed_vault(dir: &Path, key: &[u8; 32]) -> Option<LocalSecretVault> {
-        let key = VaultKey::from_slice(key).ok()?;
-        LocalSecretVault::open(dir, Some(key)).ok()
+    fn sealed_vault(dir: &Path, key: &[u8; 32]) -> Result<LocalSecretVault, BistreError> {
+        LocalSecretVault::open(dir, Some(VaultKey::from_slice(key)?))
     }
 
     #[test]
     fn sealed_vault_encrypts_at_rest_and_survives_reopen() -> TestResult {
         let dir = tempdir()?;
         let secret = b"sk-test-sealed-secret-112233";
-        let vault = sealed_vault(dir.path(), &[7_u8; 32]);
-        assert!(vault.as_ref().is_some_and(LocalSecretVault::is_encrypted));
-        let Some(vault) = vault else { return Ok(()) };
-        assert!(vault.put("provider:openai", secret).is_ok());
+        let vault = sealed_vault(dir.path(), &[7_u8; 32])?;
+        assert!(vault.is_encrypted());
+        vault.put("provider:openai", secret)?;
 
         let raw = std::fs::read_to_string(dir.path().join("bistre_vault.local.json"));
         assert!(raw.as_ref().is_ok_and(|r| !r.contains(&hex::encode(secret))
             && !r.contains("sk-sealed-secret")
             && r.contains(sealed::SEALED_PREFIX)));
 
-        let reopened = sealed_vault(dir.path(), &[7_u8; 32]);
-        let got = reopened
-            .as_ref()
-            .and_then(|v| v.get("provider:openai").ok().flatten());
+        let reopened = sealed_vault(dir.path(), &[7_u8; 32])?;
+        let got = reopened.get("provider:openai")?;
         assert_eq!(got.as_deref().map(Vec::as_slice), Some(secret.as_slice()));
         assert!(vault.put(KEY_CHECK_ENTRY, b"x").is_err());
         Ok(())
@@ -638,10 +635,8 @@ wLMDjy9FLAuxZ3q4NlEvkgtyhrr0gtTu6KC4KBJdITbbOeAi1zBIYo0v4iTgt8jJpIidRJnp94ABQkJA
         let legacy = format!("{{\"provider:openai\": \"{}\"}}", hex::encode(secret));
         assert!(std::fs::write(dir.path().join("bistre_vault.local.json"), legacy).is_ok());
 
-        let vault = sealed_vault(dir.path(), &[9_u8; 32]);
-        let got = vault
-            .as_ref()
-            .and_then(|v| v.get("provider:openai").ok().flatten());
+        let vault = sealed_vault(dir.path(), &[9_u8; 32])?;
+        let got = vault.get("provider:openai")?;
         assert_eq!(got.as_deref().map(Vec::as_slice), Some(secret.as_slice()));
         let raw = std::fs::read_to_string(dir.path().join("bistre_vault.local.json"));
         assert!(raw.is_ok_and(|r| !r.contains(&hex::encode(secret))));
@@ -651,22 +646,17 @@ wLMDjy9FLAuxZ3q4NlEvkgtyhrr0gtTu6KC4KBJdITbbOeAi1zBIYo0v4iTgt8jJpIidRJnp94ABQkJA
     #[test]
     fn a_changed_key_sets_the_old_vault_aside_instead_of_failing() -> TestResult {
         let dir = tempdir()?;
-        let first = sealed_vault(dir.path(), &[1_u8; 32]);
-        assert!(first.is_some_and(|v| v.put("provider:openai", b"sk-old").is_ok()));
+        sealed_vault(dir.path(), &[1_u8; 32])?.put("provider:openai", b"sk-old")?;
 
-        let second = sealed_vault(dir.path(), &[2_u8; 32]);
-        assert!(
-            second
-                .as_ref()
-                .is_some_and(|v| v.get("provider:openai").ok().flatten().is_none())
-        );
+        let second = sealed_vault(dir.path(), &[2_u8; 32])?;
+        assert_eq!(second.get("provider:openai")?, None);
         let set_aside = std::fs::read_dir(dir.path()).map(|entries| {
             entries
                 .flatten()
                 .any(|e| e.file_name().to_string_lossy().contains(".key-mismatch-"))
         });
         assert!(set_aside.is_ok_and(|found| found));
-        assert!(second.is_some_and(|v| v.put("provider:openai", b"sk-new").is_ok()));
+        second.put("provider:openai", b"sk-new")?;
         Ok(())
     }
 
@@ -675,10 +665,9 @@ wLMDjy9FLAuxZ3q4NlEvkgtyhrr0gtTu6KC4KBJdITbbOeAi1zBIYo0v4iTgt8jJpIidRJnp94ABQkJA
         let dir = tempdir()?;
         let legacy = format!("{{\"provider:openai\": \"{}\"}}", hex::encode(b"sk-legacy"));
         assert!(std::fs::write(dir.path().join("bistre_vault.local.json"), legacy).is_ok());
-        let vault = LocalSecretVault::with_protection(dir.path(), VaultProtection::Unavailable);
-        assert!(vault.as_ref().is_ok_and(|v| !v.is_encrypted()));
-        let Ok(vault) = vault else { return Ok(()) };
-        let got = vault.get("provider:openai").ok().flatten();
+        let vault = LocalSecretVault::with_protection(dir.path(), VaultProtection::Unavailable)?;
+        assert!(!vault.is_encrypted());
+        let got = vault.get("provider:openai")?;
         assert_eq!(
             got.as_deref().map(Vec::as_slice),
             Some(b"sk-legacy".as_slice())

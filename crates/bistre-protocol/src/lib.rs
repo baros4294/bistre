@@ -1316,6 +1316,8 @@ pub fn lock_or_recover<'a, T>(
 mod tests {
     use super::*;
 
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
     #[test]
     fn money_micros_checked_and_saturating_math() {
         let one_dollar = MoneyMicros::from_cents(100);
@@ -1329,12 +1331,13 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_key_serializes_stable_dot_key() {
+    fn diagnostic_key_serializes_stable_dot_key() -> TestResult {
         let json = serde_json::to_string(&DiagnosticKey::StorageDiskFull);
-        assert_eq!(json.ok().as_deref(), Some("\"diag.storage.disk_full\""));
+        assert_eq!(json?, "\"diag.storage.disk_full\"");
         assert_eq!(
             DiagnosticKey::CryptoSignatureInvalid.as_key(),
             "diag.crypto.signature_invalid"
         );
+        Ok(())
     }
 }

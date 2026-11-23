@@ -451,7 +451,7 @@ mod tests {
             url: format!("http://{addr}/mcp"),
             enabled: true,
         };
-        let report = discover_http_mcp_server(&transport, &cfg).await.ok();
+        let report = Some(discover_http_mcp_server(&transport, &cfg).await?);
         assert!(server_task.await.is_ok());
         assert_eq!(
             report.as_ref().map(|r| r.negotiated_protocol.as_str()),

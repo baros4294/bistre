@@ -151,30 +151,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn seal_round_trips_and_binds_the_entry_name() {
-        let key = VaultKey::generate();
-        assert!(key.is_ok());
-        let Ok(key) = key else { return };
-        let sealed = seal(&key, "provider:openai", b"sk-secret");
-        assert!(sealed.as_ref().is_ok_and(|s| s.starts_with(SEALED_PREFIX)));
-        let Ok(sealed) = sealed else { return };
+    fn seal_round_trips_and_binds_the_entry_name() -> Result<(), Box<dyn std::error::Error>> {
+        let key = VaultKey::generate()?;
+        let sealed = seal(&key, "provider:openai", b"sk-secret")?;
+        assert!(sealed.starts_with(SEALED_PREFIX));
         assert!(!sealed.contains(&hex::encode(b"sk-secret")));
-        let opened = unseal(&key, "provider:openai", &sealed);
-        assert_eq!(
-            opened.ok().as_deref().map(Vec::as_slice),
-            Some(b"sk-secret".as_slice())
-        );
+        let opened = unseal(&key, "provider:openai", &sealed)?;
+        assert_eq!(opened.as_slice(), b"sk-secret".as_slice());
         // Moving the ciphertext to another entry or using another key fails.
         assert!(unseal(&key, "provider:anthropic", &sealed).is_err());
-        let other = VaultKey::generate();
-        assert!(other.is_ok_and(|k| unseal(&k, "provider:openai", &sealed).is_err()));
+        let other = VaultKey::generate()?;
+        assert!(unseal(&other, "provider:openai", &sealed).is_err());
+        Ok(())
     }
 
     #[test]
-    fn passphrase_keys_are_stable_per_salt_and_differ_by_passphrase() {
-        let dir = tempfile::tempdir();
-        assert!(dir.is_ok());
-        let Ok(dir) = dir else { return };
+    fn passphrase_keys_are_stable_per_salt_and_differ_by_passphrase()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
         let a = passphrase_vault_key(dir.path(), b"correct horse");
         let b = passphrase_vault_key(dir.path(), b"correct horse");
         let c = passphrase_vault_key(dir.path(), b"wrong horse");
@@ -185,5 +179,6 @@ mod tests {
         }
         assert!(passphrase_vault_key(dir.path(), b"").is_err());
         assert!(VaultKey::from_slice(&[0_u8; 31]).is_err());
+        Ok(())
     }
 }

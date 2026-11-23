@@ -1287,10 +1287,7 @@ mod spill_tests {
                 .first()
                 .is_some_and(|s| s.output_json.len() < 8 * 1024)
         }));
-        assert_eq!(
-            storage.load_run_step_output(&step.id).ok().flatten(),
-            Some(big)
-        );
+        assert_eq!(storage.load_run_step_output(&step.id)?, Some(big));
         Ok(())
     }
 }

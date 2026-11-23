@@ -137,14 +137,12 @@ mod tests {
             .is_ok()
         );
 
-        let skipped = run_lifecycle_hooks(dir.path(), HookEventKind::PostToolUse, Some("read"))
-            .await
-            .ok();
+        let skipped =
+            Some(run_lifecycle_hooks(dir.path(), HookEventKind::PostToolUse, Some("read")).await?);
         assert_eq!(skipped.as_ref().map(Vec::len), Some(0));
 
-        let ran = run_lifecycle_hooks(dir.path(), HookEventKind::PostToolUse, Some("edit"))
-            .await
-            .ok();
+        let ran =
+            Some(run_lifecycle_hooks(dir.path(), HookEventKind::PostToolUse, Some("edit")).await?);
         assert_eq!(ran.as_ref().map(Vec::len), Some(1));
         assert!(ran.as_ref().and_then(|v| v.first()).is_some_and(|r| r.ok));
         Ok(())

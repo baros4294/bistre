@@ -411,10 +411,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn timeout_kills_grandchildren_before_they_outlive_the_shell() {
-        let scratch = tempfile::tempdir();
-        assert!(scratch.is_ok());
-        let Ok(scratch) = scratch else { return };
+    async fn timeout_kills_grandchildren_before_they_outlive_the_shell()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let scratch = tempfile::tempdir()?;
         let marker = scratch.path().join("leaked.txt");
         // The shell starts a grandchild that writes the marker ~3 s later unless the tree dies.
         let script = if cfg!(windows) {
@@ -436,6 +435,7 @@ mod tests {
             !marker.exists(),
             "a grandchild outlived the timed-out shell"
         );
+        Ok(())
     }
 
     #[cfg(windows)]
