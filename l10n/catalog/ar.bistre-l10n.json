@@ -3723,6 +3723,20 @@
       "tone": "concise_action",
       "max_chars": 24,
       "placeholders": {}
+    },
+    "settings.search.placeholder": {
+      "message": "ابحث في كل الإعدادات...",
+      "context": "Settings navigation search field placeholder",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.search.empty": {
+      "message": "لا توجد إعدادات مطابقة.",
+      "context": "Shown when the settings search finds nothing",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
     }
   }
 }
