@@ -88,12 +88,14 @@ impl PowerGuardBackend for LinuxPowerGuard {
         let Ok(entries) = std::fs::read_dir("/sys/class/power_supply") else {
             return true;
         };
+        // sysfs attributes are optional per supply: an unreadable `type` is simply not mains, and
+        // an unreadable `online` on a mains supply means "not known to be on AC" (battery rules).
         for entry in entries.flatten() {
-            let kind = std::fs::read_to_string(entry.path().join("type")).unwrap_or_default();
-            if kind.trim().eq_ignore_ascii_case("Mains") {
-                let online =
-                    std::fs::read_to_string(entry.path().join("online")).unwrap_or_default();
-                return online.trim() == "1";
+            let is_mains = std::fs::read_to_string(entry.path().join("type"))
+                .is_ok_and(|kind| kind.trim().eq_ignore_ascii_case("Mains"));
+            if is_mains {
+                return std::fs::read_to_string(entry.path().join("online"))
+                    .is_ok_and(|online| online.trim() == "1");
             }
         }
         true
