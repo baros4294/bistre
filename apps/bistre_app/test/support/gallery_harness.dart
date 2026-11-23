@@ -108,22 +108,34 @@ Future<void> capturePng(
   final bytes = captured;
   expect(bytes, isNotNull, reason: 'could not encode $fileName');
   if (!_compareGoldens || bytes == null) return;
+  // Mismatches are collected and reported once at teardown, so one difference never stops the
+  // remaining captures and CI always uploads the full set for review.
+  if (!_goldenCheckRegistered) {
+    _goldenCheckRegistered = true;
+    addTearDown(() {
+      _goldenCheckRegistered = false;
+      final problems = List<String>.of(_goldenProblems);
+      _goldenProblems.clear();
+      expect(
+        problems,
+        isEmpty,
+        reason:
+            '${problems.join('\n')}\nReview the ui-gallery-linux artifact; commit or replace '
+            'baselines in apps/bistre_app/test/goldens/linux/ only for intended changes.',
+      );
+    });
+  }
   final golden = File('test/goldens/linux/$fileName');
-  expect(
-    golden.existsSync(),
-    isTrue,
-    reason:
-        'No Linux baseline for $fileName. Review the ui-gallery-linux artifact and commit the '
-        'PNG to apps/bistre_app/test/goldens/linux/.',
-  );
-  expect(
-    listEquals(golden.readAsBytesSync(), bytes),
-    isTrue,
-    reason:
-        '$fileName differs from its Linux baseline. Review the ui-gallery-linux artifact; if '
-        'the change is intended, replace the baseline in the same pull request.',
-  );
+  if (!golden.existsSync()) {
+    _goldenProblems.add('no Linux baseline for $fileName');
+  } else if (!listEquals(golden.readAsBytesSync(), bytes)) {
+    _goldenProblems.add('$fileName differs from its Linux baseline');
+  }
 }
+
+/// Golden mismatches of the running test (see [capturePng]).
+final List<String> _goldenProblems = <String>[];
+bool _goldenCheckRegistered = false;
 
 class GalleryGateway implements BistreEngineGateway {
   GalleryGateway({required bool connected, bool seedConversation = true}) {
