@@ -23,7 +23,7 @@ jobs:
   ci:
     name: ci
     # The exact CI gates (lint, tests, launch + perf, Android) on the tagged commit.
-    uses: ./.github/workflows/ci.yml
+    uses: ./.github/workflows/ci.yml # zizmor: ignore[self-repository] -- actionlint 1.7.12 rejects `$/` (rhysd/actionlint#711); switch once supported
     permissions:
       contents: read
 
