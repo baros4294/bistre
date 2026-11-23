@@ -94,7 +94,7 @@ Source: all 220 commits of [`baros4294/parchment`](https://github.com/baros4294/
 | `6a81f64f` | Cancel did not join the stream pacer; stop state lost | Planned: `select!` cancel on every await in a run |
 | `3a6c2d43` | One tool-dispatch path skipped the permission gate | Open: Bistre's broker issues and claims in one step (`engine_impl.rs:755`) |
 | `2c055bec` | Parallel helpers each checked the spend cap against their own snapshot | Open: Bistre checks committed spend only and fails open (`engine_runs.rs:423`) |
-| `c7f9ca55`, `39fdc2e4`, `3fa7f582` | Opaque reasoning signatures replayed across providers/steps; signed thinking dropped in multi-batch replay | `[UNVERIFIED]` in Bistre; planned replay tests |
+| `c7f9ca55`, `39fdc2e4`, `3fa7f582` | Opaque reasoning signatures replayed across providers/steps; signed thinking dropped in multi-batch replay | Guarded: replay is text-only for every dialect (`replay_never_carries_reasoning_signatures_or_provider_metadata` in `crates/bistre-core/src/providers_tests.rs`); signed-thinking replay becomes relevant only when native tool calls land |
 | `83592e4f` | Reasoning replayed to a provider with a different API format | Missing: the 8,000-char cross-provider handoff is not implemented |
 | `82f3052e`, `1f60adc7` | CR/LF in pasted keys, unbounded SSE buffers, unbounded history → OOM | Header/key stripping; `SseFramer` 64 MiB cap |
 | `9a3f0b16` → `6d494fce` | A perf "optimization" regressed RAM and smoothness; reverted next release | Planned: CI perf job on a Linux profile build |

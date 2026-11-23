@@ -414,3 +414,76 @@ async fn stop_interrupts_a_request_waiting_for_its_first_token()
     server.abort();
     Ok(())
 }
+
+/// Parchment `c7f9ca55`/`39fdc2e4`/`83592e4f`: opaque reasoning signatures replayed to another
+/// provider or step caused HTTP 400s. Bistre replays text only; this pins that down for every
+/// dialect, including a reply produced by a different provider.
+#[test]
+fn replay_never_carries_reasoning_signatures_or_provider_metadata() {
+    let secret_meta = serde_json::json!({
+        "thinking_signature": "SIG-OPAQUE-123",
+        "thought_signature": "SIG-OPAQUE-123",
+        "reasoning_content": "hidden chain SIG-OPAQUE-123",
+        "provider": "anthropic"
+    })
+    .to_string();
+    let history = vec![
+        NodeRecord {
+            id: "u1".to_owned(),
+            thread_id: "t".to_owned(),
+            parent_id: None,
+            role: NodeRole::User,
+            content: "question".to_owned(),
+            provider_meta_json: None,
+            created_at_ms: 0,
+        },
+        NodeRecord {
+            id: "a1".to_owned(),
+            thread_id: "t".to_owned(),
+            parent_id: Some("u1".to_owned()),
+            role: NodeRole::Assistant,
+            content: "answer".to_owned(),
+            provider_meta_json: Some(secret_meta),
+            created_at_ms: 1,
+        },
+        NodeRecord {
+            id: "u2".to_owned(),
+            thread_id: "t".to_owned(),
+            parent_id: Some("a1".to_owned()),
+            role: NodeRole::User,
+            content: "follow-up".to_owned(),
+            provider_meta_json: None,
+            created_at_ms: 2,
+        },
+    ];
+    for dialect in [
+        ProviderDialect::OpenAi,
+        ProviderDialect::GoogleGemini,
+        ProviderDialect::Anthropic,
+        ProviderDialect::CustomOpenAi,
+    ] {
+        let wire = build_stream_request(
+            dialect,
+            "https://example.invalid/v1",
+            "m",
+            "",
+            &history,
+            GenerationParams::default(),
+            false,
+        );
+        let mut bodies = vec![wire.body.map_or_else(String::new, |b| b.to_string())];
+        if let Some(fallback) = wire.fallback {
+            bodies.push(fallback.body.map_or_else(String::new, |b| b.to_string()));
+        }
+        for body in bodies {
+            assert!(
+                body.contains("answer"),
+                "{dialect:?} must replay the reply text"
+            );
+            assert!(
+                !body.contains("SIG-OPAQUE-123"),
+                "{dialect:?} leaked provider metadata"
+            );
+        }
+    }
+}
