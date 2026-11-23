@@ -336,6 +336,13 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
+          # Gradle dependencies from Maven Central / the plugin portal; without a cache every run
+          # re-downloads them and trips Maven's rate limit (HTTP 429).
+          cache: gradle
+          cache-dependency-path: |
+            apps/bistre_app/android/*.gradle.kts
+            apps/bistre_app/android/app/*.gradle.kts
+            apps/bistre_app/android/gradle/wrapper/gradle-wrapper.properties
       - name: Install pinned Rust toolchain
         shell: bash
         run: bash .github/scripts/install-rust.sh --component clippy --target aarch64-linux-android
@@ -369,7 +376,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          flutter build apk --release --target-platform android-arm64
+          bash ../../.github/scripts/with-download-retry.sh flutter build apk --release --target-platform android-arm64
       - name: Verify 16KB ELF alignment (pure-Dart verifier), binary budgets, zipalign, and manifest permissions
         shell: bash
         run: |

@@ -160,7 +160,7 @@ jobs:
         run: |
           set -euo pipefail
           bash ../../.github/scripts/with-download-retry.sh flutter pub get --enforce-lockfile
-          flutter build apk --release --target-platform android-arm64
+          bash ../../.github/scripts/with-download-retry.sh flutter build apk --release --target-platform android-arm64
       - name: Verify 16KB ELF alignment, permissions, and package checksums
         shell: bash
         env:
