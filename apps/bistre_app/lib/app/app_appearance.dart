@@ -12,6 +12,7 @@ class AppAppearance {
     required this.customAccentHex,
     required this.typography,
     required this.reducedEffects,
+    this.reduceMotion = false,
   });
 
   final bool isDark;
@@ -20,6 +21,10 @@ class AppAppearance {
   final BistreTypographyConfig typography;
   final bool reducedEffects;
 
+  /// The in-app Reduce motion setting; the root turns it into
+  /// `MediaQuery.disableAnimations`, so every motion widget honours it.
+  final bool reduceMotion;
+
   @override
   bool operator ==(Object other) =>
       other is AppAppearance &&
@@ -27,7 +32,8 @@ class AppAppearance {
       other.accentPreset == accentPreset &&
       other.customAccentHex == customAccentHex &&
       other.typography == typography &&
-      other.reducedEffects == reducedEffects;
+      other.reducedEffects == reducedEffects &&
+      other.reduceMotion == reduceMotion;
 
   @override
   int get hashCode => Object.hash(
@@ -36,5 +42,6 @@ class AppAppearance {
     customAccentHex,
     typography,
     reducedEffects,
+    reduceMotion,
   );
 }

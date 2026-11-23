@@ -292,9 +292,16 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
                     );
                   },
               builder: (context, child) {
-                return Directionality(
+                final app = Directionality(
                   textDirection: widget.l10nController.textDirection,
                   child: child ?? const SizedBox.shrink(),
+                );
+                // The in-app Reduce motion setting applies everywhere, like the OS one.
+                if (!look.reduceMotion) return app;
+                return MediaQuery(
+                  data: MediaQuery.of(context)
+                      .copyWith(disableAnimations: true),
+                  child: app,
                 );
               },
               home: FolioShellScreen(controller: ctrl),

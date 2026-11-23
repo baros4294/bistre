@@ -5,6 +5,7 @@ import 'package:bistre_app/design/bistre_controls.dart';
 import 'package:bistre_app/design/bistre_icons.dart';
 import 'package:bistre_app/design/bistre_theme.dart';
 import 'package:bistre_app/design/ink_primitives.dart';
+import 'package:bistre_app/design/press_feedback.dart';
 import 'package:bistre_app/features/chat/code_wrap_scope.dart';
 import 'package:bistre_app/features/chat/content_direction.dart';
 import 'package:bistre_app/features/chat/folio_message_feed.dart';
@@ -533,6 +534,57 @@ void main() {
 
       ctrl.dispose();
       await gw.shutdown();
+    },
+  );
+
+  testWidgets(
+    'buttons spring down when pressed and stay still under reduced motion',
+    (WidgetTester tester) async {
+      double scaleOf() {
+        final t = tester.widget<Transform>(
+          find
+              .descendant(
+                of: find.byType(PressFeedback),
+                matching: find.byType(Transform),
+              )
+              .first,
+        );
+        return t.transform.entry(0, 0);
+      }
+
+      Future<void> pumpButton({required bool reduceMotion}) =>
+          tester.pumpWidget(
+            MediaQuery(
+              data: MediaQueryData(disableAnimations: reduceMotion),
+              child: Directionality(
+                textDirection: TextDirection.ltr,
+                child: BistreTheme(
+                  data: BistreThemeData.resolve(isDark: false),
+                  child: Center(
+                    child: EngravedButton(label: 'Send', onPressed: () {}),
+                  ),
+                ),
+              ),
+            ),
+          );
+
+      await pumpButton(reduceMotion: false);
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byType(EngravedButton)),
+      );
+      await tester.pumpAndSettle();
+      expect(scaleOf(), closeTo(0.96, 0.001));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(scaleOf(), closeTo(1.0, 0.001));
+
+      await pumpButton(reduceMotion: true);
+      final still = await tester.startGesture(
+        tester.getCenter(find.byType(EngravedButton)),
+      );
+      await tester.pump();
+      expect(scaleOf(), 1.0);
+      await still.up();
     },
   );
 }
