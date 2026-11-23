@@ -858,9 +858,9 @@ class FolioController extends ChangeNotifier {
         unawaited(_refreshAfterRun(event.threadId));
         notifyListeners();
       case DraftSavedEvent():
-        if (_activeThread?.id == event.threadId) {
-          notifyListeners();
-        }
+        // The save's own completion already set [draftSavedState]; the echo changes nothing,
+        // so it must not rebuild the shell.
+        break;
       case DiagnosticRaisedEvent():
         if (event.key == 'diag.run.backoff_waiting') {
           final ms = int.tryParse(
