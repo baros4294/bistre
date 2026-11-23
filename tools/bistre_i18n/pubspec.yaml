@@ -1,0 +1,11 @@
+name: bistre_i18n
+description: Single-source ICU localization validator and Dart key generator for Bistre.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.14.0
+
+dev_dependencies:
+  test: ^1.25.0
