@@ -1,4 +1,5 @@
 import 'package:bistre_app/bridge/bistre_engine.dart';
+import 'package:bistre_app/design/bistre_icons.dart';
 import 'package:bistre_app/design/bistre_theme.dart';
 import 'package:bistre_app/design/ink_primitives.dart';
 import 'package:bistre_app/features/chat/code_wrap_scope.dart';
@@ -326,4 +327,36 @@ void main() {
     ctrl.dispose();
     await gw.shutdown();
   });
+
+  testWidgets(
+    'small icon buttons accept taps across a 40 px target without growing',
+    (WidgetTester tester) async {
+      var taps = 0;
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: BistreTheme(
+            data: BistreThemeData.resolve(isDark: false),
+            child: Center(
+              child: BistreIconButton(
+                key: const Key('tiny'),
+                icon: BistreUiIcon.copy,
+                dimension: 24,
+                semanticsLabel: 'copy',
+                onPressed: () => taps++,
+              ),
+            ),
+          ),
+        ),
+      );
+      final rect = tester.getRect(find.byKey(const Key('tiny')));
+      expect(rect.width, 24, reason: 'layout keeps the visual size');
+      // 7 px outside the 24 px chip, still inside the 40 px target.
+      await tester.tapAt(rect.centerRight + const Offset(7, 0));
+      expect(taps, 1);
+      // Outside the 40 px target: no tap.
+      await tester.tapAt(rect.centerRight + const Offset(12, 0));
+      expect(taps, 1);
+    },
+  );
 }
