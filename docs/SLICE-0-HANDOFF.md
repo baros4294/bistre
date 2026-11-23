@@ -200,8 +200,12 @@ Recorded **2026-11-21** after completing Commit-1 Repo Fortress, Spec Pack, Day-
 - **Owner decisions**: idle RSS is reported only on the xvfb runner (§12); the remaining 25 `*_json` endpoints convert to typed DTOs on touch (§17).
 - **Blocked on native tool calling / reasoning replay** (a separate slice): the Thinking tool count, the tool timeline, 16-step quantized tool compaction, and the 8,000-char reasoning handoff (Spec 02 §42).
 - **Still open**:
-  - Linux gallery goldens: needs a Linux run to produce the baseline PNGs; a CI job could upload them for review.
   - Idle RSS on a GPU or Windows release build: local `flutter build windows` lacks a Visual Studio toolchain.
   - The 120 Hz streaming p95 (7.5 ms): the debug test VM measures 7.6-12.5 ms across CI runs, which is runner noise more than signal, so it needs a profile-mode measurement.
   - 127 `.ok()` test sites in `assert_eq!(x.map(..), Some(..))` form: they fail loudly; convert as touched.
 - **Owner action**: provision the minisign release key (§11); OTA and tag releases stay disabled until then.
+
+## 19. Linux Gallery Goldens and Message Direction (2026-11-24)
+- **Goldens** (`baros4294/bistre#17`): with `BISTRE_GOLDENS=compare` (the Linux `flutter-desktop` job only), each of the 35 gallery captures must equal `apps/bistre_app/test/goldens/linux/<name>.png` byte for byte. Mismatches are reported together at test teardown, and CI uploads every capture as the `ui-gallery-linux` artifact. An intended visual change replaces its baseline in the same PR after review (CONTRIBUTING, CI at a glance). Two CI runs reproduced the baselines exactly.
+- **Found while reviewing the first captures**: (1) the runner had no Arabic font, so the RTL screens recorded missing-glyph boxes. CI now installs `fonts-noto-core`, and compare mode fails when no Arabic fallback loads. (2) English replies inside the Arabic UI were laid out right to left (`?reads`). Messages now take the direction of their first strong character (`features/chat/content_direction.dart`, DESIGN §7); regression test included.
+- **Still open**: idle RSS on a GPU or Windows release build; the 120 Hz streaming p95 in profile mode; 127 `.ok()` test sites, converted on touch; the minisign release key (owner action).
