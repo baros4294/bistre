@@ -4,6 +4,7 @@ import '../../design/bistre_controls.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
@@ -26,20 +27,26 @@ class LanguageSettingsView extends StatelessWidget {
     final l10n = BistreLocalizations.of(context);
     final currentLocale = controller.settings.locale;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsetsDirectional.fromSTEB(28, 22, 28, 40),
-      child: BistreSettingsSection(
-        title: l10n.t(L10nKey.settingsLanguageHeading),
-        subtitle: l10n.t(L10nKey.settingsLanguageNote),
-        children: [
-          for (final loc in _locales)
-            _LanguageChoiceRow(
-              name: loc.$2,
-              codeBadge: l10n.joinMeta(<String>[loc.$1.toUpperCase(), loc.$3]),
-              selected: currentLocale == loc.$1,
-              onTap: () => controller.syncLocale(loc.$1),
-            ),
-        ],
+    return SmoothScrollable(
+      builder: (_, scroll) => SingleChildScrollView(
+        controller: scroll,
+        padding: const EdgeInsetsDirectional.fromSTEB(28, 22, 28, 40),
+        child: BistreSettingsSection(
+          title: l10n.t(L10nKey.settingsLanguageHeading),
+          subtitle: l10n.t(L10nKey.settingsLanguageNote),
+          children: [
+            for (final loc in _locales)
+              _LanguageChoiceRow(
+                name: loc.$2,
+                codeBadge: l10n.joinMeta(<String>[
+                  loc.$1.toUpperCase(),
+                  loc.$3,
+                ]),
+                selected: currentLocale == loc.$1,
+                onTap: () => controller.syncLocale(loc.$1),
+              ),
+          ],
+        ),
       ),
     );
   }

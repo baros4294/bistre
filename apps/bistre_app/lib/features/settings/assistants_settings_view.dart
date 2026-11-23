@@ -7,6 +7,7 @@ import '../../design/bistre_controls.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
@@ -167,17 +168,20 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
         final editorPane = _buildEditor(theme, l10n, ctrl);
 
         if (!wide) {
-          return SingleChildScrollView(
-            padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                listPane,
-                const SizedBox(height: BistreSpacing.s16),
-                const FolioDivider(),
-                const SizedBox(height: BistreSpacing.s16),
-                editorPane,
-              ],
+          return SmoothScrollable(
+            builder: (_, scroll) => SingleChildScrollView(
+              controller: scroll,
+              padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  listPane,
+                  const SizedBox(height: BistreSpacing.s16),
+                  const FolioDivider(),
+                  const SizedBox(height: BistreSpacing.s16),
+                  editorPane,
+                ],
+              ),
             ),
           );
         }
@@ -187,16 +191,22 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
           children: [
             SizedBox(
               width: 248,
-              child: SingleChildScrollView(
-                padding: const EdgeInsetsDirectional.fromSTEB(16, 18, 12, 24),
-                child: listPane,
+              child: SmoothScrollable(
+                builder: (_, scroll) => SingleChildScrollView(
+                  controller: scroll,
+                  padding: const EdgeInsetsDirectional.fromSTEB(16, 18, 12, 24),
+                  child: listPane,
+                ),
               ),
             ),
             const FolioDivider(vertical: true),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsetsDirectional.fromSTEB(28, 22, 28, 36),
-                child: editorPane,
+              child: SmoothScrollable(
+                builder: (_, scroll) => SingleChildScrollView(
+                  controller: scroll,
+                  padding: const EdgeInsetsDirectional.fromSTEB(28, 22, 28, 36),
+                  child: editorPane,
+                ),
               ),
             ),
           ],

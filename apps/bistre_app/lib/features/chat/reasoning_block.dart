@@ -4,6 +4,7 @@ import '../../design/bistre_icons.dart';
 import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import 'thinking_control.dart';
@@ -158,11 +159,14 @@ class _ReasoningBlockState extends State<ReasoningBlock> {
                     children: [
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxHeight: 240),
-                        child: SingleChildScrollView(
-                          child: InkText(
-                            widget.thinkingText.trim(),
-                            role: InkTextRole.bodyCompact,
-                            color: theme.inkSecondary,
+                        child: SmoothScrollable(
+                          builder: (_, scroll) => SingleChildScrollView(
+                            controller: scroll,
+                            child: InkText(
+                              widget.thinkingText.trim(),
+                              role: InkTextRole.bodyCompact,
+                              color: theme.inkSecondary,
+                            ),
                           ),
                         ),
                       ),

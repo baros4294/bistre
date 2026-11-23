@@ -6,6 +6,7 @@ import '../../bridge/bistre_engine.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../../platform/power_guard_host.dart';
@@ -138,74 +139,77 @@ class _RunsTabBody extends StatelessWidget {
     final runs = controller.agentRuns;
     final steering = controller.pendingSteering;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsetsDirectional.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _PowerGuardCard(power: power, controller: controller),
-          if (steering.isNotEmpty) ...[
+    return SmoothScrollable(
+      builder: (_, scroll) => SingleChildScrollView(
+        controller: scroll,
+        padding: const EdgeInsetsDirectional.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _PowerGuardCard(power: power, controller: controller),
+            if (steering.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              InkText(
+                l10n.t(L10nKey.composerSteerQueued, <String, Object?>{
+                  'count': steering.length,
+                }),
+                role: InkTextRole.captionMeta,
+                color: theme.inkMuted,
+              ),
+              const SizedBox(height: 6),
+              for (final msg in steering) ...[
+                FolioSurface(
+                  tone: FolioTone.elevated,
+                  padding: const EdgeInsetsDirectional.fromSTEB(10, 8, 6, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: InkText(
+                          msg.content,
+                          role: InkTextRole.bodyCompact,
+                          color: theme.inkPrimary,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      BistreIconButton(
+                        icon: BistreUiIcon.close,
+                        size: 12,
+                        dimension: 24,
+                        semanticsLabel: l10n.t(L10nKey.threadCancel),
+                        onPressed: () =>
+                            unawaited(controller.removeSteeringMessage(msg.id)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+              ],
+            ],
             const SizedBox(height: 14),
             InkText(
-              l10n.t(L10nKey.composerSteerQueued, <String, Object?>{
-                'count': steering.length,
-              }),
+              l10n.t(L10nKey.studioTabRuns),
               role: InkTextRole.captionMeta,
               color: theme.inkMuted,
             ),
-            const SizedBox(height: 6),
-            for (final msg in steering) ...[
+            const SizedBox(height: 8),
+            if (runs.isEmpty)
               FolioSurface(
                 tone: FolioTone.elevated,
-                padding: const EdgeInsetsDirectional.fromSTEB(10, 8, 6, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: InkText(
-                        msg.content,
-                        role: InkTextRole.bodyCompact,
-                        color: theme.inkPrimary,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    BistreIconButton(
-                      icon: BistreUiIcon.close,
-                      size: 12,
-                      dimension: 24,
-                      semanticsLabel: l10n.t(L10nKey.threadCancel),
-                      onPressed: () =>
-                          unawaited(controller.removeSteeringMessage(msg.id)),
-                    ),
-                  ],
+                padding: const EdgeInsetsDirectional.all(14),
+                child: InkText(
+                  l10n.t(L10nKey.studioRunsEmpty),
+                  role: InkTextRole.bodyCompact,
+                  color: theme.inkSecondary,
                 ),
-              ),
-              const SizedBox(height: 6),
-            ],
+              )
+            else
+              for (final run in runs) ...[
+                _RunCard(run: run, controller: controller),
+                const SizedBox(height: 8),
+              ],
           ],
-          const SizedBox(height: 14),
-          InkText(
-            l10n.t(L10nKey.studioTabRuns),
-            role: InkTextRole.captionMeta,
-            color: theme.inkMuted,
-          ),
-          const SizedBox(height: 8),
-          if (runs.isEmpty)
-            FolioSurface(
-              tone: FolioTone.elevated,
-              padding: const EdgeInsetsDirectional.all(14),
-              child: InkText(
-                l10n.t(L10nKey.studioRunsEmpty),
-                role: InkTextRole.bodyCompact,
-                color: theme.inkSecondary,
-              ),
-            )
-          else
-            for (final run in runs) ...[
-              _RunCard(run: run, controller: controller),
-              const SizedBox(height: 8),
-            ],
-        ],
+        ),
       ),
     );
   }
@@ -232,85 +236,88 @@ class _FilesTabBody extends StatelessWidget {
     final l10n = BistreLocalizations.of(context);
     final checkpoints = controller.checkpoints;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsetsDirectional.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (checkpoints.isEmpty)
-            FolioSurface(
-              tone: FolioTone.elevated,
-              padding: const EdgeInsetsDirectional.all(14),
-              child: InkText(
-                l10n.t(L10nKey.studioFilesEmpty),
-                role: InkTextRole.bodyCompact,
-                color: theme.inkSecondary,
-              ),
-            )
-          else
-            for (final cp in checkpoints) ...[
+    return SmoothScrollable(
+      builder: (_, scroll) => SingleChildScrollView(
+        controller: scroll,
+        padding: const EdgeInsetsDirectional.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (checkpoints.isEmpty)
               FolioSurface(
                 tone: FolioTone.elevated,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        BistreIcon(
-                          BistreUiIcon.document,
-                          size: 13,
-                          color: theme.accentBrass,
-                        ),
-                        const SizedBox(width: 7),
-                        Expanded(
-                          child: InkText(
-                            cp.filePath,
-                            role: InkTextRole.labelStrong,
-                            color: theme.inkPrimary,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    InkText(
-                      _formatHashPair(cp),
-                      role: InkTextRole.captionMeta,
-                      color: theme.inkMuted,
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        EngravedButton(
-                          label: l10n.t(L10nKey.studioCommentAdd),
-                          compact: true,
-                          onPressed: () => controller.attachInlineFileComment(
-                            cp.filePath,
-                            'L1-L20',
-                          ),
-                        ),
-                        EngravedButton(
-                          label: l10n.t(L10nKey.toolRewind),
-                          compact: true,
-                          leading: BistreIcon(
-                            BistreUiIcon.rewind,
-                            size: 12,
-                            color: theme.inkSecondary,
-                          ),
-                          onPressed: () =>
-                              unawaited(controller.rewindCheckpoint(cp.id)),
-                        ),
-                      ],
-                    ),
-                  ],
+                padding: const EdgeInsetsDirectional.all(14),
+                child: InkText(
+                  l10n.t(L10nKey.studioFilesEmpty),
+                  role: InkTextRole.bodyCompact,
+                  color: theme.inkSecondary,
                 ),
-              ),
-              const SizedBox(height: 8),
-            ],
-        ],
+              )
+            else
+              for (final cp in checkpoints) ...[
+                FolioSurface(
+                  tone: FolioTone.elevated,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          BistreIcon(
+                            BistreUiIcon.document,
+                            size: 13,
+                            color: theme.accentBrass,
+                          ),
+                          const SizedBox(width: 7),
+                          Expanded(
+                            child: InkText(
+                              cp.filePath,
+                              role: InkTextRole.labelStrong,
+                              color: theme.inkPrimary,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      InkText(
+                        _formatHashPair(cp),
+                        role: InkTextRole.captionMeta,
+                        color: theme.inkMuted,
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          EngravedButton(
+                            label: l10n.t(L10nKey.studioCommentAdd),
+                            compact: true,
+                            onPressed: () => controller.attachInlineFileComment(
+                              cp.filePath,
+                              'L1-L20',
+                            ),
+                          ),
+                          EngravedButton(
+                            label: l10n.t(L10nKey.toolRewind),
+                            compact: true,
+                            leading: BistreIcon(
+                              BistreUiIcon.rewind,
+                              size: 12,
+                              color: theme.inkSecondary,
+                            ),
+                            onPressed: () =>
+                                unawaited(controller.rewindCheckpoint(cp.id)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+          ],
+        ),
       ),
     );
   }

@@ -6,6 +6,7 @@ import '../../bridge/bistre_engine.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
@@ -30,157 +31,165 @@ class PromptInspectorPanel extends StatelessWidget {
     final l10n = BistreLocalizations.of(context);
     final report = controller.promptReport;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsetsDirectional.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              BistreIcon(BistreUiIcon.eye, size: 14, color: theme.accentBrass),
-              const SizedBox(width: 6),
-              Expanded(
-                child: InkText(
-                  l10n.t(L10nKey.storyInspectorTitle),
-                  role: InkTextRole.labelStrong,
-                  color: theme.inkPrimary,
-                ),
-              ),
-              BistreIconButton(
-                icon: BistreUiIcon.refresh,
-                size: 13,
-                dimension: 26,
-                semanticsLabel: l10n.t(L10nKey.storyInspectorTitle),
-                onPressed: () => unawaited(controller.refreshPromptInspector()),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          FolioSurface(
-            tone: FolioTone.elevated,
-            borderRadius: 10,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return SmoothScrollable(
+      builder: (_, scroll) => SingleChildScrollView(
+        controller: scroll,
+        padding: const EdgeInsetsDirectional.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
               children: [
-                InkText(
-                  _formatPromptMeter(report),
-                  role: InkTextRole.captionMeta,
-                  color: theme.inkPrimary,
+                BistreIcon(
+                  BistreUiIcon.eye,
+                  size: 14,
+                  color: theme.accentBrass,
                 ),
-                const SizedBox(height: 6),
-                _TokenRatioBar(
-                  staticTokens: report.staticPrefixTokens,
-                  totalTokens: report.totalEstimatedTokens,
+                const SizedBox(width: 6),
+                Expanded(
+                  child: InkText(
+                    l10n.t(L10nKey.storyInspectorTitle),
+                    role: InkTextRole.labelStrong,
+                    color: theme.inkPrimary,
+                  ),
+                ),
+                BistreIconButton(
+                  icon: BistreUiIcon.refresh,
+                  size: 13,
+                  dimension: 26,
+                  semanticsLabel: l10n.t(L10nKey.storyInspectorTitle),
+                  onPressed: () =>
+                      unawaited(controller.refreshPromptInspector()),
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 12),
+            const SizedBox(height: 8),
+            FolioSurface(
+              tone: FolioTone.elevated,
+              borderRadius: 10,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  InkText(
+                    _formatPromptMeter(report),
+                    role: InkTextRole.captionMeta,
+                    color: theme.inkPrimary,
+                  ),
+                  const SizedBox(height: 6),
+                  _TokenRatioBar(
+                    staticTokens: report.staticPrefixTokens,
+                    totalTokens: report.totalEstimatedTokens,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
 
-          // --- Compiled Prompt Stack with explicit Prompt Cache Prefix Boundary ---
-          for (var i = 0; i < report.blocks.length; i++) ...[
-            if (i == report.cacheBoundaryIndex) ...[
+            // --- Compiled Prompt Stack with explicit Prompt Cache Prefix Boundary ---
+            for (var i = 0; i < report.blocks.length; i++) ...[
+              if (i == report.cacheBoundaryIndex) ...[
+                _CacheBoundaryDivider(
+                  label: l10n.t(L10nKey.storyInspectorCacheBoundary),
+                ),
+                const SizedBox(height: 8),
+              ],
+              _PromptBlockCard(block: report.blocks[i]),
+              const SizedBox(height: 6),
+            ],
+            if (report.blocks.isNotEmpty &&
+                report.cacheBoundaryIndex >= report.blocks.length) ...[
               _CacheBoundaryDivider(
                 label: l10n.t(L10nKey.storyInspectorCacheBoundary),
               ),
               const SizedBox(height: 8),
             ],
-            _PromptBlockCard(block: report.blocks[i]),
-            const SizedBox(height: 6),
-          ],
-          if (report.blocks.isNotEmpty &&
-              report.cacheBoundaryIndex >= report.blocks.length) ...[
-            _CacheBoundaryDivider(
-              label: l10n.t(L10nKey.storyInspectorCacheBoundary),
-            ),
-            const SizedBox(height: 8),
-          ],
 
-          // --- Lorebook V3 Activation & Skip Trace ---
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              BistreIcon(
-                BistreUiIcon.bookOpen,
-                size: 14,
-                color: theme.accentBrass,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: InkText(
-                  l10n.t(L10nKey.storyInspectorLoreTrace),
-                  role: InkTextRole.labelStrong,
-                  color: theme.inkPrimary,
+            // --- Lorebook V3 Activation & Skip Trace ---
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                BistreIcon(
+                  BistreUiIcon.bookOpen,
+                  size: 14,
+                  color: theme.accentBrass,
                 ),
-              ),
-              InkText(
-                _formatLoreBudget(report),
-                role: InkTextRole.captionMeta,
-                color: theme.inkMuted,
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          if (report.loreTrace.isEmpty)
-            FolioSurface(
-              tone: FolioTone.elevated,
-              borderRadius: 10,
-              child: InkText(
-                l10n.t(L10nKey.storyCodexTitle),
-                role: InkTextRole.captionMeta,
-                color: theme.inkMuted,
-              ),
-            )
-          else
-            for (final item in report.loreTrace) ...[
+                const SizedBox(width: 6),
+                Expanded(
+                  child: InkText(
+                    l10n.t(L10nKey.storyInspectorLoreTrace),
+                    role: InkTextRole.labelStrong,
+                    color: theme.inkPrimary,
+                  ),
+                ),
+                InkText(
+                  _formatLoreBudget(report),
+                  role: InkTextRole.captionMeta,
+                  color: theme.inkMuted,
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            if (report.loreTrace.isEmpty)
               FolioSurface(
                 tone: FolioTone.elevated,
                 borderRadius: 10,
-                padding: const EdgeInsetsDirectional.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
+                child: InkText(
+                  l10n.t(L10nKey.storyCodexTitle),
+                  role: InkTextRole.captionMeta,
+                  color: theme.inkMuted,
                 ),
-                child: Row(
-                  children: [
-                    BistreIcon(
-                      item.fired ? BistreUiIcon.check : BistreUiIcon.close,
-                      size: 12,
-                      color: item.fired ? theme.statusOk : theme.inkMuted,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          InkText(
-                            item.name,
-                            role: InkTextRole.labelStrong,
-                            color: theme.inkPrimary,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          InkText(
-                            item.reason,
-                            role: InkTextRole.captionMeta,
-                            color: theme.inkMuted,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
+              )
+            else
+              for (final item in report.loreTrace) ...[
+                FolioSurface(
+                  tone: FolioTone.elevated,
+                  borderRadius: 10,
+                  padding: const EdgeInsetsDirectional.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      BistreIcon(
+                        item.fired ? BistreUiIcon.check : BistreUiIcon.close,
+                        size: 12,
+                        color: item.fired ? theme.statusOk : theme.inkMuted,
                       ),
-                    ),
-                    const SizedBox(width: 6),
-                    InkText(
-                      _formatTokenCount(item.estimatedTokens),
-                      role: InkTextRole.captionMeta,
-                      color: theme.inkSecondary,
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            InkText(
+                              item.name,
+                              role: InkTextRole.labelStrong,
+                              color: theme.inkPrimary,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            InkText(
+                              item.reason,
+                              role: InkTextRole.captionMeta,
+                              color: theme.inkMuted,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      InkText(
+                        _formatTokenCount(item.estimatedTokens),
+                        role: InkTextRole.captionMeta,
+                        color: theme.inkSecondary,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-            ],
-        ],
+                const SizedBox(height: 4),
+              ],
+          ],
+        ),
       ),
     );
   }

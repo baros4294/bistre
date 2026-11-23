@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 
@@ -326,11 +327,14 @@ class _ToolActivityRowState extends State<_ToolActivityRow> {
                       (entry.diffText == null || entry.diffText!.isEmpty))
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxHeight: 220),
-                      child: SingleChildScrollView(
-                        child: InkText(
-                          entry.outputText.trim(),
-                          role: InkTextRole.codeBlock,
-                          color: theme.inkSecondary,
+                      child: SmoothScrollable(
+                        builder: (_, scroll) => SingleChildScrollView(
+                          controller: scroll,
+                          child: InkText(
+                            entry.outputText.trim(),
+                            role: InkTextRole.codeBlock,
+                            color: theme.inkSecondary,
+                          ),
                         ),
                       ),
                     ),
@@ -452,19 +456,22 @@ class _DiffViewerState extends State<_DiffViewer> {
               ),
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 260),
-              child: SingleChildScrollView(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: theme.bgCanvas,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: theme.borderHairline),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsetsDirectional.all(8),
-                    // Diffs are source code: always left-to-right, even in RTL chats.
-                    child: Directionality(
-                      textDirection: TextDirection.ltr,
-                      child: body,
+              child: SmoothScrollable(
+                builder: (_, scroll) => SingleChildScrollView(
+                  controller: scroll,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: theme.bgCanvas,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: theme.borderHairline),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsetsDirectional.all(8),
+                      // Diffs are source code: always left-to-right, even in RTL chats.
+                      child: Directionality(
+                        textDirection: TextDirection.ltr,
+                        child: body,
+                      ),
                     ),
                   ),
                 ),

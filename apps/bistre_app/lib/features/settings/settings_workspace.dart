@@ -6,6 +6,7 @@ import '../../design/bistre_icons.dart';
 import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
@@ -417,42 +418,45 @@ class _SearchableSettingsNavState extends State<_SearchableSettingsNav> {
     final theme = BistreTheme.of(context);
     final q = _query.text.trim().toLowerCase();
     final visible = widget.tabs.where((t) => _matches(l10n, t, q)).toList();
-    return SingleChildScrollView(
-      padding: const EdgeInsetsDirectional.fromSTEB(12, 16, 12, 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          QuillInput(
-            controller: _query,
-            focusNode: _focus,
-            placeholder: l10n.t(L10nKey.settingsSearchPlaceholder),
-            maxLines: 1,
-            submitOnEnter: false,
-            onSubmitted: () {
-              if (visible.isNotEmpty) widget.onSelected(visible.first.$1);
-            },
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: BistreSpacing.s12),
-          for (final t in visible) ...[
-            _SettingsNavTile(
-              icon: t.$3,
-              label: l10n.t(t.$2),
-              selected: widget.selected == t.$1,
-              onTap: () => widget.onSelected(t.$1),
+    return SmoothScrollable(
+      builder: (_, scroll) => SingleChildScrollView(
+        controller: scroll,
+        padding: const EdgeInsetsDirectional.fromSTEB(12, 16, 12, 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            QuillInput(
+              controller: _query,
+              focusNode: _focus,
+              placeholder: l10n.t(L10nKey.settingsSearchPlaceholder),
+              maxLines: 1,
+              submitOnEnter: false,
+              onSubmitted: () {
+                if (visible.isNotEmpty) widget.onSelected(visible.first.$1);
+              },
+              onChanged: (_) => setState(() {}),
             ),
-            const SizedBox(height: 3),
-          ],
-          if (visible.isEmpty)
-            Padding(
-              padding: const EdgeInsetsDirectional.all(BistreSpacing.s8),
-              child: InkText(
-                l10n.t(L10nKey.settingsSearchEmpty),
-                role: InkTextRole.captionMeta,
-                color: theme.inkMuted,
+            const SizedBox(height: BistreSpacing.s12),
+            for (final t in visible) ...[
+              _SettingsNavTile(
+                icon: t.$3,
+                label: l10n.t(t.$2),
+                selected: widget.selected == t.$1,
+                onTap: () => widget.onSelected(t.$1),
               ),
-            ),
-        ],
+              const SizedBox(height: 3),
+            ],
+            if (visible.isEmpty)
+              Padding(
+                padding: const EdgeInsetsDirectional.all(BistreSpacing.s8),
+                child: InkText(
+                  l10n.t(L10nKey.settingsSearchEmpty),
+                  role: InkTextRole.captionMeta,
+                  color: theme.inkMuted,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

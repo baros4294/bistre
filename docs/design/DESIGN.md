@@ -103,8 +103,8 @@ Owner decisions (2026-11-24): Bistre should feel at least as alive as Parchment 
   - Side drawers slide over `travelling`.
 - **State changes**: selection, toggle, chip, and accent colours cross-fade over `travelling`; progress and token counters ease to their new value.
 - **Scrolling**:
-  - on desktop, mouse-wheel scrolling is smooth: notches accumulate into a target that the view eases toward (~150 ms);
-  - trackpad and touch scrolling stay 1:1;
+  - on desktop, mouse-wheel scrolling is smooth: notches accumulate into a target that the view eases toward (170 ms ease-out, `SmoothScrollController` in `lib/design/smooth_scroll.dart`; scroll views without their own state use `SmoothScrollable`);
+  - trackpad and touch scrolling stay 1:1 (pan-zoom gestures and wheel deltas of 16 px or less pass straight through), and Reduce motion keeps the plain jump;
   - programmatic scrolls (Jump to latest, search hits, branch switches) glide over `travelling`.
 - **Streaming text is paced**: replies and thinking reveal in step with the display frame clock:
   - ~92 characters per second, carrying fractional characters between frames;

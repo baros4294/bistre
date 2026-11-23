@@ -7,6 +7,7 @@ import '../../design/bistre_controls.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../../platform/desktop_host.dart';
@@ -181,17 +182,20 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                   : _buildEmptyState(theme, l10n));
 
         if (!wide) {
-          return SingleChildScrollView(
-            padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                listPane,
-                const SizedBox(height: BistreSpacing.s16),
-                const FolioDivider(),
-                const SizedBox(height: BistreSpacing.s16),
-                detailPane,
-              ],
+          return SmoothScrollable(
+            builder: (_, scroll) => SingleChildScrollView(
+              controller: scroll,
+              padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  listPane,
+                  const SizedBox(height: BistreSpacing.s16),
+                  const FolioDivider(),
+                  const SizedBox(height: BistreSpacing.s16),
+                  detailPane,
+                ],
+              ),
             ),
           );
         }
@@ -201,16 +205,22 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
           children: [
             SizedBox(
               width: 264,
-              child: SingleChildScrollView(
-                padding: const EdgeInsetsDirectional.fromSTEB(16, 18, 12, 24),
-                child: listPane,
+              child: SmoothScrollable(
+                builder: (_, scroll) => SingleChildScrollView(
+                  controller: scroll,
+                  padding: const EdgeInsetsDirectional.fromSTEB(16, 18, 12, 24),
+                  child: listPane,
+                ),
               ),
             ),
             const FolioDivider(vertical: true),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsetsDirectional.fromSTEB(28, 22, 28, 36),
-                child: detailPane,
+              child: SmoothScrollable(
+                builder: (_, scroll) => SingleChildScrollView(
+                  controller: scroll,
+                  padding: const EdgeInsetsDirectional.fromSTEB(28, 22, 28, 36),
+                  child: detailPane,
+                ),
               ),
             ),
           ],
@@ -784,22 +794,28 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                     const SizedBox(height: 8),
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxHeight: 168),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            for (final m in filteredModels.take(40))
-                              _SelectableModelRow(
-                                model: m,
-                                selected: _modelCtrl.text.trim() == m.id,
-                                onTap: () {
-                                  setState(() => _modelCtrl.text = m.id);
-                                  unawaited(
-                                    ctrl.setActiveProviderAndModel(p.id, m.id),
-                                  );
-                                },
-                              ),
-                          ],
+                      child: SmoothScrollable(
+                        builder: (_, scroll) => SingleChildScrollView(
+                          controller: scroll,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              for (final m in filteredModels.take(40))
+                                _SelectableModelRow(
+                                  model: m,
+                                  selected: _modelCtrl.text.trim() == m.id,
+                                  onTap: () {
+                                    setState(() => _modelCtrl.text = m.id);
+                                    unawaited(
+                                      ctrl.setActiveProviderAndModel(
+                                        p.id,
+                                        m.id,
+                                      ),
+                                    );
+                                  },
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

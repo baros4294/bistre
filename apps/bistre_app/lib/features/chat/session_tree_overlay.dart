@@ -4,6 +4,7 @@ import '../../bridge/bistre_engine.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
@@ -136,28 +137,33 @@ class _SessionTreeOverlayState extends State<SessionTreeOverlay> {
                               color: theme.inkMuted,
                             ),
                           )
-                        : ListView.builder(
-                            itemCount: filtered.length,
-                            itemBuilder: (context, idx) {
-                              final node = filtered[idx];
-                              final onActivePath = visibleIds.contains(node.id);
-                              final depth = _depthOf(node, allNodes);
-                              return _TreeNodeRow(
-                                node: node,
-                                depth: depth,
-                                onActivePath: onActivePath,
-                                summary: _summarize(node.content),
-                                roleLabel: node.role == 'assistant'
-                                    ? l10n.t(L10nKey.shellRoleAssistant)
-                                    : node.role == 'compaction_summary'
-                                    ? l10n.t(L10nKey.chatCompactedTitle)
-                                    : l10n.t(L10nKey.shellRoleUser),
-                                onSelect: () {
-                                  ctrl.focusBranchNode(node.id);
-                                  widget.onClose();
-                                },
-                              );
-                            },
+                        : SmoothScrollable(
+                            builder: (_, scroll) => ListView.builder(
+                              controller: scroll,
+                              itemCount: filtered.length,
+                              itemBuilder: (context, idx) {
+                                final node = filtered[idx];
+                                final onActivePath = visibleIds.contains(
+                                  node.id,
+                                );
+                                final depth = _depthOf(node, allNodes);
+                                return _TreeNodeRow(
+                                  node: node,
+                                  depth: depth,
+                                  onActivePath: onActivePath,
+                                  summary: _summarize(node.content),
+                                  roleLabel: node.role == 'assistant'
+                                      ? l10n.t(L10nKey.shellRoleAssistant)
+                                      : node.role == 'compaction_summary'
+                                      ? l10n.t(L10nKey.chatCompactedTitle)
+                                      : l10n.t(L10nKey.shellRoleUser),
+                                  onSelect: () {
+                                    ctrl.focusBranchNode(node.id);
+                                    widget.onClose();
+                                  },
+                                );
+                              },
+                            ),
                           ),
                   ),
                 ],

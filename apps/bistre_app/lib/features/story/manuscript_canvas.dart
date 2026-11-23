@@ -6,6 +6,7 @@ import '../../bridge/bistre_engine.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
@@ -123,17 +124,20 @@ class _ManuscriptCanvasState extends State<ManuscriptCanvas> {
         );
 
         if (!showSidebar) {
-          return SingleChildScrollView(
-            padding: const EdgeInsetsDirectional.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                chapterList,
-                const SizedBox(height: 16),
-                const FolioDivider(),
-                const SizedBox(height: 16),
-                editorPane,
-              ],
+          return SmoothScrollable(
+            builder: (_, scroll) => SingleChildScrollView(
+              controller: scroll,
+              padding: const EdgeInsetsDirectional.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  chapterList,
+                  const SizedBox(height: 16),
+                  const FolioDivider(),
+                  const SizedBox(height: 16),
+                  editorPane,
+                ],
+              ),
             ),
           );
         }
@@ -145,25 +149,31 @@ class _ManuscriptCanvasState extends State<ManuscriptCanvas> {
               width: 224,
               child: ColoredBox(
                 color: theme.bgSurface.withValues(alpha: 0.5),
-                child: SingleChildScrollView(
-                  padding: const EdgeInsetsDirectional.all(12),
-                  child: chapterList,
+                child: SmoothScrollable(
+                  builder: (_, scroll) => SingleChildScrollView(
+                    controller: scroll,
+                    padding: const EdgeInsetsDirectional.all(12),
+                    child: chapterList,
+                  ),
                 ),
               ),
             ),
             const FolioDivider(vertical: true),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsetsDirectional.symmetric(
-                  horizontal: 24,
-                  vertical: 16,
-                ),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxWidth: theme.typography.readingWidthPx,
+              child: SmoothScrollable(
+                builder: (_, scroll) => SingleChildScrollView(
+                  controller: scroll,
+                  padding: const EdgeInsetsDirectional.symmetric(
+                    horizontal: 24,
+                    vertical: 16,
+                  ),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: theme.typography.readingWidthPx,
+                      ),
+                      child: editorPane,
                     ),
-                    child: editorPane,
                   ),
                 ),
               ),
