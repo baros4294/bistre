@@ -17,6 +17,7 @@ pub mod hooks;
 pub mod import_policy;
 pub mod ipc_client;
 pub mod mcp;
+pub mod net;
 pub mod ota;
 pub mod power;
 pub mod process_util;
@@ -227,7 +228,7 @@ impl InProcessEngine {
         settings: &AppSettings,
         provider: &ProviderProfile,
     ) -> BistreResult<()> {
-        if providers::is_local_loopback_url(&provider.base_url) {
+        if net::is_loopback_url(&provider.base_url) {
             return Ok(());
         }
         let Some(ceiling) = settings.wallet_daily_ceiling_micros else {

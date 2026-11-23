@@ -4,7 +4,6 @@
 //! prompt-cache-stable tool ordering (`ADR-0006`, `rmcp 3.11.0`).
 
 use std::collections::VecDeque;
-use std::net::IpAddr;
 use std::time::Duration;
 
 use bistre_protocol::{BistreError, BistreResult, DiagnosticKey};
@@ -67,7 +66,7 @@ impl McpHttpTransport {
         headers: HeaderMap,
         body: &Value,
     ) -> BistreResult<(StatusCode, HeaderMap, Vec<u8>)> {
-        if !is_loopback_url(url) {
+        if !crate::net::is_loopback_url(url) {
             return self
                 .public
                 .send_json(
@@ -105,19 +104,6 @@ impl McpHttpTransport {
         }
         Ok((status, resp_headers, bytes))
     }
-}
-
-/// Returns `true` for `http(s)` URLs whose host is loopback.
-pub fn is_loopback_url(url: &str) -> bool {
-    let Ok(parsed) = reqwest::Url::parse(url.trim()) else {
-        return false;
-    };
-    let Some(host) = parsed.host_str() else {
-        return false;
-    };
-    let host = host.trim_start_matches('[').trim_end_matches(']');
-    host.eq_ignore_ascii_case("localhost")
-        || host.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
 }
 
 /// Per-server MCP session state (`Mcp-Session-Id`) with a single renewal on HTTP `404`.
@@ -537,11 +523,11 @@ mod tests {
 
     #[test]
     fn loopback_detection_and_public_routing() {
-        assert!(is_loopback_url("http://127.0.0.1:3000/mcp"));
-        assert!(is_loopback_url("http://localhost:8931/mcp"));
-        assert!(is_loopback_url("http://[::1]:9000/"));
-        assert!(!is_loopback_url("http://192.168.1.10/mcp"));
-        assert!(!is_loopback_url("https://mcp.example.com/mcp"));
+        assert!(crate::net::is_loopback_url("http://127.0.0.1:3000/mcp"));
+        assert!(crate::net::is_loopback_url("http://localhost:8931/mcp"));
+        assert!(crate::net::is_loopback_url("http://[::1]:9000/"));
+        assert!(!crate::net::is_loopback_url("http://192.168.1.10/mcp"));
+        assert!(!crate::net::is_loopback_url("https://mcp.example.com/mcp"));
     }
 
     #[tokio::test]

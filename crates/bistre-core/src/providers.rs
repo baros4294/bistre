@@ -52,16 +52,6 @@ pub struct LocalServerDiscovery {
     pub models: Vec<String>,
 }
 
-/// Returns `true` when `base_url` targets a local loopback endpoint (free local inference).
-pub fn is_local_loopback_url(base_url: &str) -> bool {
-    let lower = base_url.trim().to_ascii_lowercase();
-    lower.starts_with("http://127.0.0.1")
-        || lower.starts_with("http://localhost")
-        || lower.starts_with("http://[::1]")
-        || lower.starts_with("https://127.0.0.1")
-        || lower.starts_with("https://localhost")
-}
-
 /// Exact integer micro-USD cost from live registry rates (zero floats, zero hardcoded rates).
 /// Loopback inference is free; an unpriced model is `None` (unknown, never guessed).
 pub fn estimate_cost_micros(
@@ -69,7 +59,7 @@ pub fn estimate_cost_micros(
     rates: Option<ModelRates>,
     usage: &UsageMetrics,
 ) -> Option<MoneyMicros> {
-    if is_local_loopback_url(&provider.base_url)
+    if crate::net::is_loopback_url(&provider.base_url)
         || (usage.input_tokens == 0 && usage.output_tokens == 0)
     {
         return Some(MoneyMicros::ZERO);

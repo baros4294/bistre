@@ -65,7 +65,7 @@ pub(crate) async fn execute_durable_stream_loop(
     let mut retry_attempt: u32 = 0;
     let mut waited_secs: u64 = 0;
     let mut overflow_compacted = false;
-    let is_local = providers::is_local_loopback_url(&provider.base_url);
+    let is_local = crate::net::is_loopback_url(&provider.base_url);
 
     loop {
         let all_nodes = storage.list_nodes(thread_id).unwrap_or_default();
@@ -421,7 +421,7 @@ pub(crate) async fn execute_durable_stream_loop(
         }
 
         if let Ok(latest_settings) = storage.load_settings()
-            && !providers::is_local_loopback_url(&provider.base_url)
+            && !crate::net::is_loopback_url(&provider.base_url)
             && let Some(cap) = latest_settings.wallet_daily_ceiling_micros
         {
             let spent_today = storage
