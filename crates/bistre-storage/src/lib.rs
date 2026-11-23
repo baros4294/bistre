@@ -2,7 +2,9 @@
 //!
 //! Architecture invariants:
 //! - Dedicated single-writer actor thread behind a bounded `SyncSender` (zero write-write `SQLITE_BUSY`).
-//! - Short-lived pooled read-only connections so readers never starve WAL checkpoints.
+//! - Short-lived read-only connections, opened per read and dropped at once, so readers never starve
+//!   WAL checkpoints. Opening one is a small fraction of a typical read, so there is no pool
+//!   (measured in Spec 11).
 //! - Expand-Contract additive migrations inside `BEGIN IMMEDIATE` + `PRAGMA foreign_key_check` + `PRAGMA quick_check`.
 //! - Explicit `SQLITE_FULL` translation to `DiagnosticKey::StorageDiskFull`.
 

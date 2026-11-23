@@ -15,6 +15,7 @@ use super::{
 };
 use crate::engine_runs::{utc_day_start_unix_ms, utc_now_unix_ms};
 use crate::events::{emit, emit_logged, note_write};
+use crate::off_worker::off_worker;
 use bistre_protocol::lock_or_recover;
 
 impl EngineClient for InProcessEngine {
@@ -442,11 +443,15 @@ impl EngineClient for InProcessEngine {
         thread_id: String,
         format: String,
     ) -> BoxFuture<'_, BistreResult<String>> {
-        Box::pin(async move { self.storage.export_thread(&thread_id, &format) })
+        Box::pin(off_worker(&self.storage, move |s| {
+            s.export_thread(&thread_id, &format)
+        }))
     }
 
     fn backup_database(&self, dest_path: String) -> BoxFuture<'_, BistreResult<()>> {
-        Box::pin(async move { self.storage.backup_database(Path::new(&dest_path)) })
+        Box::pin(off_worker(&self.storage, move |s| {
+            s.backup_database(Path::new(&dest_path))
+        }))
     }
 
     fn storage_stats(&self) -> BoxFuture<'_, BistreResult<StorageStats>> {
@@ -535,7 +540,7 @@ impl EngineClient for InProcessEngine {
     }
 
     fn list_nodes(&self, thread_id: String) -> BoxFuture<'_, BistreResult<Vec<NodeRecord>>> {
-        Box::pin(async move { self.storage.list_nodes(&thread_id) })
+        Box::pin(off_worker(&self.storage, move |s| s.list_nodes(&thread_id)))
     }
 
     fn save_draft(
@@ -588,10 +593,9 @@ impl EngineClient for InProcessEngine {
         thread_id: Option<String>,
         limit: u32,
     ) -> BoxFuture<'_, BistreResult<Vec<SearchHit>>> {
-        Box::pin(async move {
-            self.storage
-                .search_nodes(&query, thread_id.as_deref(), limit)
-        })
+        Box::pin(off_worker(&self.storage, move |s| {
+            s.search_nodes(&query, thread_id.as_deref(), limit)
+        }))
     }
 
     fn verify_data_pack(

@@ -19,6 +19,7 @@ pub mod import_policy;
 pub mod ipc_client;
 pub mod mcp;
 pub mod net;
+mod off_worker;
 pub mod ota;
 pub mod power;
 pub mod process_util;
