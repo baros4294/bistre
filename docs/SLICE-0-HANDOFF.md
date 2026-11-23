@@ -61,7 +61,7 @@ Recorded **2026-11-21** after completing Commit-1 Repo Fortress, Spec Pack, Day-
   - Silent errors in the run path: `list_nodes(..).unwrap_or_default()` sends an empty history to a paid provider (`engine_runs.rs:71`, `:323`); core has 83 `.ok()`, 39 `unwrap_or_default()`, 11 poisoned-lock ignores, none caught by `just guard`.
   - Cancel only checked between chunks (up to the 300 s first-token timeout); `init_runtime` swaps `ENGINE` without shutting the old one down; the daemon polls every 2 s.
   - Flutter: the root `WidgetsApp` listens to the whole `FolioController` (`apps/bistre_app/lib/main.dart:227`), so toasts, search keystrokes, and draft saves rebuild everything; committed messages re-parse markdown every build; `FolioFadeSlide` replays on scroll-back; thread switch and search have no generation guard; `recordToolActivity` has no caller.
-  - Docs overstate the code: no `rustls-platform-verifier` dependency exists (`docs/RESEARCH-AND-EDGE-CASES.md` §3 and §1 above still claim it), MCP is HTTP-only, updater rollback and cron are stubs, native model tool calls are missing.
+  - Docs overstate the code: MCP is HTTP-only, updater rollback and cron are stubs, native model tool calls are missing.
 - **Plan milestones**:
   - M0: commit as layered Conventional Commits, create the GitHub repo, and get `ci-gate` green.
   - M1: fail-closed types: `VerifiedManifest`, `LoopbackUrl`, WAL spend reservations, a real approval round trip, no retry after partial output, error propagation plus clippy `disallowed-methods` for `Result::{ok, unwrap_or_default, unwrap_or}`, and `select!` cancel.
@@ -107,6 +107,20 @@ Recorded **2026-11-21** after completing Commit-1 Repo Fortress, Spec Pack, Day-
 - **Open items**:
   - The new `AGENTS.md` rules describe the target. The code still violates fail-closed spending, approval, OTA, error silencing, and the root rebuild (§7 defects), and no guard enforces test retries or cache versions yet.
   - ADR-0006 still adopts `rmcp` and rejects a hand-rolled client. It needs a superseding ADR in the change that drops `rmcp` (Q3). `README.md` still says `rmcp 3.11`.
-  - `docs/RESEARCH-AND-EDGE-CASES.md` still claims `rustls-platform-verifier`.
   - Specs 00–07 and 09–11 have not had this precision pass; that happens in the docs-honesty step of the plan.
   - Chat mode switch placement is left to the Spec 08 §4 parity audit.
+
+## 9. M0 + M1: Baseline and Safety Fixes (2026-11-23)
+- **M0**: the tree is committed as ten layered Conventional Commits and pushed to the new public repo `baros4294/bistre` (commits use the GitHub noreply address; the repo-local `user.email` was set so pushes pass email privacy). First CI runs exposed two CI defects, both fixed: the pinned `install-action` cannot install `actionlint` (now `.github/scripts/install-actionlint.sh`, version and SHA-256 pinned), and gitleaks flagged two fake vault fixtures (renamed to `sk-test-*`; the original strings are allowlisted exactly for the history scan). Linux `flutter test` also exposed a notify-after-dispose crash and an FFI test that could not find the hook-built `.so`; both are fixed.
+- **M1 (all §7 safety defects)**:
+  - OTA fails closed with no release key (`diag.ota.signing_key_missing`); the `.minisig` is mandatory; `stage_update` uses only the core-held `VerifiedManifest`.
+  - Loopback is decided by parsed host (`crates/bistre-core/src/net.rs`) for Wallet Shield, pricing, and MCP.
+  - Wallet Shield reserves spend in one writer transaction before every paid request (`crates/bistre-core/src/wallet.rs`); storage errors deny with `diag.wallet.check_unavailable`; startup sweeps orphaned reservations.
+  - Tools other than Tier 0 need `approve_tool_call` → one-use permit (60 s, 64 max, exact arguments); Tier 3 uses `diag.tool.tier_blocked`. New FFI `approve_tool_call` and `permit_id` on `execute_workspace_tool_json`; Dart gateway `approveToolCall`.
+  - A stream that breaks after output is kept as an interrupted reply and never retried.
+  - Runs stop with a diagnostic when history, story context, steering, or the final run state cannot be read or written; corrupt settings, story JSON columns, and `hooks.json` surface errors.
+  - `lock_or_recover` replaces raw `Mutex::lock`; `clippy.toml` bans `Result::unwrap_or_default`, `Mutex::lock`, `reqwest` builders outside `http_clients.rs`, `thread::sleep`, and unbounded channels; `just guard` rejects dropped storage/vault results outside tests.
+  - Stop races `dispatch()` and every chunk wait (50 ms bound).
+- **Verification**: `cargo clippy --workspace --all-targets -D warnings` clean; `cargo nextest` 99/99; `dart test tools/bistre_guard` 23/23; `flutter analyze` clean; FFI round-trip and a11y gallery Flutter tests pass on Windows; `just guard` and `just i18n-check` pass. Each new regression test asserts the fixed behaviour (signing-key, forged stage, parsed loopback, concurrent reservation, unapproved edit, broken stream, Stop latency).
+- **Correction to §7/§8**: `rustls-platform-verifier 0.7.1` *is* in use (through `reqwest 0.13`, `cargo tree -i rustls-platform-verifier`); the research doc's claim is accurate.
+- **Environment**: in Git Bash, `/usr/bin/link` shadows MSVC `link.exe`; run Rust builds from PowerShell (or use `just install-hooks`, which fixes `PATH` for hooks).
