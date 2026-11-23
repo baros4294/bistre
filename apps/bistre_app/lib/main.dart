@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show FrameTiming;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -122,7 +123,14 @@ Future<void> main() async {
       });
       WidgetsBinding.instance.scheduleFrame();
       if (probePath.isNotEmpty) {
+        // Frames rendered while idle (Spec 11: zero idle work); counted from chat ready.
+        var idleFrames = 0;
+        void countFrames(List<FrameTiming> timings) =>
+            idleFrames += timings.length;
+        WidgetsBinding.instance.addTimingsCallback(countFrames);
         Timer(const Duration(seconds: 10), () {
+          WidgetsBinding.instance.removeTimingsCallback(countFrames);
+          probe('idle_frames=$idleFrames');
           probe('idle_rss_bytes=${ProcessInfo.currentRss}');
         });
       }

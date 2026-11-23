@@ -183,7 +183,11 @@ Future<List<PerfMetric>> runDesktopColdStart(Directory repoRoot) async {
         stdout.writeln(
           'rss at first frame: ${probe['first_frame_rss_bytes']} bytes; after 10 s idle: ${probe['idle_rss_bytes']} bytes',
         );
+        stdout.writeln('frames while idle: ${probe['idle_frames']}');
         if (Platform.isLinux) printRssByMapping(proc.pid);
+        stdout.writeln(
+          'data dir: ${dataDir.listSync().map((e) => '${e.uri.pathSegments.where((s) => s.isNotEmpty).last}=${e.statSync().size}').join(', ')}',
+        );
       }
       proc.kill();
       await proc.exitCode.timeout(
