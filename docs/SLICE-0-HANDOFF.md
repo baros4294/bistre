@@ -124,3 +124,16 @@ Recorded **2026-11-21** after completing Commit-1 Repo Fortress, Spec Pack, Day-
 - **Verification**: `cargo clippy --workspace --all-targets -D warnings` clean; `cargo nextest` 99/99; `dart test tools/bistre_guard` 23/23; `flutter analyze` clean; FFI round-trip and a11y gallery Flutter tests pass on Windows; `just guard` and `just i18n-check` pass. Each new regression test asserts the fixed behaviour (signing-key, forged stage, parsed loopback, concurrent reservation, unapproved edit, broken stream, Stop latency).
 - **Correction to §7/§8**: `rustls-platform-verifier 0.7.1` *is* in use (through `reqwest 0.13`, `cargo tree -i rustls-platform-verifier`); the research doc's claim is accurate.
 - **Environment**: in Git Bash, `/usr/bin/link` shadows MSVC `link.exe`; run Rust builds from PowerShell (or use `just install-hooks`, which fixes `PATH` for hooks).
+
+## 10. M2: Core Lifecycle, Efficiency, Pricing, MCP (2026-11-23)
+- **What changed** (PR `baros4294/bistre#5`, branch `m2-core-lifecycle`):
+  - `init_runtime` shuts the previous engine down before opening a new one; engine shutdown cancels runs and drains them (5 s) before closing storage.
+  - The core coalesces deltas per 16 ms frame; FFI turns a bus lag into `events_lagged` (the app reloads) instead of a `StorageBusy` error; Dart ignores unknown event kinds.
+  - Streaming checkpoints append only new text (250 ms / 4 KiB cadence).
+  - `ffi_err` keeps detail codes (`diag.<key>:<detail>`); harness endpoints live in `crates/bistre-ffi/src/api/harness.rs`.
+  - Daemon: deadline-driven housekeeping instead of a 2 s poll, 16 IPC connections max, accept backoff, malformed RPC params rejected, two Tokio workers.
+  - Pricing (Q2a): refresh at most daily at engine start (Settings toggle, default on) or on **Update prices now**; cached in `<data_dir>/pricing_cache.json` with a format version; runs never fetch.
+  - MCP (Q3): `rmcp` removed (`ADR-0018`); unused stdio helpers removed until the stdio slice.
+  - Spec 00 §6 **Implementation Status** table (guarded); run step limit unified at 24; text-only replay pinned by a test.
+- **Verification**: workspace clippy `-D warnings` clean; `cargo nextest` all green (100 tests); `cargo deny` ok; `flutter analyze` clean; `flutter test` 29/29; `just guard`, `just i18n-check`, `dart test tools/bistre_guard` pass; daemon `--health-check` smoke passes.
+- **Still open from the plan** (not done, by design of scope or time): typed DTOs for the remaining `*_json` FFI endpoints; reader-connection pool + `spawn_blocking` for storage calls (Spec 00 §6 notes readers are per query); cross-process database lock (the daemon and app may share a data dir by design, ADR-0003; needs a decision first); 16-step quantized compaction and the 8,000-char reasoning handoff; English server labels in `local server discovery` and seeded names (`Default Workspace`).
