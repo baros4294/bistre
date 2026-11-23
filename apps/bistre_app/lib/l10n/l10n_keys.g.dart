@@ -37,6 +37,7 @@ enum L10nKey {
   chatCompactAction('chat.compact_action'),
   chatCompactedTitle('chat.compacted_title'),
   chatContextGaugeOfLimit('chat.context_gauge.of_limit'),
+  chatContextGaugeShort('chat.context_gauge.short'),
   chatContextGaugeUsed('chat.context_gauge.used'),
   chatCostUnavailableBody('chat.cost_unavailable_body'),
   chatCostUnavailableTitle('chat.cost_unavailable_title'),

@@ -151,7 +151,13 @@ class _ContextGaugeRingState extends State<ContextGaugeRing> {
             ),
             const SizedBox(width: 6),
             InkText(
-              _compact(used),
+              limit == null
+                  ? _compact(used)
+                  : l10n.t(L10nKey.chatContextGaugeShort, <String, Object?>{
+                      'used': _compact(used),
+                      'limit': _compact(limit),
+                      'percent': (fraction * 100).round(),
+                    }),
               role: InkTextRole.captionMeta,
               color: theme.inkMuted,
             ),

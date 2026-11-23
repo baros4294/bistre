@@ -568,6 +568,7 @@ class _FolioComposerState extends State<FolioComposer> {
                         gauge: ContextGaugeRing(
                           threadId: ctrl.activeThread?.id ?? '',
                           text: ctrl.contextGaugeText,
+                          limitTokens: ctrl.activeContextLimitOrFetch,
                         ),
                         leading: <Widget>[
                           BistreIconButton(

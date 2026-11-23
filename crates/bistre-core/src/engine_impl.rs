@@ -745,6 +745,16 @@ impl EngineClient for InProcessEngine {
         Box::pin(async move { self.storage.latest_event_cursor() })
     }
 
+    fn model_context_tokens(&self, model: String) -> BoxFuture<'_, BistreResult<Option<u32>>> {
+        Box::pin(async move {
+            Ok(self
+                .pricing
+                .snapshot()
+                .lookup(&model)
+                .and_then(|r| r.context_tokens))
+        })
+    }
+
     fn refresh_prices(&self) -> BoxFuture<'_, BistreResult<()>> {
         Box::pin(async move {
             self.pricing.force_refresh(&self.web);

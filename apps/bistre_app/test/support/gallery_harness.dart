@@ -793,6 +793,9 @@ flowchart LR
   Future<void> refreshPrices() async => refreshPricesCalls++;
 
   @override
+  Future<int?> modelContextTokens(String model) async => 128000;
+
+  @override
   Future<String> approveToolCall({
     required String threadId,
     required String toolName,
