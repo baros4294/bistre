@@ -292,6 +292,10 @@ jobs:
       - name: Flutter widget, a11y, RTL, contrast, and live Rust FRB v2 Native Assets tests
         working-directory: apps/bistre_app
         shell: bash
+        env:
+          # Linux runners have no Secret Service; a fixed test-only passphrase gives the FFI
+          # round-trip a vault key (Spec 06). Never a real secret.
+          BISTRE_VAULT_PASSPHRASE: ci-test-only-vault-passphrase
         run: flutter test
       - name: Build Linux release bundle
         if: runner.os == 'Linux'
