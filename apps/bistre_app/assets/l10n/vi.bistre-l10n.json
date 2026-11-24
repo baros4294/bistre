@@ -3907,9 +3907,93 @@
       "max_chars": 14,
       "placeholders": {}
     },
-    "settings.all_settings": {
-      "message": "Tất cả cài đặt",
-      "context": "Phone settings: back from one settings page to the list of pages",
+    "settings.sub.providers": {
+      "message": "{provider} · {count, plural, =0{chưa có nhà cung cấp} other{{count} nhà cung cấp}}",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {
+        "provider": {
+          "type": "string",
+          "example": "OpenAI"
+        },
+        "count": {
+          "type": "int",
+          "example": "3"
+        }
+      }
+    },
+    "settings.sub.assistants": {
+      "message": "{count, plural, =0{Chưa có trợ lý} other{{count} trợ lý và chỉ dẫn của chúng}}",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "2"
+        }
+      }
+    },
+    "settings.sub.appearance": {
+      "message": "Tên, giao diện, phông chữ và độ rộng đọc",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.sub.trust": {
+      "message": "Giới hạn chi tiêu, giá và quyền công cụ",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.sub.agent": {
+      "message": "Công cụ tác tử, suy nghĩ và giữ máy thức",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.sub.memory": {
+      "message": "Ghi nhớ, kỹ năng và tác vụ định kỳ",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.sub.updates": {
+      "message": "Lưu trữ, sao lưu và cập nhật ứng dụng",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.sub.language": {
+      "message": "Ngôn ngữ ứng dụng và hướng đọc",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.sub.shortcuts": {
+      "message": "Phím tắt",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.chat": {
+      "message": "Trò chuyện",
+      "context": "Phone settings header: returns to the chat",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.clear_search": {
+      "message": "Xóa tìm kiếm",
+      "context": "Phone settings: clears the settings search",
       "tone": "concise_action",
       "max_chars": 24,
       "placeholders": {}

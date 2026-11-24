@@ -978,47 +978,71 @@ void main() {
     await gw.shutdown();
   });
 
-  testWidgets('phone settings open as a vertical list, then a page', (
-    WidgetTester tester,
-  ) async {
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final (ctrl, gw, l10n) = await boot();
-    await tester.pumpWidget(
-      BistreApp(l10nController: l10n, folioController: ctrl),
-    );
-    await tester.pumpAndSettle();
-    ctrl.openSettings();
-    await tester.pumpAndSettle();
+  testWidgets(
+    'phone settings match v2.6.0: card list, one page, back and swipe step back',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final (ctrl, gw, l10n) = await boot();
+      await tester.pumpWidget(
+        BistreApp(l10nController: l10n, folioController: ctrl),
+      );
+      await tester.pumpAndSettle();
+      ctrl.openSettings();
+      await tester.pumpAndSettle();
 
-    // Every page is listed top to bottom, with the settings search.
-    final appearance = find.text(l10n.t(L10nKey.settingsTabAppearance));
-    final shortcuts = find.text(l10n.t(L10nKey.settingsTabShortcuts));
-    expect(appearance, findsOneWidget);
-    expect(shortcuts, findsOneWidget);
-    expect(
-      tester.getTopLeft(shortcuts).dy,
-      greaterThan(tester.getTopLeft(appearance).dy),
-    );
-    expect(
-      find.text(l10n.t(L10nKey.settingsSearchPlaceholder)),
-      findsOneWidget,
-    );
+      // Root: one header (Settings + Chat), search, and every page as a vertical card.
+      final appearance = find.text(l10n.t(L10nKey.settingsTabAppearance));
+      final shortcuts = find.text(l10n.t(L10nKey.settingsTabShortcuts));
+      expect(find.text(l10n.t(L10nKey.settingsChat)), findsOneWidget);
+      expect(
+        find.text(l10n.t(L10nKey.settingsSearchPlaceholder)),
+        findsOneWidget,
+      );
+      expect(find.text(l10n.t(L10nKey.settingsSubShortcuts)), findsOneWidget);
+      await tester.dragUntilVisible(
+        shortcuts,
+        find.byType(SingleChildScrollView).last,
+        const Offset(0, -200),
+      );
+      expect(
+        tester.getTopLeft(shortcuts).dy,
+        greaterThan(tester.getTopLeft(appearance).dy),
+      );
+      expect(
+        tester.getTopLeft(shortcuts).dx,
+        tester.getTopLeft(appearance).dx,
+        reason: 'a vertical list, not a sideways strip',
+      );
 
-    await tester.tap(appearance);
-    await tester.pumpAndSettle();
-    expect(find.text(l10n.t(L10nKey.settingsProfileName)), findsWidgets);
-    final allSettings = find.text(l10n.t(L10nKey.settingsAllSettings));
-    expect(allSettings, findsOneWidget);
+      // A page opens alone, with a Settings back button.
+      await tester.tap(appearance);
+      await tester.pumpAndSettle();
+      expect(find.text(l10n.t(L10nKey.settingsProfileName)), findsWidgets);
+      expect(shortcuts, findsNothing);
 
-    await tester.tap(allSettings);
-    await tester.pumpAndSettle();
-    expect(shortcuts, findsOneWidget);
-    ctrl.dispose();
-    await gw.shutdown();
-  });
+      // Android back: page -> list -> chat.
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(appearance, findsOneWidget);
+      expect(ctrl.settingsOpen, isTrue);
+
+      // Swipe from the start edge also steps back from a page.
+      await tester.tap(appearance);
+      await tester.pumpAndSettle();
+      await tester.dragFrom(const Offset(20, 400), const Offset(200, 0));
+      await tester.pumpAndSettle();
+      expect(appearance, findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(ctrl.settingsOpen, isFalse);
+      ctrl.dispose();
+      await gw.shutdown();
+    },
+  );
 }
 
 bool _endsWithLoneHighSurrogate(String s) {

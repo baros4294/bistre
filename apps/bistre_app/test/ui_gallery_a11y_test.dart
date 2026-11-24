@@ -77,6 +77,13 @@ void main() {
       2.0,
       (ctrl, _) async => ctrl.openSettings(SettingsTab.appearance),
     );
+    // Phone Settings root at normal text: the v2.6.0 card list.
+    await shoot(
+      '36_phone_settings_list.png',
+      const Size(390, 844),
+      1.0,
+      (ctrl, _) async => ctrl.openSettings(),
+    );
     await shoot(
       '31_desktop_text200_chat.png',
       const Size(1320, 820),

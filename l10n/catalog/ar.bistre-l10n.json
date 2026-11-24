@@ -3907,9 +3907,93 @@
       "max_chars": 14,
       "placeholders": {}
     },
-    "settings.all_settings": {
-      "message": "كل الإعدادات",
-      "context": "Phone settings: back from one settings page to the list of pages",
+    "settings.sub.providers": {
+      "message": "{provider} · {count, plural, =0{لا مزودين} one{مزود واحد} two{مزودان} other{{count} مزودين}}",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {
+        "provider": {
+          "type": "string",
+          "example": "OpenAI"
+        },
+        "count": {
+          "type": "int",
+          "example": "3"
+        }
+      }
+    },
+    "settings.sub.assistants": {
+      "message": "{count, plural, =0{لا مساعدين بعد} one{مساعد واحد وتعليماته} two{مساعدان وتعليماتهما} other{{count} مساعدين وتعليماتهم}}",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "2"
+        }
+      }
+    },
+    "settings.sub.appearance": {
+      "message": "اسمك والسمة والخطوط وعرض القراءة",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.sub.trust": {
+      "message": "حد الإنفاق والأسعار وأذونات الأدوات",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.sub.agent": {
+      "message": "أدوات الوكيل والتفكير وإبقاء الجهاز مستيقظًا",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.sub.memory": {
+      "message": "الذكريات والمهارات والمهام المجدولة",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.sub.updates": {
+      "message": "التخزين والنسخ الاحتياطي وتحديثات التطبيق",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.sub.language": {
+      "message": "لغة التطبيق واتجاه القراءة",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.sub.shortcuts": {
+      "message": "اختصارات لوحة المفاتيح",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.chat": {
+      "message": "الدردشة",
+      "context": "Phone settings header: returns to the chat",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.clear_search": {
+      "message": "مسح البحث",
+      "context": "Phone settings: clears the settings search",
       "tone": "concise_action",
       "max_chars": 24,
       "placeholders": {}
