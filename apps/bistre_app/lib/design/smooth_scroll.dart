@@ -64,31 +64,60 @@ class _SmoothWheelPosition extends ScrollPositionWithSingleContext {
   /// Wheel notches at or below this size come from smooth devices and stay 1:1.
   static const double _smoothDeviceDelta = 16;
   static final SpringDescription _wheelSpring =
-      SpringDescription.withDampingRatio(mass: 1, stiffness: 320);
+      SpringDescription.withDampingRatio(mass: 1, stiffness: 420);
 
   double? _wheelTarget;
+  double _wheelDirection = 0;
+  ScrollActivity? _wheelActivity;
+
+  @override
+  void beginActivity(ScrollActivity? newActivity) {
+    if (!identical(newActivity, _wheelActivity)) {
+      _wheelTarget = null;
+      _wheelDirection = 0;
+      _wheelActivity = null;
+    }
+    super.beginActivity(newActivity);
+  }
 
   @override
   void pointerScroll(double delta) {
+    if (delta == 0) return;
     if (delta.abs() <= _smoothDeviceDelta ||
         BistreMotion.shouldReduceMotion(context.storageContext)) {
       _wheelTarget = null;
+      _wheelDirection = 0;
+      _wheelActivity = null;
       super.pointerScroll(delta);
       return;
     }
-    final activeBallistic = activity is BallisticScrollActivity;
-    final pending = _wheelTarget;
-    final base = pending != null && activeBallistic ? pending : pixels;
-    final target = (base + delta).clamp(minScrollExtent, maxScrollExtent);
-    if (target == pixels) return;
 
-    // Preserve in-flight scroll velocity across consecutive wheel notches so rapid scrolling
-    // feels continuous and VSync-locked rather than restarting from zero on every detent.
-    final currentVelocity = activeBallistic ? activity!.velocity : 0.0;
+    final dir = delta.sign;
+    final activeWheel =
+        identical(activity, _wheelActivity) &&
+        activity is BallisticScrollActivity;
+    final continuingSameDir =
+        activeWheel && _wheelTarget != null && _wheelDirection == dir;
+
+    final base = continuingSameDir ? _wheelTarget! : pixels;
+    final target = (base + delta).clamp(minScrollExtent, maxScrollExtent);
+    if ((target - pixels).abs() < 0.5) {
+      _wheelTarget = null;
+      _wheelDirection = 0;
+      _wheelActivity = null;
+      return;
+    }
+
+    // Only carry in-flight velocity when continuing in the exact same direction;
+    // reversing direction immediately zeros velocity so the viewport never jumps backwards.
+    final liveVelocity = continuingSameDir ? activity!.velocity : 0.0;
+    final currentVelocity = liveVelocity.sign == dir ? liveVelocity : 0.0;
+
     updateUserScrollDirection(
       delta < 0 ? ScrollDirection.forward : ScrollDirection.reverse,
     );
     _wheelTarget = target;
+    _wheelDirection = dir;
     final sim = ScrollSpringSimulation(
       _wheelSpring,
       pixels,
@@ -96,6 +125,13 @@ class _SmoothWheelPosition extends ScrollPositionWithSingleContext {
       currentVelocity,
       tolerance: physics.toleranceFor(this),
     );
-    beginActivity(BallisticScrollActivity(this, sim, context.vsync, false));
+    final nextActivity = BallisticScrollActivity(
+      this,
+      sim,
+      context.vsync,
+      false,
+    );
+    _wheelActivity = nextActivity;
+    beginActivity(nextActivity);
   }
 }

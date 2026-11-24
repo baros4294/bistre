@@ -136,19 +136,41 @@ extension FolioCatalogActions on FolioController {
     String modelId,
   ) async {
     try {
-      if (modelId.trim().isNotEmpty) {
+      final cleanModel = modelId.trim();
+      if (cleanModel.isNotEmpty) {
         await _gateway.updateProvider(
           providerId: providerId,
-          defaultModel: modelId.trim(),
+          defaultModel: cleanModel,
         );
         _providers = await _gateway.listProviders();
       }
       _settings = await _gateway.saveSettings(
         _settings.copyWith(
           activeProviderId: providerId,
-          activeModelId: modelId.trim(),
+          activeModelId: cleanModel,
         ),
       );
+      // If the active thread or its assistant overrides provider/model, update the thread
+      // override so choosing a model in the top Model Picker always takes effect immediately.
+      final active = _activeThread;
+      final assistant = activeAssistant;
+      final hasOverride =
+          active != null &&
+          ((active.providerIdOverride?.trim().isNotEmpty ?? false) ||
+              (active.modelIdOverride?.trim().isNotEmpty ?? false) ||
+              (assistant?.defaultProviderId.trim().isNotEmpty ?? false) ||
+              (assistant?.defaultModelId.trim().isNotEmpty ?? false));
+      if (hasOverride) {
+        final updated = await _gateway.updateThread(
+          threadId: active.id,
+          providerIdOverride: providerId,
+          modelIdOverride: cleanModel,
+        );
+        _activeThread = updated;
+        _threads = _threads
+            .map((t) => t.id == updated.id ? updated : t)
+            .toList(growable: false);
+      }
       _lastDiagnosticKey = null;
       showToast(L10nKey.toastSettingsSaved);
       _notify();
@@ -195,6 +217,7 @@ extension FolioCatalogActions on FolioController {
   Future<void> checkForUpdates({String? feedUrlOverride}) async {
     if (_checkingUpdates) return;
     _checkingUpdates = true;
+    _lastOtaError = null;
     _lastDiagnosticKey = null;
     _notify();
     try {
@@ -205,7 +228,9 @@ extension FolioCatalogActions on FolioController {
       _notify();
     } catch (e) {
       _checkingUpdates = false;
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
+      final diag = FolioController.extractDiagnosticKey(e);
+      _lastOtaError = e.toString().replaceFirst('Exception: ', '').trim();
+      _lastDiagnosticKey = diag;
       _notify();
     }
   }
@@ -464,6 +489,13 @@ extension FolioCatalogActions on FolioController {
   /// Deletes a chat after an 8 s Undo window (`docs/design/DESIGN.md` §1.1: Undo instead of asking).
   Future<void> deleteThread(String threadId) async {
     _pendingThreadDeletes.remove(threadId)?.cancel();
+    // Register pending delete and close its tab BEFORE awaiting `createNewFolio()` so
+    // `listThreads()` never resurrects the deleted thread into `_threads` or `openTabs`.
+    _pendingThreadDeletes[threadId] = Timer(
+      const Duration(seconds: 8),
+      () => unawaited(_commitThreadDelete(threadId)),
+    );
+    _openTabIds.remove(threadId);
     final remaining = _threads.where((t) => t.id != threadId).toList();
     _threads = remaining;
     if (_activeThread?.id == threadId) {
@@ -474,16 +506,49 @@ extension FolioCatalogActions on FolioController {
         await createNewFolio();
       }
     }
-    _pendingThreadDeletes[threadId] = Timer(
-      const Duration(seconds: 8),
-      () => unawaited(_commitThreadDelete(threadId)),
-    );
     showToast(
       L10nKey.toastDeleted,
       actionKey: L10nKey.toastUndo,
       onAction: () => unawaited(undoDeleteThread(threadId)),
       duration: const Duration(seconds: 8),
     );
+    _notify();
+  }
+
+  /// Permanently deletes all chats and opens a fresh empty chat with 1 clean tab.
+  Future<void> clearAllThreads() async {
+    final ids = <String>{
+      for (final t in _threads) t.id,
+      ..._pendingThreadDeletes.keys,
+    };
+    for (final id in _pendingThreadDeletes.keys.toList()) {
+      _pendingThreadDeletes.remove(id)?.cancel();
+    }
+    _openTabIds.clear();
+    _threads = const <EngineThread>[];
+    _activeThread = null;
+    _nodes = const <EngineNode>[];
+    liveTurn.clear();
+    for (final id in ids) {
+      try {
+        await _gateway.cancelActiveRun(id);
+      } catch (e) {
+        _noteNonFatal('clear_all_cancel', e);
+      }
+      try {
+        await _gateway.deleteThread(id);
+      } catch (e) {
+        _noteNonFatal('clear_all_delete', e);
+      }
+    }
+    await createNewFolio();
+    try {
+      _health = await _gateway.getHealth();
+      _storageStats = await _gateway.getStorageStats();
+    } catch (e) {
+      _noteNonFatal('clear_all_stats', e);
+    }
+    showToast(L10nKey.toastChatsCleared);
     _notify();
   }
 

@@ -11,21 +11,31 @@ use crate::events::{emit, emit_logged, note_write};
 use crate::wallet;
 use bistre_protocol::{BistreResult, UsageMetrics};
 
-/// Shared network services for one streaming run.
-#[derive(Debug)]
+/// Shared network and tool-execution services for one streaming run.
 pub(crate) struct StreamServices {
     pub(crate) http: reqwest::Client,
+    pub(crate) web: crate::ssrf::PublicWebTransport,
+    pub(crate) mcp_http: crate::mcp::McpHttpTransport,
+    pub(crate) vault: Arc<dyn bistre_crypto::SecretVault>,
     pub(crate) pricing: Arc<registry::PricingRegistry>,
     pub(crate) wake: Arc<Notify>,
+    pub(crate) data_dir: std::path::PathBuf,
+    pub(crate) reasoning_unsupported:
+        Arc<std::sync::Mutex<std::collections::HashSet<(String, String)>>>,
+    pub(crate) read_ledger: Arc<crate::tools::ReadLedger>,
+    pub(crate) broker: Arc<approval::ToolApprovalBroker>,
+    pub(crate) pending_approvals: crate::agent_tools::PendingApprovalMap,
+    pub(crate) thread_auto_approvals: crate::agent_tools::ThreadAutoApprovals,
 }
 
-/// Rate limits, transient server failures, and streams that died before any output retry
-/// automatically; auth, quota/billing, spend caps, and bad requests never do.
+/// Rate limits, transient server failures (including transient HTTP 400), and streams that died
+/// before any output retry automatically; auth, quota/billing, spend caps, and bad requests never do.
 pub(crate) fn is_auto_retryable(err: &BistreError) -> bool {
     match err.key {
         DiagnosticKey::ProviderRateLimited | DiagnosticKey::ProviderStreamInterrupted => true,
         DiagnosticKey::ProviderRequestFailed => err.detail_code.as_deref().is_some_and(|d| {
             d == "connect"
+                || d.contains("transient")
                 || d.starts_with("http_5")
                 || d.starts_with("http_408")
                 || d.starts_with("http_409")
@@ -66,12 +76,13 @@ pub(crate) async fn execute_durable_stream_loop(
     let mut retry_attempt: u32 = 0;
     let mut waited_secs: u64 = 0;
     let mut overflow_compacted = false;
+    let mut consecutive_tool_failures: u32 = 0;
     let is_local = crate::net::is_loopback_url(&provider.base_url);
 
     loop {
         // A storage failure here stops the run before any request: never send a paid request
         // with a silently empty or partial history.
-        let (history, is_write_mode, effective_system_prompt) =
+        let (history, thread_mode, effective_system_prompt) =
             match load_turn_context(storage, thread_id, &current_parent_id, system_prompt) {
                 Ok(ctx) => ctx,
                 Err(err) => {
@@ -86,6 +97,20 @@ pub(crate) async fn execute_durable_stream_loop(
                     break;
                 }
             };
+        let is_write_mode = thread_mode == ThreadMode::Write;
+        let tool_catalog =
+            match crate::agent_tools::resolve_active_tool_catalog(storage, thread_mode) {
+                Ok(cat) => cat,
+                Err(err) => {
+                    tracing::warn!(
+                        key = err.key.as_key(),
+                        "active tool catalog unavailable; continuing without tools"
+                    );
+                    crate::agent_tools::ActiveToolCatalog::default()
+                }
+            };
+        let tools_wire = tool_catalog.wire_tools_for_dialect(provider.dialect);
+        let tools_canonical = tool_catalog.canonical_json();
         // Wallet Shield: reserve spend for this paid request before it is sent (fail closed).
         let mut reservation = if is_local {
             None
@@ -150,7 +175,95 @@ pub(crate) async fn execute_durable_stream_loop(
         let mut pending_delta = String::new();
         let mut last_delta_emit = std::time::Instant::now();
 
-        let outcome = providers::stream_completion_with_thinking(
+        let replay_ctx = crate::replay_policy::ReplayContext::new(
+            provider.dialect,
+            &provider.id,
+            model,
+            &effective_system_prompt,
+            &tools_canonical,
+            Some(thread_id),
+        );
+        let prov_adv = crate::provider_prefs::load_provider_advanced(storage, &provider.id);
+        let prov_overrides = crate::provider_prefs::load_provider_overrides(storage, &provider.id);
+        let reply_prefill = crate::provider_prefs::load_thread_reply_prefill(storage, thread_id);
+        let store_enabled =
+            !stateless_default && (provider.use_server_state_cache || prov_adv.store_server_side);
+        let previous_server_id = if store_enabled && prov_adv.use_stateful_chaining {
+            history
+                .iter()
+                .rev()
+                .find(|n| n.role == NodeRole::Assistant)
+                .and_then(|n| {
+                    let meta =
+                        crate::replay_policy::parse_turn_wire_meta(n.provider_meta_json.as_deref());
+                    crate::replay_policy::eligible_server_chain_id(
+                        meta.origin.as_ref(),
+                        meta.server_state.as_ref(),
+                        &replay_ctx,
+                        crate::replay_policy::history_has_client_compaction(&history),
+                    )
+                    .map(str::to_owned)
+                })
+        } else {
+            None
+        };
+        // Proactive auto-compaction before sending when context approaches the model's window.
+        if !overflow_compacted
+            && let Some(ctx_limit) = services
+                .pricing
+                .snapshot()
+                .lookup(model)
+                .and_then(|r| r.context_tokens)
+        {
+            let est_tokens = compaction::estimate_branch_tokens_for_model(
+                &effective_system_prompt,
+                &history,
+                Some(model),
+            );
+            if compaction::should_auto_compact(est_tokens, u64::from(ctx_limit), 15) {
+                overflow_compacted = true;
+                match storage.list_nodes(thread_id) {
+                    Ok(all_nodes) => {
+                        let branch = collect_branch_ancestry(&all_nodes, &current_parent_id);
+                        match compaction::create_reversible_compaction(
+                            storage, thread_id, &branch, 4, None,
+                        ) {
+                            Ok(summary) => {
+                                current_parent_id.clone_from(&summary.id);
+                                let ev = EngineEvent::NodeCommitted { node: summary };
+                                emit_logged(storage, events_tx, Some(thread_id.to_owned()), ev);
+                                continue;
+                            }
+                            Err(err) => {
+                                tracing::warn!(
+                                    key = err.key.as_key(),
+                                    "proactive compaction skipped"
+                                );
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            key = err.key.as_key(),
+                            "proactive compaction list_nodes failed"
+                        );
+                    }
+                }
+            }
+        }
+        let stream_opts = providers::StreamRequestOptions {
+            replay_ctx: Some(&replay_ctx),
+            tools_wire: (!tools_wire.is_empty()).then_some(tools_wire.as_slice()),
+            previous_server_id: previous_server_id.as_deref(),
+            anthropic_cache_1h: prov_adv.anthropic_cache_1h,
+            anthropic_server_compaction: prov_adv.enable_server_compaction,
+            disable_legacy_fallback: !prov_adv.use_legacy_fallback,
+            reply_prefill,
+            anthropic_beta_headers: Vec::new(),
+            extra_headers: prov_overrides.headers,
+            extra_body_fields: prov_overrides.body_fields,
+        };
+        let outcome = providers::stream_completion_with_options(
             &services.http,
             provider,
             keys,
@@ -159,6 +272,8 @@ pub(crate) async fn execute_durable_stream_loop(
             &history,
             gen_params,
             stateless_default,
+            Some(&services.data_dir),
+            &stream_opts,
             cancel_flag,
             |chunk| {
                 activity.tick();
@@ -204,14 +319,25 @@ pub(crate) async fn execute_durable_stream_loop(
 
         let elapsed_ms = activity.finish_ms();
         let mut committed_assistant_id: Option<String> = None;
+        let mut pending_tool_calls: Vec<crate::replay_policy::StoredToolCall> = Vec::new();
 
         match outcome {
             Ok(mut res) => {
                 retry_attempt = 0;
+                pending_tool_calls.clone_from(&res.tool_calls);
                 let rates = services.pricing.rates_for(model).await;
                 let cost = providers::estimate_cost_micros(provider, rates, &res.usage);
                 res.usage.estimated_cost_micros = cost.unwrap_or(MoneyMicros::ZERO);
                 for (key, detail) in core::mem::take(&mut res.notices) {
+                    if key == DiagnosticKey::ProviderRequestHealed
+                        && detail == "heal_drop_reasoning"
+                    {
+                        bistre_protocol::lock_or_recover(
+                            &services.reasoning_unsupported,
+                            "reasoning_unsupported",
+                        )
+                        .insert((provider.id.clone(), model.to_owned()));
+                    }
                     emit(
                         events_tx,
                         EngineEvent::DiagnosticRaised {
@@ -249,7 +375,39 @@ pub(crate) async fn execute_durable_stream_loop(
                     );
                 }
                 let request_id = format!("{run_id}:llm:{step_index}");
-                if !res.full_text.trim().is_empty() || !res.thinking_text.trim().is_empty() {
+                let has_billed_usage = res.usage.input_tokens > 0
+                    || res.usage.output_tokens > 0
+                    || res.usage.reasoning_tokens > 0
+                    || res.usage.cached_input_tokens > 0
+                    || res.usage.cache_creation_input_tokens > 0;
+                let settle_status = if res.cancelled {
+                    "cancelled".to_owned()
+                } else {
+                    "settled".to_owned()
+                };
+                if !res.full_text.trim().is_empty()
+                    || !res.thinking_text.trim().is_empty()
+                    || !res.tool_calls.is_empty()
+                {
+                    let origin = crate::replay_policy::TurnOriginMeta {
+                        dialect: provider.dialect,
+                        provider_id: provider.id.clone(),
+                        model_id: model.to_owned(),
+                        system_hash: replay_ctx.system_hash.clone(),
+                        tools_hash: replay_ctx.tools_hash.clone(),
+                    };
+                    let store_enabled = !stateless_default && provider.use_server_state_cache;
+                    let server_state = res.provider_response_id.as_ref().map(|rid| {
+                        crate::replay_policy::ServerStateMeta {
+                            response_id: (provider.dialect
+                                != bistre_protocol::ProviderDialect::GoogleGemini)
+                                .then(|| rid.clone()),
+                            interaction_id: (provider.dialect
+                                == bistre_protocol::ProviderDialect::GoogleGemini)
+                                .then(|| rid.clone()),
+                            store_enabled,
+                        }
+                    });
                     let mut meta_obj = serde_json::json!({
                         "provider_id": provider.id,
                         "provider_name": provider.name,
@@ -268,18 +426,34 @@ pub(crate) async fn execute_durable_stream_loop(
                         "cancelled": res.cancelled,
                         "interrupted": res.interrupted,
                         "run_id": run_id,
+                        "origin": origin,
                     });
-                    if !res.thinking_text.trim().is_empty()
-                        && let Some(map) = meta_obj.as_object_mut()
-                    {
-                        map.insert(
-                            "thinking_text".to_owned(),
-                            serde_json::Value::String(res.thinking_text),
-                        );
-                        map.insert(
-                            "thinking_duration_ms".to_owned(),
-                            serde_json::Value::from(res.thinking_duration_ms),
-                        );
+                    if let Some(map) = meta_obj.as_object_mut() {
+                        if let Some(ss) = server_state
+                            && let Ok(v) = serde_json::to_value(ss)
+                        {
+                            map.insert("server_state".to_owned(), v);
+                        }
+                        if !res.reasoning_blocks.is_empty()
+                            && let Ok(v) = serde_json::to_value(&res.reasoning_blocks)
+                        {
+                            map.insert("reasoning_blocks".to_owned(), v);
+                        }
+                        if !res.tool_calls.is_empty()
+                            && let Ok(v) = serde_json::to_value(&res.tool_calls)
+                        {
+                            map.insert("tool_calls".to_owned(), v);
+                        }
+                        if !res.thinking_text.trim().is_empty() {
+                            map.insert(
+                                "thinking_text".to_owned(),
+                                serde_json::Value::String(res.thinking_text),
+                            );
+                            map.insert(
+                                "thinking_duration_ms".to_owned(),
+                                serde_json::Value::from(res.thinking_duration_ms),
+                            );
+                        }
                     }
                     let meta = meta_obj.to_string();
                     let final_text = if is_write_mode {
@@ -325,52 +499,49 @@ pub(crate) async fn execute_durable_stream_loop(
                         }
                         Ok(committed) => {
                             committed_assistant_id = Some(committed.id.clone());
-                            let status = if res.cancelled {
-                                "cancelled".to_owned()
-                            } else {
-                                "settled".to_owned()
-                            };
-                            let recorded = match reservation.take() {
-                                Some(r) => r.settle_for_request(
-                                    Some(request_id.clone()),
-                                    res.usage.estimated_cost_micros,
-                                    res.usage.input_tokens,
-                                    res.usage.output_tokens,
-                                    status,
-                                ),
-                                None => storage.record_wallet_entry_with_usage(
-                                    Some(thread_id.to_owned()),
-                                    provider.id.clone(),
-                                    model.to_owned(),
-                                    res.usage.estimated_cost_micros,
-                                    res.usage.input_tokens,
-                                    res.usage.output_tokens,
-                                    status,
-                                ),
-                            };
-                            if let Err(err) = recorded {
-                                // Wallet Shield budgets read these rows; a lost spend record is surfaced.
-                                tracing::error!(
-                                    key = err.key.as_key(),
-                                    "wallet spend record failed"
-                                );
-                                emit(
-                                    events_tx,
-                                    EngineEvent::DiagnosticRaised {
-                                        key: err.key,
-                                        detail_code: err.detail_code,
-                                    },
-                                );
-                            }
                             let ev = EngineEvent::NodeCommitted { node: committed };
                             emit_logged(storage, events_tx, Some(thread_id.to_owned()), ev);
                         }
+                    }
+                }
+                // Always settle Wallet Shield whenever the provider processed tokens (even on
+                // cancel, empty-text response, or local node-write failure).
+                if has_billed_usage || committed_assistant_id.is_some() {
+                    let recorded = match reservation.take() {
+                        Some(r) => r.settle_for_request(
+                            Some(request_id),
+                            res.usage.estimated_cost_micros,
+                            res.usage.input_tokens,
+                            res.usage.output_tokens,
+                            settle_status,
+                        ),
+                        None => storage.record_wallet_entry_with_usage(
+                            Some(thread_id.to_owned()),
+                            provider.id.clone(),
+                            model.to_owned(),
+                            res.usage.estimated_cost_micros,
+                            res.usage.input_tokens,
+                            res.usage.output_tokens,
+                            settle_status,
+                        ),
+                    };
+                    if let Err(err) = recorded {
+                        tracing::error!(key = err.key.as_key(), "wallet spend record failed");
+                        emit(
+                            events_tx,
+                            EngineEvent::DiagnosticRaised {
+                                key: err.key,
+                                detail_code: err.detail_code,
+                            },
+                        );
                     }
                 }
             }
             Err(err)
                 if err.key == DiagnosticKey::ProviderContextOverflow && !overflow_compacted =>
             {
+                // Release pre-compaction spend reservation before compacting & retrying.
+                drop(reservation);
                 // One-shot in-flight overflow recovery: reversible compaction, then retry once.
                 overflow_compacted = true;
                 if let Some(ref st) = step_rec {
@@ -417,6 +588,8 @@ pub(crate) async fn execute_durable_stream_loop(
                 break;
             }
             Err(err) if is_auto_retryable(&err) && !cancel_flag.load(Ordering::SeqCst) => {
+                // Never hold Wallet Shield budget locked across a multi-minute backoff sleep.
+                drop(reservation);
                 let budget = storage
                     .load_settings()
                     .map_or(300, |s| s.retry_watchdog_max_wait_secs);
@@ -446,9 +619,17 @@ pub(crate) async fn execute_durable_stream_loop(
                         elapsed_ms,
                     ));
                 }
+                let detail_suffix = err
+                    .detail_code
+                    .as_deref()
+                    .filter(|d| !d.trim().is_empty())
+                    .map_or_default(|d| format!(";detail={d}"));
                 let ev = EngineEvent::DiagnosticRaised {
                     key: DiagnosticKey::RunBackoffWaiting,
-                    detail_code: Some(format!("retry_in_ms={wait_ms};reason={}", err.key.as_key())),
+                    detail_code: Some(format!(
+                        "retry_in_ms={wait_ms};reason={}{detail_suffix}",
+                        err.key.as_key()
+                    )),
                 };
                 emit_logged(storage, events_tx, Some(thread_id.to_owned()), ev);
                 // `Retry now` and cancel both notify `wake`, ending the wait immediately.
@@ -486,6 +667,71 @@ pub(crate) async fn execute_durable_stream_loop(
 
         if cancelled || step_index >= MAX_RUN_STEPS {
             break;
+        }
+
+        // If the model emitted tool calls, execute the full tool batch (with approval pausing,
+        // permit binding, hooks, blob spilling, and guaranteed paired `NodeRole::Tool` commits)
+        // BEFORE checking queued steering so we never split `tool_use` / `tool_result`.
+        if !pending_tool_calls.is_empty()
+            && let Some(asst_id) = committed_assistant_id.as_deref()
+        {
+            let batch = crate::agent_tools::execute_tool_batch(
+                storage,
+                services,
+                events_tx,
+                cancel_flag,
+                &tool_catalog,
+                thread_id,
+                run_id,
+                asst_id,
+                &mut step_index,
+                &pending_tool_calls,
+            )
+            .await;
+            current_parent_id = batch.last_node_id;
+            cancelled |= batch.cancelled;
+            if batch.any_succeeded {
+                consecutive_tool_failures = 0;
+            } else if batch.all_failed {
+                consecutive_tool_failures = consecutive_tool_failures.saturating_add(1);
+            }
+            if cancelled
+                || step_index >= MAX_RUN_STEPS
+                || consecutive_tool_failures >= crate::agent_tools::MAX_CONSECUTIVE_TOOL_FAILURES
+            {
+                if consecutive_tool_failures >= crate::agent_tools::MAX_CONSECUTIVE_TOOL_FAILURES {
+                    failed_key = Some(DiagnosticKey::InternalError.as_key().to_owned());
+                    emit(
+                        events_tx,
+                        EngineEvent::DiagnosticRaised {
+                            key: DiagnosticKey::InternalError,
+                            detail_code: Some("tool_failure_breaker".to_owned()),
+                        },
+                    );
+                }
+                break;
+            }
+            // Start the follow-up model step with a fresh leaf stream node ID.
+            step_index = step_index.saturating_add(1);
+            current_stream_node_id = Uuid::now_v7().to_string();
+            let next_start = EngineEvent::RunStarted {
+                thread_id: thread_id.to_owned(),
+                node_id: current_stream_node_id.clone(),
+            };
+            emit_logged(storage, events_tx, Some(thread_id.to_owned()), next_start);
+            note_write(
+                "agent_run_update",
+                storage.update_agent_run(
+                    run_id.to_owned(),
+                    AgentRunUpdate {
+                        step_index: Some(step_index),
+                        partial_text_buffer: Some(String::new()),
+                        cost_micros: Some(total_cost),
+                        ..AgentRunUpdate::default()
+                    },
+                ),
+            );
+            continue;
         }
 
         let pending_steers = match storage.drain_pending_steering(thread_id.to_owned()) {
@@ -564,6 +810,13 @@ pub(crate) async fn execute_durable_stream_loop(
                 node: steer_user_node,
             };
             emit_logged(storage, events_tx, Some(thread_id.to_owned()), ev);
+            // Reset the UI's leaf streaming buffer for the new turn so Turn 2 deltas never
+            // concatenate onto Turn 1's already-committed text.
+            let next_start = EngineEvent::RunStarted {
+                thread_id: thread_id.to_owned(),
+                node_id: current_stream_node_id.clone(),
+            };
+            emit_logged(storage, events_tx, Some(thread_id.to_owned()), next_start);
             note_write(
                 "agent_run_update",
                 storage.update_agent_run(
@@ -719,23 +972,52 @@ fn emit_delta(
 }
 
 /// Loads everything one model turn needs: the branch history (respecting the context pin),
-/// whether the thread is in Write mode, and the effective system prompt.
+/// the thread's `ThreadMode`, and the effective system prompt (including workspace `AGENTS.md`
+/// in `Code` / `Plan` modes).
 fn load_turn_context(
     storage: &Arc<StorageHandle>,
     thread_id: &str,
     parent_id: &str,
     system_prompt: &str,
-) -> BistreResult<(Vec<NodeRecord>, bool, String)> {
+) -> BistreResult<(Vec<NodeRecord>, ThreadMode, String)> {
     let history = project_turn_history(storage, thread_id, parent_id)?;
-    let is_write_mode = storage
+    let mode = storage
         .get_thread(thread_id)?
-        .is_some_and(|t| t.mode == ThreadMode::Write);
-    let prompt = if is_write_mode {
+        .map_or(ThreadMode::Chat, |t| t.mode);
+    let mut prompt = if mode == ThreadMode::Write {
         compile_write_mode_system_prompt(storage, thread_id, system_prompt, &history)?
     } else {
         system_prompt.to_owned()
     };
-    Ok((history, is_write_mode, prompt))
+    if matches!(mode, ThreadMode::Code | ThreadMode::Plan)
+        && let Ok(Some(ws_root)) = storage.get_kv_meta("agent.workspace_root")
+        && !ws_root.trim().is_empty()
+        && let Some((agents_path, agents_text)) =
+            crate::skills::discover_agents_md(std::path::Path::new(ws_root.trim()))
+    {
+        const MAX_AGENTS_MD_BYTES: usize = 16 * 1024;
+        let mut bounded = agents_text;
+        if bounded.len() > MAX_AGENTS_MD_BYTES {
+            let mut cut = MAX_AGENTS_MD_BYTES;
+            while cut > 0 && !bounded.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            bounded.truncate(cut);
+            bounded.push_str("\n[...truncated...]");
+        }
+        let fname = agents_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("AGENTS.md");
+        if !prompt.trim().is_empty() {
+            prompt.push_str("\n\n");
+        }
+        prompt.push_str("[Workspace instructions from ");
+        prompt.push_str(fname);
+        prompt.push_str("]\n");
+        prompt.push_str(&bounded);
+    }
+    Ok((history, mode, prompt))
 }
 
 /// The history the next request sends for the branch ending at `leaf_id`: its ancestry from
@@ -782,6 +1064,7 @@ pub(crate) fn with_user_name(system_prompt: String, name: &str, mode: ThreadMode
 /// as a run, so a compaction or a context pin lowers it exactly as it lowers the real request.
 pub(crate) fn branch_context_usage(
     storage: &StorageHandle,
+    data_dir: Option<&std::path::Path>,
     thread_id: &str,
     leaf_id: &str,
     draft: &str,
@@ -824,9 +1107,26 @@ pub(crate) fn branch_context_usage(
     } else {
         0
     };
+    let tools_tokens =
+        crate::agent_tools::exact_active_tools_tokens(storage, thread.mode, active_model)?;
+    let mut attachments_tokens = 0_u64;
+    let mut attachments_count = 0_u32;
+    for node in &history {
+        let atts = crate::attachments::parse_node_attachments(node.provider_meta_json.as_deref());
+        for att in &atts {
+            attachments_count = attachments_count.saturating_add(1);
+            let est = data_dir.map_or(512, |dir| {
+                crate::attachments::estimate_attachment_tokens(dir, att)
+            });
+            attachments_tokens = attachments_tokens.saturating_add(est);
+        }
+    }
     Ok(crate::ContextUsage {
         system_tokens,
         story_tokens,
+        tools_tokens,
+        attachments_tokens,
+        attachments_count,
         history_tokens: compaction::estimate_branch_tokens_for_model("", &history, active_model),
         history_turns: u32::try_from(history.len()).unwrap_or(u32::MAX),
         draft_tokens: compaction::estimate_tokens_for_model(draft.trim(), active_model),
@@ -847,12 +1147,32 @@ async fn reserve_paid_request(
     let settings = storage.load_settings().map_err(|err| {
         BistreError::with_detail(DiagnosticKey::WalletCheckUnavailable, err.key.as_key())
     })?;
+    // Fail-closed per-thread spend cap check (runs alongside the daily Wallet Shield ceiling).
+    if let Some(thread_cap) = crate::provider_prefs::load_thread_spend_limit(storage, thread_id) {
+        let spent_thread =
+            crate::provider_prefs::sum_thread_recorded_spend_micros(storage, thread_id);
+        if spent_thread >= thread_cap {
+            return Err(BistreError::with_detail(
+                DiagnosticKey::WalletCeilingExceeded,
+                "thread_spend_limit",
+            ));
+        }
+    }
+    let mut attachment_tokens = 0_u64;
+    for node in history {
+        for att in crate::attachments::parse_node_attachments(node.provider_meta_json.as_deref()) {
+            attachment_tokens = attachment_tokens.saturating_add(
+                crate::attachments::estimate_attachment_tokens(&services.data_dir, &att),
+            );
+        }
+    }
     let estimate_usage = UsageMetrics {
         input_tokens: compaction::estimate_branch_tokens_for_model(
             system_prompt,
             history,
             Some(model),
-        ),
+        )
+        .saturating_add(attachment_tokens),
         ..UsageMetrics::default()
     };
     let rates = services.pricing.rates_for(model).await;

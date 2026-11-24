@@ -35,28 +35,48 @@ extension FolioThreadActions on FolioController {
   Future<bool> submitPassage(String rawText) async {
     final body = rawText.trim();
     final active = _activeThread;
-    if (body.isEmpty || active == null) return false;
+    if ((body.isEmpty && _attachments.isEmpty) || active == null) return false;
     if (isStreaming) {
+      if (body.isEmpty) return false;
       return enqueueSteeringMessage(body);
     }
 
-    final attachmentPrefix = _attachments.isEmpty
-        ? ''
-        : '${_attachments.map((a) => a.inlineReference.isNotEmpty ? a.inlineReference : '[Attachment: ${a.name} (${a.mimeType})]').join('\n')}\n\n';
+    final inlineRefs = _attachments
+        .where((a) => a.inlineReference.isNotEmpty)
+        .map((a) => a.inlineReference)
+        .toList(growable: false);
+    final fileAttachments = _attachments
+        .where((a) => a.inlineReference.isEmpty && a.path.isNotEmpty)
+        .map(
+          (a) => EngineAttachmentInput(
+            name: a.name,
+            mimeType: a.mimeType,
+            localPath: a.path,
+          ),
+        )
+        .toList(growable: false);
+    final refPrefix = inlineRefs.isEmpty ? '' : '${inlineRefs.join('\n')}\n\n';
     final fullPrompt = _quotedExcerpt != null
-        ? '$attachmentPrefix> $_quotedExcerpt\n\n$body'
-        : '$attachmentPrefix$body';
+        ? '$refPrefix> $_quotedExcerpt\n\n$body'
+        : '$refPrefix$body';
 
     try {
       _draftDebounce?.cancel();
       _lastDiagnosticKey = null;
       final visible = visibleBranchNodes;
       final parentId = visible.isEmpty ? null : visible.last.id;
-      final committed = await _gateway.sendAndStreamReply(
-        threadId: active.id,
-        parentId: parentId,
-        userContent: fullPrompt,
-      );
+      final committed = fileAttachments.isNotEmpty
+          ? await _gateway.sendAndStreamReplyWithAttachments(
+              threadId: active.id,
+              parentId: parentId,
+              userContent: fullPrompt,
+              attachments: fileAttachments,
+            )
+          : await _gateway.sendAndStreamReply(
+              threadId: active.id,
+              parentId: parentId,
+              userContent: fullPrompt,
+            );
 
       if (visible.isEmpty && active.title == _defaultThreadTitle) {
         final derived = body.replaceAll(RegExp(r'\s+'), ' ');
@@ -247,6 +267,9 @@ extension FolioThreadActions on FolioController {
       final rawPins = await _gateway.getKvMeta('thread_pinned_nodes:$threadId');
       final rawNotes = await _gateway.getKvMeta('thread_notes:$threadId');
       final rawLimit = await _gateway.getKvMeta('thread_spend_limit:$threadId');
+      final rawPrefill = await _gateway.getKvMeta(
+        'thread_reply_prefill:$threadId',
+      );
       if (generation != _threadGeneration ||
           startVersion != _threadExtrasVersion ||
           _disposed) {
@@ -263,6 +286,7 @@ extension FolioThreadActions on FolioController {
       }
       _pinnedNodeIds = pins;
       _activeChatNotes = rawNotes ?? '';
+      _replyPrefill = rawPrefill ?? '';
       _activeChatSpendLimitMicros =
           rawLimit != null && rawLimit.trim().isNotEmpty
           ? int.tryParse(rawLimit.trim())
@@ -276,6 +300,14 @@ extension FolioThreadActions on FolioController {
   void setReplyPrefill(String text) {
     if (_replyPrefill == text) return;
     _replyPrefill = text;
+    final tid = _activeThread?.id;
+    if (tid != null) {
+      unawaited(
+        _gateway
+            .setKvMeta('thread_reply_prefill:$tid', text)
+            .catchError((Object e) => _noteNonFatal('save_reply_prefill', e)),
+      );
+    }
     _notify();
   }
 

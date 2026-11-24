@@ -7,7 +7,11 @@
 #include <flutter/method_channel.h>
 #include <flutter/standard_method_codec.h>
 
+#include <mmsystem.h>
+
 #include <memory>
+#include <mutex>
+#include <vector>
 
 #include "win32_window.h"
 
@@ -35,6 +39,9 @@ class FlutterWindow : public Win32Window {
   void HandleDesktopHostCall(
       const flutter::MethodCall<flutter::EncodableValue>& call,
       std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
+  bool StartMicCapture();
+  void StopMicCapture();
+  void DrainMicChunks();
 
   flutter::DartProject project_;
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
@@ -43,6 +50,12 @@ class FlutterWindow : public Win32Window {
   bool pending_maximized_ = false;
   bool tray_enabled_ = false;
   bool tray_icon_added_ = false;
+  std::vector<uint8_t> playing_wav_;
+  HWAVEIN wave_in_ = nullptr;
+  WAVEHDR wave_hdrs_[2]{};
+  std::vector<uint8_t> wave_bufs_[2];
+  std::mutex mic_mutex_;
+  std::vector<std::vector<uint8_t>> mic_queue_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

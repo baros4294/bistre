@@ -20,6 +20,7 @@ import 'live_turn_notifier.dart';
 part 'folio_controller_boot.dart';
 part 'folio_controller_catalog.dart';
 part 'folio_controller_extras.dart';
+part 'folio_controller_media.dart';
 part 'folio_controller_navigation.dart';
 part 'folio_controller_threads.dart';
 part 'folio_controller_studio.dart';
@@ -210,6 +211,9 @@ class FolioController extends ChangeNotifier {
     typography: resolvedTypography,
     reducedEffects: _lowMemoryMode,
     reduceMotion: _settings.reduceMotionOverride,
+    syntaxThemeId: isDark
+        ? _uiPrefs.codeSyntaxThemeDark
+        : _uiPrefs.codeSyntaxThemeLight,
   );
 
   /// Background refresh failures never interrupt the user; they are logged with their
@@ -325,6 +329,19 @@ class FolioController extends ChangeNotifier {
   bool _stagingUpdate = false;
   String? _stagedUpdatePath;
   bool _updateBannerDismissed = false;
+  String? _lastOtaError;
+
+  // Extended media, storage manager, hidden models, retry detail, TTS, and Live Voice state.
+  String? _retryReasonDetail;
+  final Map<String, Set<String>> _hiddenModelsByProvider =
+      <String, Set<String>>{};
+  List<EngineStorageFileEntry> _storageFiles = const <EngineStorageFileEntry>[];
+  String? _speakingNodeId;
+  bool _dictatingActive = false;
+  String? _liveVoiceSessionId;
+  String _liveVoiceState = 'idle';
+  String? _liveVoiceError;
+  String _liveVoiceTranscript = '';
 
   // Sidebar, Inspector, Search, Overlays & Toast.
   bool _sidebarOpen = true;
@@ -802,9 +819,17 @@ class FolioController extends ChangeNotifier {
           _backoffRetryAt = null;
           notifyListeners();
         }
-        liveTurn.appendText(event.threadId, event.textDelta);
+        liveTurn.appendText(
+          event.threadId,
+          event.textDelta,
+          nodeId: event.nodeId,
+        );
       case ThinkingDeltaEvent():
-        liveTurn.appendThinking(event.threadId, event.delta);
+        liveTurn.appendThinking(
+          event.threadId,
+          event.delta,
+          nodeId: event.nodeId,
+        );
       case RunStateChangedEvent():
         unawaited(_refreshRunsAndPower());
       case RunStepUpdatedEvent():
@@ -829,10 +854,16 @@ class FolioController extends ChangeNotifier {
           notifyListeners();
         }
       case RunFinishedEvent():
-        if (_streamingThreadId == event.threadId) {
+        final matchesActiveStream =
+            _streamingThreadId == event.threadId &&
+            (_streamingNodeId == null ||
+                event.nodeId.isEmpty ||
+                _streamingNodeId == event.nodeId);
+        if (matchesActiveStream) {
           _streamingThreadId = null;
           _streamingNodeId = null;
           _backoffRetryAt = null;
+          _retryReasonDetail = null;
           liveTurn.clear();
         }
         if (BistrePowerGuardHost.isAndroid) {
@@ -864,19 +895,59 @@ class FolioController extends ChangeNotifier {
         break;
       case DiagnosticRaisedEvent():
         if (event.key == 'diag.run.backoff_waiting') {
+          final raw = event.detailCode ?? '';
           final ms = int.tryParse(
-            RegExp(r'retry_in_ms=(\d+)')
-                    .firstMatch(event.detailCode ?? '')
-                    ?.group(1) ??
-                '',
+            RegExp(r'retry_in_ms=(\d+)').firstMatch(raw)?.group(1) ?? '',
           );
+          final reason = RegExp(r'reason=([^;]+)').firstMatch(raw)?.group(1);
+          final detail = RegExp(r'detail=([^;]+)').firstMatch(raw)?.group(1);
           _backoffRetryAt = ms == null
               ? null
               : DateTime.now().add(Duration(milliseconds: ms));
+          if (detail != null && detail.isNotEmpty) {
+            _retryReasonDetail = reason != null ? '$reason ($detail)' : detail;
+          } else {
+            _retryReasonDetail = reason;
+          }
         } else {
           _lastDiagnosticKey = event.key;
         }
         notifyListeners();
+      case LiveVoiceStateEvent():
+        _handleLiveVoiceStateEvent(event);
+      case LiveVoiceTranscriptEvent():
+        _handleLiveVoiceTranscriptEvent(event);
+      case LiveVoiceAudioEvent():
+        _handleLiveVoiceAudioEvent(event);
+      case ToolApprovalRequestedEvent():
+        if (_activeThread?.id == event.threadId) {
+          recordToolActivity(
+            ToolActivityEntry(
+              id: event.callId,
+              toolName: event.toolName,
+              summary: event.argumentsJson,
+              status: 'awaiting_approval',
+              riskTier: event.riskTier,
+              outputText: event.argumentsJson,
+            ),
+          );
+        }
+      case ToolExecutionUpdatedEvent():
+        if (_activeThread?.id == event.threadId) {
+          recordToolActivity(
+            ToolActivityEntry(
+              id: event.callId,
+              toolName: event.toolName,
+              summary: event.summary,
+              status: event.status,
+              riskTier: event.riskTier,
+              outputText: event.outputText,
+              diffText: event.diffText,
+              checkpointId: event.checkpointId,
+              durationMs: event.durationMs,
+            ),
+          );
+        }
       case LocalePackVerifiedEvent():
         notifyListeners();
       case EventsLaggedEvent():

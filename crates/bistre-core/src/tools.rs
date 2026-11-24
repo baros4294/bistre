@@ -79,6 +79,12 @@ impl ReadLedger {
             Ok(())
         }
     }
+
+    /// Removes cached read fingerprints for `rel_path` across scopes (e.g., after checkpoint rewind).
+    pub fn invalidate_path(&self, rel_path: &str) {
+        let key = normalize_rel(rel_path);
+        lock_or_recover(&self.entries, "read_ledger").retain(|(_, p, _)| *p != key);
+    }
 }
 
 fn normalize_rel(rel_path: &str) -> String {
@@ -135,7 +141,7 @@ pub struct ParsedToolCall {
     pub healed_from_text: bool,
 }
 
-/// Result returned by executing a built-in workspace or web tool.
+/// Result returned by executing a built-in workspace, web, or MCP tool.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolExecutionOutput {
     pub tool_name: String,
@@ -146,6 +152,9 @@ pub struct ToolExecutionOutput {
     pub diff_text: Option<String>,
     pub checkpoint_id: Option<String>,
     pub duration_ms: i64,
+    /// Optional rich media attachments (e.g. screenshots or audio returned by MCP tools).
+    #[serde(default)]
+    pub media_attachments: Vec<bistre_protocol::StoredAttachment>,
 }
 
 /// Statically + dynamically classifies a tool call into Risk Tiers 0..=3 (Spec 06).
@@ -288,6 +297,18 @@ pub fn builtin_tool_schemas(include_write_tools: bool) -> Vec<Value> {
                 "required": ["url"]
             }
         }),
+        json!({
+            "name": "web_search",
+            "description": "Search the public web for up-to-date information and return ranked results with titles, URLs, and snippets.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string" },
+                    "max_results": { "type": "integer" }
+                },
+                "required": ["query"]
+            }
+        }),
     ];
 
     if include_write_tools {
@@ -298,11 +319,11 @@ pub fn builtin_tool_schemas(include_write_tools: bool) -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "path": { "type": "string" },
-                    "target_text": { "type": "string" },
-                    "replacement_text": { "type": "string" },
+                    "target": { "type": "string" },
+                    "replacement": { "type": "string" },
                     "expected_hash": { "type": "string" }
                 },
-                "required": ["path", "target_text", "replacement_text"]
+                "required": ["path", "target", "replacement"]
             }
         }));
         tools.push(json!({
@@ -424,6 +445,7 @@ pub fn tool_read(
         diff_text: None,
         checkpoint_id: None,
         duration_ms: i64::try_from(started.elapsed().as_millis()).unwrap_or(0),
+        media_attachments: Vec::new(),
     })
 }
 
@@ -518,6 +540,7 @@ pub fn tool_edit(
         diff_text: Some(unified),
         checkpoint_id: Some(cp.id),
         duration_ms: i64::try_from(started.elapsed().as_millis()).unwrap_or(0),
+        media_attachments: Vec::new(),
     })
 }
 
@@ -679,6 +702,7 @@ pub fn tool_grep(
         diff_text: None,
         checkpoint_id: None,
         duration_ms: i64::try_from(started.elapsed().as_millis()).unwrap_or(0),
+        media_attachments: Vec::new(),
     })
 }
 
@@ -740,6 +764,7 @@ pub fn tool_glob(workspace_root: &Path, pattern: &str) -> BistreResult<ToolExecu
         diff_text: None,
         checkpoint_id: None,
         duration_ms: i64::try_from(started.elapsed().as_millis()).unwrap_or(0),
+        media_attachments: Vec::new(),
     })
 }
 
@@ -817,6 +842,7 @@ pub async fn tool_shell(
         diff_text: None,
         checkpoint_id: None,
         duration_ms: i64::try_from(started.elapsed().as_millis()).unwrap_or(0),
+        media_attachments: Vec::new(),
     })
 }
 
@@ -850,7 +876,98 @@ pub async fn tool_web_fetch(
         diff_text: None,
         checkpoint_id: None,
         duration_ms: i64::try_from(started.elapsed().as_millis()).unwrap_or(0),
+        media_attachments: Vec::new(),
     })
+}
+
+/// Searches the public web through `PublicWebTransport` (SSRF-safe, public-IP pinned, zero API
+/// keys required) and returns structured title/URL/snippet results.
+pub async fn tool_web_search(
+    web: &crate::ssrf::PublicWebTransport,
+    query: &str,
+    max_results: usize,
+) -> BistreResult<ToolExecutionOutput> {
+    let started = Instant::now();
+    let clean_query = query.trim();
+    if clean_query.is_empty() {
+        return Err(BistreError::with_detail(
+            DiagnosticKey::InvalidInput,
+            "empty_search_query",
+        ));
+    }
+    let limit = max_results.clamp(1, 10);
+    let encoded: String = clean_query
+        .bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            b' ' => "+".to_owned(),
+            other => format!("%{other:02X}"),
+        })
+        .collect();
+    let url = format!("https://html.duckduckgo.com/html/?q={encoded}");
+    let fetched = web.get(&url, 512 * 1024).await?;
+    let body = String::from_utf8_lossy(&fetched.body);
+
+    let mut results = Vec::new();
+    if let Ok(link_re) =
+        Regex::new(r#"(?is)<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>"#)
+    {
+        for cap in link_re.captures_iter(&body) {
+            if results.len() >= limit {
+                break;
+            }
+            let raw_href = cap.get(1).map_or("", |m| m.as_str()).trim();
+            let title = strip_html_tags(cap.get(2).map_or("", |m| m.as_str()));
+            if title.is_empty() {
+                continue;
+            }
+            let href = raw_href
+                .split("uddg=")
+                .nth(1)
+                .and_then(|rest| rest.split('&').next())
+                .map_or_else(|| raw_href.to_owned(), percent_decode_url);
+            results.push(format!("{}. {} — {}", results.len() + 1, title, href));
+        }
+    }
+    let count = results.len();
+    let output_text = if results.is_empty() {
+        strip_html_tags(&body).chars().take(4_000).collect()
+    } else {
+        results.join("\n")
+    };
+    Ok(ToolExecutionOutput {
+        tool_name: "web_search".to_owned(),
+        risk_tier: ToolRiskTier::Tier0ReadOnly,
+        ok: (200..300).contains(&fetched.status),
+        summary: format!("search `{clean_query}` ({count} results)"),
+        output_text,
+        diff_text: None,
+        checkpoint_id: None,
+        duration_ms: i64::try_from(started.elapsed().as_millis()).unwrap_or(0),
+        media_attachments: Vec::new(),
+    })
+}
+
+fn percent_decode_url(raw: &str) -> String {
+    let bytes = raw.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let Ok(hex) = std::str::from_utf8(&bytes[i + 1..i + 3])
+            && let Ok(val) = u8::from_str_radix(hex, 16)
+        {
+            out.push(val);
+            i += 3;
+            continue;
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 fn truncate_utf8_in_place(text: &mut String, max_bytes: usize) {

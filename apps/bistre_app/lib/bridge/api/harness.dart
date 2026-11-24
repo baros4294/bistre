@@ -21,6 +21,18 @@ Future<String> approveToolCall({
   argumentsJson: argumentsJson,
 );
 
+/// Responds to a live `ToolApprovalRequested` event paused inside an active agent run.
+/// `decision`: `"approve_once"`, `"approve_for_thread"`, or `"deny"`.
+Future<bool> respondToolApproval({
+  required String threadId,
+  required String callId,
+  required String decision,
+}) => BistreRustLib.instance.api.crateApiHarnessRespondToolApproval(
+  threadId: threadId,
+  callId: callId,
+  decision: decision,
+);
+
 /// Executes a capability-scoped built-in workspace or web tool and returns a JSON `ToolExecutionOutput`.
 /// Non-read-only tools need the `permit_id` returned by `approve_tool_call`.
 Future<String> executeWorkspaceToolJson({

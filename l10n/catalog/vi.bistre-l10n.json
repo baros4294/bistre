@@ -3749,7 +3749,7 @@
       }
     },
     "chat.context_estimate_hint": {
-      "message": "Đếm cục bộ bằng bộ tách token BPE theo mô hình, sau khi đã rút gọn.",
+      "message": "Được đếm ngoại tuyến bằng bộ mã hóa BPE o200k_base phổ quát, sau khi rút gọn.",
       "context": "Footnote of the context breakdown popover",
       "tone": "calm_editorial",
       "max_chars": 96,
@@ -5092,20 +5092,6 @@
       "max_chars": 31,
       "placeholders": {}
     },
-    "settings.prefs.global_instructions": {
-      "message": "Hướng dẫn chung",
-      "context": "Global system instructions field label",
-      "tone": "calm_editorial",
-      "max_chars": 28,
-      "placeholders": {}
-    },
-    "settings.prefs.global_instructions_hint": {
-      "message": "Thêm trước hướng dẫn trợ lý trong mọi cuộc trò chuyện.",
-      "context": "Global instructions description",
-      "tone": "calm_editorial",
-      "max_chars": 76,
-      "placeholders": {}
-    },
     "settings.prefs.message_nav": {
       "message": "Thanh điều hướng tin nhắn",
       "context": "Message navigation rail visibility label",
@@ -5448,6 +5434,413 @@
           "example": "18"
         }
       }
+    },
+    "chat.action.listen": {
+      "message": "Đọc to",
+      "context": "Action button to play spoken audio for an assistant reply",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.context_attachments": {
+      "message": "Tệp đính kèm ({count})",
+      "context": "Row label in context window breakdown showing attached files token usage",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "2"
+        }
+      }
+    },
+    "chat.context_tools": {
+      "message": "Công cụ & MCP",
+      "context": "Row label in context window breakdown showing enabled tool schema tokens",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "composer.live_voice_connecting": {
+      "message": "Đang kết nối giọng nói trực tiếp...",
+      "context": "Status banner shown while opening a live bidirectional audio session",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "composer.live_voice_end": {
+      "message": "Kết thúc",
+      "context": "Button to end the active live voice session",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "composer.live_voice_listening": {
+      "message": "Giọng nói trực tiếp đang bật — hãy nói",
+      "context": "Status banner shown while live voice session is actively listening",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "composer.live_voice_pill": {
+      "message": "Trực tiếp",
+      "context": "Compact composer pill toggling real-time bidirectional live voice",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "composer.steer_now_action": {
+      "message": "Gửi ngay",
+      "context": "Button interrupting the current stream to redirect it immediately",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "composer.voice_dictate": {
+      "message": "Nhập giọng nói bằng micrô",
+      "context": "Tooltip and screen-reader label for the OS dictation microphone button",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "provider.icon.change": {
+      "message": "Đổi biểu tượng",
+      "context": "Button showing the selected provider icon and opening the icon picker",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.key.add_action": {
+      "message": "Thêm khóa",
+      "context": "Button adding another API key to a provider key ring",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "provider.key.add_placeholder": {
+      "message": "Dán khóa API khác để thêm vào vòng xoay...",
+      "context": "Input placeholder when adding an additional API key to a provider",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "provider.key.make_primary": {
+      "message": "Chính",
+      "context": "Button promoting a secondary API key to be the primary key",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "provider.key.primary_badge": {
+      "message": "#1 Chính",
+      "context": "Badge on the first API key in a provider key list",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_cmd_label": {
+      "message": "Lệnh",
+      "context": "Field label for stdio MCP server launch command",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_name_label": {
+      "message": "Tên máy chủ",
+      "context": "Field label for MCP server display name",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_url_label": {
+      "message": "URL máy chủ",
+      "context": "Field label for HTTP MCP server endpoint URL",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.agent.skills_empty": {
+      "message": "Chưa tìm thấy tệp SKILL.md nào. Chọn thư mục ở trên rồi quét.",
+      "context": "Empty state for workspace SKILL.md skills discovery in Agent & Tools settings",
+      "tone": "calm_editorial",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "settings.agent.skills_scan": {
+      "message": "Quét kỹ năng",
+      "context": "Button scanning workspace folders for SKILL.md files",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.agent.skills_title": {
+      "message": "Kỹ năng thư mục (SKILL.md)",
+      "context": "Section title for workspace SKILL.md skills inside Agent & Tools settings",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.agent.web_custom": {
+      "message": "URL tùy chỉnh",
+      "context": "Segmented control option for a custom web search endpoint URL",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.fonts_bundled": {
+      "message": "Đi kèm với Bistre",
+      "context": "Group header in font picker for Bistre bundled default font",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.appearance.font_search": {
+      "message": "Tìm phông chữ...",
+      "context": "Placeholder for the font search box in Appearance settings",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.appearance.fonts_system": {
+      "message": "Đã cài trên thiết bị này (không đi kèm)",
+      "context": "Group header in font picker clarifying system fonts are read from the OS",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {}
+    },
+    "settings.assistants.model_default_not_sent": {
+      "message": "Mặc định của mô hình (không gửi)",
+      "context": "Description shown when temperature or top-p override switch is turned off",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.desktop.notify_preview": {
+      "message": "Nghe thử",
+      "context": "Button next to notification sound toggle that plays a test chime",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.model.no_loaded": {
+      "message": "Chưa tải mô hình nào. Nhấn Tải mô hình để lấy từ nhà cung cấp này.",
+      "context": "Empty state inside searchable model dropdown before fetching models",
+      "tone": "calm_editorial",
+      "max_chars": 88,
+      "placeholders": {}
+    },
+    "settings.model.pick_action": {
+      "message": "Chọn",
+      "context": "Button opening the searchable model dropdown",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.ota.check_error_title": {
+      "message": "Kiểm tra cập nhật thất bại",
+      "context": "Inline error banner heading inside Updates settings when OTA check fails",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.ota.repo_hint": {
+      "message": "Nhập owner/repo (vd: baros4294/bistre) hoặc URL manifest HTTPS trực tiếp.",
+      "context": "Helper description under the Updates repository/feed field",
+      "tone": "calm_editorial",
+      "max_chars": 92,
+      "placeholders": {}
+    },
+    "settings.provider.filter_models": {
+      "message": "Lọc mô hình...",
+      "context": "Placeholder for the model search box inside Providers settings",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.provider.restore_hidden": {
+      "message": "Khôi phục đã ẩn ({count})",
+      "context": "Button restoring hidden models for a provider",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "3"
+        }
+      }
+    },
+    "settings.storage.chats_data_label": {
+      "message": "Cuộc trò chuyện",
+      "context": "Row label for chat export and import buttons",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.storage.clean_unused": {
+      "message": "Dọn tệp thừa",
+      "context": "Button removing orphan attachments and temp files",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.storage.export_all": {
+      "message": "Xuất tất cả đoạn chat",
+      "context": "Button exporting all chats as a JSON archive",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.storage.export_current": {
+      "message": "Xuất đoạn chat hiện tại",
+      "context": "Save dialog title for exporting the active chat",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.storage.export_current_json": {
+      "message": "Hiện tại (.json)",
+      "context": "Button exporting the current chat as JSON",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.storage.export_current_md": {
+      "message": "Hiện tại (.md)",
+      "context": "Button exporting the current chat as Markdown",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.storage.export_import_hint": {
+      "message": "Xuất hoặc khôi phục đoạn chat và cài đặt (không gồm khóa bí mật) dưới dạng tệp cục bộ.",
+      "context": "Subtitle of the Export & Import section in Updates & Storage settings",
+      "tone": "calm_editorial",
+      "max_chars": 108,
+      "placeholders": {}
+    },
+    "settings.storage.export_import_title": {
+      "message": "Xuất & nhập dữ liệu",
+      "context": "Section heading for Export & Import in Updates & Storage settings",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.storage.export_settings": {
+      "message": "Xuất cài đặt",
+      "context": "Button exporting non-secret settings as JSON",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.storage.file_manager_title": {
+      "message": "Tệp trong thư mục dữ liệu",
+      "context": "Row label for the built-in storage file manager list",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.storage.files_empty": {
+      "message": "Chưa có tệp nào trong thư mục dữ liệu.",
+      "context": "Empty state for the storage file manager",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {}
+    },
+    "settings.storage.import_chats": {
+      "message": "Nhập đoạn chat",
+      "context": "Button importing chats from a JSON file",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.storage.import_settings": {
+      "message": "Nhập cài đặt",
+      "context": "Button importing settings from a JSON file",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.storage.refresh_files": {
+      "message": "Làm mới",
+      "context": "Button refreshing the storage file manager list",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.storage.settings_data_label": {
+      "message": "Cài đặt",
+      "context": "Row label for settings export and import buttons",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "shell.selection.cut": {
+      "message": "Cắt",
+      "context": "Text input right-click context menu cut action",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "shell.selection.paste": {
+      "message": "Dán",
+      "context": "Text input right-click context menu paste action",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "sidebar.clear_all": {
+      "message": "Xóa tất cả",
+      "context": "Quiet sidebar button to clear all conversations",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "sidebar.clear_all_confirm": {
+      "message": "Xóa toàn bộ {count} cuộc trò chuyện?",
+      "context": "Inline confirmation prompt before clearing all chats in the sidebar",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "5"
+        }
+      }
+    },
+    "toast.catalog_filled": {
+      "message": "Đã điền giới hạn và giá mô hình từ danh mục",
+      "context": "Toast shown after Fill from catalog succeeds",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "toast.catalog_not_found": {
+      "message": "Không tìm thấy mô hình trong danh mục công khai",
+      "context": "Toast shown when Fill from catalog finds no matching entry",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "toast.chats_cleared": {
+      "message": "Đã xóa tất cả cuộc trò chuyện",
+      "context": "Toast shown after clearing all chats from the sidebar",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "toast.imported": {
+      "message": "Nhập thành công",
+      "context": "Toast shown after importing chats or settings from file",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.storage_cleaned": {
+      "message": "Đã dọn tệp lưu trữ không dùng",
+      "context": "Toast shown after cleaning unused storage files",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
     }
   }
 }

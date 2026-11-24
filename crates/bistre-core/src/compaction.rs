@@ -189,9 +189,31 @@ pub fn format_cross_provider_reasoning_handoff(reasoning: &str) -> String {
     )
 }
 
-/// Post-compaction role-alternation validator: merges consecutive same-side turns (joined by a
-/// blank line, never dropped) and removes trailing assistant turns so providers never receive an
-/// assistant-tailed or non-alternating history (`Cannot continue from assistant` 400s).
+/// Merges `attachments` arrays inside `provider_meta_json` when two consecutive user-side turns
+/// are coalesced, so deleting an assistant reply or compacting never silently drops attachments.
+fn merge_node_attachments(prev: &mut NodeRecord, next: &NodeRecord) {
+    let next_atts = crate::attachments::parse_node_attachments(next.provider_meta_json.as_deref());
+    if next_atts.is_empty() {
+        return;
+    }
+    let mut prev_meta = prev
+        .provider_meta_json
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+        .unwrap_or_else(|| json!({}));
+    let mut combined =
+        crate::attachments::parse_node_attachments(prev.provider_meta_json.as_deref());
+    combined.extend(next_atts);
+    if let Some(obj) = prev_meta.as_object_mut() {
+        obj.insert("attachments".to_owned(), json!(combined));
+        prev.provider_meta_json = Some(prev_meta.to_string());
+    }
+}
+
+/// Post-compaction role-alternation validator: merges consecutive same-side turns (including
+/// `CompactionSummary` + `User`, preserving all attachments!) and removes trailing assistant turns
+/// so providers never receive consecutive `"user"` turns or an assistant-tailed history.
+/// Never merges across a `NodeRole::Tool` boundary so `tool_use` -> `tool_result` pairs stay intact.
 pub fn enforce_role_alternation(history: Vec<NodeRecord>) -> Vec<NodeRecord> {
     let mut out: Vec<NodeRecord> = Vec::with_capacity(history.len());
     for node in history {
@@ -199,12 +221,20 @@ pub fn enforce_role_alternation(history: Vec<NodeRecord>) -> Vec<NodeRecord> {
             out.push(node);
             continue;
         };
-        if let Some(prev) = out.iter_mut().rev().find(|n| replay_role(n.role).is_some())
+        if let Some(prev) = out.last_mut()
             && replay_role(prev.role) == Some(side)
-            && prev.role == node.role
         {
-            prev.content.push_str("\n\n");
-            prev.content.push_str(&node.content);
+            if prev.role == NodeRole::CompactionSummary && node.role == NodeRole::User {
+                prev.content = format!(
+                    "[Earlier conversation summary]\n{}\n\n{}",
+                    prev.content, node.content
+                );
+                prev.role = NodeRole::User;
+            } else {
+                prev.content.push_str("\n\n");
+                prev.content.push_str(&node.content);
+            }
+            merge_node_attachments(prev, &node);
             continue;
         }
         out.push(node);
@@ -348,7 +378,7 @@ mod tests {
         }
         let leaf = created.last().map(|n| n.id.clone()).ok_or("no turns")?;
         let usage = |leaf: &str| {
-            crate::engine_runs::branch_context_usage(&storage, &thread.id, leaf, "")
+            crate::engine_runs::branch_context_usage(&storage, None, &thread.id, leaf, "")
                 .map(|u| u.history_tokens)
         };
         let full = usage(&leaf)?;
@@ -389,8 +419,13 @@ mod tests {
             user_text.clone(),
             None,
         )?;
-        let usage =
-            crate::engine_runs::branch_context_usage(&storage, &thread.id, &user.id, &draft_text)?;
+        let usage = crate::engine_runs::branch_context_usage(
+            &storage,
+            None,
+            &thread.id,
+            &user.id,
+            &draft_text,
+        )?;
         let exp_sys = estimate_tokens_for_text(&system_text);
         let exp_hist = estimate_tokens_for_text(&user_text) + 6;
         let exp_draft = estimate_tokens_for_text(&draft_text);
@@ -501,8 +536,10 @@ mod tests {
         assert_eq!(
             shape,
             vec![
-                ("s", "summary"),
-                ("u1", "first\n\nsecond"),
+                (
+                    "s",
+                    "[Earlier conversation summary]\nsummary\n\nfirst\n\nsecond"
+                ),
                 ("a1", "reply"),
                 ("u3", "third")
             ]

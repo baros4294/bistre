@@ -14,6 +14,7 @@ class AppAppearance {
     required this.typography,
     required this.reducedEffects,
     this.reduceMotion = false,
+    this.syntaxThemeId = '',
   });
 
   final bool isDark;
@@ -26,6 +27,7 @@ class AppAppearance {
   /// The in-app Reduce motion setting; the root turns it into
   /// `MediaQuery.disableAnimations`, so every motion widget honours it.
   final bool reduceMotion;
+  final String syntaxThemeId;
 
   @override
   bool operator ==(Object other) =>
@@ -36,7 +38,8 @@ class AppAppearance {
       other.customAccentHex == customAccentHex &&
       other.typography == typography &&
       other.reducedEffects == reducedEffects &&
-      other.reduceMotion == reduceMotion;
+      other.reduceMotion == reduceMotion &&
+      other.syntaxThemeId == syntaxThemeId;
 
   @override
   int get hashCode => Object.hash(
@@ -47,5 +50,6 @@ class AppAppearance {
     typography,
     reducedEffects,
     reduceMotion,
+    syntaxThemeId,
   );
 }

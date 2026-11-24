@@ -107,6 +107,9 @@ class _StreamingPassageCard extends StatelessWidget {
     required this.reduceMotionOverride,
     required this.onCopyCode,
     this.onQuoteThinking,
+    this.onApproveToolOnce,
+    this.onApproveToolChat,
+    this.onDenyTool,
     this.onRewindCheckpoint,
   });
 
@@ -120,6 +123,9 @@ class _StreamingPassageCard extends StatelessWidget {
   final bool reduceMotionOverride;
   final ValueChanged<String> onCopyCode;
   final ValueChanged<String>? onQuoteThinking;
+  final ValueChanged<String>? onApproveToolOnce;
+  final ValueChanged<String>? onApproveToolChat;
+  final ValueChanged<String>? onDenyTool;
   final ValueChanged<String>? onRewindCheckpoint;
 
   @override
@@ -160,6 +166,9 @@ class _StreamingPassageCard extends StatelessWidget {
           const SizedBox(height: 6),
           ToolTimelineView(
             entries: toolActivities,
+            onApproveOnce: onApproveToolOnce,
+            onApproveChat: onApproveToolChat,
+            onDeny: onDenyTool,
             onRewindCheckpoint: onRewindCheckpoint,
           ),
         ],

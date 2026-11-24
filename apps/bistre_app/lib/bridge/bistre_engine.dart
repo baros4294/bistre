@@ -7,6 +7,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
 import '../platform/vault_key_host.dart';
 import 'api.dart' as frb;
 import 'api/harness.dart' as frb;
+import 'api/media.dart' as frb;
 import 'api/story.dart' as frb;
 import 'engine_models.dart';
 import 'engine_story_models.dart';
@@ -47,6 +48,8 @@ abstract interface class BistreEngineGateway {
     required String apiKey,
   });
   Future<EngineProvider> clearProviderApiKey(String providerId);
+  Future<List<String>> getProviderApiKeys(String providerId);
+  Future<EngineModelCatalogInfo?> lookupModelCatalogInfo(String modelId);
   Future<EngineProvider> createCustomProvider({
     required String name,
     required String baseUrl,
@@ -120,6 +123,44 @@ abstract interface class BistreEngineGateway {
     String? parentId,
     required String userContent,
   });
+  Future<EngineNode> sendAndStreamReplyWithAttachments({
+    required String threadId,
+    String? parentId,
+    required String userContent,
+    required List<EngineAttachmentInput> attachments,
+  });
+  Future<EngineNode> steerActiveRunNow({
+    required String threadId,
+    required String content,
+  });
+  Future<String> exportAllThreadsJson();
+  Future<int> importThreadsJson(String rawJson);
+  Future<String> exportSettingsJson();
+  Future<EngineSettings> importSettingsJson(String rawJson);
+  Future<List<EngineStorageFileEntry>> listStorageFiles();
+  Future<bool> deleteStorageFile(String relPath);
+  Future<int> cleanUnusedStorageFiles();
+  Future<List<int>> synthesizeSpeech({
+    required String providerId,
+    required String modelId,
+    required String text,
+    String? voice,
+  });
+  Future<String> startLiveVoiceSession({
+    required String providerId,
+    required String modelId,
+    required String voice,
+    required String systemPrompt,
+  });
+  Future<void> sendLiveVoicePcmChunk({
+    required String sessionId,
+    required String pcmBase64,
+  });
+  Future<void> sendLiveVoiceText({
+    required String sessionId,
+    required String text,
+  });
+  Future<void> stopLiveVoiceSession(String sessionId);
   Future<String> regenerateReply({
     required String threadId,
     required String userNodeId,
@@ -202,6 +243,13 @@ abstract interface class BistreEngineGateway {
     required String threadId,
     required String toolName,
     required Map<String, Object?> arguments,
+  });
+
+  /// Delivers a live tool-approval decision (`approve_once` / `approve_for_thread` / `deny`).
+  Future<bool> respondToolApproval({
+    required String threadId,
+    required String callId,
+    required String decision,
   });
 
   /// Runs a tool. Read-only tools need no permit; every other tool needs the
@@ -816,6 +864,9 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
     return EngineContextUsage(
       systemTokens: u.systemTokens,
       storyTokens: u.storyTokens,
+      toolsTokens: u.toolsTokens,
+      attachmentsTokens: u.attachmentsTokens,
+      attachmentsCount: u.attachmentsCount,
       historyTokens: u.historyTokens,
       historyTurns: u.historyTurns,
       draftTokens: u.draftTokens,
@@ -832,6 +883,17 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
     threadId: threadId,
     toolName: toolName,
     argumentsJson: jsonEncode(arguments),
+  );
+
+  @override
+  Future<bool> respondToolApproval({
+    required String threadId,
+    required String callId,
+    required String decision,
+  }) => frb.respondToolApproval(
+    threadId: threadId,
+    callId: callId,
+    decision: decision,
   );
 
   @override
@@ -1251,6 +1313,133 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
     );
     return EnginePromptReport.fromJson(jsonDecode(raw) as Map<String, Object?>);
   }
+
+  @override
+  Future<List<String>> getProviderApiKeys(String providerId) =>
+      frb.getProviderApiKeys(providerId: providerId);
+
+  @override
+  Future<EngineModelCatalogInfo?> lookupModelCatalogInfo(String modelId) async {
+    final info = await frb.lookupModelCatalogInfo(modelId: modelId);
+    if (info == null) return null;
+    return EngineModelCatalogInfo(
+      contextWindow: info.contextWindow,
+      maxOutputTokens: info.maxOutputTokens,
+      inputPerMtokMicros: info.inputPerMtokMicros,
+      outputPerMtokMicros: info.outputPerMtokMicros,
+      cachedInputPerMtokMicros: info.cachedInputPerMtokMicros,
+      reasoning: info.reasoning,
+    );
+  }
+
+  @override
+  Future<EngineNode> sendAndStreamReplyWithAttachments({
+    required String threadId,
+    String? parentId,
+    required String userContent,
+    required List<EngineAttachmentInput> attachments,
+  }) async => _mapNode(
+    await frb.sendAndStreamReplyWithAttachments(
+      threadId: threadId,
+      parentId: parentId,
+      userContent: userContent,
+      attachments: [
+        for (final a in attachments)
+          frb.FfiAttachmentInput(
+            name: a.name,
+            mimeType: a.mimeType,
+            localPath: a.localPath,
+          ),
+      ],
+    ),
+  );
+
+  @override
+  Future<EngineNode> steerActiveRunNow({
+    required String threadId,
+    required String content,
+  }) async => _mapNode(
+    await frb.steerActiveRunNow(threadId: threadId, content: content),
+  );
+
+  @override
+  Future<String> exportAllThreadsJson() => frb.exportAllThreadsJson();
+
+  @override
+  Future<int> importThreadsJson(String rawJson) =>
+      frb.importThreadsJson(rawJson: rawJson);
+
+  @override
+  Future<String> exportSettingsJson() => frb.exportSettingsJson();
+
+  @override
+  Future<EngineSettings> importSettingsJson(String rawJson) async =>
+      _mapSettings(await frb.importSettingsJson(rawJson: rawJson));
+
+  @override
+  Future<List<EngineStorageFileEntry>> listStorageFiles() async {
+    final items = await frb.listStorageFiles();
+    return [
+      for (final f in items)
+        EngineStorageFileEntry(
+          relPath: f.relPath,
+          category: f.category,
+          sizeBytes: f.sizeBytes.toInt(),
+          modifiedMs: f.modifiedMs,
+          deletable: f.deletable,
+        ),
+    ];
+  }
+
+  @override
+  Future<bool> deleteStorageFile(String relPath) =>
+      frb.deleteStorageFile(relPath: relPath);
+
+  @override
+  Future<int> cleanUnusedStorageFiles() async =>
+      (await frb.cleanUnusedStorageFiles()).toInt();
+
+  @override
+  Future<List<int>> synthesizeSpeech({
+    required String providerId,
+    required String modelId,
+    required String text,
+    String? voice,
+  }) => frb.synthesizeSpeech(
+    providerId: providerId,
+    modelId: modelId,
+    text: text,
+    voice: voice,
+  );
+
+  @override
+  Future<String> startLiveVoiceSession({
+    required String providerId,
+    required String modelId,
+    required String voice,
+    required String systemPrompt,
+  }) => frb.startLiveVoiceSession(
+    providerId: providerId,
+    modelId: modelId,
+    voice: voice,
+    systemPrompt: systemPrompt,
+  );
+
+  @override
+  Future<void> sendLiveVoicePcmChunk({
+    required String sessionId,
+    required String pcmBase64,
+  }) => frb.sendLiveVoicePcmChunk(sessionId: sessionId, pcmBase64: pcmBase64);
+
+  @override
+  Future<void> sendLiveVoiceText({
+    required String sessionId,
+    required String text,
+  }) => frb.sendLiveVoiceText(sessionId: sessionId, text: text);
+
+  @override
+  Future<void> stopLiveVoiceSession(String sessionId) =>
+      frb.stopLiveVoiceSession(sessionId: sessionId);
 
   @override
   Stream<BistreEvent> subscribeEvents() => frb.subscribeEvents().map(_mapEvent);

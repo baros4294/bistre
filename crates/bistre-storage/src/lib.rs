@@ -560,6 +560,16 @@ impl StorageHandle {
                 .map_err(map_sqlite_err)?
                 .ok_or_else(|| BistreError::new(DiagnosticKey::StorageNotFound))?;
 
+            let current_head: Option<String> = tx
+                .query_row(
+                    "SELECT active_head_node_id FROM threads WHERE id = ?1",
+                    [&thread_id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(map_sqlite_err)?
+                .flatten();
+
             tx.execute(
                 "UPDATE nodes SET parent_id = ?1 WHERE parent_id = ?2 AND thread_id = ?3",
                 params![&parent_id, &node_id, &thread_id],
@@ -572,18 +582,27 @@ impl StorageHandle {
             )
             .map_err(map_sqlite_err)?;
 
-            let latest_id: Option<String> = tx
-                .query_row(
-                    "SELECT id FROM nodes WHERE thread_id = ?1 ORDER BY rowid DESC LIMIT 1",
-                    [&thread_id],
-                    |row| row.get(0),
-                )
-                .optional()
-                .map_err(map_sqlite_err)?;
+            // Preserve the user's current branch whenever another branch was NOT deleted.
+            // Only move `active_head_node_id` if the deleted node itself was the active head.
+            let next_head = if current_head.as_deref() == Some(node_id.as_str()) {
+                if parent_id.is_some() {
+                    parent_id
+                } else {
+                    tx.query_row(
+                        "SELECT id FROM nodes WHERE thread_id = ?1 ORDER BY rowid DESC LIMIT 1",
+                        [&thread_id],
+                        |row| row.get(0),
+                    )
+                    .optional()
+                    .map_err(map_sqlite_err)?
+                }
+            } else {
+                current_head
+            };
 
             tx.execute(
                 "UPDATE threads SET active_head_node_id = ?1, updated_at_ms = ?2 WHERE id = ?3",
-                params![latest_id, now, &thread_id],
+                params![next_head, now, &thread_id],
             )
             .map_err(map_sqlite_err)?;
             tx.commit().map_err(map_sqlite_err)

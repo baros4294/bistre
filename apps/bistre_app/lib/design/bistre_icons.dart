@@ -69,7 +69,10 @@ enum BistreUiIcon {
   memory('memory'),
   bookOpen('book_open'),
   info('info'),
-  wrap('wrap');
+  wrap('wrap'),
+  mic('mic'),
+  volume('volume'),
+  audioLines('audio_lines');
 
   const BistreUiIcon(this.fileStem);
   final String fileStem;

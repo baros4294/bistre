@@ -111,6 +111,16 @@ impl KeyRing {
         self.keys.is_empty()
     }
 
+    /// Returns the first (primary) stored key, if any.
+    pub fn primary(&self) -> Option<&str> {
+        self.keys.first().map(|k| k.as_str())
+    }
+
+    /// Returns all stored keys in ring order (primary first).
+    pub fn all_keys(&self) -> Vec<String> {
+        self.keys.iter().map(|k| k.as_str().to_owned()).collect()
+    }
+
     /// Every key exactly once, starting at the next round-robin position.
     pub fn rotation(&self) -> Vec<&str> {
         if self.keys.is_empty() {
@@ -120,6 +130,52 @@ impl KeyRing {
         (0..self.keys.len())
             .map(|i| self.keys[(start + i) % self.keys.len()].as_str())
             .collect()
+    }
+}
+
+/// Applies the provider dialect's standard authentication header cleanly (zero secrets in URLs).
+pub fn apply_auth_header(
+    dialect: bistre_protocol::ProviderDialect,
+    api_key: &str,
+    headers: &mut reqwest::header::HeaderMap,
+) {
+    let clean = sanitize_secret(api_key);
+    if clean.is_empty() {
+        return;
+    }
+    match dialect {
+        bistre_protocol::ProviderDialect::GoogleGemini => {
+            if let Ok(val) = reqwest::header::HeaderValue::from_str(&clean) {
+                headers.insert("x-goog-api-key", val);
+            }
+        }
+        bistre_protocol::ProviderDialect::Anthropic => {
+            if let Ok(val) = reqwest::header::HeaderValue::from_str(&clean) {
+                headers.insert("x-api-key", val);
+            }
+        }
+        bistre_protocol::ProviderDialect::OpenAi
+        | bistre_protocol::ProviderDialect::CustomOpenAi => {
+            if let Ok(val) = reqwest::header::HeaderValue::from_str(&format!("Bearer {clean}")) {
+                headers.insert(reqwest::header::AUTHORIZATION, val);
+            }
+        }
+    }
+}
+
+/// Resolves a normalized provider base URL (falling back to the dialect's canonical default).
+pub fn resolve_base_url(dialect: bistre_protocol::ProviderDialect, raw: &str) -> String {
+    let trimmed = raw.trim().trim_end_matches('/');
+    if !trimmed.is_empty() {
+        return trimmed.to_owned();
+    }
+    match dialect {
+        bistre_protocol::ProviderDialect::OpenAi => "https://api.openai.com/v1".to_owned(),
+        bistre_protocol::ProviderDialect::GoogleGemini => {
+            "https://generativelanguage.googleapis.com".to_owned()
+        }
+        bistre_protocol::ProviderDialect::Anthropic => "https://api.anthropic.com/v1".to_owned(),
+        bistre_protocol::ProviderDialect::CustomOpenAi => "http://127.0.0.1:11434/v1".to_owned(),
     }
 }
 

@@ -756,6 +756,7 @@ pub enum ReasoningEffort {
     /// Send no effort field; the provider decides.
     #[default]
     ModelDefault,
+    Adaptive,
     Off,
     Low,
     Medium,
@@ -769,6 +770,7 @@ impl ReasoningEffort {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::ModelDefault => "default",
+            Self::Adaptive => "adaptive",
             Self::Off => "off",
             Self::Low => "low",
             Self::Medium => "medium",
@@ -780,7 +782,18 @@ impl ReasoningEffort {
 
     /// Lenient parse of a stored value; unknown text means the model default.
     pub fn parse(raw: &str) -> Self {
-        match raw.trim().to_ascii_lowercase().as_str() {
+        let norm = raw.trim().to_ascii_lowercase();
+        if let Ok(budget) = norm.parse::<u32>() {
+            return match budget {
+                0 => Self::Off,
+                1..=2_048 => Self::Low,
+                2_049..=8_192 => Self::Medium,
+                8_193..=24_576 => Self::High,
+                _ => Self::ExtraHigh,
+            };
+        }
+        match norm.as_str() {
+            "adaptive" => Self::Adaptive,
             "off" | "none" => Self::Off,
             "low" | "minimal" => Self::Low,
             "medium" => Self::Medium,
@@ -849,6 +862,46 @@ pub struct ProviderPatch {
 pub struct ProviderModelInfo {
     pub id: String,
     pub display_name: String,
+}
+
+/// Catalog metadata for a single model returned from the live pricing/model registry.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelCatalogInfo {
+    pub context_window: Option<u32>,
+    pub max_output_tokens: Option<u32>,
+    pub input_per_mtok_micros: Option<i64>,
+    pub output_per_mtok_micros: Option<i64>,
+    pub cached_input_per_mtok_micros: Option<i64>,
+    pub reasoning: Option<bool>,
+}
+
+/// Attachment selected by the user to be ingested into Bistre's content-addressed blob store.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AttachmentInput {
+    pub name: String,
+    pub mime_type: String,
+    pub local_path: String,
+}
+
+/// Canonical attachment stored inside `<data_dir>/attachments/` and linked from a user node.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredAttachment {
+    pub id: String,
+    pub name: String,
+    pub mime_type: String,
+    pub blob_rel_path: String,
+    pub size_bytes: u64,
+    pub blake3_hex: String,
+}
+
+/// File entry reported by the Storage & File Manager inside Bistre's data directory.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StorageFileEntry {
+    pub rel_path: String,
+    pub category: String,
+    pub size_bytes: u64,
+    pub modified_ms: i64,
+    pub deletable: bool,
 }
 
 /// Assistant persona persisted in SQLite (`default_assistant` created on fresh install if empty).
@@ -1278,83 +1331,10 @@ pub enum SystemPowerEvent {
     PowerSourceChanged { on_ac: bool },
 }
 
-/// Monotonically ordered persisted event envelope enabling lossless IPC / FGS resume (`resume_after_cursor`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CursorEventRecord {
-    pub cursor: u64,
-    pub thread_id: Option<String>,
-    pub event: EngineEvent,
-    pub created_at_ms: i64,
-}
-
-/// Length-prefixed JSON RPC request frame sent from `LocalIpcEngine` to `bistre-daemon`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DaemonRpcRequest {
-    pub request_id: u64,
-    pub method: String,
-    pub params_json: String,
-}
-
-/// Length-prefixed JSON RPC response frame returned by `bistre-daemon`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DaemonRpcResponse {
-    pub request_id: u64,
-    pub ok: bool,
-    pub payload_json: String,
-    pub error: Option<BistreError>,
-}
-
-/// Batched event union streamed from Rust core to UI / IPC subscribers.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum EngineEvent {
-    RunStarted {
-        thread_id: String,
-        node_id: String,
-    },
-    DeltaBatch {
-        thread_id: String,
-        chunks: Vec<StreamChunk>,
-    },
-    ThinkingDelta {
-        thread_id: String,
-        node_id: String,
-        delta: String,
-    },
-    RunFinished {
-        thread_id: String,
-        node_id: String,
-        cancelled: bool,
-    },
-    RunStateChanged {
-        run: AgentRunRecord,
-    },
-    RunStepUpdated {
-        step: RunStepRecord,
-    },
-    SteeringQueueChanged {
-        thread_id: String,
-        pending_count: u32,
-    },
-    PowerStatusChanged {
-        status: PowerGuardStatus,
-    },
-    NodeCommitted {
-        node: NodeRecord,
-    },
-    DraftSaved {
-        thread_id: String,
-        updated_at_ms: i64,
-    },
-    DiagnosticRaised {
-        key: DiagnosticKey,
-        detail_code: Option<String>,
-    },
-    LocalePackVerified {
-        pack_id: String,
-        semver: String,
-    },
-}
+pub mod events;
+pub use events::{
+    CursorEventRecord, DaemonRpcRequest, DaemonRpcResponse, EngineEvent, ToolApprovalDecision,
+};
 
 /// Locks `mutex`, recovering the inner value if a previous holder panicked.
 ///

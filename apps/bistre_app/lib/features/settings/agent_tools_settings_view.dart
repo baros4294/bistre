@@ -419,30 +419,55 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
                   ),
                   const SizedBox(height: 10),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Expanded(
                         flex: 2,
-                        child: QuillInput(
-                          controller: _mcpNameCtrl,
-                          focusNode: _mcpNameFocus,
-                          placeholder: l10n.t(
-                            L10nKey.settingsAgentMcpServerPlaceholder,
-                          ),
-                          maxLines: 1,
-                          onSubmitted: () => unawaited(_addMcpServer()),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            InkText(
+                              l10n.t(L10nKey.settingsAgentMcpNameLabel),
+                              role: InkTextRole.captionMeta,
+                              color: theme.inkMuted,
+                            ),
+                            const SizedBox(height: 4),
+                            QuillInput(
+                              controller: _mcpNameCtrl,
+                              focusNode: _mcpNameFocus,
+                              placeholder: l10n.t(
+                                L10nKey.settingsAgentMcpServerPlaceholder,
+                              ),
+                              maxLines: 1,
+                              onSubmitted: () => unawaited(_addMcpServer()),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         flex: 3,
-                        child: QuillInput(
-                          controller: _mcpUrlCtrl,
-                          focusNode: _mcpUrlFocus,
-                          placeholder: _mcpTransport == 'http'
-                              ? l10n.t(L10nKey.providerFieldBaseUrl)
-                              : _kMcpCommandPlaceholder,
-                          maxLines: 1,
-                          onSubmitted: () => unawaited(_addMcpServer()),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            InkText(
+                              _mcpTransport == 'http'
+                                  ? l10n.t(L10nKey.settingsAgentMcpUrlLabel)
+                                  : l10n.t(L10nKey.settingsAgentMcpCmdLabel),
+                              role: InkTextRole.captionMeta,
+                              color: theme.inkMuted,
+                            ),
+                            const SizedBox(height: 4),
+                            QuillInput(
+                              controller: _mcpUrlCtrl,
+                              focusNode: _mcpUrlFocus,
+                              placeholder: _mcpTransport == 'http'
+                                  ? l10n.t(L10nKey.providerFieldBaseUrl)
+                                  : _kMcpCommandPlaceholder,
+                              maxLines: 1,
+                              onSubmitted: () => unawaited(_addMcpServer()),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -459,7 +484,7 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
             ),
             const SizedBox(height: 16),
 
-            // 3. Web Search (Keyless DuckDuckGo or custom endpoint)
+            // 2b. Workspace Skills (`SKILL.md` discovery)
             FolioSurface(
               tone: FolioTone.elevated,
               padding: const EdgeInsetsDirectional.all(18),
@@ -470,55 +495,170 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
                   Row(
                     children: [
                       BistreIcon(
-                        BistreUiIcon.globe,
+                        BistreUiIcon.bookOpen,
                         size: 16,
                         color: theme.accentBrass,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: InkText(
-                          l10n.t(L10nKey.settingsAgentWebSearch),
+                          l10n.t(L10nKey.settingsAgentSkillsTitle),
                           role: InkTextRole.titleMedium,
                         ),
                       ),
-                      InkChip(
-                        label: l10n.t(L10nKey.settingsAgentWebDdg),
-                        selected: ctrl.webSearchEndpoint == 'duckduckgo',
-                        onSelected: () {
-                          final next = ctrl.webSearchEndpoint == 'duckduckgo'
-                              ? ''
-                              : 'duckduckgo';
-                          _webSearchCtrl.text = next;
-                          unawaited(ctrl.setWebSearchEndpoint(next));
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: QuillInput(
-                          controller: _webSearchCtrl,
-                          focusNode: _webSearchFocus,
-                          placeholder: l10n.t(L10nKey.providerFieldBaseUrl),
-                          maxLines: 1,
-                          onSubmitted: () => unawaited(
-                            ctrl.setWebSearchEndpoint(_webSearchCtrl.text),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
                       EngravedButton(
-                        label: l10n.t(L10nKey.threadSave),
+                        label: l10n.t(L10nKey.settingsAgentSkillsScan),
                         compact: true,
-                        onPressed: () => unawaited(
-                          ctrl.setWebSearchEndpoint(_webSearchCtrl.text),
-                        ),
+                        onPressed: ctrl.workspaceRootPath.isEmpty
+                            ? null
+                            : () =>
+                                  unawaited(ctrl.refreshMemorySkillsAndCron()),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  if (ctrl.discoveredSkills.isEmpty)
+                    InkText(
+                      l10n.t(L10nKey.settingsAgentSkillsEmpty),
+                      role: InkTextRole.bodyCompact,
+                      color: theme.inkMuted,
+                    )
+                  else
+                    for (final sk in ctrl.discoveredSkills) ...[
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(bottom: 6),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  InkText(
+                                    sk.name,
+                                    role: InkTextRole.labelStrong,
+                                  ),
+                                  if (sk.description.isNotEmpty)
+                                    InkText(
+                                      sk.description,
+                                      role: InkTextRole.captionMeta,
+                                      color: theme.inkMuted,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                 ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 3. Web Search (Off | DuckDuckGo | Custom URL)
+            FolioSurface(
+              tone: FolioTone.elevated,
+              padding: const EdgeInsetsDirectional.all(18),
+              boxShadow: theme.cardShadow,
+              child: Builder(
+                builder: (context) {
+                  final ep = ctrl.webSearchEndpoint.trim();
+                  final mode = ep.isEmpty
+                      ? 'off'
+                      : (ep == 'duckduckgo' ? 'duckduckgo' : 'custom');
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          BistreIcon(
+                            BistreUiIcon.globe,
+                            size: 16,
+                            color: theme.accentBrass,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: InkText(
+                              l10n.t(L10nKey.settingsAgentWebSearch),
+                              role: InkTextRole.titleMedium,
+                            ),
+                          ),
+                          BistreSegmentedControl<String>(
+                            selected: mode,
+                            onSelected: (next) {
+                              if (next == 'off') {
+                                _webSearchCtrl.clear();
+                                unawaited(ctrl.setWebSearchEndpoint(''));
+                              } else if (next == 'duckduckgo') {
+                                _webSearchCtrl.text = 'duckduckgo';
+                                unawaited(
+                                  ctrl.setWebSearchEndpoint('duckduckgo'),
+                                );
+                              } else {
+                                if (_webSearchCtrl.text.trim() ==
+                                        'duckduckgo' ||
+                                    _webSearchCtrl.text.trim().isEmpty) {
+                                  _webSearchCtrl.text = 'https://';
+                                }
+                                unawaited(
+                                  ctrl.setWebSearchEndpoint(
+                                    _webSearchCtrl.text.trim(),
+                                  ),
+                                );
+                              }
+                            },
+                            options: <BistreSegmentedOption<String>>[
+                              BistreSegmentedOption<String>(
+                                value: 'off',
+                                label: l10n.t(L10nKey.settingsAppearanceOff),
+                              ),
+                              BistreSegmentedOption<String>(
+                                value: 'duckduckgo',
+                                label: l10n.t(L10nKey.settingsAgentWebDdg),
+                              ),
+                              BistreSegmentedOption<String>(
+                                value: 'custom',
+                                label: l10n.t(L10nKey.settingsAgentWebCustom),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      if (mode == 'custom') ...[
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: QuillInput(
+                                controller: _webSearchCtrl,
+                                focusNode: _webSearchFocus,
+                                placeholder: l10n.t(
+                                  L10nKey.providerFieldBaseUrl,
+                                ),
+                                maxLines: 1,
+                                onSubmitted: () => unawaited(
+                                  ctrl.setWebSearchEndpoint(
+                                    _webSearchCtrl.text,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            EngravedButton(
+                              label: l10n.t(L10nKey.threadSave),
+                              compact: true,
+                              onPressed: () => unawaited(
+                                ctrl.setWebSearchEndpoint(_webSearchCtrl.text),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  );
+                },
               ),
             ),
             const SizedBox(height: 16),
@@ -630,66 +770,67 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
                   ),
               ],
             ),
-            const SizedBox(height: 16),
-
-            // 5. Optional Android Termux Bridge
-            FolioSurface(
-              tone: FolioTone.elevated,
-              padding: const EdgeInsetsDirectional.all(18),
-              boxShadow: theme.cardShadow,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      BistreIcon(
-                        BistreUiIcon.code,
-                        size: 16,
-                        color: theme.accentBrass,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: InkText(
-                          l10n.t(L10nKey.settingsAgentTermuxTitle),
-                          role: InkTextRole.titleMedium,
+            // 5. Optional Android Termux Bridge (hidden on Windows/Linux desktops)
+            if (BistrePowerGuardHost.isAndroid) ...[
+              const SizedBox(height: 16),
+              FolioSurface(
+                tone: FolioTone.elevated,
+                padding: const EdgeInsetsDirectional.all(18),
+                boxShadow: theme.cardShadow,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        BistreIcon(
+                          BistreUiIcon.code,
+                          size: 16,
+                          color: theme.accentBrass,
                         ),
-                      ),
-                      if (_termuxStatus case final status?)
-                        WaxSealBadge(
-                          label: _formatTermuxBadge(l10n, status),
-                          status: status.installed && status.permissionGranted
-                              ? WaxSealStatus.ok
-                              : WaxSealStatus.neutral,
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: InkText(
+                            l10n.t(L10nKey.settingsAgentTermuxTitle),
+                            role: InkTextRole.titleMedium,
+                          ),
                         ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  InkText(
-                    l10n.t(L10nKey.settingsAgentTermuxDesc),
-                    role: InkTextRole.bodyCompact,
-                    color: theme.inkSecondary,
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      InkChip(
-                        label: l10n.t(L10nKey.settingsAppearanceOn),
-                        selected: ctrl.settings.termuxBridgeEnabled,
-                        onSelected: () =>
-                            unawaited(ctrl.setTermuxBridgeEnabled(true)),
-                      ),
-                      const SizedBox(width: 6),
-                      InkChip(
-                        label: l10n.t(L10nKey.settingsAppearanceOff),
-                        selected: !ctrl.settings.termuxBridgeEnabled,
-                        onSelected: () =>
-                            unawaited(ctrl.setTermuxBridgeEnabled(false)),
-                      ),
-                    ],
-                  ),
-                ],
+                        if (_termuxStatus case final status?)
+                          WaxSealBadge(
+                            label: _formatTermuxBadge(l10n, status),
+                            status: status.installed && status.permissionGranted
+                                ? WaxSealStatus.ok
+                                : WaxSealStatus.neutral,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    InkText(
+                      l10n.t(L10nKey.settingsAgentTermuxDesc),
+                      role: InkTextRole.bodyCompact,
+                      color: theme.inkSecondary,
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        InkChip(
+                          label: l10n.t(L10nKey.settingsAppearanceOn),
+                          selected: ctrl.settings.termuxBridgeEnabled,
+                          onSelected: () =>
+                              unawaited(ctrl.setTermuxBridgeEnabled(true)),
+                        ),
+                        const SizedBox(width: 6),
+                        InkChip(
+                          label: l10n.t(L10nKey.settingsAppearanceOff),
+                          selected: !ctrl.settings.termuxBridgeEnabled,
+                          onSelected: () =>
+                              unawaited(ctrl.setTermuxBridgeEnabled(false)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),

@@ -102,22 +102,51 @@ extension FolioStudioActions on FolioController {
       title: title,
       filterLabel: filterLabel,
       filterSpec:
-          '*.png;*.jpg;*.jpeg;*.webp;*.pdf;*.txt;*.md;*.rs;*.dart;*.json',
+          '*.png;*.jpg;*.jpeg;*.webp;*.gif;*.pdf;*.docx;*.doc;*.dotx;*.odt;'
+          '*.xlsx;*.xls;*.ods;*.pptx;*.ppt;*.odp;*.mp3;*.wav;*.ogg;*.m4a;'
+          '*.flac;*.mp4;*.webm;*.txt;*.md;*.csv;*.tsv;*.json;*.xml;*.yaml;'
+          '*.yml;*.rs;*.dart;*.py;*.js;*.ts',
     );
     if (path == null || path.trim().isEmpty) return;
     final clean = path.trim();
     final name = clean.split(RegExp(r'[/\\]')).last;
-    final lower = name.toLowerCase();
+    final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
     final isImg =
-        lower.endsWith('.png') ||
-        lower.endsWith('.jpg') ||
-        lower.endsWith('.jpeg') ||
-        lower.endsWith('.webp');
-    final mime = isImg
-        ? 'image/${lower.split('.').last}'
-        : lower.endsWith('.pdf')
-        ? 'application/pdf'
-        : 'text/plain';
+        ext == 'png' ||
+        ext == 'jpg' ||
+        ext == 'jpeg' ||
+        ext == 'webp' ||
+        ext == 'gif';
+    final mime = switch (ext) {
+      'png' => 'image/png',
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'webp' => 'image/webp',
+      'gif' => 'image/gif',
+      'pdf' => 'application/pdf',
+      'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'dotx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.template',
+      'doc' => 'application/msword',
+      'xlsx' =>
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'xls' => 'application/vnd.ms-excel',
+      'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'ppt' => 'application/vnd.ms-powerpoint',
+      'odt' => 'application/vnd.oasis.opendocument.text',
+      'ods' => 'application/vnd.oasis.opendocument.spreadsheet',
+      'odp' => 'application/vnd.oasis.opendocument.presentation',
+      'mp3' => 'audio/mpeg',
+      'wav' => 'audio/wav',
+      'ogg' => 'audio/ogg',
+      'm4a' => 'audio/mp4',
+      'flac' => 'audio/flac',
+      'mp4' => 'video/mp4',
+      'webm' => 'video/webm',
+      'csv' => 'text/csv',
+      'tsv' => 'text/tab-separated-values',
+      'json' => 'application/json',
+      'xml' => 'application/xml',
+      _ => 'text/plain',
+    };
     int size = 0;
     try {
       size = File(clean).lengthSync();
@@ -344,6 +373,38 @@ extension FolioStudioActions on FolioController {
       _toolActivities = <ToolActivityEntry>[..._toolActivities, entry];
     }
     _notify();
+  }
+
+  Future<void> respondToolApproval(String callId, String decision) async {
+    final threadId = _activeThread?.id;
+    if (threadId == null || callId.isEmpty) return;
+    try {
+      await _gateway.respondToolApproval(
+        threadId: threadId,
+        callId: callId,
+        decision: decision,
+      );
+      final idx = _toolActivities.indexWhere((e) => e.id == callId);
+      if (idx >= 0) {
+        final cur = _toolActivities[idx];
+        recordToolActivity(
+          ToolActivityEntry(
+            id: cur.id,
+            toolName: cur.toolName,
+            summary: cur.summary,
+            status: decision == 'deny' ? 'failed' : 'running',
+            riskTier: cur.riskTier,
+            outputText: cur.outputText,
+            diffText: cur.diffText,
+            checkpointId: cur.checkpointId,
+            durationMs: cur.durationMs,
+          ),
+        );
+      }
+    } catch (e) {
+      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
+      _notify();
+    }
   }
 
   // --- Writing & Roleplay Studio State & Actions ---

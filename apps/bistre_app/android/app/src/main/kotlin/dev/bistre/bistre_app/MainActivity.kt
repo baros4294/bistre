@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
+import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
@@ -12,13 +13,21 @@ import android.os.Looper
 import android.os.PowerManager
 import android.provider.DocumentsContract
 import android.provider.Settings
+import android.speech.RecognizerIntent
+import android.speech.tts.TextToSpeech
 import androidx.core.view.WindowCompat
+import java.io.File
+import java.util.Locale
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private var pendingFolderResult: MethodChannel.Result? = null
+    private var pendingVoiceResult: MethodChannel.Result? = null
+    private var ttsEngine: TextToSpeech? = null
+    private var ttsReady: Boolean = false
+    private var mediaPlayer: MediaPlayer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -26,6 +35,19 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == REQ_VOICE_INPUT) {
+            val cb = pendingVoiceResult
+            pendingVoiceResult = null
+            if (cb != null) {
+                val spoken = if (resultCode == Activity.RESULT_OK) {
+                    data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+                } else {
+                    null
+                }
+                cb.success(spoken)
+            }
+            return
+        }
         if (requestCode == REQ_PICK_FOLDER) {
             val cb = pendingFolderResult
             pendingFolderResult = null
@@ -163,6 +185,68 @@ class MainActivity : FlutterActivity() {
                             result.success(null)
                         }
                 }
+                "dictateVoiceOnce" -> {
+                    pendingVoiceResult?.success(null)
+                    pendingVoiceResult = result
+                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                        putExtra(
+                            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                        )
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                    }
+                    runCatching { startActivityForResult(intent, REQ_VOICE_INPUT) }
+                        .onFailure {
+                            pendingVoiceResult = null
+                            result.success(null)
+                        }
+                }
+                "speakTextAloud" -> {
+                    val text = call.argument<String>("text")?.trim().orEmpty()
+                    if (text.isNotEmpty()) {
+                        if (ttsEngine == null) {
+                            ttsEngine = TextToSpeech(this) { status ->
+                                ttsReady = status == TextToSpeech.SUCCESS
+                                if (ttsReady) {
+                                    ttsEngine?.language = Locale.getDefault()
+                                    ttsEngine?.speak(text.take(3500), TextToSpeech.QUEUE_FLUSH, null, "bistre_tts")
+                                }
+                            }
+                        } else if (ttsReady) {
+                            ttsEngine?.speak(text.take(3500), TextToSpeech.QUEUE_FLUSH, null, "bistre_tts")
+                        }
+                    }
+                    result.success(true)
+                }
+                "playWavBytes" -> {
+                    val bytes = call.argument<ByteArray>("bytes")
+                    if (bytes != null && bytes.isNotEmpty()) {
+                        runCatching {
+                            mediaPlayer?.release()
+                            val tmp = File.createTempFile("bistre_audio_", ".wav", cacheDir)
+                            tmp.writeBytes(bytes)
+                            mediaPlayer = MediaPlayer().apply {
+                                setDataSource(tmp.absolutePath)
+                                setOnCompletionListener {
+                                    it.release()
+                                    tmp.delete()
+                                }
+                                prepare()
+                                start()
+                            }
+                        }
+                    }
+                    result.success(true)
+                }
+                "stopAudioPlayback" -> {
+                    runCatching { ttsEngine?.stop() }
+                    runCatching {
+                        mediaPlayer?.stop()
+                        mediaPlayer?.release()
+                        mediaPlayer = null
+                    }
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -171,6 +255,12 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         pendingFolderResult?.success(null)
         pendingFolderResult = null
+        pendingVoiceResult?.success(null)
+        pendingVoiceResult = null
+        runCatching { ttsEngine?.shutdown() }
+        ttsEngine = null
+        runCatching { mediaPlayer?.release() }
+        mediaPlayer = null
         activePowerChannel = null
         super.onDestroy()
     }
@@ -190,6 +280,7 @@ class MainActivity : FlutterActivity() {
         private const val TERMUX_CHANNEL = "dev.bistre.app/termux"
         private const val VAULT_CHANNEL = "dev.bistre.app/vault_key"
         private const val REQ_PICK_FOLDER = 42941
+        private const val REQ_VOICE_INPUT = 42942
 
         @Volatile
         private var activePowerChannel: MethodChannel? = null

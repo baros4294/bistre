@@ -75,6 +75,37 @@ impl ModelRates {
             + u128::from(output_tokens) * rate(self.output_per_mtok);
         MoneyMicros::from_micros(i64::try_from(total / 1_000_000).unwrap_or(i64::MAX))
     }
+
+    /// Dialect-accurate exact micro-USD cost.
+    ///
+    /// - Anthropic's `input_tokens` **excludes** `cache_read_input_tokens` and
+    ///   `cache_creation_input_tokens` (additive billing: `1.0x` fresh + `0.1x` read + `1.25x` 5m write).
+    /// - `OpenAI`, Gemini, and `CustomOpenAi` report `input_tokens` **inclusive** of cached tokens.
+    pub fn cost_for_dialect(
+        &self,
+        dialect: bistre_protocol::ProviderDialect,
+        usage: &bistre_protocol::UsageMetrics,
+    ) -> MoneyMicros {
+        let rate = |r: i64| u128::try_from(r).unwrap_or(0);
+        let base_in = rate(self.input_per_mtok);
+        let out_cost = u128::from(usage.output_tokens) * rate(self.output_per_mtok);
+        let total = if dialect == bistre_protocol::ProviderDialect::Anthropic {
+            let cache_read_rate = self.cached_input_per_mtok.map_or(base_in / 10, rate);
+            let cache_write_rate = base_in.saturating_mul(5) / 4; // 1.25x (5-minute TTL)
+            u128::from(usage.input_tokens) * base_in
+                + u128::from(usage.cached_input_tokens) * cache_read_rate
+                + u128::from(usage.cache_creation_input_tokens) * cache_write_rate
+                + out_cost
+        } else {
+            let cached = usage.cached_input_tokens.min(usage.input_tokens);
+            let fresh = usage.input_tokens - cached;
+            u128::from(fresh) * base_in
+                + u128::from(cached)
+                    * rate(self.cached_input_per_mtok.unwrap_or(self.input_per_mtok))
+                + out_cost
+        };
+        MoneyMicros::from_micros(i64::try_from(total / 1_000_000).unwrap_or(i64::MAX))
+    }
 }
 
 /// Parses a decimal (`"0.000000075"`, `"7.5e-8"`, `"2.5"`) times `10^scale` into an integer,
@@ -801,5 +832,36 @@ mod tests {
         assert_eq!(merged.map(|r| r.input_per_mtok), Some(1_000_000));
         assert_eq!(merged.and_then(|r| r.reasoning), Some(true));
         assert_eq!(merged.and_then(|r| r.context_tokens), Some(1000));
+    }
+
+    #[test]
+    fn anthropic_cache_cost_is_additive_and_prices_cache_creation() {
+        let rates = ModelRates {
+            input_per_mtok: 10_000_000,             // $10 / 1M
+            output_per_mtok: 20_000_000,            // $20 / 1M
+            cached_input_per_mtok: Some(1_000_000), // $1 / 1M (0.1x)
+            context_tokens: Some(200_000),
+            reasoning: Some(true),
+        };
+        let usage = bistre_protocol::UsageMetrics {
+            input_tokens: 100_000,                // $1.00 fresh
+            cached_input_tokens: 1_000_000,       // $1.00 cache read
+            cache_creation_input_tokens: 400_000, // 0.4M * $12.50 = $5.00 cache write
+            output_tokens: 100_000,               // $2.00 output
+            ..bistre_protocol::UsageMetrics::default()
+        };
+        // Anthropic: additive ($1 + $1 + $5 + $2 = $9.00 = 9_000_000 micros).
+        let anth = rates.cost_for_dialect(bistre_protocol::ProviderDialect::Anthropic, &usage);
+        assert_eq!(anth.as_micros(), 9_000_000);
+
+        // OpenAI: input_tokens includes cached_input_tokens.
+        let oai_usage = bistre_protocol::UsageMetrics {
+            input_tokens: 1_000_000,
+            cached_input_tokens: 800_000, // 200k fresh ($2) + 800k cached ($0.80)
+            output_tokens: 100_000,       // $2.00
+            ..bistre_protocol::UsageMetrics::default()
+        };
+        let oai = rates.cost_for_dialect(bistre_protocol::ProviderDialect::OpenAi, &oai_usage);
+        assert_eq!(oai.as_micros(), 4_800_000);
     }
 }

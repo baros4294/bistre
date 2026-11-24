@@ -693,6 +693,85 @@ final class EventsLaggedEvent extends BistreEvent {
 }
 
 /// An event kind this build does not know (a newer core); ignored, never an error.
+final class LiveVoiceStateEvent extends BistreEvent {
+  const LiveVoiceStateEvent({
+    required this.sessionId,
+    required this.state,
+    this.detail,
+  });
+
+  final String sessionId;
+  final String state;
+  final String? detail;
+}
+
+final class LiveVoiceTranscriptEvent extends BistreEvent {
+  const LiveVoiceTranscriptEvent({
+    required this.sessionId,
+    required this.role,
+    required this.text,
+    required this.isFinal,
+  });
+
+  final String sessionId;
+  final String role;
+  final String text;
+  final bool isFinal;
+}
+
+final class LiveVoiceAudioEvent extends BistreEvent {
+  const LiveVoiceAudioEvent({required this.sessionId, required this.wavBase64});
+
+  final String sessionId;
+  final String wavBase64;
+}
+
+final class ToolApprovalRequestedEvent extends BistreEvent {
+  const ToolApprovalRequestedEvent({
+    required this.threadId,
+    required this.runId,
+    required this.callId,
+    required this.toolName,
+    required this.argumentsJson,
+    required this.riskTier,
+  });
+
+  final String threadId;
+  final String runId;
+  final String callId;
+  final String toolName;
+  final String argumentsJson;
+  final String riskTier;
+}
+
+final class ToolExecutionUpdatedEvent extends BistreEvent {
+  const ToolExecutionUpdatedEvent({
+    required this.threadId,
+    required this.runId,
+    required this.callId,
+    required this.toolName,
+    required this.riskTier,
+    required this.status,
+    required this.summary,
+    required this.outputText,
+    this.diffText,
+    this.checkpointId,
+    this.durationMs = 0,
+  });
+
+  final String threadId;
+  final String runId;
+  final String callId;
+  final String toolName;
+  final String riskTier;
+  final String status;
+  final String summary;
+  final String outputText;
+  final String? diffText;
+  final String? checkpointId;
+  final int durationMs;
+}
+
 final class UnknownEngineEvent extends BistreEvent {
   const UnknownEngineEvent(this.kind);
   final String kind;
@@ -916,11 +995,14 @@ class EngineCronJob {
 }
 
 /// What the next request sends for one branch, by category, from core (`context_usage`).
-/// Counts are estimates (about 4 characters per token).
+/// Counted offline with universal `o200k_base` BPE tokenizer.
 class EngineContextUsage {
   const EngineContextUsage({
     this.systemTokens = 0,
     this.storyTokens = 0,
+    this.toolsTokens = 0,
+    this.attachmentsTokens = 0,
+    this.attachmentsCount = 0,
     this.historyTokens = 0,
     this.historyTurns = 0,
     this.draftTokens = 0,
@@ -931,6 +1013,9 @@ class EngineContextUsage {
 
   final int systemTokens;
   final int storyTokens;
+  final int toolsTokens;
+  final int attachmentsTokens;
+  final int attachmentsCount;
   final int historyTokens;
   final int historyTurns;
   final int draftTokens;
@@ -941,6 +1026,9 @@ class EngineContextUsage {
       other is EngineContextUsage &&
       other.systemTokens == systemTokens &&
       other.storyTokens == storyTokens &&
+      other.toolsTokens == toolsTokens &&
+      other.attachmentsTokens == attachmentsTokens &&
+      other.attachmentsCount == attachmentsCount &&
       other.historyTokens == historyTokens &&
       other.historyTurns == historyTurns &&
       other.draftTokens == draftTokens &&
@@ -950,9 +1038,61 @@ class EngineContextUsage {
   int get hashCode => Object.hash(
     systemTokens,
     storyTokens,
+    toolsTokens,
+    attachmentsTokens,
+    attachmentsCount,
     historyTokens,
     historyTurns,
     draftTokens,
     totalTokens,
   );
+}
+
+/// Live catalog metadata returned for a single model (`Fill from catalog`).
+class EngineModelCatalogInfo {
+  const EngineModelCatalogInfo({
+    this.contextWindow,
+    this.maxOutputTokens,
+    this.inputPerMtokMicros,
+    this.outputPerMtokMicros,
+    this.cachedInputPerMtokMicros,
+    this.reasoning,
+  });
+
+  final int? contextWindow;
+  final int? maxOutputTokens;
+  final int? inputPerMtokMicros;
+  final int? outputPerMtokMicros;
+  final int? cachedInputPerMtokMicros;
+  final bool? reasoning;
+}
+
+/// User-selected file attachment passed from Flutter composer into Rust core.
+class EngineAttachmentInput {
+  const EngineAttachmentInput({
+    required this.name,
+    required this.mimeType,
+    required this.localPath,
+  });
+
+  final String name;
+  final String mimeType;
+  final String localPath;
+}
+
+/// File entry reported by the Storage & File Manager inside Bistre's data directory.
+class EngineStorageFileEntry {
+  const EngineStorageFileEntry({
+    required this.relPath,
+    required this.category,
+    required this.sizeBytes,
+    required this.modifiedMs,
+    required this.deletable,
+  });
+
+  final String relPath;
+  final String category;
+  final int sizeBytes;
+  final int modifiedMs;
+  final bool deletable;
 }

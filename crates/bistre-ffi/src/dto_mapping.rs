@@ -275,6 +275,10 @@ pub(crate) fn map_hit(h: SearchHit) -> FfiSearchHit {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "Exhaustive EngineEvent -> FfiEngineEvent variant mapping."
+)]
 pub(crate) fn map_event(e: EngineEvent) -> FfiEngineEvent {
     match e {
         EngineEvent::RunStarted { thread_id, node_id } => {
@@ -324,6 +328,60 @@ pub(crate) fn map_event(e: EngineEvent) -> FfiEngineEvent {
             evt.payload_json = serde_json::to_string(&step).ok();
             evt
         }
+        EngineEvent::ToolApprovalRequested {
+            thread_id,
+            run_id,
+            call_id,
+            tool_name,
+            arguments_json,
+            risk_tier,
+        } => {
+            let mut evt = json_event(
+                "tool_approval_requested",
+                &serde_json::json!({
+                    "thread_id": thread_id,
+                    "run_id": run_id,
+                    "call_id": call_id,
+                    "tool_name": tool_name,
+                    "arguments_json": arguments_json,
+                    "risk_tier": risk_tier,
+                }),
+            );
+            evt.thread_id = Some(thread_id);
+            evt
+        }
+        EngineEvent::ToolExecutionUpdated {
+            thread_id,
+            run_id,
+            call_id,
+            tool_name,
+            risk_tier,
+            status,
+            summary,
+            output_text,
+            diff_text,
+            checkpoint_id,
+            duration_ms,
+        } => {
+            let mut evt = json_event(
+                "tool_execution_updated",
+                &serde_json::json!({
+                    "thread_id": thread_id,
+                    "run_id": run_id,
+                    "call_id": call_id,
+                    "tool_name": tool_name,
+                    "risk_tier": risk_tier,
+                    "status": status,
+                    "summary": summary,
+                    "output_text": output_text,
+                    "diff_text": diff_text,
+                    "checkpoint_id": checkpoint_id,
+                    "duration_ms": duration_ms,
+                }),
+            );
+            evt.thread_id = Some(thread_id);
+            evt
+        }
         EngineEvent::SteeringQueueChanged {
             thread_id,
             pending_count,
@@ -363,7 +421,37 @@ pub(crate) fn map_event(e: EngineEvent) -> FfiEngineEvent {
             evt.semver = Some(semver);
             evt
         }
+        EngineEvent::LiveVoiceState {
+            session_id,
+            state,
+            detail,
+        } => json_event(
+            "live_voice_state",
+            &serde_json::json!({ "session_id": session_id, "state": state, "detail": detail }),
+        ),
+        EngineEvent::LiveVoiceTranscript {
+            session_id,
+            role,
+            text,
+            is_final,
+        } => json_event(
+            "live_voice_transcript",
+            &serde_json::json!({ "session_id": session_id, "role": role, "text": text, "is_final": is_final }),
+        ),
+        EngineEvent::LiveVoiceAudio {
+            session_id,
+            wav_base64,
+        } => json_event(
+            "live_voice_audio",
+            &serde_json::json!({ "session_id": session_id, "wav_base64": wav_base64 }),
+        ),
     }
+}
+
+fn json_event(kind: &str, payload: &serde_json::Value) -> FfiEngineEvent {
+    let mut evt = FfiEngineEvent::blank(kind);
+    evt.payload_json = Some(payload.to_string());
+    evt
 }
 
 /// Maps a core error to the FFI error string: `diag.<key>` or `diag.<key>:<detail_code>`.

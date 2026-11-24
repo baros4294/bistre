@@ -255,6 +255,7 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
       customAccentHex: look.customAccentHex,
       typography: look.typography,
       reducedEffects: look.reducedEffects,
+      syntaxThemeId: look.syntaxThemeId,
     );
   }
 

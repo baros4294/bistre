@@ -15,7 +15,27 @@
 namespace {
 
 constexpr UINT kTrayCallbackMsg = WM_APP + 42;
+constexpr UINT kMicChunkMsg = WM_APP + 43;
 constexpr UINT kTrayIconId = 1001;
+constexpr size_t kMicChunkBytes = 3200;  // 100 ms @ 16 kHz, 16-bit mono PCM
+
+std::string Base64EncodeBytes(const uint8_t* data, size_t len) {
+  static constexpr char kTable[] =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::string out;
+  out.reserve(((len + 2) / 3) * 4);
+  for (size_t i = 0; i < len; i += 3) {
+    const uint32_t b0 = data[i];
+    const uint32_t b1 = (i + 1 < len) ? data[i + 1] : 0;
+    const uint32_t b2 = (i + 2 < len) ? data[i + 2] : 0;
+    const uint32_t triple = (b0 << 16) | (b1 << 8) | b2;
+    out.push_back(kTable[(triple >> 18) & 0x3F]);
+    out.push_back(kTable[(triple >> 12) & 0x3F]);
+    out.push_back((i + 1 < len) ? kTable[(triple >> 6) & 0x3F] : '=');
+    out.push_back((i + 2 < len) ? kTable[triple & 0x3F] : '=');
+  }
+  return out;
+}
 constexpr const wchar_t kAutoStartRegKey[] =
     L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 constexpr const wchar_t kAutoStartValueName[] = L"Bistre";
@@ -292,6 +312,9 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  StopMicCapture();
+  PlaySoundW(nullptr, nullptr, 0);
+  playing_wav_.clear();
   EnsureTrayIcon(false);
   host_channel_.reset();
   if (flutter_controller_) {
@@ -548,7 +571,111 @@ void FlutterWindow::HandleDesktopHostCall(
     return;
   }
 
+  if (method == "playNotificationSound") {
+    MessageBeep(MB_OK);
+    result->Success(flutter::EncodableValue(true));
+    return;
+  }
+
+  if (method == "playWavBytes" && args != nullptr) {
+    auto it = args->find(flutter::EncodableValue("bytes"));
+    if (it != args->end()) {
+      if (const auto* bytes = std::get_if<std::vector<uint8_t>>(&it->second)) {
+        PlaySoundW(nullptr, nullptr, 0);
+        playing_wav_ = *bytes;
+        if (!playing_wav_.empty()) {
+          PlaySoundW(reinterpret_cast<LPCWSTR>(playing_wav_.data()), nullptr,
+                     SND_MEMORY | SND_ASYNC | SND_NODEFAULT);
+        }
+      }
+    }
+    result->Success(flutter::EncodableValue(true));
+    return;
+  }
+
+  if (method == "stopAudioPlayback") {
+    PlaySoundW(nullptr, nullptr, 0);
+    playing_wav_.clear();
+    result->Success(flutter::EncodableValue(true));
+    return;
+  }
+
+  if (method == "startMicCapture") {
+    result->Success(flutter::EncodableValue(StartMicCapture()));
+    return;
+  }
+
+  if (method == "stopMicCapture") {
+    StopMicCapture();
+    result->Success(flutter::EncodableValue(true));
+    return;
+  }
+
   result->NotImplemented();
+}
+
+bool FlutterWindow::StartMicCapture() {
+  StopMicCapture();
+  HWND hwnd = GetHandle();
+  if (hwnd == nullptr) {
+    return false;
+  }
+  WAVEFORMATEX fmt{};
+  fmt.wFormatTag = WAVE_FORMAT_PCM;
+  fmt.nChannels = 1;
+  fmt.nSamplesPerSec = 16000;
+  fmt.wBitsPerSample = 16;
+  fmt.nBlockAlign = 2;
+  fmt.nAvgBytesPerSec = 32000;
+  if (waveInOpen(&wave_in_, WAVE_MAPPER, &fmt,
+                 reinterpret_cast<DWORD_PTR>(hwnd), 0,
+                 CALLBACK_WINDOW) != MMSYSERR_NOERROR) {
+    wave_in_ = nullptr;
+    return false;
+  }
+  for (int i = 0; i < 2; ++i) {
+    wave_bufs_[i].assign(kMicChunkBytes, 0);
+    wave_hdrs_[i] = WAVEHDR{};
+    wave_hdrs_[i].lpData = reinterpret_cast<LPSTR>(wave_bufs_[i].data());
+    wave_hdrs_[i].dwBufferLength = static_cast<DWORD>(kMicChunkBytes);
+    waveInPrepareHeader(wave_in_, &wave_hdrs_[i], sizeof(WAVEHDR));
+    waveInAddBuffer(wave_in_, &wave_hdrs_[i], sizeof(WAVEHDR));
+  }
+  waveInStart(wave_in_);
+  return true;
+}
+
+void FlutterWindow::StopMicCapture() {
+  if (wave_in_ != nullptr) {
+    waveInStop(wave_in_);
+    waveInReset(wave_in_);
+    for (int i = 0; i < 2; ++i) {
+      waveInUnprepareHeader(wave_in_, &wave_hdrs_[i], sizeof(WAVEHDR));
+      wave_bufs_[i].clear();
+    }
+    waveInClose(wave_in_);
+    wave_in_ = nullptr;
+  }
+  std::lock_guard<std::mutex> lock(mic_mutex_);
+  mic_queue_.clear();
+}
+
+void FlutterWindow::DrainMicChunks() {
+  if (!host_channel_) {
+    return;
+  }
+  std::vector<std::vector<uint8_t>> batch;
+  {
+    std::lock_guard<std::mutex> lock(mic_mutex_);
+    batch.swap(mic_queue_);
+  }
+  for (const auto& pcm : batch) {
+    if (pcm.empty()) continue;
+    host_channel_->InvokeMethod(
+        "onMicPcmChunk",
+        std::make_unique<flutter::EncodableValue>(
+            Base64EncodeBytes(pcm.data(), pcm.size())));
+  }
 }
 
 void FlutterWindow::EmitWindowBoundsChanged() {
@@ -609,6 +736,25 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     case WM_CLOSE:
       EmitWindowBoundsChanged();
       break;
+    case MM_WIM_DATA: {
+      auto* hdr = reinterpret_cast<WAVEHDR*>(lparam);
+      if (wave_in_ != nullptr && hdr != nullptr && hdr->dwBytesRecorded > 0) {
+        const auto* ptr = reinterpret_cast<const uint8_t*>(hdr->lpData);
+        std::vector<uint8_t> chunk(ptr, ptr + hdr->dwBytesRecorded);
+        {
+          std::lock_guard<std::mutex> lock(mic_mutex_);
+          if (mic_queue_.size() < 16) {
+            mic_queue_.push_back(std::move(chunk));
+          }
+        }
+        PostMessageW(hwnd, kMicChunkMsg, 0, 0);
+        waveInAddBuffer(wave_in_, hdr, sizeof(WAVEHDR));
+      }
+      return 0;
+    }
+    case kMicChunkMsg:
+      DrainMicChunks();
+      return 0;
     case kTrayCallbackMsg:
       if (lparam == WM_LBUTTONUP || lparam == WM_LBUTTONDBLCLK ||
           lparam == WM_RBUTTONUP) {

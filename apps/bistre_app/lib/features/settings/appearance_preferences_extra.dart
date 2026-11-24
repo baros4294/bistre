@@ -9,6 +9,7 @@ import '../../design/ink_primitives.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../../platform/desktop_host.dart';
+import '../chat/markdown_folio_view.dart';
 import '../shell/folio_controller.dart';
 
 /// Extended Preferences sections mounted inside Appearance & Preferences:
@@ -29,21 +30,6 @@ class _AppearancePreferencesExtraState
     extends State<AppearancePreferencesExtra> {
   static const String _kCodeSample =
       'fn greet(name: &str) -> String { format!("Hello, {name}!") }';
-  final TextEditingController _globalInstrCtrl = TextEditingController();
-  final FocusNode _globalInstrFocus = FocusNode();
-
-  @override
-  void initState() {
-    super.initState();
-    _globalInstrCtrl.text = widget.controller.uiPrefs.globalInstructions;
-  }
-
-  @override
-  void dispose() {
-    _globalInstrCtrl.dispose();
-    _globalInstrFocus.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -204,14 +190,36 @@ class _AppearancePreferencesExtraState
                     ],
                   ),
                   const SizedBox(height: 8),
-                  FolioSurface(
-                    padding: const EdgeInsetsDirectional.all(10),
-                    borderRadius: 8,
-                    child: InkText(
-                      _kCodeSample,
-                      role: InkTextRole.codeBlock,
-                      color: theme.inkPrimary,
-                    ),
+                  Builder(
+                    builder: (context) {
+                      final activeSyntaxId = theme.isDark
+                          ? p.codeSyntaxThemeDark
+                          : p.codeSyntaxThemeLight;
+                      final palette = BistreSyntaxPalette.forId(
+                        activeSyntaxId,
+                        isDark: theme.isDark,
+                      );
+                      return DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: palette.background,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: theme.borderHairline),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsetsDirectional.all(10),
+                          child: Directionality(
+                            textDirection: TextDirection.ltr,
+                            child: Text.rich(
+                              highlightCodeSpans(
+                                _kCodeSample,
+                                theme,
+                                syntaxThemeIdOverride: activeSyntaxId,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -246,40 +254,6 @@ class _AppearancePreferencesExtraState
                 ),
               ),
             ),
-            BistreSettingRow(
-              label: l10n.t(L10nKey.settingsPrefsGlobalInstructions),
-              description: l10n.t(L10nKey.settingsPrefsGlobalInstructionsHint),
-              bottom: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  QuillInput(
-                    controller: _globalInstrCtrl,
-                    focusNode: _globalInstrFocus,
-                    placeholder: l10n.t(
-                      L10nKey.settingsPrefsGlobalInstructionsHint,
-                    ),
-                    maxLines: 4,
-                    submitOnEnter: false,
-                    onSubmitted: () {},
-                  ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: AlignmentDirectional.centerEnd,
-                    child: EngravedButton(
-                      label: l10n.t(L10nKey.threadSave),
-                      compact: true,
-                      onPressed: () => unawaited(
-                        ctrl.saveUiPrefs(
-                          p.copyWith(
-                            globalInstructions: _globalInstrCtrl.text.trim(),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
         if (Platform.isWindows || Platform.isLinux) ...[
@@ -299,15 +273,32 @@ class _AppearancePreferencesExtraState
                   ),
                 ),
               ),
-              _PrefToggle(
+              BistreSettingRow(
                 label: l10n.t(L10nKey.settingsDesktopNotifySound),
-                value: p.desktopNotifySound,
-                reduceMotion: ctrl.reduceMotionOverride,
-                onChanged: (v) => unawaited(
-                  ctrl.saveUiPrefs(
-                    p.copyWith(desktopNotifySound: v),
-                    quiet: true,
-                  ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    EngravedButton(
+                      label: l10n.t(L10nKey.settingsDesktopNotifyPreview),
+                      compact: true,
+                      onPressed: () =>
+                          unawaited(BistreDesktopHost.playNotificationSound()),
+                    ),
+                    const SizedBox(width: 8),
+                    BistreSwitch(
+                      value: p.desktopNotifySound,
+                      semanticsLabel: l10n.t(
+                        L10nKey.settingsDesktopNotifySound,
+                      ),
+                      reduceMotionOverride: ctrl.reduceMotionOverride,
+                      onChanged: (v) => unawaited(
+                        ctrl.saveUiPrefs(
+                          p.copyWith(desktopNotifySound: v),
+                          quiet: true,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               _PrefToggle(

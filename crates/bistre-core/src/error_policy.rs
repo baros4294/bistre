@@ -107,13 +107,17 @@ pub fn classify_http_failure(status: u16, body: &str) -> FailureKind {
     }
 }
 
-/// Builds the typed error, encoding the status and any retry hint in the detail code
-/// (`http_429;retry_after_ms=30000`) so the run loop can schedule its backoff.
+/// Builds the typed error, encoding the status, transient marker, and any retry hint in the detail
+/// code (`http_429;retry_after_ms=30000` or `http_400;transient`) so the run loop schedules backoff.
 pub fn failure_error(kind: FailureKind, status: u16, retry_after_ms: Option<u64>) -> BistreError {
-    let detail = retry_after_ms.map_or_else(
-        || format!("http_{status}"),
-        |ms| format!("http_{status};retry_after_ms={ms}"),
-    );
+    let mut detail = format!("http_{status}");
+    if kind == FailureKind::Transient && status == 400 {
+        detail.push_str(";transient");
+    }
+    if let Some(ms) = retry_after_ms {
+        detail.push_str(";retry_after_ms=");
+        detail.push_str(&ms.to_string());
+    }
     BistreError::with_detail(kind.diagnostic(), detail)
 }
 
@@ -211,6 +215,12 @@ pub fn may_retry_stream(full_text: &str, tool_calls_emitted: usize) -> bool {
 /// Ordered HTTP 400 heal steps (first applicable step wins).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Http400Heal {
+    StripOpaqueThoughtSignatures,
+    StripContextManagement,
+    StripReplyPrefill,
+    StripPromptCacheControl,
+    StripInclude,
+    FallbackInputFileToExtractedText,
     StripAnthropicThinkingDisplay,
     GeminiThinkingLevelToBudget,
     StepDownReasoningEffort,
@@ -221,7 +231,13 @@ pub enum Http400Heal {
     DropReasoning,
 }
 
-pub const HEAL_LADDER: [Http400Heal; 8] = [
+pub const HEAL_LADDER: [Http400Heal; 14] = [
+    Http400Heal::StripOpaqueThoughtSignatures,
+    Http400Heal::StripContextManagement,
+    Http400Heal::StripReplyPrefill,
+    Http400Heal::StripPromptCacheControl,
+    Http400Heal::StripInclude,
+    Http400Heal::FallbackInputFileToExtractedText,
     Http400Heal::StripAnthropicThinkingDisplay,
     Http400Heal::GeminiThinkingLevelToBudget,
     Http400Heal::StepDownReasoningEffort,
@@ -236,6 +252,12 @@ impl Http400Heal {
     /// Stable detail code reported with `DiagnosticKey::ProviderRequestHealed`.
     pub const fn code(self) -> &'static str {
         match self {
+            Self::StripOpaqueThoughtSignatures => "heal_strip_thought_signatures",
+            Self::StripContextManagement => "heal_strip_context_management",
+            Self::StripReplyPrefill => "heal_strip_reply_prefill",
+            Self::StripPromptCacheControl => "heal_strip_prompt_cache_control",
+            Self::StripInclude => "heal_strip_include",
+            Self::FallbackInputFileToExtractedText => "heal_fallback_input_file",
             Self::StripAnthropicThinkingDisplay => "heal_strip_thinking_display",
             Self::GeminiThinkingLevelToBudget => "heal_thinking_level_to_budget",
             Self::StepDownReasoningEffort => "heal_reasoning_effort_step_down",
@@ -248,11 +270,39 @@ impl Http400Heal {
     }
 
     /// Applies this heal to the JSON body; returns `true` only when the body changed.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Ordered 14-step wire-dialect heal dispatch kept linear for auditability."
+    )]
     pub fn apply(self, body: &mut Value) -> bool {
         let Some(obj) = body.as_object_mut() else {
             return false;
         };
         match self {
+            Self::StripOpaqueThoughtSignatures => strip_opaque_thought_signatures(obj),
+            Self::StripContextManagement => {
+                let mut changed = obj.remove("context_management").is_some();
+                changed |= obj.remove("previous_response_id").is_some();
+                changed |= obj.remove("previous_interaction_id").is_some();
+                changed
+            }
+            Self::StripReplyPrefill => {
+                if let Some(msgs) = obj.get_mut("messages").and_then(Value::as_array_mut)
+                    && msgs
+                        .last()
+                        .and_then(|m| m.get("role"))
+                        .and_then(Value::as_str)
+                        == Some("assistant")
+                {
+                    msgs.pop();
+                    true
+                } else {
+                    false
+                }
+            }
+            Self::StripPromptCacheControl => strip_prompt_cache_controls(obj),
+            Self::StripInclude => obj.remove("include").is_some(),
+            Self::FallbackInputFileToExtractedText => fallback_input_files_to_text(obj),
             Self::StripAnthropicThinkingDisplay => obj
                 .get_mut("thinking")
                 .and_then(Value::as_object_mut)
@@ -369,14 +419,229 @@ impl Http400Heal {
     }
 }
 
+/// Strips provider-specific opaque reasoning/thought blocks and signatures from a request body
+/// when a provider rejects a stale or prefix-mismatched signature with HTTP 400.
+fn strip_opaque_thought_signatures(obj: &mut serde_json::Map<String, Value>) -> bool {
+    let mut changed = false;
+    // OpenAI Responses: remove `type == "reasoning"` items from `input`.
+    if let Some(input) = obj.get_mut("input").and_then(Value::as_array_mut) {
+        let before = input.len();
+        input.retain(|item| item.get("type").and_then(Value::as_str) != Some("reasoning"));
+        if input.len() != before {
+            changed = true;
+        }
+        // Gemini Interactions: strip `thought` parts and `signature` fields from `input[*].content[*]`.
+        for turn in input.iter_mut() {
+            if let Some(parts) = turn.get_mut("content").and_then(Value::as_array_mut) {
+                let p_before = parts.len();
+                parts.retain(|p| p.get("type").and_then(Value::as_str) != Some("thought"));
+                if parts.len() != p_before {
+                    changed = true;
+                }
+                for p in parts.iter_mut() {
+                    if let Some(p_obj) = p.as_object_mut() {
+                        changed |= p_obj.remove("signature").is_some();
+                        changed |= p_obj.remove("thought_signature").is_some();
+                        changed |= p_obj.remove("thoughtSignature").is_some();
+                    }
+                }
+            }
+        }
+    }
+    // Anthropic Messages: strip `thinking` and `redacted_thinking` content blocks from `messages`.
+    if let Some(messages) = obj.get_mut("messages").and_then(Value::as_array_mut) {
+        for msg in messages.iter_mut() {
+            if let Some(blocks) = msg.get_mut("content").and_then(Value::as_array_mut) {
+                let b_before = blocks.len();
+                blocks.retain(|b| {
+                    !matches!(
+                        b.get("type").and_then(Value::as_str),
+                        Some("thinking" | "redacted_thinking")
+                    )
+                });
+                if blocks.len() != b_before {
+                    changed = true;
+                }
+            }
+        }
+    }
+    // Gemini generateContent: strip `thought: true` parts and replace any `thoughtSignature`
+    // on functionCall parts with the official bypass sentinel or remove it on non-call parts.
+    if let Some(contents) = obj.get_mut("contents").and_then(Value::as_array_mut) {
+        for turn in contents.iter_mut() {
+            if let Some(parts) = turn.get_mut("parts").and_then(Value::as_array_mut) {
+                let p_before = parts.len();
+                parts.retain(|p| p.get("thought").and_then(Value::as_bool) != Some(true));
+                if parts.len() != p_before {
+                    changed = true;
+                }
+                for p in parts.iter_mut() {
+                    if let Some(p_obj) = p.as_object_mut() {
+                        let is_fc = p_obj.contains_key("functionCall");
+                        if is_fc {
+                            if p_obj.get("thoughtSignature").and_then(Value::as_str)
+                                != Some(crate::replay_policy::GEMINI_THOUGHT_SIGNATURE_BYPASS)
+                                && p_obj.contains_key("thoughtSignature")
+                            {
+                                p_obj.insert(
+                                    "thoughtSignature".to_owned(),
+                                    Value::String(
+                                        crate::replay_policy::GEMINI_THOUGHT_SIGNATURE_BYPASS
+                                            .to_owned(),
+                                    ),
+                                );
+                                changed = true;
+                            }
+                        } else {
+                            changed |= p_obj.remove("thoughtSignature").is_some();
+                            changed |= p_obj.remove("thought_signature").is_some();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    changed
+}
+
+/// Strips prompt caching directives (`cache_control`, `prompt_cache_key`) when a gateway or
+/// older model endpoint rejects caching fields with HTTP 400.
+fn strip_prompt_cache_controls(obj: &mut serde_json::Map<String, Value>) -> bool {
+    let mut changed = obj.remove("cache_control").is_some();
+    changed |= obj.remove("prompt_cache_key").is_some();
+    if let Some(system_blocks) = obj.get_mut("system").and_then(Value::as_array_mut) {
+        for block in system_blocks.iter_mut() {
+            if let Some(b_obj) = block.as_object_mut() {
+                changed |= b_obj.remove("cache_control").is_some();
+            }
+        }
+    }
+    if let Some(tools) = obj.get_mut("tools").and_then(Value::as_array_mut) {
+        for tool in tools.iter_mut() {
+            if let Some(t_obj) = tool.as_object_mut() {
+                changed |= t_obj.remove("cache_control").is_some();
+            }
+        }
+    }
+    if let Some(messages) = obj.get_mut("messages").and_then(Value::as_array_mut) {
+        for msg in messages.iter_mut() {
+            if let Some(blocks) = msg.get_mut("content").and_then(Value::as_array_mut) {
+                for block in blocks.iter_mut() {
+                    if let Some(b_obj) = block.as_object_mut() {
+                        changed |= b_obj.remove("cache_control").is_some();
+                    }
+                }
+            }
+        }
+    }
+    changed
+}
+
+/// Replaces unsupported `input_file` parts in `OpenAI` Responses `input` with a readable
+/// `input_text` notice when a proxy or model rejects native `input_file` blocks with HTTP 400.
+fn fallback_input_files_to_text(obj: &mut serde_json::Map<String, Value>) -> bool {
+    let mut changed = false;
+    if let Some(input) = obj.get_mut("input").and_then(Value::as_array_mut) {
+        for item in input.iter_mut() {
+            if let Some(parts) = item.get_mut("content").and_then(Value::as_array_mut) {
+                for part in parts.iter_mut() {
+                    if part.get("type").and_then(Value::as_str) == Some("input_file") {
+                        let name = part
+                            .get("filename")
+                            .or_else(|| part.get("file_id"))
+                            .and_then(Value::as_str)
+                            .unwrap_or("attachment")
+                            .to_owned();
+                        *part = serde_json::json!({
+                            "type": "input_text",
+                            "text": format!("[Attached file `{name}` could not be passed natively by this endpoint]"),
+                        });
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+    changed
+}
+
 /// Applies the next applicable heal at or after `*cursor`; advances the cursor past it.
 pub fn apply_next_heal(body: &mut Value, cursor: &mut usize) -> Option<Http400Heal> {
+    apply_next_heal_for_dialect(
+        bistre_protocol::ProviderDialect::CustomOpenAi,
+        body,
+        cursor,
+        "",
+    )
+}
+
+/// Dialect-aware, error-body-guided HTTP 400 heal stepper:
+/// - Immediately strips opaque signatures if the error cites `signature` / `encrypted_content` /
+///   `thought_signature` / invalid `thinking` block.
+/// - Immediately strips `cache_control` / `prompt_cache_key` when rejected.
+/// - Immediately strips `temperature`/`top_p` when the error body cites sampling conflict with thinking.
+/// - Never renames `max_tokens` -> `max_completion_tokens` on Anthropic or Gemini.
+/// - Allows `StepDownReasoningEffort` to step repeatedly (`max -> xhigh -> high`) before moving on.
+pub fn apply_next_heal_for_dialect(
+    dialect: bistre_protocol::ProviderDialect,
+    body: &mut Value,
+    cursor: &mut usize,
+    error_body: &str,
+) -> Option<Http400Heal> {
+    let lower = scan(error_body);
+    if (lower.contains("signature")
+        || lower.contains("encrypted_content")
+        || lower.contains("thought_signature")
+        || (lower.contains("thinking") && lower.contains("cannot be modified")))
+        && Http400Heal::StripOpaqueThoughtSignatures.apply(body)
+    {
+        return Some(Http400Heal::StripOpaqueThoughtSignatures);
+    }
+    if (lower.contains("context_management")
+        || lower.contains("previous_response_id")
+        || lower.contains("previous_interaction_id")
+        || lower.contains("anthropic-beta"))
+        && Http400Heal::StripContextManagement.apply(body)
+    {
+        return Some(Http400Heal::StripContextManagement);
+    }
+    if lower.contains("prefill") && Http400Heal::StripReplyPrefill.apply(body) {
+        return Some(Http400Heal::StripReplyPrefill);
+    }
+    if (lower.contains("cache_control") || lower.contains("prompt_cache"))
+        && Http400Heal::StripPromptCacheControl.apply(body)
+    {
+        return Some(Http400Heal::StripPromptCacheControl);
+    }
+    if (lower.contains("input_file") || lower.contains("file_data"))
+        && Http400Heal::FallbackInputFileToExtractedText.apply(body)
+    {
+        return Some(Http400Heal::FallbackInputFileToExtractedText);
+    }
+    if (lower.contains("temperature") || lower.contains("top_p") || lower.contains("topp"))
+        && Http400Heal::StripSamplingParams.apply(body)
+    {
+        return Some(Http400Heal::StripSamplingParams);
+    }
     while *cursor < HEAL_LADDER.len() {
         let heal = HEAL_LADDER[*cursor];
-        *cursor += 1;
+        if heal == Http400Heal::ToggleMaxTokensField
+            && matches!(
+                dialect,
+                bistre_protocol::ProviderDialect::Anthropic
+                    | bistre_protocol::ProviderDialect::GoogleGemini
+            )
+        {
+            *cursor += 1;
+            continue;
+        }
         if heal.apply(body) {
+            if heal != Http400Heal::StepDownReasoningEffort {
+                *cursor += 1;
+            }
             return Some(heal);
         }
+        *cursor += 1;
     }
     None
 }
@@ -476,6 +741,7 @@ mod tests {
             vec![
                 Http400Heal::StripAnthropicThinkingDisplay,
                 Http400Heal::StepDownReasoningEffort,
+                Http400Heal::StepDownReasoningEffort,
                 Http400Heal::StripStreamOptions,
                 Http400Heal::ToggleMaxTokensField,
                 Http400Heal::StripBuiltinTools,
@@ -524,5 +790,83 @@ mod tests {
                 .is_none()
         );
         assert_eq!(gemini["generation_config"]["temperature"], 1);
+    }
+
+    #[test]
+    fn anthropic_400_never_renames_max_tokens_and_transient_400_is_tagged() {
+        let mut body = json!({
+            "model": "claude-test",
+            "max_tokens": 4096,
+            "temperature": 0.7,
+            "thinking": { "type": "adaptive" },
+            "output_config": { "effort": "max" }
+        });
+        let mut cursor = 0;
+        let h1 = apply_next_heal_for_dialect(
+            bistre_protocol::ProviderDialect::Anthropic,
+            &mut body,
+            &mut cursor,
+            "temperature may only be set to 1 when thinking is enabled",
+        );
+        assert_eq!(h1, Some(Http400Heal::StripSamplingParams));
+        assert!(body.get("temperature").is_none());
+        assert_eq!(body["max_tokens"], 4096);
+
+        while apply_next_heal_for_dialect(
+            bistre_protocol::ProviderDialect::Anthropic,
+            &mut body,
+            &mut cursor,
+            "generic bad request",
+        )
+        .is_some()
+        {}
+        assert_eq!(body["max_tokens"], 4096);
+        assert!(body.get("max_completion_tokens").is_none());
+
+        let err = failure_error(FailureKind::Transient, 400, None);
+        assert!(
+            err.detail_code
+                .as_deref()
+                .is_some_and(|d| d.contains("transient"))
+        );
+    }
+
+    #[test]
+    fn strips_opaque_thought_signatures_and_prompt_cache_controls_on_400() {
+        let mut anth = json!({
+            "model": "claude-test",
+            "max_tokens": 16384,
+            "cache_control": { "type": "ephemeral" },
+            "system": [{ "type": "text", "text": "sys", "cache_control": { "type": "ephemeral" } }],
+            "messages": [
+                { "role": "user", "content": "hi" },
+                { "role": "assistant", "content": [
+                    { "type": "thinking", "thinking": "t", "signature": "stale_sig" },
+                    { "type": "text", "text": "ok" }
+                ]}
+            ]
+        });
+        let mut cursor = 0;
+        let h1 = apply_next_heal_for_dialect(
+            bistre_protocol::ProviderDialect::Anthropic,
+            &mut anth,
+            &mut cursor,
+            "Invalid signature in thinking block",
+        );
+        assert_eq!(h1, Some(Http400Heal::StripOpaqueThoughtSignatures));
+        assert_eq!(
+            anth["messages"][1]["content"].as_array().map(Vec::len),
+            Some(1)
+        );
+
+        let h2 = apply_next_heal_for_dialect(
+            bistre_protocol::ProviderDialect::Anthropic,
+            &mut anth,
+            &mut cursor,
+            "cache_control is not supported by this proxy",
+        );
+        assert_eq!(h2, Some(Http400Heal::StripPromptCacheControl));
+        assert!(anth.get("cache_control").is_none());
+        assert!(anth["system"][0].get("cache_control").is_none());
     }
 }

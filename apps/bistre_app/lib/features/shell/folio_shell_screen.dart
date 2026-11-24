@@ -894,11 +894,12 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                     semanticsLabel: l10n.t(L10nKey.studioTitle),
                     onPressed: ctrl.toggleStudioPane,
                   ),
-                BistreIconButton(
-                  icon: BistreUiIcon.settings,
-                  semanticsLabel: l10n.t(L10nKey.sidebarSettings),
-                  onPressed: ctrl.openSettings,
-                ),
+                if (!(isWide && ctrl.sidebarOpen))
+                  BistreIconButton(
+                    icon: BistreUiIcon.settings,
+                    semanticsLabel: l10n.t(L10nKey.sidebarSettings),
+                    onPressed: ctrl.openSettings,
+                  ),
               ];
               if (stackActions) {
                 return Column(

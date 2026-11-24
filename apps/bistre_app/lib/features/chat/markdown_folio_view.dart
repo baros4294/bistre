@@ -11,10 +11,13 @@ import '../../design/ink_primitives.dart';
 import '../../design/math_font_gate.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
+import 'code_syntax_highlighter.dart';
 import 'code_wrap_scope.dart';
 import 'content_direction.dart';
 import 'math_folio_view.dart';
 import 'mermaid_canvas_view.dart';
+
+export 'code_syntax_highlighter.dart' show highlightCodeSpans;
 
 /// Pure `package:flutter/widgets.dart` editorial Markdown, GFM Table, TeX Math,
 /// Mermaid Vector Diagram, and framed code renderer.
@@ -831,7 +834,10 @@ class _FencedCodeCardState extends State<_FencedCodeCard> {
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);
-    final codeSurface = theme.isDark ? theme.bgCanvas : theme.bgElevated;
+    final codeSurface = BistreSyntaxPalette.forId(
+      theme.syntaxThemeId,
+      isDark: theme.isDark,
+    ).background;
     final headerSurface = theme.bgSurface;
     final head = widget.code.length > 64
         ? widget.code.substring(0, 64)
@@ -1053,149 +1059,8 @@ class _FencedCodeCardState extends State<_FencedCodeCard> {
 /// layout: 8 lines cut it from ~4.0 to ~0.85 ms per slow frame in the profile trace (Spec 11).
 const int kCodeChunkLines = 8;
 
-final Expando<_CodeHighlightStyles> _codeStyleCache =
-    Expando<_CodeHighlightStyles>('bistre_code_styles');
-
-final class _CodeHighlightStyles {
-  _CodeHighlightStyles(BistreThemeData theme)
-    : base = BistreTypography.codeBlock(
-        theme.inkPrimary,
-        config: theme.typography,
-      ),
-      comment = BistreTypography.codeBlock(
-        theme.inkMuted,
-        config: theme.typography,
-      ).copyWith(fontStyle: FontStyle.italic),
-      string = BistreTypography.codeBlock(
-        theme.statusOk,
-        config: theme.typography,
-      ),
-      keyword = BistreTypography.codeBlock(
-        theme.accentWax,
-        config: theme.typography,
-      ).copyWith(fontWeight: FontWeight.w500),
-      typeOrNumber = BistreTypography.codeBlock(
-        theme.accentBrass,
-        config: theme.typography,
-      );
-
-  final TextStyle base;
-  final TextStyle comment;
-  final TextStyle string;
-  final TextStyle keyword;
-  final TextStyle typeOrNumber;
-}
-
-/// Zero-dependency Sepia token syntax highlighter using strictly WCAG-verified theme tokens.
-/// Preserves every source character verbatim so text selection and `toPlainText()` stay exact.
-TextSpan _highlightCode(String source, BistreThemeData theme) {
-  final styles = _codeStyleCache[theme] ??= _CodeHighlightStyles(theme);
-  final base = styles.base;
-  final commentStyle = styles.comment;
-  final stringStyle = styles.string;
-  final keywordStyle = styles.keyword;
-  final typeOrNumberStyle = styles.typeOrNumber;
-
-  final spans = <InlineSpan>[];
-  var cursor = 0;
-
-  for (final match in _codeTokenPattern.allMatches(source)) {
-    if (match.start > cursor) {
-      spans.add(TextSpan(text: source.substring(cursor, match.start)));
-    }
-    final tok = match.group(0)!;
-    if (tok.startsWith('//') || tok.startsWith('/*') || tok.startsWith('#')) {
-      spans.add(TextSpan(text: tok, style: commentStyle));
-    } else if (tok.startsWith('"') ||
-        tok.startsWith("'") ||
-        tok.startsWith('`')) {
-      spans.add(TextSpan(text: tok, style: stringStyle));
-    } else if (_codeKeywords.contains(tok)) {
-      spans.add(TextSpan(text: tok, style: keywordStyle));
-    } else if (_isTypeOrNumber(tok)) {
-      spans.add(TextSpan(text: tok, style: typeOrNumberStyle));
-    } else {
-      spans.add(TextSpan(text: tok));
-    }
-    cursor = match.end;
-  }
-
-  if (cursor < source.length) {
-    spans.add(TextSpan(text: source.substring(cursor)));
-  }
-
-  return TextSpan(style: base, children: spans);
-}
-
-final RegExp _codeTokenPattern = RegExp(
-  r'//[^\n]*|/\*[\s\S]*?\*/|#[^\n]*|"(?:\\.|[^"\\])*"|'
-  r"'(?:\\.|[^'\\])*'"
-  r'|\b(?:0x[0-9a-fA-F]+|\d+(?:\.\d+)?)\b|\b[A-Za-z_][A-Za-z0-9_]*\b',
-);
-
-const Set<String> _codeKeywords = <String>{
-  'pub',
-  'fn',
-  'let',
-  'mut',
-  'const',
-  'static',
-  'struct',
-  'enum',
-  'impl',
-  'trait',
-  'match',
-  'if',
-  'else',
-  'for',
-  'while',
-  'loop',
-  'return',
-  'async',
-  'await',
-  'use',
-  'mod',
-  'where',
-  'class',
-  'final',
-  'void',
-  'var',
-  'import',
-  'export',
-  'from',
-  'def',
-  'function',
-  'type',
-  'interface',
-  'true',
-  'false',
-  'null',
-  'None',
-  'self',
-  'this',
-  'super',
-  'PRAGMA',
-  'SELECT',
-  'FROM',
-  'WHERE',
-  'INSERT',
-  'UPDATE',
-  'DELETE',
-};
-
-bool _isTypeOrNumber(String token) {
-  if (token.isEmpty) return false;
-  final first = token.codeUnitAt(0);
-  if (first >= 48 && first <= 57) return true;
-  if (first >= 65 && first <= 90) return true;
-  return token == 'i32' ||
-      token == 'i64' ||
-      token == 'u32' ||
-      token == 'u64' ||
-      token == 'usize' ||
-      token == 'bool' ||
-      token == 'str';
-}
+TextSpan _highlightCode(String source, BistreThemeData theme) =>
+    highlightCodeSpans(source, theme);
 
 class _InlineRichText extends StatelessWidget {
   const _InlineRichText({

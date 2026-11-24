@@ -10,12 +10,14 @@
 //! instant `401`/`403`/`429` failover, the ordered HTTP 400 heal ladder, the Gemini downgrade,
 //! and typed failure classification with server retry hints (`error_policy`).
 
+use std::collections::HashMap;
+use std::path::Path;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 
 use bistre_protocol::{
-    BistreError, BistreResult, DiagnosticKey, GenerationParams, MoneyMicros, NodeRecord, NodeRole,
+    BistreError, BistreResult, DiagnosticKey, GenerationParams, MoneyMicros, NodeRecord,
     ProviderDialect, ProviderModelInfo, ProviderProfile, ReasoningEffort, UsageMetrics,
 };
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
@@ -23,24 +25,29 @@ use serde_json::{Value, json};
 
 use crate::credentials::{KeyRing, is_key_failover_status};
 use crate::error_policy::{
-    FailureKind, MAX_ERROR_BODY_SCAN_BYTES, MAX_HTTP_400_HEALS, apply_next_heal,
-    classify_http_failure, failure_error, parse_retry_hint,
+    FailureKind, MAX_ERROR_BODY_SCAN_BYTES, MAX_HTTP_400_HEALS, classify_http_failure,
+    failure_error, parse_retry_hint,
 };
 use crate::registry::ModelRates;
-use crate::sse::{INITIAL_LINE_TIMEOUT, STREAMING_LINE_TIMEOUT, SseFramer, StreamingTextBuffer};
+use crate::replay_policy::ReplayContext;
+use crate::sse::{INITIAL_LINE_TIMEOUT, STREAMING_LINE_TIMEOUT, SseFramer};
+pub use crate::wire_stream::StreamOutcome;
+use crate::wire_stream::StreamState;
 
-/// Completed SSE stream payload paired with thinking trace, cancellation flag, and exact usage.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct StreamOutcome {
-    pub full_text: String,
-    pub thinking_text: String,
-    pub thinking_duration_ms: i64,
-    pub cancelled: bool,
-    /// The stream ended without the dialect's terminal event after partial output.
-    pub interrupted: bool,
-    pub usage: UsageMetrics,
-    /// Non-fatal notices raised while dispatching (heals, key failover), as `(key, detail)`.
-    pub notices: Vec<(DiagnosticKey, String)>,
+/// Optional per-request extensions: replay policy context, active wire tools, stateful chaining
+/// ID, Anthropic cache TTL, server compaction, reply prefill, and custom overrides.
+#[derive(Debug, Default, Clone)]
+pub struct StreamRequestOptions<'a> {
+    pub replay_ctx: Option<&'a ReplayContext>,
+    pub tools_wire: Option<&'a [Value]>,
+    pub previous_server_id: Option<&'a str>,
+    pub anthropic_cache_1h: bool,
+    pub anthropic_server_compaction: bool,
+    pub disable_legacy_fallback: bool,
+    pub reply_prefill: Option<String>,
+    pub anthropic_beta_headers: Vec<String>,
+    pub extra_headers: Vec<(String, String)>,
+    pub extra_body_fields: Option<serde_json::Map<String, Value>>,
 }
 
 /// Exact integer micro-USD cost from live registry rates (zero floats, zero hardcoded rates).
@@ -51,17 +58,14 @@ pub fn estimate_cost_micros(
     usage: &UsageMetrics,
 ) -> Option<MoneyMicros> {
     if crate::net::is_loopback_url(&provider.base_url)
-        || (usage.input_tokens == 0 && usage.output_tokens == 0)
+        || (usage.input_tokens == 0
+            && usage.output_tokens == 0
+            && usage.cached_input_tokens == 0
+            && usage.cache_creation_input_tokens == 0)
     {
         return Some(MoneyMicros::ZERO);
     }
-    rates.map(|r| {
-        r.cost(
-            usage.input_tokens,
-            usage.cached_input_tokens,
-            usage.output_tokens,
-        )
-    })
+    rates.map(|r| r.cost_for_dialect(provider.dialect, usage))
 }
 
 static CRYPTO_PROVIDER_INIT: OnceLock<()> = OnceLock::new();
@@ -169,13 +173,6 @@ pub async fn dispatch(
             ));
             continue;
         }
-        if matches!(status, 400 | 404)
-            && let Some(fallback) = wire.fallback.take()
-        {
-            wire = *fallback;
-            heal_cursor = 0;
-            continue;
-        }
         let resp_headers = resp.headers().clone();
         let body_text = read_error_body(resp).await;
         let kind = classify_http_failure(status, &body_text);
@@ -183,10 +180,26 @@ pub async fn dispatch(
             && kind == FailureKind::BadRequest
             && heals < MAX_HTTP_400_HEALS
             && let Some(body) = wire.body.as_mut()
-            && let Some(heal) = apply_next_heal(body, &mut heal_cursor)
+            && let Some(heal) = crate::error_policy::apply_next_heal_for_dialect(
+                wire.dialect,
+                body,
+                &mut heal_cursor,
+                &body_text,
+            )
         {
+            if heal == crate::error_policy::Http400Heal::StripContextManagement {
+                wire.headers.remove("anthropic-beta");
+            }
             heals += 1;
             notices.push((DiagnosticKey::ProviderRequestHealed, heal.code().to_owned()));
+            continue;
+        }
+        // Only downgrade Gemini Interactions -> streamGenerateContent on 404 or once 400 heals are exhausted.
+        if matches!(status, 400 | 404)
+            && let Some(fallback) = wire.fallback.take()
+        {
+            wire = *fallback;
+            heal_cursor = 0;
             continue;
         }
         return Err(failure_error(
@@ -271,65 +284,6 @@ where
     .await
 }
 
-/// Mutable accumulator for one streamed reply.
-#[derive(Debug, Default)]
-struct StreamState {
-    out: StreamOutcome,
-    text_norm: StreamingTextBuffer,
-    started_at: Option<std::time::Instant>,
-    thinking_started: Option<std::time::Instant>,
-    terminal_seen: bool,
-}
-
-impl StreamState {
-    fn mark_first_token(&mut self) {
-        if self.out.usage.first_token_ms == 0
-            && let Some(t0) = self.started_at
-        {
-            self.out.usage.first_token_ms =
-                u64::try_from(t0.elapsed().as_millis()).unwrap_or(u64::MAX);
-        }
-    }
-
-    fn handle_payload<F, T>(
-        &mut self,
-        dialect: ProviderDialect,
-        payload: &str,
-        on_delta: &mut F,
-        on_thinking: &mut T,
-    ) where
-        F: FnMut(&str) + Send,
-        T: FnMut(&str) + Send,
-    {
-        if is_terminal_event(dialect, payload) {
-            self.terminal_seen = true;
-        }
-        if payload == "[DONE]" {
-            return;
-        }
-        merge_sse_usage(dialect, payload, &mut self.out.usage);
-        if let Some(thought) = extract_sse_thinking_delta(dialect, payload)
-            && !thought.is_empty()
-        {
-            self.mark_first_token();
-            let start = *self
-                .thinking_started
-                .get_or_insert_with(std::time::Instant::now);
-            self.out.thinking_duration_ms = i64::try_from(start.elapsed().as_millis()).unwrap_or(0);
-            self.out.thinking_text.push_str(&thought);
-            on_thinking(&thought);
-        }
-        if let Some(delta) = extract_sse_delta(dialect, payload) {
-            let clean = self.text_norm.push(&delta);
-            if !clean.is_empty() {
-                self.mark_first_token();
-                self.out.full_text.push_str(&clean);
-                on_delta(&clean);
-            }
-        }
-    }
-}
-
 /// Streams a real completion across all Big 3 + Custom dialects with separate `on_delta` and
 /// `on_thinking` callbacks. A stream that ends without the dialect's terminal event is
 /// `ProviderStreamInterrupted` (an error when nothing arrived, `interrupted` otherwise) — never
@@ -348,6 +302,94 @@ pub async fn stream_completion_with_thinking<F, T>(
     gen_params: GenerationParams,
     stateless_default: bool,
     cancel_flag: &AtomicBool,
+    on_delta: F,
+    on_thinking: T,
+) -> BistreResult<StreamOutcome>
+where
+    F: FnMut(&str) + Send,
+    T: FnMut(&str) + Send,
+{
+    stream_completion_with_attachments(
+        client,
+        provider,
+        keys,
+        model,
+        system_prompt,
+        history,
+        gen_params,
+        stateless_default,
+        None,
+        cancel_flag,
+        on_delta,
+        on_thinking,
+    )
+    .await
+}
+
+/// Streams a completion across all Big 3 + Custom dialects with full native multimodal,
+/// PDF, Office document, audio, video, and plain-text attachment wire encoding.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Explicit immutable parameters avoid hidden global state in pure transport layer."
+)]
+pub async fn stream_completion_with_attachments<F, T>(
+    client: &reqwest::Client,
+    provider: &ProviderProfile,
+    keys: &KeyRing,
+    model: &str,
+    system_prompt: &str,
+    history: &[NodeRecord],
+    gen_params: GenerationParams,
+    stateless_default: bool,
+    data_dir: Option<&Path>,
+    cancel_flag: &AtomicBool,
+    on_delta: F,
+    on_thinking: T,
+) -> BistreResult<StreamOutcome>
+where
+    F: FnMut(&str) + Send,
+    T: FnMut(&str) + Send,
+{
+    let opts = StreamRequestOptions::default();
+    stream_completion_with_options(
+        client,
+        provider,
+        keys,
+        model,
+        system_prompt,
+        history,
+        gen_params,
+        stateless_default,
+        data_dir,
+        &opts,
+        cancel_flag,
+        on_delta,
+        on_thinking,
+    )
+    .await
+}
+
+/// Streams a completion with full replay context, native tools, prompt caching, and attachments.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Explicit immutable parameters avoid hidden global state in pure transport layer."
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "Single linear SSE transport, preupload, cancellation, and cleanup lifecycle."
+)]
+pub async fn stream_completion_with_options<F, T>(
+    client: &reqwest::Client,
+    provider: &ProviderProfile,
+    keys: &KeyRing,
+    model: &str,
+    system_prompt: &str,
+    history: &[NodeRecord],
+    gen_params: GenerationParams,
+    stateless_default: bool,
+    data_dir: Option<&Path>,
+    options: &StreamRequestOptions<'_>,
+    cancel_flag: &AtomicBool,
     mut on_delta: F,
     mut on_thinking: T,
 ) -> BistreResult<StreamOutcome>
@@ -365,7 +407,54 @@ where
 
     let store_server_state = !stateless_default && provider.use_server_state_cache;
     let base = provider.base_url.trim_end_matches('/');
-    let wire = build_stream_request(
+    let primary_key = keys.primary().unwrap_or("");
+    let uploaded = tokio::select! {
+        biased;
+        () = until_cancelled(cancel_flag) => None,
+        u = crate::attachments::preupload_attachments_for_dialect(
+            client,
+            provider.dialect,
+            base,
+            primary_key,
+            data_dir,
+            history,
+            store_server_state,
+        ) => Some(u),
+    };
+    let Some(uploaded) = uploaded else {
+        return Ok(StreamOutcome {
+            cancelled: true,
+            ..StreamOutcome::default()
+        });
+    };
+    let mut effective_opts = options.clone();
+    if provider.dialect == ProviderDialect::Anthropic {
+        if !uploaded.refs.is_empty()
+            && !effective_opts
+                .anthropic_beta_headers
+                .iter()
+                .any(|b| b == "files-api-2025-04-14")
+        {
+            effective_opts
+                .anthropic_beta_headers
+                .push("files-api-2025-04-14".to_owned());
+        }
+        if effective_opts.anthropic_server_compaction
+            && history.len() >= 8
+            && history
+                .iter()
+                .any(|n| n.role == bistre_protocol::NodeRole::Tool)
+            && !effective_opts
+                .anthropic_beta_headers
+                .iter()
+                .any(|b| b == "context-management-2025-06-27")
+        {
+            effective_opts
+                .anthropic_beta_headers
+                .push("context-management-2025-06-27".to_owned());
+        }
+    }
+    let wire = build_stream_request_full(
         provider.dialect,
         base,
         clean_model,
@@ -373,11 +462,12 @@ where
         history,
         gen_params,
         store_server_state,
+        data_dir,
+        &uploaded.refs,
+        &effective_opts,
     );
-    let mut state = StreamState {
-        started_at: Some(std::time::Instant::now()),
-        ..StreamState::default()
-    };
+    let mut state = StreamState::default();
+    state.started_at = Some(std::time::Instant::now());
     // Stop must take effect while connecting and while waiting for the first token, not only
     // between chunks (the first-token budget is 300 s).
     let dispatched = tokio::select! {
@@ -389,7 +479,28 @@ where
         state.out.cancelled = true;
         return Ok(state.out);
     };
-    let mut resp = dispatched?;
+    let mut resp = match dispatched {
+        Ok(r) => r,
+        Err(err) => {
+            if !uploaded.refs.is_empty()
+                && matches!(
+                    err.key,
+                    DiagnosticKey::ProviderRequestFailed | DiagnosticKey::ProviderAuthFailed
+                )
+            {
+                crate::attachments::evict_remote_file_cache(
+                    data_dir,
+                    provider.dialect,
+                    base,
+                    primary_key,
+                );
+            }
+            for (d, fid) in &uploaded.ephemeral_ids {
+                crate::attachments::delete_remote_file(client, *d, base, primary_key, fid).await;
+            }
+            return Err(err);
+        }
+    };
 
     let mut sse = SseFramer::new();
     let mut received_any = false;
@@ -422,8 +533,10 @@ where
                 };
                 // Once any output reached the user the request is paid and visible: keep it and
                 // mark the reply interrupted. Only a stream that produced nothing may be retried.
-                if crate::error_policy::may_retry_stream(&state.out.full_text, 0)
-                    && state.out.thinking_text.is_empty()
+                if crate::error_policy::may_retry_stream(
+                    &state.out.full_text,
+                    state.out.tool_calls.len(),
+                ) && state.out.thinking_text.is_empty()
                 {
                     return Err(BistreError::with_detail(
                         DiagnosticKey::ProviderStreamInterrupted,
@@ -454,15 +567,25 @@ where
         state.out.full_text.push_str(&tail);
         on_delta(&tail);
     }
+    state.finalize(provider.dialect);
 
     if !state.out.cancelled && !state.terminal_seen {
-        if state.out.full_text.is_empty() && state.out.thinking_text.is_empty() {
+        if state.out.full_text.is_empty()
+            && state.out.thinking_text.is_empty()
+            && state.out.tool_calls.is_empty()
+        {
+            for (d, fid) in &uploaded.ephemeral_ids {
+                crate::attachments::delete_remote_file(client, *d, base, primary_key, fid).await;
+            }
             return Err(BistreError::with_detail(
                 DiagnosticKey::ProviderStreamInterrupted,
                 "eof_before_output",
             ));
         }
         state.out.interrupted = true;
+    }
+    for (d, fid) in &uploaded.ephemeral_ids {
+        crate::attachments::delete_remote_file(client, *d, base, primary_key, fid).await;
     }
     Ok(state.out)
 }
@@ -484,30 +607,62 @@ fn milli_to_json_number(milli: u32) -> Value {
     serde_json::from_str::<Value>(&text).unwrap_or_else(|_| Value::from(whole))
 }
 
-fn stream_headers(dialect: ProviderDialect) -> HeaderMap {
+fn stream_headers(dialect: ProviderDialect, options: &StreamRequestOptions<'_>) -> HeaderMap {
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     headers.insert(ACCEPT, HeaderValue::from_static("text/event-stream"));
     if dialect == ProviderDialect::Anthropic {
         headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
+        if !options.anthropic_beta_headers.is_empty()
+            && let Ok(val) = HeaderValue::from_str(&options.anthropic_beta_headers.join(","))
+        {
+            headers.insert("anthropic-beta", val);
+        }
+    }
+    for (k, v) in &options.extra_headers {
+        let lower = k.trim().to_ascii_lowercase();
+        if matches!(
+            lower.as_str(),
+            "authorization"
+                | "x-api-key"
+                | "x-goog-api-key"
+                | "host"
+                | "content-length"
+                | "transfer-encoding"
+        ) {
+            continue;
+        }
+        if let (Ok(name), Ok(val)) = (
+            reqwest::header::HeaderName::from_bytes(k.trim().as_bytes()),
+            HeaderValue::from_str(v.trim()),
+        ) {
+            headers.insert(name, val);
+        }
     }
     headers
 }
 
-/// Wraps a JSON body as a credential-free streaming POST. Bodies serialize with sorted keys
-/// (deterministic prompt-cache prefix); see Spec 02 for the `tools`-first rule once native tool
-/// definitions are sent.
+/// Wraps a JSON body as a credential-free streaming POST. Bodies serialize with `tools` first
+/// (when active) for deterministic prompt-cache prefix stability (Spec 02).
 fn wire(
     dialect: ProviderDialect,
     url: String,
-    body: Value,
+    mut body: Value,
+    options: &StreamRequestOptions<'_>,
     fallback: Option<Box<WireRequest>>,
 ) -> WireRequest {
+    if let (Some(extra), Some(obj)) = (&options.extra_body_fields, body.as_object_mut()) {
+        for (k, v) in extra {
+            if !matches!(k.as_str(), "stream" | "messages" | "input" | "contents") {
+                obj.insert(k.clone(), v.clone());
+            }
+        }
+    }
     WireRequest {
         dialect,
         method: reqwest::Method::POST,
         url,
-        headers: stream_headers(dialect),
+        headers: stream_headers(dialect, options),
         body: Some(body),
         fallback,
     }
@@ -523,264 +678,494 @@ pub fn build_stream_request(
     gen_params: GenerationParams,
     store: bool,
 ) -> WireRequest {
+    build_stream_request_with_attachments(
+        dialect,
+        base,
+        model,
+        system_prompt,
+        history,
+        gen_params,
+        store,
+        None,
+        &HashMap::new(),
+    )
+}
+
+/// Dialect-specific streaming request (credential-free) with multimodal attachment blocks.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Explicit immutable parameters keep wire serialization pure and testable."
+)]
+pub fn build_stream_request_with_attachments<S: std::hash::BuildHasher>(
+    dialect: ProviderDialect,
+    base: &str,
+    model: &str,
+    system_prompt: &str,
+    history: &[NodeRecord],
+    gen_params: GenerationParams,
+    store: bool,
+    data_dir: Option<&Path>,
+    gemini_uris: &HashMap<String, String, S>,
+) -> WireRequest {
+    let opts = StreamRequestOptions::default();
+    build_stream_request_full(
+        dialect,
+        base,
+        model,
+        system_prompt,
+        history,
+        gen_params,
+        store,
+        data_dir,
+        gemini_uris,
+        &opts,
+    )
+}
+
+/// Full dialect-specific streaming request builder with replay context, tools, caching, and options.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Explicit immutable parameters keep wire serialization pure and testable."
+)]
+pub fn build_stream_request_full<S: std::hash::BuildHasher>(
+    dialect: ProviderDialect,
+    base: &str,
+    model: &str,
+    system_prompt: &str,
+    history: &[NodeRecord],
+    gen_params: GenerationParams,
+    store: bool,
+    data_dir: Option<&Path>,
+    gemini_uris: &HashMap<String, String, S>,
+    options: &StreamRequestOptions<'_>,
+) -> WireRequest {
     match dialect {
         ProviderDialect::OpenAi => wire(
             dialect,
             format!("{base}/responses"),
-            openai_responses_body(model, system_prompt, history, gen_params, store),
+            openai_responses_body(
+                model,
+                system_prompt,
+                history,
+                gen_params,
+                store,
+                data_dir,
+                gemini_uris,
+                options,
+            ),
+            options,
             None,
         ),
         ProviderDialect::GoogleGemini => {
             let clean_model = model.strip_prefix("models/").unwrap_or(model);
-            let fallback = wire(
-                dialect,
-                format!("{base}/v1beta/models/{clean_model}:streamGenerateContent?alt=sse"),
-                gemini_generate_content_body(system_prompt, history, gen_params),
-                None,
-            );
+            let fallback = (!options.disable_legacy_fallback).then(|| {
+                Box::new(wire(
+                    dialect,
+                    format!("{base}/v1beta/models/{clean_model}:streamGenerateContent?alt=sse"),
+                    gemini_generate_content_body(
+                        system_prompt,
+                        history,
+                        gen_params,
+                        data_dir,
+                        gemini_uris,
+                        options,
+                    ),
+                    options,
+                    None,
+                ))
+            });
             wire(
                 dialect,
                 format!("{base}/v1beta/interactions"),
-                gemini_interactions_body(model, system_prompt, history, gen_params, store),
-                Some(Box::new(fallback)),
+                gemini_interactions_body(
+                    model,
+                    system_prompt,
+                    history,
+                    gen_params,
+                    store,
+                    data_dir,
+                    gemini_uris,
+                    options,
+                ),
+                options,
+                fallback,
             )
         }
         ProviderDialect::Anthropic => wire(
             dialect,
             format!("{base}/messages"),
-            anthropic_messages_body(model, system_prompt, history, gen_params),
+            anthropic_messages_body(
+                model,
+                system_prompt,
+                history,
+                gen_params,
+                data_dir,
+                gemini_uris,
+                options,
+            ),
+            options,
             None,
         ),
         ProviderDialect::CustomOpenAi => wire(
             dialect,
             format!("{base}/chat/completions"),
-            openai_compat_chat_body(model, system_prompt, history, gen_params),
+            openai_compat_chat_body(model, system_prompt, history, gen_params, data_dir, options),
+            options,
             None,
         ),
     }
 }
 
-/// `(role, text)` turns replayed to the provider (UI-only roles never leave the device).
-fn replay_turns(
-    history: &[NodeRecord],
-    assistant_role: &'static str,
-) -> Vec<(&'static str, String)> {
-    history
-        .iter()
-        .filter_map(|n| match n.role {
-            NodeRole::Assistant => Some((assistant_role, n.content.clone())),
-            NodeRole::CompactionSummary => Some((
-                "user",
-                format!("[Earlier conversation summary]\n{}", n.content),
-            )),
-            NodeRole::User => Some(("user", n.content.clone())),
-            NodeRole::System | NodeRole::Tool => None,
-        })
-        .collect()
-}
-
-fn openai_responses_body(
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Explicit immutable parameters keep wire serialization pure and testable."
+)]
+fn openai_responses_body<S: std::hash::BuildHasher>(
     model: &str,
     system_prompt: &str,
     history: &[NodeRecord],
     gen_params: GenerationParams,
     store: bool,
+    data_dir: Option<&Path>,
+    remote_refs: &HashMap<String, String, S>,
+    options: &StreamRequestOptions<'_>,
 ) -> Value {
-    let input: Vec<Value> = replay_turns(history, "assistant")
-        .into_iter()
-        .map(|(role, content)| json!({ "role": role, "content": content }))
-        .collect();
-    let mut payload = json!({
-        "model": model,
-        "input": input,
-        "stream": true,
-        "store": store,
-    });
-    if let Some(obj) = payload.as_object_mut() {
-        if !system_prompt.trim().is_empty() {
-            obj.insert(
-                "instructions".to_owned(),
-                Value::String(system_prompt.to_owned()),
-            );
-        }
-        if let Some(t) = gen_params.temperature_milli {
-            obj.insert("temperature".to_owned(), milli_to_json_number(t));
-        }
-        if let Some(max_tok) = gen_params.max_output_tokens {
-            obj.insert("max_output_tokens".to_owned(), Value::from(max_tok));
-        }
-        if let Some(p) = gen_params.top_p_milli {
-            obj.insert("top_p".to_owned(), milli_to_json_number(p));
-        }
-        if let Some(effort) = openai_effort(gen_params.reasoning_effort) {
-            obj.insert(
-                "reasoning".to_owned(),
-                json!({ "effort": effort, "summary": "auto" }),
-            );
-        }
+    let input = crate::wire_history::build_openai_responses_input_with_refs(
+        history,
+        data_dir,
+        remote_refs,
+        options.replay_ctx,
+    );
+    let mut obj = serde_json::Map::new();
+    // Serialize `tools` FIRST for prompt-cache prefix stability (Spec 02).
+    if let Some(tools) = options.tools_wire
+        && !tools.is_empty()
+    {
+        obj.insert("tools".to_owned(), Value::Array(tools.to_vec()));
     }
-    payload
+    obj.insert("model".to_owned(), Value::String(model.to_owned()));
+    if !system_prompt.trim().is_empty() {
+        obj.insert(
+            "instructions".to_owned(),
+            Value::String(system_prompt.to_owned()),
+        );
+    }
+    obj.insert("input".to_owned(), Value::Array(input));
+    obj.insert("stream".to_owned(), Value::Bool(true));
+    obj.insert("store".to_owned(), Value::Bool(store));
+    if store && let Some(prev_id) = options.previous_server_id {
+        obj.insert(
+            "previous_response_id".to_owned(),
+            Value::String(prev_id.to_owned()),
+        );
+    }
+    if let Some(ctx) = options.replay_ctx {
+        obj.insert(
+            "prompt_cache_key".to_owned(),
+            Value::String(ctx.openai_prompt_cache_key()),
+        );
+    }
+    if let Some(t) = gen_params.temperature_milli {
+        obj.insert("temperature".to_owned(), milli_to_json_number(t));
+    }
+    if let Some(max_tok) = gen_params.max_output_tokens {
+        obj.insert("max_output_tokens".to_owned(), Value::from(max_tok));
+    }
+    if let Some(p) = gen_params.top_p_milli {
+        obj.insert("top_p".to_owned(), milli_to_json_number(p));
+    }
+    if let Some(effort) = openai_effort(ProviderDialect::OpenAi, gen_params.reasoning_effort) {
+        obj.insert(
+            "reasoning".to_owned(),
+            json!({ "effort": effort, "summary": "auto" }),
+        );
+    }
+    // Under stateless `store: false`, request encrypted reasoning blobs when reasoning is enabled
+    // so subsequent turns can replay verified thought continuity without server-side retention.
+    if !store
+        && !matches!(
+            gen_params.reasoning_effort,
+            ReasoningEffort::ModelDefault | ReasoningEffort::Off
+        )
+    {
+        obj.insert("include".to_owned(), json!(["reasoning.encrypted_content"]));
+    }
+    Value::Object(obj)
 }
 
 /// `OpenAI` `reasoning.effort` / `reasoning_effort` value (`none` turns thinking off).
-fn openai_effort(effort: ReasoningEffort) -> Option<&'static str> {
+fn openai_effort(dialect: ProviderDialect, effort: ReasoningEffort) -> Option<&'static str> {
     match effort {
         ReasoningEffort::ModelDefault => None,
+        ReasoningEffort::Adaptive => Some("medium"),
         ReasoningEffort::Off => Some("none"),
+        ReasoningEffort::Max if dialect == ProviderDialect::OpenAi => Some("xhigh"),
         other => Some(other.as_str()),
     }
 }
 
-/// Gemini thinking level (lowercase; Gemini has no `max`, and Off asks for the lowest level
-/// with thought summaries hidden).
+/// Gemini thinking level (lowercase; Gemini has no `max`, and Off asks for minimal thoughts).
 fn gemini_level(effort: ReasoningEffort) -> Option<&'static str> {
     match effort {
         ReasoningEffort::ModelDefault => None,
-        ReasoningEffort::Off | ReasoningEffort::Low => Some("low"),
-        ReasoningEffort::Medium => Some("medium"),
+        ReasoningEffort::Off => Some("minimal"),
+        ReasoningEffort::Low => Some("low"),
+        ReasoningEffort::Adaptive | ReasoningEffort::Medium => Some("medium"),
         ReasoningEffort::High => Some("high"),
         ReasoningEffort::ExtraHigh | ReasoningEffort::Max => Some("xhigh"),
     }
 }
 
-fn gemini_interactions_body(
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Explicit immutable parameters keep wire serialization pure and testable."
+)]
+fn gemini_interactions_body<S: std::hash::BuildHasher>(
     model: &str,
     system_prompt: &str,
     history: &[NodeRecord],
     gen_params: GenerationParams,
     store: bool,
+    data_dir: Option<&Path>,
+    gemini_uris: &HashMap<String, String, S>,
+    options: &StreamRequestOptions<'_>,
 ) -> Value {
-    let turns: Vec<Value> = replay_turns(history, "model")
-        .into_iter()
-        .map(|(role, text)| json!({ "role": role, "content": [{ "type": "text", "text": text }] }))
-        .collect();
-    let mut payload = json!({
-        "model": model,
-        "input": turns,
-        "stream": true,
-        "store": store,
-    });
-    if let Some(obj) = payload.as_object_mut() {
-        if !system_prompt.trim().is_empty() {
-            obj.insert(
-                "system_instruction".to_owned(),
-                Value::String(system_prompt.to_owned()),
-            );
-        }
-        let mut gen_cfg = serde_json::Map::new();
-        if let Some(t) = gen_params.temperature_milli {
-            gen_cfg.insert("temperature".to_owned(), milli_to_json_number(t));
-        }
-        if let Some(max_tok) = gen_params.max_output_tokens {
-            gen_cfg.insert("max_output_tokens".to_owned(), Value::from(max_tok));
-        }
-        if let Some(p) = gen_params.top_p_milli {
-            gen_cfg.insert("top_p".to_owned(), milli_to_json_number(p));
-        }
-        if let Some(level) = gemini_level(gen_params.reasoning_effort) {
-            gen_cfg.insert("thinking_level".to_owned(), Value::from(level));
-            let summaries = if gen_params.reasoning_effort == ReasoningEffort::Off {
-                "none"
-            } else {
-                "auto"
-            };
-            gen_cfg.insert("thinking_summaries".to_owned(), Value::from(summaries));
-        }
-        if !gen_cfg.is_empty() {
-            obj.insert("generation_config".to_owned(), Value::Object(gen_cfg));
-        }
+    let turns = crate::wire_history::build_gemini_interactions_input_with_ctx(
+        history,
+        data_dir,
+        gemini_uris,
+        options.replay_ctx,
+    );
+    let mut obj = serde_json::Map::new();
+    if let Some(tools) = options.tools_wire
+        && !tools.is_empty()
+    {
+        obj.insert("tools".to_owned(), Value::Array(tools.to_vec()));
     }
-    payload
+    obj.insert("model".to_owned(), Value::String(model.to_owned()));
+    if !system_prompt.trim().is_empty() {
+        obj.insert(
+            "system_instruction".to_owned(),
+            Value::String(system_prompt.to_owned()),
+        );
+    }
+    obj.insert("input".to_owned(), Value::Array(turns));
+    obj.insert("stream".to_owned(), Value::Bool(true));
+    obj.insert("store".to_owned(), Value::Bool(store));
+    if store && let Some(prev_id) = options.previous_server_id {
+        obj.insert(
+            "previous_interaction_id".to_owned(),
+            Value::String(prev_id.to_owned()),
+        );
+    }
+    let mut gen_cfg = serde_json::Map::new();
+    if let Some(t) = gen_params.temperature_milli {
+        gen_cfg.insert("temperature".to_owned(), milli_to_json_number(t));
+    }
+    if let Some(max_tok) = gen_params.max_output_tokens {
+        gen_cfg.insert("max_output_tokens".to_owned(), Value::from(max_tok));
+    }
+    if let Some(p) = gen_params.top_p_milli {
+        gen_cfg.insert("top_p".to_owned(), milli_to_json_number(p));
+    }
+    if let Some(level) = gemini_level(gen_params.reasoning_effort) {
+        gen_cfg.insert("thinking_level".to_owned(), Value::from(level));
+        let summaries = if gen_params.reasoning_effort == ReasoningEffort::Off {
+            "none"
+        } else {
+            "auto"
+        };
+        gen_cfg.insert("thinking_summaries".to_owned(), Value::from(summaries));
+    }
+    if !gen_cfg.is_empty() {
+        obj.insert("generation_config".to_owned(), Value::Object(gen_cfg));
+    }
+    Value::Object(obj)
 }
 
-fn gemini_generate_content_body(
+fn gemini_generate_content_body<S: std::hash::BuildHasher>(
     system_prompt: &str,
     history: &[NodeRecord],
     gen_params: GenerationParams,
+    data_dir: Option<&Path>,
+    gemini_uris: &HashMap<String, String, S>,
+    options: &StreamRequestOptions<'_>,
 ) -> Value {
-    let contents: Vec<Value> = replay_turns(history, "model")
-        .into_iter()
-        .map(|(role, text)| json!({ "role": role, "parts": [{ "text": text }] }))
-        .collect();
-    let mut payload = json!({ "contents": contents });
-    if let Some(obj) = payload.as_object_mut() {
-        if !system_prompt.trim().is_empty() {
+    let contents = crate::wire_history::build_gemini_generate_contents_with_ctx(
+        history,
+        data_dir,
+        gemini_uris,
+        options.replay_ctx,
+    );
+    let mut obj = serde_json::Map::new();
+    if let Some(tools) = options.tools_wire
+        && !tools.is_empty()
+    {
+        let decls: Vec<Value> = tools
+            .iter()
+            .filter_map(|t| {
+                let name = t.get("name")?.as_str()?;
+                let description = t
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let parameters = t
+                    .get("parameters")
+                    .cloned()
+                    .unwrap_or_else(|| json!({ "type": "object", "properties": {} }));
+                Some(json!({
+                    "name": name,
+                    "description": description,
+                    "parameters": parameters,
+                }))
+            })
+            .collect();
+        if !decls.is_empty() {
             obj.insert(
-                "systemInstruction".to_owned(),
-                json!({ "parts": [{ "text": system_prompt }] }),
+                "tools".to_owned(),
+                json!([{ "functionDeclarations": decls }]),
             );
-        }
-        let mut gen_cfg = serde_json::Map::new();
-        if let Some(t) = gen_params.temperature_milli {
-            gen_cfg.insert("temperature".to_owned(), milli_to_json_number(t));
-        }
-        if let Some(max_tok) = gen_params.max_output_tokens {
-            gen_cfg.insert("maxOutputTokens".to_owned(), Value::from(max_tok));
-        }
-        if let Some(p) = gen_params.top_p_milli {
-            gen_cfg.insert("topP".to_owned(), milli_to_json_number(p));
-        }
-        if let Some(level) = gemini_level(gen_params.reasoning_effort) {
-            gen_cfg.insert(
-                "thinkingConfig".to_owned(),
-                json!({
-                    "includeThoughts": gen_params.reasoning_effort != ReasoningEffort::Off,
-                    "thinkingLevel": level.to_ascii_uppercase(),
-                }),
-            );
-        }
-        if !gen_cfg.is_empty() {
-            obj.insert("generationConfig".to_owned(), Value::Object(gen_cfg));
         }
     }
-    payload
+    if !system_prompt.trim().is_empty() {
+        obj.insert(
+            "systemInstruction".to_owned(),
+            json!({ "parts": [{ "text": system_prompt }] }),
+        );
+    }
+    obj.insert("contents".to_owned(), Value::Array(contents));
+    let mut gen_cfg = serde_json::Map::new();
+    if let Some(t) = gen_params.temperature_milli {
+        gen_cfg.insert("temperature".to_owned(), milli_to_json_number(t));
+    }
+    if let Some(max_tok) = gen_params.max_output_tokens {
+        gen_cfg.insert("maxOutputTokens".to_owned(), Value::from(max_tok));
+    }
+    if let Some(p) = gen_params.top_p_milli {
+        gen_cfg.insert("topP".to_owned(), milli_to_json_number(p));
+    }
+    if let Some(level) = gemini_level(gen_params.reasoning_effort) {
+        gen_cfg.insert(
+            "thinkingConfig".to_owned(),
+            json!({
+                "includeThoughts": gen_params.reasoning_effort != ReasoningEffort::Off,
+                "thinkingLevel": level.to_ascii_uppercase(),
+            }),
+        );
+    }
+    if !gen_cfg.is_empty() {
+        obj.insert("generationConfig".to_owned(), Value::Object(gen_cfg));
+    }
+    Value::Object(obj)
 }
 
-fn anthropic_messages_body(
+fn anthropic_cache_control(cache_1h: bool) -> Value {
+    if cache_1h {
+        json!({ "type": "ephemeral", "ttl": "1h" })
+    } else {
+        json!({ "type": "ephemeral" })
+    }
+}
+
+fn anthropic_messages_body<S: std::hash::BuildHasher>(
     model: &str,
     system_prompt: &str,
     history: &[NodeRecord],
     gen_params: GenerationParams,
+    data_dir: Option<&Path>,
+    remote_refs: &HashMap<String, String, S>,
+    options: &StreamRequestOptions<'_>,
 ) -> Value {
-    let messages: Vec<Value> = replay_turns(history, "assistant")
-        .into_iter()
-        .map(|(role, content)| json!({ "role": role, "content": content }))
-        .collect();
-    let max_tokens = gen_params.max_output_tokens.unwrap_or(4096);
-    let mut payload = json!({
-        "model": model,
-        "max_tokens": max_tokens,
-        "messages": messages,
-        "stream": true,
-    });
-    if let Some(obj) = payload.as_object_mut() {
-        if !system_prompt.trim().is_empty() {
-            obj.insert("system".to_owned(), Value::String(system_prompt.to_owned()));
+    let mut messages = crate::wire_history::build_anthropic_messages_with_refs(
+        history,
+        data_dir,
+        remote_refs,
+        options.replay_ctx,
+    );
+    if let Some(prefill) = options.reply_prefill.as_deref().map(str::trim)
+        && !prefill.is_empty()
+    {
+        messages.push(json!({ "role": "assistant", "content": prefill }));
+    }
+    let thinking_active = !matches!(
+        gen_params.reasoning_effort,
+        ReasoningEffort::ModelDefault | ReasoningEffort::Off
+    );
+    let default_max_tokens = if thinking_active { 16_384 } else { 4_096 };
+    let max_tokens = gen_params.max_output_tokens.unwrap_or(default_max_tokens);
+    let cc = anthropic_cache_control(options.anthropic_cache_1h);
+
+    let mut obj = serde_json::Map::new();
+    if let Some(tools) = options.tools_wire
+        && !tools.is_empty()
+    {
+        let mut t_arr = tools.to_vec();
+        if let Some(last) = t_arr.last_mut().and_then(Value::as_object_mut) {
+            last.insert("cache_control".to_owned(), cc.clone());
         }
-        if let Some(t) = gen_params.temperature_milli {
-            obj.insert("temperature".to_owned(), milli_to_json_number(t));
+        obj.insert("tools".to_owned(), Value::Array(t_arr));
+    }
+    obj.insert("model".to_owned(), Value::String(model.to_owned()));
+    obj.insert("max_tokens".to_owned(), Value::from(max_tokens));
+    // Default 5-minute ephemeral prompt caching (1.25x write / 0.1x read); automatically
+    // stripped by `Http400Heal::StripPromptCacheControl` if a proxy rejects `cache_control`.
+    obj.insert("cache_control".to_owned(), cc.clone());
+    if !system_prompt.trim().is_empty() {
+        obj.insert(
+            "system".to_owned(),
+            json!([{
+                "type": "text",
+                "text": system_prompt,
+                "cache_control": cc,
+            }]),
+        );
+    }
+    obj.insert("messages".to_owned(), Value::Array(messages));
+    obj.insert("stream".to_owned(), Value::Bool(true));
+    if options.anthropic_server_compaction
+        && history.len() >= 8
+        && history
+            .iter()
+            .any(|n| n.role == bistre_protocol::NodeRole::Tool)
+    {
+        obj.insert(
+            "context_management".to_owned(),
+            json!({
+                "edits": [
+                    { "type": "clear_tool_uses_20250919" }
+                ]
+            }),
+        );
+    }
+    if let Some(t) = gen_params.temperature_milli {
+        obj.insert("temperature".to_owned(), milli_to_json_number(t));
+    }
+    if let Some(p) = gen_params.top_p_milli {
+        obj.insert("top_p".to_owned(), milli_to_json_number(p));
+    }
+    match gen_params.reasoning_effort {
+        ReasoningEffort::ModelDefault => {}
+        ReasoningEffort::Off => {
+            obj.insert("thinking".to_owned(), json!({ "type": "disabled" }));
         }
-        if let Some(p) = gen_params.top_p_milli {
-            obj.insert("top_p".to_owned(), milli_to_json_number(p));
+        ReasoningEffort::Adaptive => {
+            obj.insert(
+                "thinking".to_owned(),
+                json!({ "type": "adaptive", "display": "summarized" }),
+            );
         }
-        match gen_params.reasoning_effort {
-            ReasoningEffort::ModelDefault => {}
-            ReasoningEffort::Off => {
-                obj.insert("thinking".to_owned(), json!({ "type": "disabled" }));
-            }
-            effort => {
-                obj.insert(
-                    "thinking".to_owned(),
-                    json!({ "type": "adaptive", "display": "summarized" }),
-                );
-                obj.insert(
-                    "output_config".to_owned(),
-                    json!({ "effort": effort.as_str() }),
-                );
-            }
+        effort => {
+            obj.insert(
+                "thinking".to_owned(),
+                json!({ "type": "adaptive", "display": "summarized" }),
+            );
+            obj.insert(
+                "output_config".to_owned(),
+                json!({ "effort": effort.as_str() }),
+            );
         }
     }
-    payload
+    Value::Object(obj)
 }
 
 fn openai_compat_chat_body(
@@ -788,37 +1173,50 @@ fn openai_compat_chat_body(
     system_prompt: &str,
     history: &[NodeRecord],
     gen_params: GenerationParams,
+    data_dir: Option<&Path>,
+    options: &StreamRequestOptions<'_>,
 ) -> Value {
     let mut messages = Vec::new();
     if !system_prompt.trim().is_empty() {
         messages.push(json!({ "role": "system", "content": system_prompt }));
     }
-    messages.extend(
-        replay_turns(history, "assistant")
-            .into_iter()
-            .map(|(role, content)| json!({ "role": role, "content": content })),
-    );
-    let mut payload = json!({
-        "model": model,
-        "messages": messages,
-        "stream": true,
-        "stream_options": { "include_usage": true },
-    });
-    if let Some(obj) = payload.as_object_mut() {
-        if let Some(effort) = openai_effort(gen_params.reasoning_effort) {
-            obj.insert("reasoning_effort".to_owned(), Value::from(effort));
-        }
-        if let Some(t) = gen_params.temperature_milli {
-            obj.insert("temperature".to_owned(), milli_to_json_number(t));
-        }
-        if let Some(max_tok) = gen_params.max_output_tokens {
-            obj.insert("max_tokens".to_owned(), Value::from(max_tok));
-        }
-        if let Some(p) = gen_params.top_p_milli {
-            obj.insert("top_p".to_owned(), milli_to_json_number(p));
-        }
+    messages.extend(crate::wire_history::build_openai_compat_messages_with_ctx(
+        history,
+        data_dir,
+        options.replay_ctx,
+    ));
+    if let Some(prefill) = options.reply_prefill.as_deref().map(str::trim)
+        && !prefill.is_empty()
+    {
+        messages.push(json!({ "role": "assistant", "content": prefill }));
     }
-    payload
+    let mut obj = serde_json::Map::new();
+    if let Some(tools) = options.tools_wire
+        && !tools.is_empty()
+    {
+        obj.insert("tools".to_owned(), Value::Array(tools.to_vec()));
+    }
+    obj.insert("model".to_owned(), Value::String(model.to_owned()));
+    obj.insert("messages".to_owned(), Value::Array(messages));
+    obj.insert("stream".to_owned(), Value::Bool(true));
+    obj.insert(
+        "stream_options".to_owned(),
+        json!({ "include_usage": true }),
+    );
+    if let Some(effort) = openai_effort(ProviderDialect::CustomOpenAi, gen_params.reasoning_effort)
+    {
+        obj.insert("reasoning_effort".to_owned(), Value::from(effort));
+    }
+    if let Some(t) = gen_params.temperature_milli {
+        obj.insert("temperature".to_owned(), milli_to_json_number(t));
+    }
+    if let Some(max_tok) = gen_params.max_output_tokens {
+        obj.insert("max_tokens".to_owned(), Value::from(max_tok));
+    }
+    if let Some(p) = gen_params.top_p_milli {
+        obj.insert("top_p".to_owned(), milli_to_json_number(p));
+    }
+    Value::Object(obj)
 }
 
 fn check_captive_portal(resp: &reqwest::Response) -> BistreResult<()> {
@@ -834,389 +1232,10 @@ fn check_captive_portal(resp: &reqwest::Response) -> BistreResult<()> {
     Ok(())
 }
 
-/// Parses live `/models` JSON across Big 3 + `OpenAI`-compatible/Ollama endpoints.
-pub fn parse_models_payload(dialect: ProviderDialect, body: &Value) -> Vec<ProviderModelInfo> {
-    let mut out = Vec::new();
-
-    match dialect {
-        ProviderDialect::GoogleGemini => {
-            if let Some(items) = body.get("models").and_then(Value::as_array) {
-                for item in items {
-                    let Some(raw_name) = item.get("name").and_then(Value::as_str) else {
-                        continue;
-                    };
-                    let id = raw_name.strip_prefix("models/").unwrap_or(raw_name);
-                    let display = item
-                        .get("displayName")
-                        .and_then(Value::as_str)
-                        .unwrap_or(id);
-                    out.push(ProviderModelInfo {
-                        id: id.to_owned(),
-                        display_name: display.to_owned(),
-                    });
-                }
-            }
-        }
-        ProviderDialect::OpenAi | ProviderDialect::Anthropic | ProviderDialect::CustomOpenAi => {
-            if let Some(items) = body.get("data").and_then(Value::as_array) {
-                for item in items {
-                    let Some(id) = item.get("id").and_then(Value::as_str) else {
-                        continue;
-                    };
-                    let display = item
-                        .get("display_name")
-                        .and_then(Value::as_str)
-                        .unwrap_or(id);
-                    out.push(ProviderModelInfo {
-                        id: id.to_owned(),
-                        display_name: display.to_owned(),
-                    });
-                }
-            } else if let Some(items) = body.get("models").and_then(Value::as_array) {
-                for item in items {
-                    let Some(id) = item
-                        .get("name")
-                        .or_else(|| item.get("id"))
-                        .and_then(Value::as_str)
-                    else {
-                        continue;
-                    };
-                    out.push(ProviderModelInfo {
-                        id: id.to_owned(),
-                        display_name: id.to_owned(),
-                    });
-                }
-            }
-        }
-    }
-
-    out.sort_by(|a, b| a.id.cmp(&b.id));
-    out.dedup_by(|a, b| a.id == b.id);
-    out
-}
-
-/// Extracts incremental text delta from an SSE JSON `data:` payload for any Big 3 + Custom dialect.
-pub fn extract_sse_delta(dialect: ProviderDialect, json_str: &str) -> Option<String> {
-    let val: Value = serde_json::from_str(json_str).ok()?;
-    match dialect {
-        ProviderDialect::OpenAi => {
-            if val.get("type").and_then(Value::as_str) == Some("response.output_text.delta")
-                && let Some(delta) = val.get("delta").and_then(Value::as_str)
-            {
-                return Some(delta.to_owned());
-            }
-            extract_openai_chat_delta(&val)
-        }
-        ProviderDialect::GoogleGemini => {
-            if val.get("event_type").and_then(Value::as_str) == Some("step.delta")
-                && val
-                    .get("delta")
-                    .and_then(|d| d.get("type"))
-                    .and_then(Value::as_str)
-                    == Some("text")
-                && let Some(text) = val
-                    .get("delta")
-                    .and_then(|d| d.get("text"))
-                    .and_then(Value::as_str)
-            {
-                return Some(text.to_owned());
-            }
-            // Transparent legacy generateContent SSE format.
-            let parts = val
-                .get("candidates")?
-                .get(0)?
-                .get("content")?
-                .get("parts")?
-                .as_array()?;
-            let mut combined = String::new();
-            for p in parts {
-                if let Some(t) = p.get("text").and_then(Value::as_str) {
-                    combined.push_str(t);
-                }
-            }
-            if combined.is_empty() {
-                None
-            } else {
-                Some(combined)
-            }
-        }
-        ProviderDialect::Anthropic => {
-            if val.get("type").and_then(Value::as_str) == Some("content_block_delta")
-                && val
-                    .get("delta")
-                    .and_then(|d| d.get("type"))
-                    .and_then(Value::as_str)
-                    == Some("text_delta")
-            {
-                return val
-                    .get("delta")
-                    .and_then(|d| d.get("text"))
-                    .and_then(Value::as_str)
-                    .map(ToOwned::to_owned);
-            }
-            None
-        }
-        ProviderDialect::CustomOpenAi => extract_openai_chat_delta(&val),
-    }
-}
-
-fn extract_openai_chat_delta(val: &Value) -> Option<String> {
-    val.get("choices")?
-        .get(0)?
-        .get("delta")?
-        .get("content")?
-        .as_str()
-        .map(ToOwned::to_owned)
-}
-
-/// Extracts incremental reasoning/thinking deltas across `OpenAI` Responses, Anthropic, Gemini,
-/// and `OpenAI`-compatible reasoning models (`DeepSeek` R1 / `QwQ` / vLLM / Ollama).
-pub fn extract_sse_thinking_delta(dialect: ProviderDialect, json_str: &str) -> Option<String> {
-    let val: Value = serde_json::from_str(json_str).ok()?;
-    match dialect {
-        ProviderDialect::OpenAi => {
-            let kind = val.get("type").and_then(Value::as_str);
-            if matches!(
-                kind,
-                Some("response.reasoning_summary_text.delta" | "response.reasoning_text.delta")
-            ) {
-                return val
-                    .get("delta")
-                    .and_then(Value::as_str)
-                    .map(ToOwned::to_owned);
-            }
-            extract_openai_chat_reasoning_delta(&val)
-        }
-        ProviderDialect::Anthropic => {
-            if val.get("type").and_then(Value::as_str) == Some("content_block_delta")
-                && val
-                    .get("delta")
-                    .and_then(|d| d.get("type"))
-                    .and_then(Value::as_str)
-                    == Some("thinking_delta")
-            {
-                return val
-                    .get("delta")
-                    .and_then(|d| d.get("thinking"))
-                    .and_then(Value::as_str)
-                    .map(ToOwned::to_owned);
-            }
-            None
-        }
-        ProviderDialect::GoogleGemini => {
-            if val.get("event_type").and_then(Value::as_str) == Some("step.delta")
-                && val
-                    .get("delta")
-                    .and_then(|d| d.get("type"))
-                    .and_then(Value::as_str)
-                    == Some("thought_summary")
-            {
-                return val
-                    .get("delta")
-                    .and_then(|d| d.get("text"))
-                    .and_then(Value::as_str)
-                    .map(ToOwned::to_owned);
-            }
-            let parts = val
-                .get("candidates")?
-                .get(0)?
-                .get("content")?
-                .get("parts")?
-                .as_array()?;
-            let mut combined = String::new();
-            for p in parts {
-                if p.get("thought").and_then(Value::as_bool) == Some(true)
-                    && let Some(t) = p.get("text").and_then(Value::as_str)
-                {
-                    combined.push_str(t);
-                }
-            }
-            if combined.is_empty() {
-                None
-            } else {
-                Some(combined)
-            }
-        }
-        ProviderDialect::CustomOpenAi => extract_openai_chat_reasoning_delta(&val),
-    }
-}
-
-fn extract_openai_chat_reasoning_delta(val: &Value) -> Option<String> {
-    let delta = val.get("choices")?.get(0)?.get("delta")?;
-    delta
-        .get("reasoning_content")
-        .or_else(|| delta.get("reasoning"))
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned)
-}
-
-fn merge_anthropic_usage_block(u: &Value, usage: &mut UsageMetrics) {
-    if let Some(v) = u.get("input_tokens").and_then(Value::as_u64) {
-        usage.input_tokens = v;
-    }
-    if let Some(v) = u.get("output_tokens").and_then(Value::as_u64) {
-        usage.output_tokens = v;
-    }
-    if let Some(v) = u.get("cache_read_input_tokens").and_then(Value::as_u64) {
-        usage.cached_input_tokens = v;
-    }
-    if let Some(v) = u.get("cache_creation_input_tokens").and_then(Value::as_u64) {
-        usage.cache_creation_input_tokens = v;
-    }
-}
-
-/// Extracts exact integer token counts from SSE lifecycle frames across all 4 supported dialects.
-pub fn merge_sse_usage(dialect: ProviderDialect, json_str: &str, usage: &mut UsageMetrics) {
-    let Ok(val) = serde_json::from_str::<Value>(json_str) else {
-        return;
-    };
-    match dialect {
-        ProviderDialect::OpenAi => {
-            // OpenAI Responses API (`response.completed`) or Chat Completions final `usage` block.
-            let u = val
-                .get("response")
-                .and_then(|r| r.get("usage"))
-                .or_else(|| val.get("usage"));
-            if let Some(u) = u {
-                if let Some(v) = u
-                    .get("input_tokens")
-                    .or_else(|| u.get("prompt_tokens"))
-                    .and_then(Value::as_u64)
-                {
-                    usage.input_tokens = v;
-                }
-                if let Some(v) = u
-                    .get("output_tokens")
-                    .or_else(|| u.get("completion_tokens"))
-                    .and_then(Value::as_u64)
-                {
-                    usage.output_tokens = v;
-                }
-                if let Some(v) = u
-                    .get("input_tokens_details")
-                    .and_then(|d| d.get("cached_tokens"))
-                    .and_then(Value::as_u64)
-                {
-                    usage.cached_input_tokens = v;
-                }
-                if let Some(v) = u
-                    .get("output_tokens_details")
-                    .or_else(|| u.get("completion_tokens_details"))
-                    .and_then(|d| d.get("reasoning_tokens"))
-                    .and_then(Value::as_u64)
-                {
-                    usage.reasoning_tokens = v;
-                }
-            }
-        }
-        ProviderDialect::Anthropic => {
-            if let Some(u) = val.get("message").and_then(|m| m.get("usage")) {
-                merge_anthropic_usage_block(u, usage);
-            }
-            if let Some(u) = val.get("usage") {
-                merge_anthropic_usage_block(u, usage);
-            }
-        }
-        ProviderDialect::GoogleGemini => {
-            // Interactions: `interaction.usage` (created/completed), top-level `usage`
-            // (status_update, step.stop); legacy generateContent: `usageMetadata`.
-            let u = val
-                .get("usageMetadata")
-                .or_else(|| val.get("usage_metadata"))
-                .or_else(|| val.get("interaction").and_then(|i| i.get("usage")))
-                .or_else(|| val.get("usage"));
-            if let Some(u) = u {
-                if let Some(v) = u
-                    .get("promptTokenCount")
-                    .or_else(|| u.get("total_input_tokens"))
-                    .or_else(|| u.get("input_tokens"))
-                    .and_then(Value::as_u64)
-                {
-                    usage.input_tokens = v;
-                }
-                if let Some(v) = u
-                    .get("candidatesTokenCount")
-                    .or_else(|| u.get("total_output_tokens"))
-                    .or_else(|| u.get("output_tokens"))
-                    .and_then(Value::as_u64)
-                {
-                    usage.output_tokens = v;
-                }
-                if let Some(v) = u
-                    .get("cachedContentTokenCount")
-                    .or_else(|| u.get("total_cached_tokens"))
-                    .and_then(Value::as_u64)
-                {
-                    usage.cached_input_tokens = v;
-                }
-                if let Some(v) = u
-                    .get("thoughtsTokenCount")
-                    .or_else(|| u.get("total_thought_tokens"))
-                    .and_then(Value::as_u64)
-                {
-                    usage.reasoning_tokens = v;
-                }
-            }
-        }
-        ProviderDialect::CustomOpenAi => {
-            if let Some(u) = val.get("usage") {
-                if let Some(v) = u
-                    .get("prompt_tokens")
-                    .or_else(|| u.get("input_tokens"))
-                    .and_then(Value::as_u64)
-                {
-                    usage.input_tokens = v;
-                }
-                if let Some(v) = u
-                    .get("completion_tokens")
-                    .or_else(|| u.get("output_tokens"))
-                    .and_then(Value::as_u64)
-                {
-                    usage.output_tokens = v;
-                }
-            }
-        }
-    }
-}
-
-/// Returns `true` when `payload` is the dialect's end-of-reply marker.
-pub fn is_terminal_event(dialect: ProviderDialect, payload: &str) -> bool {
-    if payload.trim() == "[DONE]" {
-        return true;
-    }
-    let Ok(val) = serde_json::from_str::<Value>(payload) else {
-        return false;
-    };
-    let chat_finished = || {
-        val.get("choices")
-            .and_then(|c| c.get(0))
-            .and_then(|c| c.get("finish_reason"))
-            .is_some_and(|f| !f.is_null())
-    };
-    match dialect {
-        ProviderDialect::OpenAi => {
-            matches!(
-                val.get("type").and_then(Value::as_str),
-                Some("response.completed" | "response.incomplete" | "response.failed" | "error")
-            ) || chat_finished()
-        }
-        ProviderDialect::Anthropic => matches!(
-            val.get("type").and_then(Value::as_str),
-            Some("message_stop" | "error")
-        ),
-        ProviderDialect::GoogleGemini => {
-            matches!(
-                val.get("event_type").and_then(Value::as_str),
-                Some("interaction.completed" | "error")
-            ) || val
-                .get("candidates")
-                .and_then(|c| c.get(0))
-                .and_then(|c| c.get("finishReason"))
-                .is_some_and(|f| !f.is_null())
-        }
-        ProviderDialect::CustomOpenAi => chat_finished(),
-    }
-}
+pub use crate::wire_parse::{
+    extract_sse_delta, extract_sse_thinking_delta, is_terminal_event, merge_sse_usage,
+    parse_models_payload,
+};
 
 #[cfg(test)]
 #[path = "providers_tests.rs"]

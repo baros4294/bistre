@@ -108,6 +108,67 @@ fn resolve_release_key(release_key: Option<&str>) -> BistreResult<&str> {
     resolve_release_key_with(release_key, OFFICIAL_RELEASE_PUBKEY_B64)
 }
 
+/// Default official GitHub Releases OTA manifest URL.
+pub const DEFAULT_OTA_FEED_URL: &str =
+    "https://github.com/baros4294/bistre/releases/latest/download/manifest.json";
+
+/// Normalizes user-supplied update feed strings into a canonical HTTPS `manifest.json` URL.
+///
+/// Accepts:
+/// - empty string → official `baros4294/bistre` manifest URL
+/// - `owner/repo` shorthand (e.g. `baros4294/bistre`)
+/// - GitHub repo or releases URL (`https://github.com/owner/repo`, `.../releases`, `.../releases/latest`)
+/// - direct HTTPS (or loopback HTTP for tests) manifest URL
+pub fn normalize_ota_feed_url(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return DEFAULT_OTA_FEED_URL.to_owned();
+    }
+    if !trimmed.contains("://") {
+        let slug = trimmed.trim_matches('/');
+        if let Some((owner, repo)) = slug.split_once('/')
+            && !owner.is_empty()
+            && !repo.is_empty()
+            && !repo.contains('/')
+            && owner
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+            && repo
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        {
+            return format!(
+                "https://github.com/{owner}/{repo}/releases/latest/download/manifest.json"
+            );
+        }
+        return trimmed.to_owned();
+    }
+    if let Ok(parsed) = reqwest::Url::parse(trimmed)
+        && parsed
+            .host_str()
+            .is_some_and(|h| h.eq_ignore_ascii_case("github.com"))
+    {
+        let segs: Vec<&str> = parsed
+            .path()
+            .trim_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect();
+        if segs.len() == 2
+            || (segs.len() == 3 && segs[2].eq_ignore_ascii_case("releases"))
+            || (segs.len() == 4
+                && segs[2].eq_ignore_ascii_case("releases")
+                && segs[3].eq_ignore_ascii_case("latest"))
+        {
+            return format!(
+                "https://github.com/{}/{}/releases/latest/download/manifest.json",
+                segs[0], segs[1]
+            );
+        }
+    }
+    trimmed.to_owned()
+}
+
 /// Performs a zero-telemetry check against `feed_url` (static JSON manifest + mandatory `.minisig`).
 pub async fn check_for_updates(
     http: &reqwest::Client,
@@ -118,7 +179,8 @@ pub async fn check_for_updates(
 ) -> BistreResult<(UpdateCheckResult, VerifiedManifest)> {
     let pk = resolve_release_key(release_key)?;
     let ownership = detect_ownership_mode();
-    let trimmed = require_secure_url(feed_url, "invalid_feed_url")?;
+    let normalized = normalize_ota_feed_url(feed_url);
+    let trimmed = require_secure_url(&normalized, "invalid_feed_url")?;
 
     let resp = http
         .get(trimmed)
@@ -697,5 +759,22 @@ fgsYLnenA1gdfE3Qca40F0ZfGmgfjF6sYP6BkmoLf+vN0UwGF+ThF99aEy3Gk5XDViORhA2BwS4QcSXG
             Some(DiagnosticKey::CryptoSignatureInvalid)
         );
         Ok(())
+    }
+
+    #[test]
+    fn normalizes_owner_repo_and_github_release_urls() {
+        assert_eq!(normalize_ota_feed_url(""), DEFAULT_OTA_FEED_URL);
+        assert_eq!(
+            normalize_ota_feed_url("baros4294/bistre"),
+            "https://github.com/baros4294/bistre/releases/latest/download/manifest.json"
+        );
+        assert_eq!(
+            normalize_ota_feed_url("https://github.com/baros4294/bistre/releases/latest"),
+            "https://github.com/baros4294/bistre/releases/latest/download/manifest.json"
+        );
+        assert_eq!(
+            normalize_ota_feed_url("https://example.com/custom/manifest.json"),
+            "https://example.com/custom/manifest.json"
+        );
     }
 }

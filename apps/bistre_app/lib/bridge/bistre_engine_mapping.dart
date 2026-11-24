@@ -241,8 +241,80 @@ BistreEvent _mapEvent(frb.FfiEngineEvent e) => switch (e.kind) {
     key: e.diagnosticKey ?? 'diag.internal.error',
     detailCode: e.detailCode,
   ),
+  'live_voice_state' => _mapLiveVoiceState(e.payloadJson),
+  'live_voice_transcript' => _mapLiveVoiceTranscript(e.payloadJson),
+  'live_voice_audio' => _mapLiveVoiceAudio(e.payloadJson),
+  'tool_approval_requested' => _mapToolApprovalRequested(e.payloadJson),
+  'tool_execution_updated' => _mapToolExecutionUpdated(e.payloadJson),
   _ => UnknownEngineEvent(e.kind),
 };
+
+BistreEvent _mapToolApprovalRequested(String? raw) {
+  final m = _decodeMap(raw);
+  return ToolApprovalRequestedEvent(
+    threadId: m['thread_id'] as String? ?? '',
+    runId: m['run_id'] as String? ?? '',
+    callId: m['call_id'] as String? ?? '',
+    toolName: m['tool_name'] as String? ?? '',
+    argumentsJson: m['arguments_json'] as String? ?? '{}',
+    riskTier: m['risk_tier'] as String? ?? 'tier2_external_side_effect',
+  );
+}
+
+BistreEvent _mapToolExecutionUpdated(String? raw) {
+  final m = _decodeMap(raw);
+  return ToolExecutionUpdatedEvent(
+    threadId: m['thread_id'] as String? ?? '',
+    runId: m['run_id'] as String? ?? '',
+    callId: m['call_id'] as String? ?? '',
+    toolName: m['tool_name'] as String? ?? '',
+    riskTier: m['risk_tier'] as String? ?? 'tier0_read_only',
+    status: m['status'] as String? ?? 'running',
+    summary: m['summary'] as String? ?? '',
+    outputText: m['output_text'] as String? ?? '',
+    diffText: m['diff_text'] as String?,
+    checkpointId: m['checkpoint_id'] as String?,
+    durationMs: (m['duration_ms'] as num?)?.toInt() ?? 0,
+  );
+}
+
+BistreEvent _mapLiveVoiceState(String? raw) {
+  final m = _decodeMap(raw);
+  return LiveVoiceStateEvent(
+    sessionId: m['session_id'] as String? ?? '',
+    state: m['state'] as String? ?? 'closed',
+    detail: m['detail'] as String?,
+  );
+}
+
+BistreEvent _mapLiveVoiceTranscript(String? raw) {
+  final m = _decodeMap(raw);
+  return LiveVoiceTranscriptEvent(
+    sessionId: m['session_id'] as String? ?? '',
+    role: m['role'] as String? ?? 'assistant',
+    text: m['text'] as String? ?? '',
+    isFinal: m['is_final'] as bool? ?? false,
+  );
+}
+
+BistreEvent _mapLiveVoiceAudio(String? raw) {
+  final m = _decodeMap(raw);
+  return LiveVoiceAudioEvent(
+    sessionId: m['session_id'] as String? ?? '',
+    wavBase64: m['wav_base64'] as String? ?? '',
+  );
+}
+
+Map<String, Object?> _decodeMap(String? raw) {
+  if (raw == null || raw.isEmpty) return const <String, Object?>{};
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is Map<String, Object?>) return decoded;
+  } on FormatException {
+    // Ignore malformed payload.
+  }
+  return const <String, Object?>{};
+}
 
 int _parsePendingCount(String? raw) {
   if (raw == null || raw.isEmpty) return 0;

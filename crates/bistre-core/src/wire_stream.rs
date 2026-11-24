@@ -1,0 +1,876 @@
+//! Stateful SSE stream accumulator across all Big 3 + Custom dialects.
+//!
+//! Captures:
+//! - Incremental visible text deltas (normalized to `\n`) and thinking deltas
+//! - Exact cryptographic reasoning/thinking blocks (`OpenAI` `reasoning.encrypted_content`,
+//!   Anthropic `thinking.signature` + `redacted_thinking.data`, Gemini `thoughtSignature`)
+//! - Provider server response / interaction IDs (for opt-in stateful chaining & usage dedup)
+//! - Streaming tool/function calls across all 4 dialects (`OpenAI` `function_call`, Anthropic
+//!   `tool_use`, Gemini `functionCall`, `CustomOpenAi` `delta.tool_calls`)
+
+use std::collections::BTreeMap;
+
+use bistre_protocol::{DiagnosticKey, ProviderDialect, UsageMetrics};
+use serde_json::Value;
+
+use crate::providers::{
+    extract_sse_delta, extract_sse_thinking_delta, is_terminal_event, merge_sse_usage,
+};
+use crate::replay_policy::{ReasoningBlock, StoredToolCall};
+use crate::sse::StreamingTextBuffer;
+use crate::tools::{ParsedToolCall, heal_and_dedup_tool_calls, sanitize_tool_call_id};
+
+/// Completed SSE stream payload paired with thinking trace, cryptographic reasoning blocks,
+/// parsed tool calls, cancellation flag, and exact usage.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StreamOutcome {
+    pub full_text: String,
+    pub thinking_text: String,
+    pub thinking_duration_ms: i64,
+    pub reasoning_blocks: Vec<ReasoningBlock>,
+    pub tool_calls: Vec<StoredToolCall>,
+    pub provider_response_id: Option<String>,
+    pub cancelled: bool,
+    /// The stream ended without the dialect's terminal event after partial output.
+    pub interrupted: bool,
+    pub usage: UsageMetrics,
+    /// Non-fatal notices raised while dispatching (heals, key failover), as `(key, detail)`.
+    pub notices: Vec<(DiagnosticKey, String)>,
+}
+
+#[derive(Debug, Default)]
+struct AnthropicBlockAcc {
+    kind: String,
+    text: String,
+    signature: String,
+    redacted_data: String,
+    tool_id: String,
+    tool_name: String,
+    tool_json: String,
+}
+
+#[derive(Debug, Default)]
+struct OpenAiToolAcc {
+    call_id: String,
+    name: String,
+    arguments: String,
+}
+
+/// Mutable accumulator for one streamed reply across all 4 dialects.
+#[derive(Debug, Default)]
+pub(crate) struct StreamState {
+    pub(crate) out: StreamOutcome,
+    pub(crate) text_norm: StreamingTextBuffer,
+    pub(crate) started_at: Option<std::time::Instant>,
+    pub(crate) thinking_started: Option<std::time::Instant>,
+    pub(crate) terminal_seen: bool,
+    anthropic_blocks: BTreeMap<usize, AnthropicBlockAcc>,
+    openai_calls_by_item: BTreeMap<String, OpenAiToolAcc>,
+    chat_calls_by_index: BTreeMap<usize, OpenAiToolAcc>,
+    gemini_thought_buf: String,
+    gemini_thought_sig: Option<String>,
+}
+
+impl StreamState {
+    fn mark_first_token(&mut self) {
+        if self.out.usage.first_token_ms == 0
+            && let Some(t0) = self.started_at
+        {
+            self.out.usage.first_token_ms =
+                u64::try_from(t0.elapsed().as_millis()).unwrap_or(u64::MAX);
+        }
+    }
+
+    pub(crate) fn handle_payload<F, T>(
+        &mut self,
+        dialect: ProviderDialect,
+        payload: &str,
+        on_delta: &mut F,
+        on_thinking: &mut T,
+    ) where
+        F: FnMut(&str) + Send,
+        T: FnMut(&str) + Send,
+    {
+        if is_terminal_event(dialect, payload) {
+            self.terminal_seen = true;
+        }
+        if payload == "[DONE]" {
+            return;
+        }
+        merge_sse_usage(dialect, payload, &mut self.out.usage);
+        if let Ok(val) = serde_json::from_str::<Value>(payload) {
+            self.capture_structured_frame(dialect, &val);
+        }
+        if let Some(thought) = extract_sse_thinking_delta(dialect, payload)
+            && !thought.is_empty()
+        {
+            self.mark_first_token();
+            let start = *self
+                .thinking_started
+                .get_or_insert_with(std::time::Instant::now);
+            self.out.thinking_duration_ms = i64::try_from(start.elapsed().as_millis()).unwrap_or(0);
+            self.out.thinking_text.push_str(&thought);
+            on_thinking(&thought);
+        }
+        if let Some(delta) = extract_sse_delta(dialect, payload) {
+            let clean = self.text_norm.push(&delta);
+            if !clean.is_empty() {
+                self.mark_first_token();
+                self.out.full_text.push_str(&clean);
+                on_delta(&clean);
+            }
+        }
+    }
+
+    /// Finalizes any buffered blocks/tool calls at stream end and runs self-healing dedup.
+    pub(crate) fn finalize(&mut self, dialect: ProviderDialect) {
+        // Flush any unclosed Anthropic blocks (e.g. if stream ended before content_block_stop).
+        let pending_anth = core::mem::take(&mut self.anthropic_blocks);
+        for (_, blk) in pending_anth {
+            self.commit_anthropic_block(blk);
+        }
+        // Flush accumulated Gemini thought signature block if present.
+        if (!self.gemini_thought_buf.is_empty() || self.gemini_thought_sig.is_some())
+            && !self
+                .out
+                .reasoning_blocks
+                .iter()
+                .any(|b| matches!(b, ReasoningBlock::GeminiThought { .. }))
+        {
+            self.out
+                .reasoning_blocks
+                .push(ReasoningBlock::GeminiThought {
+                    text: core::mem::take(&mut self.gemini_thought_buf),
+                    signature: self.gemini_thought_sig.take(),
+                });
+        }
+        // Flush OpenAI Responses / Chat Completions tool call accumulators.
+        let oai_items = core::mem::take(&mut self.openai_calls_by_item);
+        for (_, acc) in oai_items {
+            self.push_tool_call(acc.call_id, acc.name, acc.arguments, None);
+        }
+        let chat_items = core::mem::take(&mut self.chat_calls_by_index);
+        for (_, acc) in chat_items {
+            self.push_tool_call(acc.call_id, acc.name, acc.arguments, None);
+        }
+        // If CustomOpenAi/plain reasoning produced text without structured blocks, store PlainReasoning.
+        if self.out.reasoning_blocks.is_empty() && !self.out.thinking_text.trim().is_empty() {
+            self.out
+                .reasoning_blocks
+                .push(ReasoningBlock::PlainReasoning {
+                    text: self.out.thinking_text.clone(),
+                });
+        }
+        // Run XML/JSON leaked tool-call healing ONLY when no native tool calls arrived on non-native models.
+        if self.out.tool_calls.is_empty()
+            && dialect == ProviderDialect::CustomOpenAi
+            && (self.out.full_text.contains("<tool_call>")
+                || self.out.full_text.contains("<function_call>"))
+        {
+            let (healed, cleaned_text) = heal_and_dedup_tool_calls(Vec::new(), &self.out.full_text);
+            if !healed.is_empty() {
+                self.out.full_text = cleaned_text;
+                for call in healed {
+                    self.out.tool_calls.push(StoredToolCall {
+                        call_id: call.id,
+                        name: call.name,
+                        arguments_json: call.arguments.to_string(),
+                        thought_signature: None,
+                    });
+                }
+            }
+        }
+        // Sanitize every tool call ID to `[A-Za-z0-9_-]{<=64}` and deduplicate.
+        let mut seen_ids = std::collections::HashSet::new();
+        for (idx, call) in self.out.tool_calls.iter_mut().enumerate() {
+            let clean = sanitize_tool_call_id(&call.call_id, &mut seen_ids, idx);
+            call.call_id = clean;
+        }
+        let mut seen_pairs = std::collections::HashSet::new();
+        self.out
+            .tool_calls
+            .retain(|c| seen_pairs.insert((c.call_id.clone(), c.name.clone())));
+    }
+
+    fn capture_structured_frame(&mut self, dialect: ProviderDialect, val: &Value) {
+        match dialect {
+            ProviderDialect::OpenAi => self.capture_openai(val),
+            ProviderDialect::Anthropic => self.capture_anthropic(val),
+            ProviderDialect::GoogleGemini => self.capture_gemini(val),
+            ProviderDialect::CustomOpenAi => self.capture_chat_tool_deltas(val),
+        }
+    }
+
+    fn capture_openai(&mut self, val: &Value) {
+        let kind = val.get("type").and_then(Value::as_str).unwrap_or("");
+        if let Some(id) = val
+            .pointer("/response/id")
+            .or_else(|| val.get("id"))
+            .and_then(Value::as_str)
+            .filter(|s| s.starts_with("resp_"))
+        {
+            self.out.provider_response_id = Some(id.to_owned());
+        }
+        match kind {
+            "response.output_item.added" => {
+                if let Some(item) = val.get("item")
+                    && item.get("type").and_then(Value::as_str) == Some("function_call")
+                {
+                    let key = item
+                        .get("id")
+                        .or_else(|| item.get("call_id"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("fc_0")
+                        .to_owned();
+                    let entry = self.openai_calls_by_item.entry(key).or_default();
+                    if let Some(cid) = item.get("call_id").and_then(Value::as_str) {
+                        cid.clone_into(&mut entry.call_id);
+                    }
+                    if let Some(name) = item.get("name").and_then(Value::as_str) {
+                        name.clone_into(&mut entry.name);
+                    }
+                    if let Some(args) = item.get("arguments").and_then(Value::as_str)
+                        && !args.is_empty()
+                    {
+                        args.clone_into(&mut entry.arguments);
+                    }
+                }
+            }
+            "response.function_call_arguments.delta" => {
+                let key = val
+                    .get("item_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("fc_0")
+                    .to_owned();
+                if let Some(delta) = val.get("delta").and_then(Value::as_str) {
+                    self.openai_calls_by_item
+                        .entry(key)
+                        .or_default()
+                        .arguments
+                        .push_str(delta);
+                }
+            }
+            "response.function_call_arguments.done" => {
+                let key = val
+                    .get("item_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("fc_0")
+                    .to_owned();
+                if let Some(args) = val.get("arguments").and_then(Value::as_str)
+                    && !args.is_empty()
+                {
+                    args.clone_into(
+                        &mut self.openai_calls_by_item.entry(key).or_default().arguments,
+                    );
+                }
+            }
+            "response.output_item.done" => {
+                if let Some(item) = val.get("item") {
+                    self.capture_openai_output_item(item);
+                }
+            }
+            "response.completed" => {
+                if let Some(outputs) = val.pointer("/response/output").and_then(Value::as_array) {
+                    for item in outputs {
+                        self.capture_openai_output_item(item);
+                    }
+                }
+            }
+            _ => {
+                // Plain-JSON non-streaming OpenAI Responses or Chat fallback.
+                if let Some(outputs) = val.get("output").and_then(Value::as_array) {
+                    for item in outputs {
+                        self.capture_openai_output_item(item);
+                    }
+                }
+                self.capture_chat_tool_deltas(val);
+            }
+        }
+    }
+
+    fn capture_openai_output_item(&mut self, item: &Value) {
+        match item.get("type").and_then(Value::as_str) {
+            Some("reasoning") => {
+                let enc = item
+                    .get("encrypted_content")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_owned();
+                if enc.is_empty() {
+                    return;
+                }
+                let id = item
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_owned();
+                if self.out.reasoning_blocks.iter().any(|b| {
+                    matches!(b, ReasoningBlock::OpenAiReasoning { id: existing, encrypted_content, .. }
+                        if (!id.is_empty() && existing == &id) || encrypted_content == &enc)
+                }) {
+                    return;
+                }
+                let summary = item
+                    .get("summary")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
+                self.out
+                    .reasoning_blocks
+                    .push(ReasoningBlock::OpenAiReasoning {
+                        id,
+                        summary,
+                        encrypted_content: enc,
+                    });
+            }
+            Some("function_call") => {
+                let key = item
+                    .get("id")
+                    .or_else(|| item.get("call_id"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                self.openai_calls_by_item.remove(key);
+                let call_id = item
+                    .get("call_id")
+                    .or_else(|| item.get("id"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_owned();
+                let name = item
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_owned();
+                let arguments = item
+                    .get("arguments")
+                    .and_then(Value::as_str)
+                    .unwrap_or("{}")
+                    .to_owned();
+                self.push_tool_call(call_id, name, arguments, None);
+            }
+            _ => {}
+        }
+    }
+
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Handles all Anthropic SSE content_block_start/delta/stop and plain-JSON frames linearly."
+    )]
+    fn capture_anthropic(&mut self, val: &Value) {
+        let kind = val.get("type").and_then(Value::as_str).unwrap_or("");
+        match kind {
+            "message_start" => {
+                if let Some(id) = val.pointer("/message/id").and_then(Value::as_str) {
+                    self.out.provider_response_id = Some(id.to_owned());
+                }
+            }
+            "content_block_start" => {
+                let idx = val
+                    .get("index")
+                    .and_then(Value::as_u64)
+                    .and_then(|v| usize::try_from(v).ok())
+                    .unwrap_or(0);
+                let Some(cb) = val.get("content_block") else {
+                    return;
+                };
+                let cb_type = cb.get("type").and_then(Value::as_str).unwrap_or("");
+                let mut acc = AnthropicBlockAcc {
+                    kind: cb_type.to_owned(),
+                    ..AnthropicBlockAcc::default()
+                };
+                match cb_type {
+                    "thinking" => {
+                        if let Some(t) = cb.get("thinking").and_then(Value::as_str) {
+                            acc.text.push_str(t);
+                        }
+                        if let Some(s) = cb.get("signature").and_then(Value::as_str) {
+                            acc.signature.push_str(s);
+                        }
+                    }
+                    "redacted_thinking" => {
+                        if let Some(d) = cb.get("data").and_then(Value::as_str) {
+                            d.clone_into(&mut acc.redacted_data);
+                        }
+                    }
+                    "tool_use" => {
+                        cb.get("id")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .clone_into(&mut acc.tool_id);
+                        cb.get("name")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .clone_into(&mut acc.tool_name);
+                    }
+                    _ => {}
+                }
+                self.anthropic_blocks.insert(idx, acc);
+            }
+            "content_block_delta" => {
+                let idx = val
+                    .get("index")
+                    .and_then(Value::as_u64)
+                    .and_then(|v| usize::try_from(v).ok())
+                    .unwrap_or(0);
+                let Some(delta) = val.get("delta") else {
+                    return;
+                };
+                let d_type = delta.get("type").and_then(Value::as_str).unwrap_or("");
+                let entry = self.anthropic_blocks.entry(idx).or_default();
+                match d_type {
+                    "thinking_delta" => {
+                        if let Some(t) = delta.get("thinking").and_then(Value::as_str) {
+                            entry.text.push_str(t);
+                        }
+                    }
+                    "signature_delta" => {
+                        if let Some(s) = delta.get("signature").and_then(Value::as_str) {
+                            entry.signature.push_str(s);
+                        }
+                    }
+                    "input_json_delta" => {
+                        if let Some(j) = delta.get("partial_json").and_then(Value::as_str) {
+                            entry.tool_json.push_str(j);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            "content_block_stop" => {
+                let idx = val
+                    .get("index")
+                    .and_then(Value::as_u64)
+                    .and_then(|v| usize::try_from(v).ok())
+                    .unwrap_or(0);
+                if let Some(blk) = self.anthropic_blocks.remove(&idx) {
+                    self.commit_anthropic_block(blk);
+                }
+            }
+            "message" => {
+                // Plain-JSON non-streaming Anthropic Messages response.
+                if let Some(id) = val.get("id").and_then(Value::as_str) {
+                    self.out.provider_response_id = Some(id.to_owned());
+                }
+                if let Some(blocks) = val.get("content").and_then(Value::as_array) {
+                    for b in blocks {
+                        match b.get("type").and_then(Value::as_str) {
+                            Some("thinking") => {
+                                let thinking = b
+                                    .get("thinking")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or("")
+                                    .to_owned();
+                                let signature = b
+                                    .get("signature")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or("")
+                                    .to_owned();
+                                if !signature.is_empty() {
+                                    self.out.reasoning_blocks.push(
+                                        ReasoningBlock::AnthropicThinking {
+                                            thinking,
+                                            signature,
+                                        },
+                                    );
+                                }
+                            }
+                            Some("redacted_thinking") => {
+                                if let Some(data) = b.get("data").and_then(Value::as_str)
+                                    && !data.is_empty()
+                                {
+                                    self.out.reasoning_blocks.push(
+                                        ReasoningBlock::AnthropicRedactedThinking {
+                                            data: data.to_owned(),
+                                        },
+                                    );
+                                }
+                            }
+                            Some("tool_use") => {
+                                let cid =
+                                    b.get("id").and_then(Value::as_str).unwrap_or("").to_owned();
+                                let name = b
+                                    .get("name")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or("")
+                                    .to_owned();
+                                let args = b
+                                    .get("input")
+                                    .map_or_else(|| "{}".to_owned(), Value::to_string);
+                                self.push_tool_call(cid, name, args, None);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn commit_anthropic_block(&mut self, blk: AnthropicBlockAcc) {
+        match blk.kind.as_str() {
+            "thinking" if !blk.signature.is_empty() => {
+                self.out
+                    .reasoning_blocks
+                    .push(ReasoningBlock::AnthropicThinking {
+                        thinking: blk.text,
+                        signature: blk.signature,
+                    });
+            }
+            "redacted_thinking" if !blk.redacted_data.is_empty() => {
+                self.out
+                    .reasoning_blocks
+                    .push(ReasoningBlock::AnthropicRedactedThinking {
+                        data: blk.redacted_data,
+                    });
+            }
+            "tool_use" if !blk.tool_name.is_empty() => {
+                let args = if blk.tool_json.trim().is_empty() {
+                    "{}".to_owned()
+                } else {
+                    blk.tool_json
+                };
+                self.push_tool_call(blk.tool_id, blk.tool_name, args, None);
+            }
+            _ => {}
+        }
+    }
+
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Handles Gemini Interactions and legacy generateContent SSE frames linearly."
+    )]
+    fn capture_gemini(&mut self, val: &Value) {
+        // Interactions API: interaction ID, thought signatures, and function calls.
+        if let Some(id) = val
+            .pointer("/interaction/id")
+            .or_else(|| val.get("interaction_id"))
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
+            self.out.provider_response_id = Some(id.to_owned());
+        }
+        if val.get("event_type").and_then(Value::as_str) == Some("step.delta")
+            && let Some(delta) = val.get("delta")
+        {
+            if let Some(sig) = delta
+                .get("thought_signature")
+                .or_else(|| delta.get("thoughtSignature"))
+                .or_else(|| delta.get("signature"))
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+            {
+                self.gemini_thought_sig = Some(sig.to_owned());
+            }
+            if delta.get("type").and_then(Value::as_str) == Some("thought_summary")
+                && let Some(t) = delta.get("text").and_then(Value::as_str)
+            {
+                self.gemini_thought_buf.push_str(t);
+            }
+            if delta.get("type").and_then(Value::as_str) == Some("function_call") {
+                let cid = delta
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_owned();
+                let name = delta
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_owned();
+                let args = delta
+                    .get("arguments")
+                    .map_or_else(|| "{}".to_owned(), Value::to_string);
+                let sig = delta
+                    .get("thought_signature")
+                    .or_else(|| delta.get("thoughtSignature"))
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned)
+                    .or_else(|| self.gemini_thought_sig.clone());
+                self.push_tool_call(cid, name, args, sig);
+            }
+        }
+        if let Some(outputs) = val
+            .pointer("/interaction/outputs")
+            .and_then(Value::as_array)
+        {
+            for out_item in outputs {
+                if out_item.get("type").and_then(Value::as_str) == Some("thought")
+                    && let Some(sig) = out_item
+                        .get("signature")
+                        .or_else(|| out_item.get("thought_signature"))
+                        .and_then(Value::as_str)
+                        .filter(|s| !s.is_empty())
+                {
+                    let text = out_item
+                        .get("summary")
+                        .and_then(Value::as_str)
+                        .or_else(|| out_item.get("text").and_then(Value::as_str))
+                        .unwrap_or("")
+                        .to_owned();
+                    self.gemini_thought_sig = Some(sig.to_owned());
+                    if !self.out.reasoning_blocks.iter().any(|b| {
+                        matches!(b, ReasoningBlock::GeminiThought { signature: Some(s), .. } if s == sig)
+                    }) {
+                        self.out
+                            .reasoning_blocks
+                            .push(ReasoningBlock::GeminiThought {
+                                text,
+                                signature: Some(sig.to_owned()),
+                            });
+                    }
+                }
+                if out_item.get("type").and_then(Value::as_str) == Some("function_call") {
+                    let cid = out_item
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_owned();
+                    let name = out_item
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_owned();
+                    let args = out_item
+                        .get("arguments")
+                        .map_or_else(|| "{}".to_owned(), Value::to_string);
+                    let sig = out_item
+                        .get("thought_signature")
+                        .or_else(|| out_item.get("thoughtSignature"))
+                        .and_then(Value::as_str)
+                        .map(ToOwned::to_owned)
+                        .or_else(|| self.gemini_thought_sig.clone());
+                    self.push_tool_call(cid, name, args, sig);
+                }
+            }
+        }
+        // Classic generateContent SSE parts: thoughtSignature + functionCall.
+        if let Some(parts) = val
+            .pointer("/candidates/0/content/parts")
+            .and_then(Value::as_array)
+        {
+            for part in parts {
+                let part_sig = part
+                    .get("thoughtSignature")
+                    .or_else(|| part.get("thought_signature"))
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                    .map(ToOwned::to_owned);
+                if let Some(ref sig) = part_sig {
+                    self.gemini_thought_sig = Some(sig.clone());
+                }
+                if part.get("thought").and_then(Value::as_bool) == Some(true) {
+                    if let Some(t) = part.get("text").and_then(Value::as_str) {
+                        self.gemini_thought_buf.push_str(t);
+                    }
+                    if let Some(sig) = part_sig.clone() {
+                        self.out
+                            .reasoning_blocks
+                            .push(ReasoningBlock::GeminiThought {
+                                text: core::mem::take(&mut self.gemini_thought_buf),
+                                signature: Some(sig),
+                            });
+                    }
+                }
+                if let Some(fc) = part.get("functionCall") {
+                    let name = fc
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_owned();
+                    let cid = fc
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_owned();
+                    let args = fc
+                        .get("args")
+                        .map_or_else(|| "{}".to_owned(), Value::to_string);
+                    let sig = part_sig.or_else(|| self.gemini_thought_sig.clone());
+                    self.push_tool_call(cid, name, args, sig);
+                }
+            }
+        }
+    }
+
+    fn capture_chat_tool_deltas(&mut self, val: &Value) {
+        let Some(choice) = val.pointer("/choices/0") else {
+            return;
+        };
+        if let Some(calls) = choice
+            .pointer("/delta/tool_calls")
+            .or_else(|| choice.pointer("/message/tool_calls"))
+            .and_then(Value::as_array)
+        {
+            for (fallback_idx, call) in calls.iter().enumerate() {
+                let idx = call
+                    .get("index")
+                    .and_then(Value::as_u64)
+                    .and_then(|v| usize::try_from(v).ok())
+                    .unwrap_or(fallback_idx);
+                let entry = self.chat_calls_by_index.entry(idx).or_default();
+                if let Some(id) = call.get("id").and_then(Value::as_str)
+                    && !id.is_empty()
+                {
+                    id.clone_into(&mut entry.call_id);
+                }
+                if let Some(name) = call.pointer("/function/name").and_then(Value::as_str)
+                    && !name.is_empty()
+                {
+                    entry.name.push_str(name);
+                }
+                if let Some(args) = call.pointer("/function/arguments").and_then(Value::as_str) {
+                    entry.arguments.push_str(args);
+                }
+            }
+        }
+    }
+
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "All 8 callers already own call_id Strings extracted from SSE JSON frames."
+    )]
+    fn push_tool_call(
+        &mut self,
+        call_id: String,
+        name: String,
+        arguments_json: String,
+        thought_signature: Option<String>,
+    ) {
+        if name.trim().is_empty() {
+            return;
+        }
+        let idx = self.out.tool_calls.len();
+        let mut seen: std::collections::HashSet<String> = self
+            .out
+            .tool_calls
+            .iter()
+            .map(|c| c.call_id.clone())
+            .collect();
+        let clean_id = sanitize_tool_call_id(&call_id, &mut seen, idx);
+        let args = if arguments_json.trim().is_empty() {
+            "{}".to_owned()
+        } else {
+            arguments_json
+        };
+        if self
+            .out
+            .tool_calls
+            .iter()
+            .any(|c| c.call_id == clean_id && c.name == name)
+        {
+            return;
+        }
+        self.out.tool_calls.push(StoredToolCall {
+            call_id: clean_id,
+            name,
+            arguments_json: args,
+            thought_signature,
+        });
+    }
+}
+
+/// Converts a persisted `StoredToolCall` into a `ParsedToolCall` for execution.
+pub fn stored_to_parsed_tool_call(call: &StoredToolCall) -> ParsedToolCall {
+    let arguments = serde_json::from_str::<Value>(&call.arguments_json)
+        .unwrap_or_else(|_| serde_json::json!({}));
+    ParsedToolCall {
+        id: call.call_id.clone(),
+        name: call.name.clone(),
+        arguments,
+        healed_from_text: false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn captures_anthropic_thinking_signature_and_redacted_thinking_and_tool_use() {
+        let mut st = StreamState::default();
+        let frames = [
+            r#"{"type":"message_start","message":{"id":"msg_123"}}"#,
+            r#"{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}"#,
+            r#"{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"plan A"}}"#,
+            r#"{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig_part1"}}"#,
+            r#"{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"_part2"}}"#,
+            r#"{"type":"content_block_stop","index":0}"#,
+            r#"{"type":"content_block_start","index":1,"content_block":{"type":"redacted_thinking","data":"opaque_redacted_1"}}"#,
+            r#"{"type":"content_block_stop","index":1}"#,
+            r#"{"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_01","name":"read"}}"#,
+            r#"{"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"path\":\"a.rs\"}"}}"#,
+            r#"{"type":"content_block_stop","index":2}"#,
+            r#"{"type":"message_stop"}"#,
+        ];
+        for f in frames {
+            st.handle_payload(ProviderDialect::Anthropic, f, &mut |_| {}, &mut |_| {});
+        }
+        st.finalize(ProviderDialect::Anthropic);
+        assert_eq!(st.out.provider_response_id.as_deref(), Some("msg_123"));
+        assert_eq!(st.out.reasoning_blocks.len(), 2);
+        assert_eq!(
+            st.out.reasoning_blocks[0],
+            ReasoningBlock::AnthropicThinking {
+                thinking: "plan A".to_owned(),
+                signature: "sig_part1_part2".to_owned(),
+            }
+        );
+        assert_eq!(
+            st.out.reasoning_blocks[1],
+            ReasoningBlock::AnthropicRedactedThinking {
+                data: "opaque_redacted_1".to_owned(),
+            }
+        );
+        assert_eq!(st.out.tool_calls.len(), 1);
+        assert_eq!(st.out.tool_calls[0].name, "read");
+        assert_eq!(st.out.tool_calls[0].call_id, "toolu_01");
+    }
+
+    #[test]
+    fn captures_openai_encrypted_reasoning_and_function_call() {
+        let mut st = StreamState::default();
+        let frames = [
+            r#"{"type":"response.created","response":{"id":"resp_99"}}"#,
+            r#"{"type":"response.output_item.done","item":{"id":"rs_1","type":"reasoning","summary":[{"type":"summary_text","text":"checked"}],"encrypted_content":"enc_blob_xyz"}}"#,
+            r#"{"type":"response.output_item.added","item":{"id":"fc_1","type":"function_call","call_id":"call_42","name":"grep"}}"#,
+            r#"{"type":"response.function_call_arguments.delta","item_id":"fc_1","delta":"{\"pattern\":\"WAL\"}"}"#,
+            r#"{"type":"response.completed","response":{"id":"resp_99","output":[]}}"#,
+        ];
+        for f in frames {
+            st.handle_payload(ProviderDialect::OpenAi, f, &mut |_| {}, &mut |_| {});
+        }
+        st.finalize(ProviderDialect::OpenAi);
+        assert_eq!(st.out.provider_response_id.as_deref(), Some("resp_99"));
+        assert_eq!(st.out.reasoning_blocks.len(), 1);
+        assert!(matches!(
+            &st.out.reasoning_blocks[0],
+            ReasoningBlock::OpenAiReasoning { id, encrypted_content, .. }
+            if id == "rs_1" && encrypted_content == "enc_blob_xyz"
+        ));
+        assert_eq!(st.out.tool_calls.len(), 1);
+        assert_eq!(st.out.tool_calls[0].call_id, "call_42");
+        assert_eq!(st.out.tool_calls[0].name, "grep");
+    }
+
+    #[test]
+    fn captures_gemini_thought_signature_and_function_call() {
+        let mut st = StreamState::default();
+        let frame = r#"{"candidates":[{"content":{"parts":[{"thought":true,"text":"thinking","thoughtSignature":"gem_sig_77"},{"functionCall":{"id":"fc_g1","name":"glob","args":{"pattern":"*.rs"}},"thoughtSignature":"gem_sig_77"}]},"finishReason":"STOP"}]}"#;
+        st.handle_payload(
+            ProviderDialect::GoogleGemini,
+            frame,
+            &mut |_| {},
+            &mut |_| {},
+        );
+        st.finalize(ProviderDialect::GoogleGemini);
+        assert_eq!(st.out.full_text, "");
+        assert_eq!(st.out.thinking_text, "thinking");
+        assert_eq!(st.out.reasoning_blocks.len(), 1);
+        assert_eq!(st.out.tool_calls.len(), 1);
+        assert_eq!(
+            st.out.tool_calls[0].thought_signature.as_deref(),
+            Some("gem_sig_77")
+        );
+    }
+}

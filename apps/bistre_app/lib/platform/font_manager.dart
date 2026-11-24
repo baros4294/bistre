@@ -111,7 +111,9 @@ class BistreFontManager {
               lowerBase.endsWith('z.ttf')) {
             continue;
           }
-          final pretty = _prettyNameFromPath(entity.path);
+          final pretty =
+              await _readSfntFamilyName(entity) ??
+              _prettyNameFromPath(entity.path);
           if (pretty.isEmpty) continue;
           final key = pretty.toLowerCase();
           seen.putIfAbsent(
@@ -135,6 +137,98 @@ class BistreFontManager {
       );
     _cachedSystemFonts = list;
     return list;
+  }
+
+  /// Parses the OpenType/TrueType `name` table (NameID 16 Preferred Family or NameID 1 Family)
+  /// so Windows 8.3 filenames like `AGENCYB.TTF` or `BRLNSR.TTF` display their real human names
+  /// (`Agency FB`, `Berlin Sans FB`) instead of cryptic stems.
+  static Future<String?> _readSfntFamilyName(File file) async {
+    RandomAccessFile? raf;
+    try {
+      raf = await file.open();
+      final fileLen = await raf.length();
+      if (fileLen < 12) return null;
+      final headerBytes = await raf.read(12);
+      if (headerBytes.length < 12) return null;
+      final hdr = ByteData.sublistView(headerBytes);
+      final numTables = hdr.getUint16(4);
+      if (numTables == 0 || numTables > 128) return null;
+
+      final dirLen = numTables * 16;
+      final dirBytes = await raf.read(dirLen);
+      if (dirBytes.length < dirLen) return null;
+      final dir = ByteData.sublistView(dirBytes);
+
+      int? nameOffset;
+      int? nameLength;
+      for (var i = 0; i < numTables; i++) {
+        final base = i * 16;
+        // 'name' tag = 0x6E616D65
+        if (dir.getUint32(base) == 0x6E616D65) {
+          nameOffset = dir.getUint32(base + 8);
+          nameLength = dir.getUint32(base + 12);
+          break;
+        }
+      }
+      if (nameOffset == null || nameLength == null || nameLength < 6) {
+        return null;
+      }
+      // Cap read to 64 KiB so huge CJK fonts never stall discovery.
+      final clampedLen = nameLength > 65536 ? 65536 : nameLength;
+      if (nameOffset + clampedLen > fileLen) return null;
+      await raf.setPosition(nameOffset);
+      final tblBytes = await raf.read(clampedLen);
+      if (tblBytes.length < 6) return null;
+      final tbl = ByteData.sublistView(tblBytes);
+      final count = tbl.getUint16(2);
+      final stringStorageOffset = tbl.getUint16(4);
+
+      String? preferred;
+      String? family;
+      final maxRecords = count > 256 ? 256 : count;
+      for (var i = 0; i < maxRecords; i++) {
+        final recBase = 6 + i * 12;
+        if (recBase + 12 > tblBytes.length) break;
+        final platformId = tbl.getUint16(recBase);
+        final nameId = tbl.getUint16(recBase + 6);
+        if (nameId != 1 && nameId != 16) continue;
+        final len = tbl.getUint16(recBase + 8);
+        final strOff = stringStorageOffset + tbl.getUint16(recBase + 10);
+        if (len == 0 || strOff + len > tblBytes.length) continue;
+
+        String? decoded;
+        if (platformId == 3 || platformId == 0) {
+          // UTF-16BE (Windows / Unicode)
+          if (len.isOdd) continue;
+          final units = <int>[];
+          for (var j = 0; j < len; j += 2) {
+            units.add((tblBytes[strOff + j] << 8) | tblBytes[strOff + j + 1]);
+          }
+          decoded = String.fromCharCodes(units).trim();
+        } else if (platformId == 1) {
+          // Mac Roman ASCII subset
+          decoded = String.fromCharCodes(tblBytes.sublist(strOff, strOff + len))
+              .trim();
+        }
+        if (decoded == null || decoded.isEmpty) continue;
+        if (nameId == 16) {
+          preferred ??= decoded;
+          if (platformId == 3) preferred = decoded;
+        } else {
+          family ??= decoded;
+          if (platformId == 3) family = decoded;
+        }
+      }
+      final result = (preferred ?? family)?.trim();
+      if (result == null || result.isEmpty || result.startsWith('.')) {
+        return null;
+      }
+      return result;
+    } on FileSystemException {
+      return null;
+    } finally {
+      await raf?.close();
+    }
   }
 
   static String _prettyNameFromPath(String path) {

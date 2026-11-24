@@ -71,6 +71,9 @@ class BistreDesktopHost {
   static const MethodChannel _channel = MethodChannel('bistre/desktop_host');
   static VoidCallback? _onSystemThemeChanged;
   static void Function(DesktopWindowBounds bounds)? _onWindowBoundsChanged;
+  static void Function(String pcmBase64)? _onMicPcmChunk;
+  static Process? _activeDictationProc;
+  static Process? _activeTtsProc;
   static bool _channelHandlerAttached = false;
 
   static void _ensureChannelHandler() {
@@ -79,6 +82,11 @@ class BistreDesktopHost {
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'onSystemThemeChanged') {
         _onSystemThemeChanged?.call();
+      } else if (call.method == 'onMicPcmChunk') {
+        final b64 = call.arguments;
+        if (b64 is String && b64.isNotEmpty) {
+          _onMicPcmChunk?.call(b64);
+        }
       } else if (call.method == 'onWindowBoundsChanged') {
         final raw = call.arguments;
         if (raw is Map<Object?, Object?>) {
@@ -427,6 +435,187 @@ class BistreDesktopHost {
       // Non-fatal.
     } on MissingPluginException {
       // Non-fatal.
+    }
+  }
+
+  /// Plays the OS notification chime immediately (Settings → Preview sound).
+  static Future<void> playNotificationSound() async {
+    if (Platform.isWindows) {
+      try {
+        await _channel.invokeMethod<bool>('playNotificationSound');
+        return;
+      } on PlatformException {
+        return;
+      } on MissingPluginException {
+        return;
+      }
+    }
+    await SystemSound.play(SystemSoundType.alert);
+  }
+
+  /// Plays WAV audio bytes natively (Win32 `PlaySoundW` / Android `MediaPlayer`).
+  static Future<void> playWavBytes(List<int> wavBytes) async {
+    if (wavBytes.isEmpty) return;
+    if (Platform.isWindows || Platform.isAndroid) {
+      try {
+        await _channel.invokeMethod<bool>('playWavBytes', <String, Object?>{
+          'bytes': Uint8List.fromList(wavBytes),
+        });
+        return;
+      } on PlatformException {
+        return;
+      } on MissingPluginException {
+        return;
+      }
+    }
+  }
+
+  /// Stops any active WAV playback or OS speech synthesis.
+  static Future<void> stopAudioPlayback() async {
+    _activeTtsProc?.kill();
+    _activeTtsProc = null;
+    if (Platform.isWindows || Platform.isAndroid) {
+      try {
+        await _channel.invokeMethod<bool>('stopAudioPlayback');
+      } on PlatformException {
+        // Non-fatal.
+      } on MissingPluginException {
+        // Non-fatal.
+      }
+    }
+  }
+
+  /// Registers a listener for 16 kHz 16-bit mono PCM mic chunks (base64) during Live Voice.
+  static void attachMicPcmListener(void Function(String pcmBase64) callback) {
+    _onMicPcmChunk = callback;
+    _ensureChannelHandler();
+  }
+
+  static void detachMicPcmListener() {
+    _onMicPcmChunk = null;
+  }
+
+  static Future<bool> startMicCapture() async {
+    if (!Platform.isWindows) return false;
+    try {
+      return await _channel.invokeMethod<bool>('startMicCapture') ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  static Future<void> stopMicCapture() async {
+    if (!Platform.isWindows) return;
+    try {
+      await _channel.invokeMethod<bool>('stopMicCapture');
+    } on PlatformException {
+      // Non-fatal.
+    } on MissingPluginException {
+      // Non-fatal.
+    }
+  }
+
+  /// Native OS speech-to-text dictation (Windows `System.Speech` / Android `RecognizerIntent`).
+  static Future<String?> dictateVoiceOnce() async {
+    if (Platform.isAndroid) {
+      try {
+        return await _channel.invokeMethod<String>('dictateVoiceOnce');
+      } on PlatformException {
+        return null;
+      } on MissingPluginException {
+        return null;
+      }
+    }
+    if (!Platform.isWindows) return null;
+    await stopVoiceDictation();
+    const psScript = r'''
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+Add-Type -AssemblyName System.Speech
+$rec = New-Object System.Speech.Recognition.SpeechRecognitionEngine
+$rec.LoadGrammar((New-Object System.Speech.Recognition.DictationGrammar))
+$rec.SetInputToDefaultAudioDevice()
+$res = $rec.Recognize([TimeSpan]::FromSeconds(12))
+if ($res -ne $null -and $res.Text) { Write-Output $res.Text }
+''';
+    try {
+      final proc = await Process.start('powershell.exe', <String>[
+        '-NoProfile',
+        '-NonInteractive',
+        '-WindowStyle',
+        'Hidden',
+        '-Command',
+        psScript,
+      ]);
+      _activeDictationProc = proc;
+      await proc.stdin.close();
+      final outFuture = proc.stdout.transform(utf8.decoder).join();
+      await proc.exitCode.timeout(
+        const Duration(seconds: 16),
+        onTimeout: () {
+          proc.kill();
+          return -1;
+        },
+      );
+      if (identical(_activeDictationProc, proc)) {
+        _activeDictationProc = null;
+      }
+      final text = (await outFuture).trim();
+      return text.isEmpty ? null : text;
+    } on ProcessException {
+      _activeDictationProc = null;
+      return null;
+    }
+  }
+
+  static Future<void> stopVoiceDictation() async {
+    _activeDictationProc?.kill();
+    _activeDictationProc = null;
+  }
+
+  /// OS-native speech synthesis fallback when the active model is text-only.
+  static Future<void> speakTextAloud(String text) async {
+    final clean = text.trim();
+    if (clean.isEmpty) return;
+    if (Platform.isAndroid) {
+      try {
+        await _channel.invokeMethod<bool>('speakTextAloud', <String, Object?>{
+          'text': clean,
+        });
+      } on PlatformException {
+        // Non-fatal.
+      } on MissingPluginException {
+        // Non-fatal.
+      }
+      return;
+    }
+    if (!Platform.isWindows) return;
+    _activeTtsProc?.kill();
+    final safeText = clean.length > 4000 ? clean.substring(0, 4000) : clean;
+    final b64 = base64Encode(utf8.encode(safeText));
+    final psScript =
+        'Add-Type -AssemblyName System.Speech; '
+        "\$t = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('$b64')); "
+        '\$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; '
+        '\$s.Speak(\$t)';
+    try {
+      final proc = await Process.start('powershell.exe', <String>[
+        '-NoProfile',
+        '-NonInteractive',
+        '-WindowStyle',
+        'Hidden',
+        '-Command',
+        psScript,
+      ]);
+      _activeTtsProc = proc;
+      await proc.stdin.close();
+      await proc.exitCode;
+      if (identical(_activeTtsProc, proc)) {
+        _activeTtsProc = null;
+      }
+    } on ProcessException {
+      _activeTtsProc = null;
     }
   }
 }

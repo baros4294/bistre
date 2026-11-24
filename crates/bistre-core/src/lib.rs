@@ -7,7 +7,9 @@
 //! - Streams real responses over pure `rustls` + `reqwest 0.13` across Big 3 + Custom dialects (Spec 02).
 
 pub mod agent;
+pub mod agent_tools;
 pub mod approval;
+pub mod attachments;
 pub mod compaction;
 pub mod credentials;
 pub mod cron;
@@ -18,24 +20,33 @@ pub mod http_clients;
 pub mod import_policy;
 pub mod ipc_client;
 pub mod mcp;
+pub mod mcp_stdio;
 pub mod net;
 mod off_worker;
 pub mod ota;
 pub mod power;
 pub mod process_util;
+pub mod provider_prefs;
 pub mod providers;
 pub mod registry;
+pub mod replay_policy;
 pub mod skills;
 pub mod sse;
 pub mod ssrf;
+pub mod storage_files;
 pub mod story;
 pub mod subagents;
 pub mod tokenizer;
 pub mod tools;
 pub mod vault_key;
+pub mod voice;
 pub mod wallet;
+pub mod wire_history;
+pub mod wire_parse;
+pub mod wire_stream;
 
 mod engine_client;
+mod engine_extras;
 mod engine_impl;
 mod engine_runs;
 #[cfg(test)]
@@ -56,12 +67,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::events::{emit, emit_logged};
 use bistre_crypto::{LocalSecretVault, SecretVault, verify_signed_pack};
 use bistre_protocol::{
-    AgentRunRecord, AppHealthSnapshot, AppSettings, AssistantPatch, AssistantRecord, BistreError,
-    BistreResult, CharacterCardRecord, CronJobRecord, CursorEventRecord, DiagnosticKey,
-    DraftRecord, EngineEvent, GenerationParams, MemoryEntryRecord, MoneyMicros, NodeRecord,
-    NodeRole, PowerGuardStatus, ProviderDialect, ProviderModelInfo, ProviderPatch, ProviderProfile,
-    ReasoningEffort, RegexRuleRecord, RunStatus, RunStepKind, RunStepRecord, SearchHit,
-    SignedPackManifest, SteeringMessage, StorageStats, StoryChapterRecord, StoryEntryRecord,
+    AgentRunRecord, AppHealthSnapshot, AppSettings, AssistantPatch, AssistantRecord,
+    AttachmentInput, BistreError, BistreResult, CharacterCardRecord, CronJobRecord,
+    CursorEventRecord, DiagnosticKey, DraftRecord, EngineEvent, GenerationParams,
+    MemoryEntryRecord, ModelCatalogInfo, MoneyMicros, NodeRecord, NodeRole, PowerGuardStatus,
+    ProviderDialect, ProviderModelInfo, ProviderPatch, ProviderProfile, ReasoningEffort,
+    RegexRuleRecord, RunStatus, RunStepKind, RunStepRecord, SearchHit, SignedPackManifest,
+    SteeringMessage, StorageFileEntry, StorageStats, StoryChapterRecord, StoryEntryRecord,
     StoryProgressionRecord, StorySceneRecord, StorySnapshotRecord, StoryThreadStateRecord,
     StreamChunk, SystemPowerEvent, ThreadMode, ThreadPatch, ThreadSummary, ToolRiskTier,
     UpdateCheckResult, UserPersonaRecord, WorkspaceCheckpointRecord, WorkspaceSummary,
@@ -93,12 +105,18 @@ pub struct InProcessEngine {
     mcp_http: mcp::McpHttpTransport,
     /// Live single-flight pricing registry (no hardcoded model rates).
     pricing: Arc<registry::PricingRegistry>,
+    /// Per-`(provider_id, model_id)` runtime set of models that rejected reasoning fields with 400.
+    reasoning_unsupported: Arc<Mutex<std::collections::HashSet<(String, String)>>>,
     /// Per-thread backoff wakers (`Retry now` and cancel wake a waiting run instantly).
     wakers: Arc<Mutex<HashMap<String, Arc<Notify>>>>,
     /// Run-scoped stale-read guard for workspace edits.
-    read_ledger: tools::ReadLedger,
+    read_ledger: Arc<tools::ReadLedger>,
     /// Single tool dispatch gate (one-use permits, synchronous revocation).
-    broker: approval::ToolApprovalBroker,
+    broker: Arc<approval::ToolApprovalBroker>,
+    /// Live tool-approval waiters keyed by `call_id`.
+    pending_approvals: agent_tools::PendingApprovalMap,
+    /// Thread-scoped auto-approved tool names granted via `ApproveForThread`.
+    thread_auto_approvals: agent_tools::ThreadAutoApprovals,
     power: Arc<PowerCoordinator>,
     events_tx: broadcast::Sender<EngineEvent>,
     active_runs: Arc<AtomicU32>,
@@ -110,6 +128,8 @@ pub struct InProcessEngine {
     run_tasks: Arc<Mutex<tokio::task::JoinSet<()>>>,
     /// Release key override (tests only); unset uses `ota::OFFICIAL_RELEASE_PUBKEY_B64`.
     ota_release_key: std::sync::OnceLock<String>,
+    /// Active bidirectional Live Voice WebSocket sessions.
+    live_voice: Arc<voice::LiveVoiceManager>,
 }
 
 impl std::fmt::Debug for InProcessEngine {
@@ -184,9 +204,12 @@ impl InProcessEngine {
             web,
             mcp_http: mcp::McpHttpTransport::new(),
             pricing,
+            reasoning_unsupported: Arc::new(Mutex::new(std::collections::HashSet::new())),
             wakers: Arc::new(Mutex::new(HashMap::new())),
-            read_ledger: tools::ReadLedger::default(),
-            broker: approval::ToolApprovalBroker::new(),
+            read_ledger: Arc::new(tools::ReadLedger::default()),
+            broker: Arc::new(approval::ToolApprovalBroker::new()),
+            pending_approvals: Arc::new(Mutex::new(HashMap::new())),
+            thread_auto_approvals: Arc::new(Mutex::new(std::collections::HashSet::new())),
             power,
             events_tx,
             active_runs: Arc::new(AtomicU32::new(0)),
@@ -194,6 +217,7 @@ impl InProcessEngine {
             verified_update: Arc::new(Mutex::new(None)),
             run_tasks: Arc::new(Mutex::new(tokio::task::JoinSet::new())),
             ota_release_key: std::sync::OnceLock::new(),
+            live_voice: Arc::new(voice::LiveVoiceManager::new()),
         }))
     }
 
@@ -227,6 +251,22 @@ impl InProcessEngine {
 
     fn vault_key(provider_id: &str) -> String {
         format!("provider_api_key:{provider_id}")
+    }
+
+    fn load_mcp_bearer(&self, server_id: &str) -> Option<String> {
+        let raw = match self.vault.get(&format!("mcp_bearer:{server_id}")) {
+            Ok(v) => v,
+            Err(err) => {
+                tracing::warn!(
+                    key = err.key.as_key(),
+                    server_id,
+                    "mcp bearer lookup failed"
+                );
+                return None;
+            }
+        };
+        raw.and_then(|b| String::from_utf8(b.to_vec()).ok())
+            .filter(|s| !s.trim().is_empty())
     }
 
     /// Loads every stored key for a provider (one vault entry, newline separated).
@@ -290,6 +330,7 @@ impl InProcessEngine {
             .map(|p| self.hydrate_provider(p))
             .collect();
 
+        let default_models = provider_prefs::load_default_models(&self.storage);
         let requested_provider_id = thread
             .provider_id_override
             .as_deref()
@@ -302,6 +343,10 @@ impl InProcessEngine {
             })
             .or_else(|| {
                 let id = settings.active_provider_id.trim();
+                if id.is_empty() { None } else { Some(id) }
+            })
+            .or_else(|| {
+                let id = default_models.global_provider_id.trim();
                 if id.is_empty() { None } else { Some(id) }
             });
 
@@ -347,6 +392,17 @@ impl InProcessEngine {
                     None
                 }
             })
+            .or_else(|| {
+                let gm = default_models.global_model_id.trim();
+                if !gm.is_empty()
+                    && (default_models.global_provider_id.is_empty()
+                        || default_models.global_provider_id == selected.id)
+                {
+                    Some(gm)
+                } else {
+                    None
+                }
+            })
             .unwrap_or(selected.default_model.trim())
             .to_owned();
 
@@ -354,18 +410,20 @@ impl InProcessEngine {
             return Err(BistreError::new(DiagnosticKey::ProviderModelRequired));
         }
 
-        // Only models the public lists mark as reasoning-capable get an effort field: a model that
-        // cannot think rejects it with a 400, which would cost a failed request on every message.
-        let capable = self
+        // Honor the user's explicit reasoning effort unless the catalog explicitly marks the model
+        // non-reasoning (`Some(false)`) OR a prior 400 heal recorded it as unsupported at runtime.
+        let catalog_says_no = self
             .pricing
             .snapshot()
             .lookup(&model)
             .and_then(|r| r.reasoning)
-            == Some(true);
-        let reasoning_effort = if capable {
-            ReasoningEffort::parse(&settings.reasoning_effort)
-        } else {
+            == Some(false);
+        let runtime_says_no = lock_or_recover(&self.reasoning_unsupported, "reasoning_unsupported")
+            .contains(&(selected.id.clone(), model.clone()));
+        let reasoning_effort = if catalog_says_no || runtime_says_no {
             ReasoningEffort::ModelDefault
+        } else {
+            ReasoningEffort::parse(&settings.reasoning_effort)
         };
         let gen_params = GenerationParams {
             temperature_milli: thread
@@ -419,13 +477,24 @@ impl InProcessEngine {
         let wake = Arc::new(Notify::new());
         {
             let mut guard = lock_or_recover(&self.wakers, "wakers");
-            guard.insert(thread.id.clone(), Arc::clone(&wake));
+            if let Some(prev_wake) = guard.insert(thread.id.clone(), Arc::clone(&wake)) {
+                prev_wake.notify_one();
+            }
         }
         let wakers = Arc::clone(&self.wakers);
         let services = StreamServices {
             http: self.http.clone(),
+            web: self.web.clone(),
+            mcp_http: self.mcp_http.clone(),
+            vault: Arc::clone(&self.vault),
             pricing: Arc::clone(&self.pricing),
-            wake,
+            wake: Arc::clone(&wake),
+            data_dir: self.data_dir.clone(),
+            reasoning_unsupported: Arc::clone(&self.reasoning_unsupported),
+            read_ledger: Arc::clone(&self.read_ledger),
+            broker: Arc::clone(&self.broker),
+            pending_approvals: Arc::clone(&self.pending_approvals),
+            thread_auto_approvals: Arc::clone(&self.thread_auto_approvals),
         };
         let storage = Arc::clone(&self.storage);
         let power = Arc::clone(&self.power);
@@ -475,13 +544,24 @@ impl InProcessEngine {
             )
             .await;
 
+            // Only remove our own cancel/wake handles (never clobber a newer overlapping run).
             {
                 let mut guard = lock_or_recover(&cancellations, "cancellations");
-                guard.remove(&thread_id);
+                if guard
+                    .get(&thread_id)
+                    .is_some_and(|cur| Arc::ptr_eq(cur, &cancel_flag))
+                {
+                    guard.remove(&thread_id);
+                }
             }
             {
                 let mut guard = lock_or_recover(&wakers, "wakers");
-                guard.remove(&thread_id);
+                if guard
+                    .get(&thread_id)
+                    .is_some_and(|cur| Arc::ptr_eq(cur, &wake))
+                {
+                    guard.remove(&thread_id);
+                }
             }
             active_runs.fetch_sub(1, Ordering::SeqCst);
             drop(lease_guard);

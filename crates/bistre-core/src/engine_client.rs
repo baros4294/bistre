@@ -1,11 +1,12 @@
 //! The `EngineClient` boundary shared by in-process, daemon IPC, and remote bridge engines.
 
 use super::{
-    AgentRunRecord, AppHealthSnapshot, AppSettings, AssistantPatch, AssistantRecord, BistreResult,
-    BoxFuture, CharacterCardRecord, CronJobRecord, CursorEventRecord, DraftRecord, EngineEvent,
-    MemoryEntryRecord, MoneyMicros, NodeRecord, NodeRole, PowerGuardStatus, ProviderDialect,
-    ProviderModelInfo, ProviderPatch, ProviderProfile, RegexRuleRecord, RunStepRecord, SearchHit,
-    SignedPackManifest, SteeringMessage, StorageStats, StoryChapterRecord, StoryEntryRecord,
+    AgentRunRecord, AppHealthSnapshot, AppSettings, AssistantPatch, AssistantRecord,
+    AttachmentInput, BistreResult, BoxFuture, CharacterCardRecord, CronJobRecord,
+    CursorEventRecord, DraftRecord, EngineEvent, MemoryEntryRecord, ModelCatalogInfo, MoneyMicros,
+    NodeRecord, NodeRole, PowerGuardStatus, ProviderDialect, ProviderModelInfo, ProviderPatch,
+    ProviderProfile, RegexRuleRecord, RunStepRecord, SearchHit, SignedPackManifest,
+    SteeringMessage, StorageFileEntry, StorageStats, StoryChapterRecord, StoryEntryRecord,
     StoryProgressionRecord, StorySceneRecord, StorySnapshotRecord, StoryThreadStateRecord,
     SystemPowerEvent, ThreadMode, ThreadPatch, ThreadSummary, UpdateCheckResult, UserPersonaRecord,
     WorkspaceCheckpointRecord, WorkspaceSummary, broadcast, hooks, mcp, skills, story, subagents,
@@ -13,13 +14,19 @@ use super::{
 };
 
 /// What the next request for one branch sends, split the way the composer's context breakdown
-/// shows it. Counts are estimates (about 4 characters per token, plus a small frame per turn).
+/// shows it (counted offline with universal `o200k_base` BPE tokenizer).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ContextUsage {
     /// The assistant's or chat's system prompt.
     pub system_tokens: u64,
     /// Write mode only: story notes, cards, persona, lore, and chapters added to the prompt.
     pub story_tokens: u64,
+    /// Active built-in tools & MCP schemas attached to the request.
+    pub tools_tokens: u64,
+    /// Uploaded/attached files & images referenced in the active branch.
+    pub attachments_tokens: u64,
+    /// Number of attachments referenced in the active branch.
+    pub attachments_count: u32,
     /// The turns the request resends (after any compaction or context pin).
     pub history_tokens: u64,
     /// How many turns that is.
@@ -34,6 +41,8 @@ impl ContextUsage {
     pub fn total(&self) -> u64 {
         self.system_tokens
             .saturating_add(self.story_tokens)
+            .saturating_add(self.tools_tokens)
+            .saturating_add(self.attachments_tokens)
             .saturating_add(self.history_tokens)
             .saturating_add(self.draft_tokens)
     }
@@ -61,6 +70,14 @@ pub trait EngineClient: Send + Sync {
         &self,
         provider_id: String,
     ) -> BoxFuture<'_, BistreResult<ProviderProfile>>;
+    fn get_provider_api_keys(
+        &self,
+        provider_id: String,
+    ) -> BoxFuture<'_, BistreResult<Vec<String>>>;
+    fn lookup_model_catalog_info(
+        &self,
+        model_id: String,
+    ) -> BoxFuture<'_, BistreResult<Option<ModelCatalogInfo>>>;
     #[expect(
         clippy::too_many_arguments,
         reason = "Explicit provider creation fields map directly across EngineClient implementations."
@@ -134,6 +151,50 @@ pub trait EngineClient: Send + Sync {
         parent_id: Option<String>,
         user_content: String,
     ) -> BoxFuture<'_, BistreResult<NodeRecord>>;
+    fn send_and_stream_reply_with_attachments(
+        &self,
+        thread_id: String,
+        parent_id: Option<String>,
+        user_content: String,
+        attachments: Vec<AttachmentInput>,
+    ) -> BoxFuture<'_, BistreResult<NodeRecord>>;
+    fn steer_active_run_now(
+        &self,
+        thread_id: String,
+        content: String,
+    ) -> BoxFuture<'_, BistreResult<NodeRecord>>;
+    fn export_all_threads_json(&self) -> BoxFuture<'_, BistreResult<String>>;
+    fn import_threads_json(&self, raw_json: String) -> BoxFuture<'_, BistreResult<u32>>;
+    fn export_settings_json(&self) -> BoxFuture<'_, BistreResult<String>>;
+    fn import_settings_json(&self, raw_json: String) -> BoxFuture<'_, BistreResult<AppSettings>>;
+    fn list_storage_files(&self) -> BoxFuture<'_, BistreResult<Vec<StorageFileEntry>>>;
+    fn delete_storage_file(&self, rel_path: String) -> BoxFuture<'_, BistreResult<bool>>;
+    fn clean_unused_storage_files(&self) -> BoxFuture<'_, BistreResult<u64>>;
+    fn synthesize_speech(
+        &self,
+        provider_id: String,
+        model_id: String,
+        text: String,
+        voice: Option<String>,
+    ) -> BoxFuture<'_, BistreResult<Vec<u8>>>;
+    fn start_live_voice_session(
+        &self,
+        provider_id: String,
+        model_id: String,
+        voice: String,
+        system_prompt: String,
+    ) -> BoxFuture<'_, BistreResult<String>>;
+    fn send_live_voice_pcm_chunk(
+        &self,
+        session_id: String,
+        pcm_base64: String,
+    ) -> BoxFuture<'_, BistreResult<()>>;
+    fn send_live_voice_text(
+        &self,
+        session_id: String,
+        text: String,
+    ) -> BoxFuture<'_, BistreResult<()>>;
+    fn stop_live_voice_session(&self, session_id: String) -> BoxFuture<'_, BistreResult<()>>;
     fn regenerate_reply(
         &self,
         thread_id: String,
@@ -239,6 +300,14 @@ pub trait EngineClient: Send + Sync {
         tool_name: String,
         arguments_json: String,
     ) -> BoxFuture<'_, BistreResult<String>>;
+    /// Delivers the user's decision (`approve_once` / `approve_for_thread` / `deny`) to a
+    /// live agent run paused at `ToolApprovalRequested`.
+    fn respond_tool_approval(
+        &self,
+        thread_id: String,
+        call_id: String,
+        decision: bistre_protocol::ToolApprovalDecision,
+    ) -> BoxFuture<'_, BistreResult<bool>>;
     /// Runs a tool. Tier 0 is auto-approved by core policy; every other tier needs the
     /// `permit_id` from `approve_tool_call` for exactly these arguments.
     fn execute_workspace_tool(

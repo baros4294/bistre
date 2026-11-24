@@ -4,7 +4,7 @@ use super::{
     AgentRunRecord, AppHealthSnapshot, AppSettings, AssistantPatch, AssistantRecord, BistreError,
     BistreResult, BoxFuture, CORE_VERSION, CharacterCardRecord, CronJobRecord, CursorEventRecord,
     DiagnosticKey, DraftRecord, EngineClient, EngineEvent, InProcessEngine, MemoryEntryRecord,
-    MoneyMicros, NodeRecord, NodeRole, Ordering, Path, PathBuf, PowerGuardStatus, PowerLeasePolicy,
+    MoneyMicros, NodeRecord, NodeRole, Ordering, Path, PowerGuardStatus, PowerLeasePolicy,
     ProviderDialect, ProviderModelInfo, ProviderPatch, ProviderProfile, RegexRuleRecord,
     RunStepRecord, SearchHit, SignedPackManifest, SteeringMessage, StorageStats,
     StoryChapterRecord, StoryEntryRecord, StoryProgressionRecord, StorySceneRecord,
@@ -14,7 +14,7 @@ use super::{
     ota, providers, skills, story, subagents, tools, verify_signed_pack,
 };
 use crate::engine_runs::{utc_day_start_unix_ms, utc_now_unix_ms};
-use crate::events::{emit, emit_logged, note_write};
+use crate::events::{emit, emit_logged};
 use crate::off_worker::off_worker;
 use bistre_protocol::lock_or_recover;
 
@@ -119,6 +119,20 @@ impl EngineClient for InProcessEngine {
             )?;
             Ok(self.hydrate_provider(updated))
         })
+    }
+
+    fn get_provider_api_keys(
+        &self,
+        provider_id: String,
+    ) -> BoxFuture<'_, BistreResult<Vec<String>>> {
+        Box::pin(async move { self.get_provider_api_keys_inner(&provider_id) })
+    }
+
+    fn lookup_model_catalog_info(
+        &self,
+        model_id: String,
+    ) -> BoxFuture<'_, BistreResult<Option<super::ModelCatalogInfo>>> {
+        Box::pin(async move { self.lookup_model_catalog_info_inner(&model_id).await })
     }
 
     fn create_provider(
@@ -322,65 +336,103 @@ impl EngineClient for InProcessEngine {
         user_content: String,
     ) -> BoxFuture<'_, BistreResult<NodeRecord>> {
         Box::pin(async move {
-            let trimmed = user_content.trim().to_owned();
-            if trimmed.is_empty() {
-                return Err(BistreError::with_detail(
-                    DiagnosticKey::InvalidInput,
-                    "empty_message",
-                ));
-            }
-            let settings = self.storage.load_settings()?;
-            let thread = self
-                .storage
-                .get_thread(&thread_id)?
-                .ok_or_else(|| BistreError::new(DiagnosticKey::StorageNotFound))?;
-            let assistant = self
-                .storage
-                .list_assistants()?
-                .into_iter()
-                .find(|a| a.id == thread.assistant_id);
-            let (provider, api_key, model, gen_params) =
-                self.resolve_execution_target(&settings, &thread, assistant.as_ref())?;
-            self.enforce_wallet_shield(&settings, &provider)?;
+            self.send_with_attachments_inner(thread_id, parent_id, &user_content, &[])
+        })
+    }
 
-            let system_prompt = thread
-                .system_prompt_override
-                .clone()
-                .unwrap_or_else(|| assistant.map_or_default(|a| a.system_prompt));
-            let system_prompt = crate::engine_runs::with_user_name(
-                system_prompt,
-                &settings.user_display_name,
-                thread.mode,
-            );
+    fn send_and_stream_reply_with_attachments(
+        &self,
+        thread_id: String,
+        parent_id: Option<String>,
+        user_content: String,
+        attachments: Vec<super::AttachmentInput>,
+    ) -> BoxFuture<'_, BistreResult<NodeRecord>> {
+        Box::pin(async move {
+            self.send_with_attachments_inner(thread_id, parent_id, &user_content, &attachments)
+        })
+    }
 
-            let user_node = self.storage.append_node(
-                thread_id.clone(),
-                parent_id,
-                NodeRole::User,
-                trimmed,
-                None,
-            )?;
-            emit(
-                &self.events_tx,
-                EngineEvent::NodeCommitted {
-                    node: user_node.clone(),
-                },
-            );
-            note_write(
-                "draft_clear",
-                self.storage.save_draft(thread_id, String::new()),
-            );
-            self.spawn_live_stream(
-                &thread,
-                user_node.id.clone(),
-                provider,
-                api_key,
-                model,
-                system_prompt,
-                gen_params,
-                settings.provider_stateless_default,
-            )?;
-            Ok(user_node)
+    fn steer_active_run_now(
+        &self,
+        thread_id: String,
+        content: String,
+    ) -> BoxFuture<'_, BistreResult<NodeRecord>> {
+        Box::pin(async move { self.steer_active_run_now_inner(thread_id, &content) })
+    }
+
+    fn export_all_threads_json(&self) -> BoxFuture<'_, BistreResult<String>> {
+        Box::pin(async move { self.export_all_threads_json_inner() })
+    }
+
+    fn import_threads_json(&self, raw_json: String) -> BoxFuture<'_, BistreResult<u32>> {
+        Box::pin(async move { self.import_threads_json_inner(&raw_json) })
+    }
+
+    fn export_settings_json(&self) -> BoxFuture<'_, BistreResult<String>> {
+        Box::pin(async move { self.export_settings_json_inner() })
+    }
+
+    fn import_settings_json(&self, raw_json: String) -> BoxFuture<'_, BistreResult<AppSettings>> {
+        Box::pin(async move { self.import_settings_json_inner(&raw_json) })
+    }
+
+    fn list_storage_files(&self) -> BoxFuture<'_, BistreResult<Vec<super::StorageFileEntry>>> {
+        Box::pin(async move { self.list_storage_files_inner() })
+    }
+
+    fn delete_storage_file(&self, rel_path: String) -> BoxFuture<'_, BistreResult<bool>> {
+        Box::pin(async move { self.delete_storage_file_inner(&rel_path) })
+    }
+
+    fn clean_unused_storage_files(&self) -> BoxFuture<'_, BistreResult<u64>> {
+        Box::pin(async move { self.clean_unused_storage_files_inner() })
+    }
+
+    fn synthesize_speech(
+        &self,
+        provider_id: String,
+        model_id: String,
+        text: String,
+        voice: Option<String>,
+    ) -> BoxFuture<'_, BistreResult<Vec<u8>>> {
+        Box::pin(async move {
+            self.synthesize_speech_inner(&provider_id, &model_id, &text, voice.as_deref())
+                .await
+        })
+    }
+
+    fn start_live_voice_session(
+        &self,
+        provider_id: String,
+        model_id: String,
+        voice: String,
+        system_prompt: String,
+    ) -> BoxFuture<'_, BistreResult<String>> {
+        Box::pin(async move {
+            self.start_live_voice_session_inner(&provider_id, &model_id, voice, system_prompt)
+        })
+    }
+
+    fn send_live_voice_pcm_chunk(
+        &self,
+        session_id: String,
+        pcm_base64: String,
+    ) -> BoxFuture<'_, BistreResult<()>> {
+        Box::pin(async move { self.live_voice.send_pcm_chunk(&session_id, pcm_base64) })
+    }
+
+    fn send_live_voice_text(
+        &self,
+        session_id: String,
+        text: String,
+    ) -> BoxFuture<'_, BistreResult<()>> {
+        Box::pin(async move { self.live_voice.send_text(&session_id, text) })
+    }
+
+    fn stop_live_voice_session(&self, session_id: String) -> BoxFuture<'_, BistreResult<()>> {
+        Box::pin(async move {
+            self.live_voice.stop_session(&session_id);
+            Ok(())
         })
     }
 
@@ -443,8 +495,14 @@ impl EngineClient for InProcessEngine {
                 .into_iter()
                 .find(|n| n.id == node_id)
                 .ok_or_else(|| BistreError::new(DiagnosticKey::StorageNotFound))?;
-            self.send_and_stream_reply(thread_id, original.parent_id, new_content)
-                .await
+            let preserved =
+                crate::attachments::parse_node_attachments(original.provider_meta_json.as_deref());
+            self.send_with_stored_attachments_inner(
+                thread_id,
+                original.parent_id,
+                &new_content,
+                &preserved,
+            )
         })
     }
 
@@ -769,8 +827,15 @@ impl EngineClient for InProcessEngine {
         leaf_node_id: String,
         draft: String,
     ) -> BoxFuture<'_, BistreResult<crate::ContextUsage>> {
+        let dir = self.data_dir.clone();
         Box::pin(off_worker(&self.storage, move |s| {
-            crate::engine_runs::branch_context_usage(s, &thread_id, &leaf_node_id, &draft)
+            crate::engine_runs::branch_context_usage(
+                s,
+                Some(&dir),
+                &thread_id,
+                &leaf_node_id,
+                &draft,
+            )
         }))
     }
 
@@ -816,6 +881,24 @@ impl EngineClient for InProcessEngine {
         })
     }
 
+    fn respond_tool_approval(
+        &self,
+        thread_id: String,
+        call_id: String,
+        decision: bistre_protocol::ToolApprovalDecision,
+    ) -> BoxFuture<'_, BistreResult<bool>> {
+        Box::pin(async move {
+            Ok(crate::agent_tools::deliver_tool_approval(
+                &self.pending_approvals,
+                &self.thread_auto_approvals,
+                &thread_id,
+                &call_id,
+                decision,
+                None,
+            ))
+        })
+    }
+
     fn execute_workspace_tool(
         &self,
         workspace_root: String,
@@ -825,126 +908,19 @@ impl EngineClient for InProcessEngine {
         permit_id: Option<String>,
     ) -> BoxFuture<'_, BistreResult<tools::ToolExecutionOutput>> {
         Box::pin(async move {
-            let settings = self.storage.load_settings()?;
-            if settings.trust_preset == bistre_protocol::TrustPreset::Off {
-                return Err(BistreError::with_detail(
-                    DiagnosticKey::ToolTierBlocked,
-                    "tools_disabled",
-                ));
-            }
             let args = parse_tool_args(&arguments_json)?;
-            let risk = tools::classify_tool_risk(&tool_name, &args);
-            if risk == ToolRiskTier::Tier3Blocked {
-                return Err(BistreError::with_detail(
-                    DiagnosticKey::ToolTierBlocked,
-                    "tier3_blocked",
-                ));
-            }
-            // In `Strict` preset every tool call needs an explicit permit; in `GuidedCraft` /
-            // `UnchainedSandbox`, Tier 0 read-only tools are auto-approved by core policy.
-            let auto_approve = risk == ToolRiskTier::Tier0ReadOnly
-                && settings.trust_preset != bistre_protocol::TrustPreset::Strict;
-            let permit = if auto_approve {
-                self.broker.issue(&thread_id, &tool_name, &args)
-            } else {
-                let id = permit_id.ok_or_else(|| {
-                    BistreError::with_detail(DiagnosticKey::ToolApprovalRequired, "permit_missing")
-                })?;
-                self.broker.take_approved(&id)?
-            };
-            self.broker.claim(&permit, &thread_id, &tool_name, &args)?;
-            let root_path = PathBuf::from(&workspace_root);
-            match tool_name.as_str() {
-                "read" => {
-                    let rel = args
-                        .get("path")
-                        .and_then(serde_json::Value::as_str)
-                        .ok_or_else(|| BistreError::new(DiagnosticKey::InvalidInput))?;
-                    let start = args
-                        .get("start_line")
-                        .and_then(serde_json::Value::as_u64)
-                        .and_then(|v| usize::try_from(v).ok());
-                    let end = args
-                        .get("end_line")
-                        .and_then(serde_json::Value::as_u64)
-                        .and_then(|v| usize::try_from(v).ok());
-                    let out = tools::tool_read(&root_path, rel, start, end)?;
-                    if let Ok(digest) = tools::file_digest(&root_path, rel) {
-                        self.read_ledger.record(&thread_id, rel, &digest);
-                    }
-                    Ok(out)
-                }
-                "edit" => {
-                    let rel = args
-                        .get("path")
-                        .and_then(serde_json::Value::as_str)
-                        .ok_or_else(|| BistreError::new(DiagnosticKey::InvalidInput))?;
-                    let target = args
-                        .get("target")
-                        .and_then(serde_json::Value::as_str)
-                        .ok_or_else(|| BistreError::new(DiagnosticKey::InvalidInput))?;
-                    let replacement = args
-                        .get("replacement")
-                        .and_then(serde_json::Value::as_str)
-                        .ok_or_else(|| BistreError::new(DiagnosticKey::InvalidInput))?;
-                    let expected_hash = args
-                        .get("expected_hash")
-                        .and_then(serde_json::Value::as_str);
-                    let current = tools::file_digest(&root_path, rel)?;
-                    self.read_ledger.check_fresh(&thread_id, rel, &current)?;
-                    let out = tools::tool_edit(
-                        &self.storage,
-                        &root_path,
-                        &thread_id,
-                        None,
-                        rel,
-                        target,
-                        replacement,
-                        expected_hash,
-                    )?;
-                    if let Ok(digest) = tools::file_digest(&root_path, rel) {
-                        self.read_ledger.record(&thread_id, rel, &digest);
-                    }
-                    Ok(out)
-                }
-                "grep" => {
-                    let pattern = args
-                        .get("pattern")
-                        .and_then(serde_json::Value::as_str)
-                        .ok_or_else(|| BistreError::new(DiagnosticKey::InvalidInput))?;
-                    let subpath = args.get("subpath").and_then(serde_json::Value::as_str);
-                    tools::tool_grep(&root_path, pattern, subpath)
-                }
-                "glob" => {
-                    let pattern = args
-                        .get("pattern")
-                        .and_then(serde_json::Value::as_str)
-                        .ok_or_else(|| BistreError::new(DiagnosticKey::InvalidInput))?;
-                    tools::tool_glob(&root_path, pattern)
-                }
-                "shell" => {
-                    let cmd = args
-                        .get("command")
-                        .and_then(serde_json::Value::as_str)
-                        .ok_or_else(|| BistreError::new(DiagnosticKey::InvalidInput))?;
-                    let timeout_secs = args
-                        .get("timeout_secs")
-                        .and_then(serde_json::Value::as_u64)
-                        .unwrap_or(60);
-                    tools::tool_shell(&root_path, cmd, timeout_secs).await
-                }
-                "web_fetch" => {
-                    let url = args
-                        .get("url")
-                        .and_then(serde_json::Value::as_str)
-                        .ok_or_else(|| BistreError::new(DiagnosticKey::InvalidInput))?;
-                    tools::tool_web_fetch(&self.web, url).await
-                }
-                _ => Err(BistreError::with_detail(
-                    DiagnosticKey::InvalidInput,
-                    "unknown_tool",
-                )),
-            }
+            crate::agent_tools::execute_workspace_tool_direct(
+                &self.storage,
+                &self.web,
+                &self.read_ledger,
+                &self.broker,
+                &workspace_root,
+                &thread_id,
+                &tool_name,
+                &args,
+                permit_id,
+            )
+            .await
         })
     }
 
@@ -954,7 +930,13 @@ impl EngineClient for InProcessEngine {
         checkpoint_id: String,
     ) -> BoxFuture<'_, BistreResult<String>> {
         Box::pin(async move {
-            tools::tool_rewind_checkpoint(&self.storage, Path::new(&workspace_root), &checkpoint_id)
+            let rel_path = tools::tool_rewind_checkpoint(
+                &self.storage,
+                Path::new(&workspace_root),
+                &checkpoint_id,
+            )?;
+            self.read_ledger.invalidate_path(&rel_path);
+            Ok(rel_path)
         })
     }
 
@@ -981,11 +963,20 @@ impl EngineClient for InProcessEngine {
     ) -> BoxFuture<'_, BistreResult<NodeRecord>> {
         Box::pin(async move {
             let nodes = self.storage.list_nodes(&thread_id)?;
+            let active_leaf = self
+                .storage
+                .get_thread(&thread_id)?
+                .and_then(|t| t.active_head_node_id)
+                .or_else(|| nodes.last().map(|n| n.id.clone()));
+            let branch = match active_leaf.as_deref() {
+                Some(leaf) => crate::engine_runs::collect_branch_ancestry(&nodes, leaf),
+                None => nodes,
+            };
             let keep = usize::try_from(keep_recent_turns).unwrap_or(4);
             let node = compaction::create_reversible_compaction(
                 &self.storage,
                 &thread_id,
-                &nodes,
+                &branch,
                 keep,
                 custom_summary.as_deref(),
             )?;
@@ -1039,7 +1030,18 @@ impl EngineClient for InProcessEngine {
         &self,
         server: mcp::McpServerConfig,
     ) -> BoxFuture<'_, BistreResult<mcp::McpDiscoveryReport>> {
-        Box::pin(async move { mcp::discover_http_mcp_server(&self.mcp_http, &server).await })
+        Box::pin(async move {
+            let bearer = self.load_mcp_bearer(&server.id);
+            let report =
+                mcp::discover_mcp_server(&self.mcp_http, &server, bearer.as_deref()).await?;
+            if let Ok(json) = serde_json::to_string(&report.tools) {
+                let key = format!("mcp.tools_cache:{}", server.id);
+                if let Err(err) = self.storage.set_kv_meta(key, json) {
+                    tracing::warn!(key = err.key.as_key(), "failed to cache mcp tools");
+                }
+            }
+            Ok(report)
+        })
     }
 
     fn call_mcp_tool(
@@ -1051,7 +1053,17 @@ impl EngineClient for InProcessEngine {
         Box::pin(async move {
             let args: serde_json::Value = serde_json::from_str(&arguments_json)
                 .map_err(|_| BistreError::with_detail(DiagnosticKey::InvalidInput, "mcp_args"))?;
-            mcp::call_http_mcp_tool(&self.mcp_http, &server, &tool_name, &args).await
+            let bearer = self.load_mcp_bearer(&server.id);
+            let out = mcp::call_mcp_tool_rich(
+                &self.mcp_http,
+                &server,
+                bearer.as_deref(),
+                &tool_name,
+                &args,
+                Some(&self.data_dir),
+            )
+            .await?;
+            Ok(out.text)
         })
     }
 
@@ -1060,7 +1072,10 @@ impl EngineClient for InProcessEngine {
     }
 
     fn set_kv_meta(&self, key: String, value: String) -> BoxFuture<'_, BistreResult<()>> {
-        Box::pin(async move { self.storage.set_kv_meta(key, value) })
+        Box::pin(async move {
+            crate::agent_tools::invalidate_broker_on_policy_change(&self.broker, &key);
+            self.storage.set_kv_meta(key, value)
+        })
     }
 
     fn list_memory_entries(
@@ -1381,6 +1396,7 @@ impl EngineClient for InProcessEngine {
 
     fn shutdown(&self) -> BoxFuture<'_, BistreResult<()>> {
         Box::pin(async move {
+            self.live_voice.stop_all();
             {
                 let guard = lock_or_recover(&self.cancellations, "cancellations");
                 for flag in guard.values() {

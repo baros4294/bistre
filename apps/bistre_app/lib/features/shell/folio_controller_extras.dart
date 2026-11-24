@@ -128,7 +128,6 @@ class UiDisplayPrefs {
     this.showChatListDates = true,
     this.codeSyntaxThemeLight = 'sepia_warm',
     this.codeSyntaxThemeDark = 'espresso_amber',
-    this.globalInstructions = '',
     this.desktopNotifyOnComplete = true,
     this.desktopNotifySound = false,
     this.runOnStartup = false,
@@ -157,7 +156,6 @@ class UiDisplayPrefs {
   final bool showChatListDates;
   final String codeSyntaxThemeLight;
   final String codeSyntaxThemeDark;
-  final String globalInstructions;
   final bool desktopNotifyOnComplete;
   final bool desktopNotifySound;
   final bool runOnStartup;
@@ -186,7 +184,6 @@ class UiDisplayPrefs {
     bool? showChatListDates,
     String? codeSyntaxThemeLight,
     String? codeSyntaxThemeDark,
-    String? globalInstructions,
     bool? desktopNotifyOnComplete,
     bool? desktopNotifySound,
     bool? runOnStartup,
@@ -218,7 +215,6 @@ class UiDisplayPrefs {
     showChatListDates: showChatListDates ?? this.showChatListDates,
     codeSyntaxThemeLight: codeSyntaxThemeLight ?? this.codeSyntaxThemeLight,
     codeSyntaxThemeDark: codeSyntaxThemeDark ?? this.codeSyntaxThemeDark,
-    globalInstructions: globalInstructions ?? this.globalInstructions,
     desktopNotifyOnComplete:
         desktopNotifyOnComplete ?? this.desktopNotifyOnComplete,
     desktopNotifySound: desktopNotifySound ?? this.desktopNotifySound,
@@ -249,7 +245,6 @@ class UiDisplayPrefs {
     'showChatListDates': showChatListDates,
     'codeSyntaxThemeLight': codeSyntaxThemeLight,
     'codeSyntaxThemeDark': codeSyntaxThemeDark,
-    'globalInstructions': globalInstructions,
     'desktopNotifyOnComplete': desktopNotifyOnComplete,
     'desktopNotifySound': desktopNotifySound,
     'runOnStartup': runOnStartup,
@@ -281,7 +276,6 @@ class UiDisplayPrefs {
     codeSyntaxThemeLight: m['codeSyntaxThemeLight'] as String? ?? 'sepia_warm',
     codeSyntaxThemeDark:
         m['codeSyntaxThemeDark'] as String? ?? 'espresso_amber',
-    globalInstructions: m['globalInstructions'] as String? ?? '',
     desktopNotifyOnComplete: m['desktopNotifyOnComplete'] as bool? ?? true,
     desktopNotifySound: m['desktopNotifySound'] as bool? ?? false,
     runOnStartup: m['runOnStartup'] as bool? ?? false,

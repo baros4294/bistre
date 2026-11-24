@@ -237,6 +237,20 @@ class _ContextGaugeRingState extends State<ContextGaugeRing> {
           usage.storyTokens,
           theme.accentWax,
         ),
+      if (usage.toolsTokens > 0)
+        (
+          L10nKey.chatContextTools,
+          const <String, Object?>{},
+          usage.toolsTokens,
+          theme.statusWarn,
+        ),
+      if (usage.attachmentsTokens > 0 || usage.attachmentsCount > 0)
+        (
+          L10nKey.chatContextAttachments,
+          <String, Object?>{'count': usage.attachmentsCount},
+          usage.attachmentsTokens,
+          theme.accentWax.withValues(alpha: 0.75),
+        ),
       (
         L10nKey.chatContextHistory,
         <String, Object?>{'count': usage.historyTurns},

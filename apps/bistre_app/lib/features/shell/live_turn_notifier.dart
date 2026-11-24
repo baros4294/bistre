@@ -65,18 +65,20 @@ class LiveTurnNotifier extends ValueNotifier<LiveTurn?> {
     value = LiveTurn(threadId: threadId, nodeId: nodeId);
   }
 
-  /// Appends a text delta when it belongs to the live turn.
-  void appendText(String threadId, String delta) {
+  /// Appends a text delta when it belongs to the active live turn (`threadId` and optional `nodeId`).
+  void appendText(String threadId, String delta, {String? nodeId}) {
     final turn = value;
     if (turn == null || turn.threadId != threadId || delta.isEmpty) return;
+    if (nodeId != null && nodeId.isNotEmpty && turn.nodeId != nodeId) return;
     _pendingText = '$_pendingText$delta';
     _schedule();
   }
 
-  /// Appends a thinking delta when it belongs to the live turn.
-  void appendThinking(String threadId, String delta) {
+  /// Appends a thinking delta when it belongs to the active live turn (`threadId` and optional `nodeId`).
+  void appendThinking(String threadId, String delta, {String? nodeId}) {
     final turn = value;
     if (turn == null || turn.threadId != threadId || delta.isEmpty) return;
+    if (nodeId != null && nodeId.isNotEmpty && turn.nodeId != nodeId) return;
     _pendingThinking = '$_pendingThinking$delta';
     _schedule();
   }

@@ -150,6 +150,7 @@ void main() {
       );
       await tester.tap(find.text('Save key'));
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Load models'));
       await tester.tap(find.text('Load models'));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('gpt-4.1'));

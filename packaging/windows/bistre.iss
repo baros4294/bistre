@@ -3,7 +3,7 @@
 ; (SQLite WAL database, encrypted vault, attachments) is never touched on upgrade or uninstall.
 
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.1"
+  #define MyAppVersion "0.1.2"
 #endif
 #ifndef StageDir
   #define StageDir "..\..\stage"
@@ -12,7 +12,7 @@
   #define OutputDir "..\..\dist"
 #endif
 #ifndef OutputBaseFilename
-  #define OutputBaseFilename "bistre-v0.1.1-windows-x64-setup"
+  #define OutputBaseFilename "bistre-v0.1.2-windows-x64-setup"
 #endif
 
 [Setup]

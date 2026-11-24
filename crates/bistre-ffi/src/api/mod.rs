@@ -19,6 +19,7 @@ use crate::dto_mapping::{
 use crate::frb_generated::StreamSink;
 
 pub mod harness;
+pub mod media;
 pub mod story;
 
 static ENGINE: LazyLock<RwLock<Option<Arc<dyn EngineClient>>>> =
@@ -1207,6 +1208,9 @@ pub async fn model_context_tokens(model: String) -> Result<Option<u32>, String> 
 pub struct FfiContextUsage {
     pub system_tokens: u32,
     pub story_tokens: u32,
+    pub tools_tokens: u32,
+    pub attachments_tokens: u32,
+    pub attachments_count: u32,
     pub history_tokens: u32,
     pub history_turns: u32,
     pub draft_tokens: u32,
@@ -1229,6 +1233,9 @@ pub async fn context_usage(
     Ok(FfiContextUsage {
         system_tokens: clamp(usage.system_tokens),
         story_tokens: clamp(usage.story_tokens),
+        tools_tokens: clamp(usage.tools_tokens),
+        attachments_tokens: clamp(usage.attachments_tokens),
+        attachments_count: usage.attachments_count,
         history_tokens: clamp(usage.history_tokens),
         history_turns: usage.history_turns,
         draft_tokens: clamp(usage.draft_tokens),

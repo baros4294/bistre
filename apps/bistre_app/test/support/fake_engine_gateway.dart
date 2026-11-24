@@ -790,6 +790,13 @@ class FakeEngineGateway implements BistreEngineGateway {
   }) async => 'permit-$toolName';
 
   @override
+  Future<bool> respondToolApproval({
+    required String threadId,
+    required String callId,
+    required String decision,
+  }) async => true;
+
+  @override
   Future<EngineToolOutput> executeWorkspaceTool({
     required String workspaceRoot,
     required String threadId,
@@ -1185,6 +1192,97 @@ class FakeEngineGateway implements BistreEngineGateway {
     ],
     loreTokensUsed: 96,
   );
+
+  @override
+  Future<List<String>> getProviderApiKeys(String providerId) async {
+    final prov = _providers.where((p) => p.id == providerId).firstOrNull;
+    if (prov == null || !prov.hasApiKey) return const <String>[];
+    return const <String>['sk-test-primary-key'];
+  }
+
+  @override
+  Future<EngineModelCatalogInfo?> lookupModelCatalogInfo(
+    String modelId,
+  ) async => const EngineModelCatalogInfo(
+    contextWindow: 1048576,
+    maxOutputTokens: 65536,
+    inputPerMtokMicros: 300000,
+    outputPerMtokMicros: 2500000,
+    cachedInputPerMtokMicros: 75000,
+    reasoning: true,
+  );
+
+  @override
+  Future<EngineNode> sendAndStreamReplyWithAttachments({
+    required String threadId,
+    String? parentId,
+    required String userContent,
+    required List<EngineAttachmentInput> attachments,
+  }) => sendAndStreamReply(
+    threadId: threadId,
+    parentId: parentId,
+    userContent: userContent,
+  );
+
+  @override
+  Future<EngineNode> steerActiveRunNow({
+    required String threadId,
+    required String content,
+  }) => sendAndStreamReply(threadId: threadId, userContent: content);
+
+  @override
+  Future<String> exportAllThreadsJson() async =>
+      '{"format_version":1,"threads":[]}';
+
+  @override
+  Future<int> importThreadsJson(String rawJson) async => 1;
+
+  @override
+  Future<String> exportSettingsJson() async => '{}';
+
+  @override
+  Future<EngineSettings> importSettingsJson(String rawJson) async => _settings;
+
+  @override
+  Future<List<EngineStorageFileEntry>> listStorageFiles() async =>
+      const <EngineStorageFileEntry>[];
+
+  @override
+  Future<bool> deleteStorageFile(String relPath) async => true;
+
+  @override
+  Future<int> cleanUnusedStorageFiles() async => 0;
+
+  @override
+  Future<List<int>> synthesizeSpeech({
+    required String providerId,
+    required String modelId,
+    required String text,
+    String? voice,
+  }) async => const <int>[];
+
+  @override
+  Future<String> startLiveVoiceSession({
+    required String providerId,
+    required String modelId,
+    required String voice,
+    required String systemPrompt,
+  }) async => 'live_fake_1';
+
+  @override
+  Future<void> sendLiveVoicePcmChunk({
+    required String sessionId,
+    required String pcmBase64,
+  }) async {}
+
+  @override
+  Future<void> sendLiveVoiceText({
+    required String sessionId,
+    required String text,
+  }) async {}
+
+  @override
+  Future<void> stopLiveVoiceSession(String sessionId) async {}
 
   @override
   Stream<BistreEvent> subscribeEvents() => _events.stream;

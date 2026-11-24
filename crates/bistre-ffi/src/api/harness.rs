@@ -21,6 +21,22 @@ pub async fn approve_tool_call(
         .map_err(crate::dto_mapping::ffi_err)
 }
 
+/// Responds to a live `ToolApprovalRequested` event paused inside an active agent run.
+/// `decision`: `"approve_once"`, `"approve_for_thread"`, or `"deny"`.
+#[frb]
+pub async fn respond_tool_approval(
+    thread_id: String,
+    call_id: String,
+    decision: String,
+) -> Result<bool, String> {
+    let engine = current_engine()?;
+    let parsed = bistre_protocol::ToolApprovalDecision::parse(&decision);
+    engine
+        .respond_tool_approval(thread_id, call_id, parsed)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)
+}
+
 /// Executes a capability-scoped built-in workspace or web tool and returns a JSON `ToolExecutionOutput`.
 /// Non-read-only tools need the `permit_id` returned by `approve_tool_call`.
 #[frb]

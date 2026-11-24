@@ -787,6 +787,9 @@ class FfiAssistantRecord {
 class FfiContextUsage {
   final int systemTokens;
   final int storyTokens;
+  final int toolsTokens;
+  final int attachmentsTokens;
+  final int attachmentsCount;
   final int historyTokens;
   final int historyTurns;
   final int draftTokens;
@@ -795,6 +798,9 @@ class FfiContextUsage {
   const FfiContextUsage({
     required this.systemTokens,
     required this.storyTokens,
+    required this.toolsTokens,
+    required this.attachmentsTokens,
+    required this.attachmentsCount,
     required this.historyTokens,
     required this.historyTurns,
     required this.draftTokens,
@@ -805,6 +811,9 @@ class FfiContextUsage {
   int get hashCode =>
       systemTokens.hashCode ^
       storyTokens.hashCode ^
+      toolsTokens.hashCode ^
+      attachmentsTokens.hashCode ^
+      attachmentsCount.hashCode ^
       historyTokens.hashCode ^
       historyTurns.hashCode ^
       draftTokens.hashCode ^
@@ -817,6 +826,9 @@ class FfiContextUsage {
           runtimeType == other.runtimeType &&
           systemTokens == other.systemTokens &&
           storyTokens == other.storyTokens &&
+          toolsTokens == other.toolsTokens &&
+          attachmentsTokens == other.attachmentsTokens &&
+          attachmentsCount == other.attachmentsCount &&
           historyTokens == other.historyTokens &&
           historyTurns == other.historyTurns &&
           draftTokens == other.draftTokens &&

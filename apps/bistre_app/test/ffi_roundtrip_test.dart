@@ -20,7 +20,7 @@ void main() {
       externalLibrary: _locateBuiltLibrary(),
     );
     final health = await gateway.init(tmpDir.path);
-    expect(health.coreVersion, '0.1.1');
+    expect(health.coreVersion, '0.1.2');
     expect(health.schemaVersion, greaterThanOrEqualTo(6));
     expect(health.walModeActive, isTrue);
     expect(health.statusKey, 'diag.ok');

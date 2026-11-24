@@ -102,7 +102,9 @@ impl McpHttpTransport {
 struct McpSession<'a> {
     transport: &'a McpHttpTransport,
     url: &'a str,
+    bearer_token: Option<&'a str>,
     session_id: Option<String>,
+    protocol_version: String,
     renewed: bool,
 }
 
@@ -184,16 +186,19 @@ impl McpSession<'_> {
         tool_name: Option<&str>,
         body: &Value,
     ) -> BistreResult<Value> {
+        let req_id = body.get("id").and_then(Value::as_u64);
         loop {
-            let (status, headers, bytes) = self
-                .transport
-                .post(
-                    self.url,
-                    mcp_headers(method, tool_name, self.session_id.as_deref()),
-                    body,
-                )
-                .await?;
-            if let Some(id) = headers
+            let headers = mcp_headers(
+                self.url,
+                method,
+                tool_name,
+                self.session_id.as_deref(),
+                &self.protocol_version,
+                self.bearer_token,
+            )?;
+            let (status, resp_headers, bytes) =
+                self.transport.post(self.url, headers, body).await?;
+            if let Some(id) = resp_headers
                 .get(MCP_SESSION_HEADER)
                 .and_then(|v| v.to_str().ok())
                 .filter(|v| !v.is_empty() && v.len() <= 256)
@@ -217,6 +222,14 @@ impl McpSession<'_> {
                     format!("mcp_http_{}", status.as_u16()),
                 ));
             }
+            let content_type = resp_headers
+                .get(CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            if content_type.contains("text/event-stream") {
+                return decode_mcp_sse_response(&bytes, req_id);
+            }
             return serde_json::from_slice::<Value>(&bytes).map_err(|_| {
                 BistreError::with_detail(DiagnosticKey::ProviderRequestFailed, "mcp_json")
             });
@@ -224,6 +237,7 @@ impl McpSession<'_> {
     }
 
     async fn initialize(&mut self) -> BistreResult<Value> {
+        MCP_PROTOCOL_2025.clone_into(&mut self.protocol_version);
         let init_body = json!({
             "jsonrpc": "2.0",
             "id": 1,
@@ -234,14 +248,77 @@ impl McpSession<'_> {
                 "clientInfo": { "name": "Bistre", "version": crate::CORE_VERSION }
             }
         });
-        Box::pin(self.rpc("initialize", None, &init_body)).await
+        let resp = Box::pin(self.rpc("initialize", None, &init_body)).await?;
+        if let Some(ver) = resp
+            .pointer("/result/protocolVersion")
+            .and_then(Value::as_str)
+        {
+            ver.clone_into(&mut self.protocol_version);
+        }
+        // Best-effort `notifications/initialized` per Streamable HTTP spec (202 Accepted or 200 OK).
+        let notif = json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+        });
+        if let Ok(headers) = mcp_headers(
+            self.url,
+            "notifications/initialized",
+            None,
+            self.session_id.as_deref(),
+            &self.protocol_version,
+            self.bearer_token,
+        ) && let Err(err) = self.transport.post(self.url, headers, &notif).await
+        {
+            tracing::debug!(
+                key = err.key.as_key(),
+                "mcp notifications/initialized ignored"
+            );
+        }
+        Ok(resp)
     }
 }
 
-fn mcp_headers(method: &str, tool_name: Option<&str>, session_id: Option<&str>) -> HeaderMap {
+/// Decodes a Streamable HTTP `text/event-stream` MCP response using `SseFramer`, returning the
+/// JSON-RPC payload matching `expected_id` (or the final JSON-RPC object in the stream).
+fn decode_mcp_sse_response(bytes: &[u8], expected_id: Option<u64>) -> BistreResult<Value> {
+    let mut sse = crate::sse::SseFramer::new();
+    let mut events = sse.push_bytes(bytes)?;
+    events.extend(sse.finish());
+    let mut fallback: Option<Value> = None;
+    for payload in events {
+        if let Ok(val) = serde_json::from_str::<Value>(&payload) {
+            if let Some(eid) = expected_id
+                && val.get("id").and_then(Value::as_u64) == Some(eid)
+            {
+                return Ok(val);
+            }
+            if val.get("result").is_some() || val.get("error").is_some() {
+                fallback = Some(val);
+            }
+        }
+    }
+    fallback.ok_or_else(|| {
+        BistreError::with_detail(DiagnosticKey::ProviderRequestFailed, "mcp_sse_empty")
+    })
+}
+
+fn mcp_headers(
+    url: &str,
+    method: &str,
+    tool_name: Option<&str>,
+    session_id: Option<&str>,
+    protocol_version: &str,
+    bearer_token: Option<&str>,
+) -> BistreResult<HeaderMap> {
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+    headers.insert(
+        ACCEPT,
+        HeaderValue::from_static("application/json, text/event-stream"),
+    );
+    if let Ok(pv) = HeaderValue::from_str(protocol_version) {
+        headers.insert("MCP-Protocol-Version", pv);
+    }
     if let Ok(m) = HeaderValue::from_str(method) {
         headers.insert("Mcp-Method", m);
     }
@@ -255,7 +332,21 @@ fn mcp_headers(method: &str, tool_name: Option<&str>, session_id: Option<&str>) 
     {
         headers.insert(MCP_SESSION_HEADER, v);
     }
-    headers
+    if let Some(tok) = bearer_token.map(str::trim).filter(|t| !t.is_empty()) {
+        // Fail closed: bearer tokens are ONLY sent over HTTPS or parsed loopback hosts (AGENTS.md §7).
+        let safe_scheme = url.starts_with("https://") || crate::net::is_loopback_url(url);
+        if !safe_scheme {
+            return Err(BistreError::with_detail(
+                DiagnosticKey::NetworkDestinationBlocked,
+                "mcp_bearer_requires_https_or_loopback",
+            ));
+        }
+        let clean: String = tok.chars().filter(|c| !c.is_control()).collect();
+        if let Ok(val) = HeaderValue::from_str(&format!("Bearer {clean}")) {
+            headers.insert(reqwest::header::AUTHORIZATION, val);
+        }
+    }
+    Ok(headers)
 }
 
 fn validate_mcp_url(url: &str) -> BistreResult<&str> {
@@ -270,17 +361,40 @@ fn validate_mcp_url(url: &str) -> BistreResult<&str> {
     }
 }
 
+/// Unified MCP discovery entrypoint dispatching `stdio` vs Streamable `http`.
+pub async fn discover_mcp_server(
+    transport: &McpHttpTransport,
+    server: &McpServerConfig,
+    bearer_token: Option<&str>,
+) -> BistreResult<McpDiscoveryReport> {
+    if server.transport.eq_ignore_ascii_case("stdio") {
+        return crate::mcp_stdio::discover_stdio_mcp_server(server).await;
+    }
+    discover_http_mcp_server_with_auth(transport, server, bearer_token).await
+}
+
 /// Discovers tools from a Streamable HTTP MCP server using `2026-07-28` `server/discover` first,
 /// falling back seamlessly to legacy `2025-11-25` (`initialize` -> `tools/list`).
 pub async fn discover_http_mcp_server(
     transport: &McpHttpTransport,
     server: &McpServerConfig,
 ) -> BistreResult<McpDiscoveryReport> {
+    discover_http_mcp_server_with_auth(transport, server, None).await
+}
+
+/// Streamable HTTP MCP discovery with optional fail-closed Vault Bearer auth.
+pub async fn discover_http_mcp_server_with_auth(
+    transport: &McpHttpTransport,
+    server: &McpServerConfig,
+    bearer_token: Option<&str>,
+) -> BistreResult<McpDiscoveryReport> {
     let url = validate_mcp_url(&server.url)?;
     let mut session = McpSession {
         transport,
         url,
+        bearer_token,
         session_id: None,
+        protocol_version: MCP_PROTOCOL_2026.to_owned(),
         renewed: false,
     };
 
@@ -291,15 +405,20 @@ pub async fn discover_http_mcp_server(
         "method": "server/discover",
         "params": { "protocolVersion": MCP_PROTOCOL_2026 }
     });
-    if let Ok(resp) = session.rpc("server/discover", None, &discover_body).await
-        && let Some(result) = resp.get("result")
-        && let Some(raw_tools) = result.get("tools").and_then(Value::as_array)
-    {
-        return Ok(McpDiscoveryReport {
-            negotiated_protocol: MCP_PROTOCOL_2026.to_owned(),
-            tools: normalize_and_sort_tools(&server.id, raw_tools),
-            quarantined_stdout_lines: Vec::new(),
-        });
+    match session.rpc("server/discover", None, &discover_body).await {
+        Ok(resp) => {
+            if let Some(result) = resp.get("result")
+                && let Some(raw_tools) = result.get("tools").and_then(Value::as_array)
+            {
+                return Ok(McpDiscoveryReport {
+                    negotiated_protocol: MCP_PROTOCOL_2026.to_owned(),
+                    tools: normalize_and_sort_tools(&server.id, raw_tools),
+                    quarantined_stdout_lines: Vec::new(),
+                });
+            }
+        }
+        Err(err) if err.key == DiagnosticKey::NetworkDestinationBlocked => return Err(err),
+        Err(_) => {}
     }
 
     // 2. Fallback seamlessly to MCP 2025-11-25 `initialize` + `tools/list` (session-aware).
@@ -318,26 +437,32 @@ pub async fn discover_http_mcp_server(
         .map_or(&[][..], Vec::as_slice);
 
     Ok(McpDiscoveryReport {
-        negotiated_protocol: MCP_PROTOCOL_2025.to_owned(),
+        negotiated_protocol: session.protocol_version,
         tools: normalize_and_sort_tools(&server.id, raw_tools),
         quarantined_stdout_lines: Vec::new(),
     })
 }
 
-/// Calls a tool on a Streamable HTTP MCP server with `256 KiB` payload capping and `Mcp-Method`/`Mcp-Name` headers.
-/// Stateless `2026-07-28` servers answer directly; a legacy server that rejects the call without a
-/// session is initialized once and the call is sent once more (never more than one resend).
-pub async fn call_http_mcp_tool(
+/// Unified MCP tool-call entrypoint dispatching `stdio` vs Streamable `http` and returning rich
+/// parsed output (`text`, `is_error`, and persisted `media_attachments`).
+pub async fn call_mcp_tool_rich(
     transport: &McpHttpTransport,
     server: &McpServerConfig,
+    bearer_token: Option<&str>,
     tool_name: &str,
     arguments: &Value,
-) -> BistreResult<String> {
+    data_dir: Option<&std::path::Path>,
+) -> BistreResult<crate::mcp_stdio::McpToolCallOutput> {
+    if server.transport.eq_ignore_ascii_case("stdio") {
+        return crate::mcp_stdio::call_stdio_mcp_tool(server, tool_name, arguments, data_dir).await;
+    }
     let url = validate_mcp_url(&server.url)?;
     let mut session = McpSession {
         transport,
         url,
+        bearer_token,
         session_id: None,
+        protocol_version: MCP_PROTOCOL_2026.to_owned(),
         renewed: false,
     };
     let body = json!({
@@ -363,18 +488,20 @@ pub async fn call_http_mcp_tool(
         }
         Err(err) => return Err(err),
     };
-    let mut rendered = resp
-        .get("result")
-        .map_or_else(|| resp.to_string(), Value::to_string);
-    if rendered.len() > MAX_MCP_TOOL_RESULT_BYTES {
-        let mut cut = MAX_MCP_TOOL_RESULT_BYTES;
-        while cut > 0 && !rendered.is_char_boundary(cut) {
-            cut -= 1;
-        }
-        rendered.truncate(cut);
-        rendered.push_str("...[truncated_256kib]");
-    }
-    Ok(rendered)
+    let result = resp.get("result").unwrap_or(&resp);
+    Ok(crate::mcp_stdio::parse_mcp_call_result(result, data_dir))
+}
+
+/// Calls a tool on a Streamable HTTP MCP server with `256 KiB` payload capping and `Mcp-Method`/`Mcp-Name` headers.
+pub async fn call_http_mcp_tool(
+    transport: &McpHttpTransport,
+    server: &McpServerConfig,
+    tool_name: &str,
+    arguments: &Value,
+) -> BistreResult<String> {
+    call_mcp_tool_rich(transport, server, None, tool_name, arguments, None)
+        .await
+        .map(|o| o.text)
 }
 
 #[cfg(test)]
@@ -411,7 +538,7 @@ mod tests {
 
         // Server rejects `server/discover` (HTTP 404) and responds to legacy `initialize` + `tools/list`.
         let server_task = tokio::spawn(async move {
-            for _ in 0..3 {
+            for _ in 0..4 {
                 let Ok((mut sock, _)) = listener.accept().await else {
                     break;
                 };
@@ -420,6 +547,8 @@ mod tests {
                 let req = String::from_utf8_lossy(&buf[..n]);
                 let (status, body) = if req.contains("server/discover") {
                     ("404 Not Found", r#"{"error":"not_supported"}"#)
+                } else if req.contains("notifications/initialized") {
+                    ("202 Accepted", "")
                 } else if req.contains("initialize") {
                     (
                         "200 OK\r\nMcp-Session-Id: sess-1",
@@ -489,5 +618,81 @@ mod tests {
             err.map(|e| e.key),
             Some(DiagnosticKey::NetworkDestinationBlocked)
         );
+    }
+
+    #[tokio::test]
+    async fn streamable_http_sse_response_decodes_and_bearer_fails_closed_on_remote_http()
+    -> TestResult {
+        // 1. Bearer token on non-loopback plain HTTP MUST fail closed before any socket opens.
+        let transport = McpHttpTransport::new();
+        let remote_http = McpServerConfig {
+            id: "remote".to_owned(),
+            name: "Remote".to_owned(),
+            transport: "http".to_owned(),
+            command: String::new(),
+            args: Vec::new(),
+            url: "http://mcp.example.com/mcp".to_owned(),
+            enabled: true,
+        };
+        let err = discover_mcp_server(&transport, &remote_http, Some("secret-tok"))
+            .await
+            .err();
+        assert_eq!(
+            err.as_ref().map(|e| e.key),
+            Some(DiagnosticKey::NetworkDestinationBlocked)
+        );
+        assert_eq!(
+            err.and_then(|e| e.detail_code),
+            Some("mcp_bearer_requires_https_or_loopback".to_owned())
+        );
+
+        // 2. Streamable HTTP `text/event-stream` response decodes via SseFramer.
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let srv = tokio::spawn(async move {
+            let Ok((mut sock, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = [0_u8; 4096];
+            let n = sock.read(&mut buf).await.unwrap_or(0);
+            let req = String::from_utf8_lossy(&buf[..n]);
+            assert!(req.contains("text/event-stream"));
+            assert!(req.contains("Bearer local-tok"));
+            let sse = concat!(
+                "event: message\n",
+                "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\n",
+                "event: message\n",
+                "data: {\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"isError\":false,\"content\":[{\"type\":\"text\",\"text\":\"sse ok\"}]}}\n\n",
+            );
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{sse}",
+                sse.len()
+            );
+            if let Err(err) = sock.write_all(resp.as_bytes()).await {
+                tracing::debug!(%err, "mock mcp sse write failed");
+            }
+        });
+        let local_cfg = McpServerConfig {
+            id: "local-sse".to_owned(),
+            name: "Local SSE".to_owned(),
+            transport: "http".to_owned(),
+            command: String::new(),
+            args: Vec::new(),
+            url: format!("http://{addr}/mcp"),
+            enabled: true,
+        };
+        let out = call_mcp_tool_rich(
+            &transport,
+            &local_cfg,
+            Some("local-tok"),
+            "ping",
+            &json!({}),
+            None,
+        )
+        .await?;
+        assert!(!out.is_error);
+        assert_eq!(out.text, "sse ok");
+        let _joined = srv.await;
+        Ok(())
     }
 }

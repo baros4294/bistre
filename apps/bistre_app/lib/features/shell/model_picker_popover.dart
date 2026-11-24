@@ -64,7 +64,11 @@ class _ModelPickerPopoverState extends State<ModelPickerPopover> {
   List<_ModelOption> _buildAllOptions(FolioController ctrl) {
     final out = <_ModelOption>[];
     for (final p in ctrl.providers) {
-      final loaded = ctrl.modelsForProvider(p.id);
+      final hidden = ctrl.hiddenModelIdsFor(p.id);
+      final loaded = ctrl
+          .modelsForProvider(p.id)
+          .where((m) => !hidden.contains(m.id))
+          .toList(growable: false);
       final ids = p.isReady && loaded.isNotEmpty
           ? loaded.map((m) => m.id).toList(growable: false)
           : p.defaultModel.trim().isNotEmpty

@@ -876,6 +876,13 @@ flowchart LR
   }) async => 'permit-$toolName';
 
   @override
+  Future<bool> respondToolApproval({
+    required String threadId,
+    required String callId,
+    required String decision,
+  }) async => true;
+
+  @override
   Future<EngineToolOutput> executeWorkspaceTool({
     required String workspaceRoot,
     required String threadId,
@@ -1303,6 +1310,87 @@ flowchart LR
 
   /// Pushes an engine event into the controller (gallery & regression tests).
   void emit(BistreEvent event) => _events.add(event);
+
+  @override
+  Future<List<String>> getProviderApiKeys(String providerId) async =>
+      const <String>[];
+
+  @override
+  Future<EngineModelCatalogInfo?> lookupModelCatalogInfo(
+    String modelId,
+  ) async => null;
+
+  @override
+  Future<EngineNode> sendAndStreamReplyWithAttachments({
+    required String threadId,
+    String? parentId,
+    required String userContent,
+    required List<EngineAttachmentInput> attachments,
+  }) => sendAndStreamReply(
+    threadId: threadId,
+    parentId: parentId,
+    userContent: userContent,
+  );
+
+  @override
+  Future<EngineNode> steerActiveRunNow({
+    required String threadId,
+    required String content,
+  }) => sendAndStreamReply(threadId: threadId, userContent: content);
+
+  @override
+  Future<String> exportAllThreadsJson() async =>
+      '{"format_version":1,"threads":[]}';
+
+  @override
+  Future<int> importThreadsJson(String rawJson) async => 0;
+
+  @override
+  Future<String> exportSettingsJson() async => '{}';
+
+  @override
+  Future<EngineSettings> importSettingsJson(String rawJson) async => _settings;
+
+  @override
+  Future<List<EngineStorageFileEntry>> listStorageFiles() async =>
+      const <EngineStorageFileEntry>[];
+
+  @override
+  Future<bool> deleteStorageFile(String relPath) async => true;
+
+  @override
+  Future<int> cleanUnusedStorageFiles() async => 0;
+
+  @override
+  Future<List<int>> synthesizeSpeech({
+    required String providerId,
+    required String modelId,
+    required String text,
+    String? voice,
+  }) async => const <int>[];
+
+  @override
+  Future<String> startLiveVoiceSession({
+    required String providerId,
+    required String modelId,
+    required String voice,
+    required String systemPrompt,
+  }) async => 'live_gallery';
+
+  @override
+  Future<void> sendLiveVoicePcmChunk({
+    required String sessionId,
+    required String pcmBase64,
+  }) async {}
+
+  @override
+  Future<void> sendLiveVoiceText({
+    required String sessionId,
+    required String text,
+  }) async {}
+
+  @override
+  Future<void> stopLiveVoiceSession(String sessionId) async {}
 
   @override
   Stream<BistreEvent> subscribeEvents() => _events.stream;

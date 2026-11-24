@@ -94,6 +94,63 @@ class BistreSelectionControls extends TextSelectionControls {
   }
 }
 
+/// Pure `package:flutter/widgets.dart` context menu for `EditableText` inside `QuillInput`
+/// (Cut / Copy / Paste / Select all, zero Material/Cupertino dependency).
+Widget buildBistreEditableContextMenu(
+  BuildContext context,
+  EditableTextState editableTextState,
+) {
+  final l10n = BistreLocalizations.of(context);
+  final items = editableTextState.contextMenuButtonItems;
+  if (items.isEmpty) return const SizedBox.shrink();
+
+  String? labelFor(ContextMenuButtonType type) => switch (type) {
+    ContextMenuButtonType.cut => l10n.t(L10nKey.shellSelectionCut),
+    ContextMenuButtonType.copy => l10n.t(L10nKey.shellSelectionCopy),
+    ContextMenuButtonType.paste => l10n.t(L10nKey.shellSelectionPaste),
+    ContextMenuButtonType.selectAll => l10n.t(L10nKey.shellSelectionSelectAll),
+    _ => null,
+  };
+
+  final visible = <(String, VoidCallback)>[];
+  for (final item in items) {
+    final label = labelFor(item.type);
+    final onPressed = item.onPressed;
+    if (label != null && onPressed != null) {
+      visible.add((label, onPressed));
+    }
+  }
+  if (visible.isEmpty) return const SizedBox.shrink();
+
+  final anchors = editableTextState.contextMenuAnchors;
+  final anchor = anchors.secondaryAnchor ?? anchors.primaryAnchor;
+
+  return CustomSingleChildLayout(
+    delegate: _ToolbarLayoutDelegate(anchor: anchor),
+    child: FolioSurface(
+      tone: FolioTone.elevated,
+      borderRadius: 10,
+      padding: const EdgeInsetsDirectional.symmetric(
+        horizontal: BistreSpacing.s8,
+        vertical: BistreSpacing.s4,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < visible.length; i++) ...[
+            if (i > 0) const SizedBox(width: BistreSpacing.s4),
+            EngravedButton(
+              label: visible[i].$1,
+              compact: true,
+              onPressed: visible[i].$2,
+            ),
+          ],
+        ],
+      ),
+    ),
+  );
+}
+
 class _ToolbarLayoutDelegate extends SingleChildLayoutDelegate {
   const _ToolbarLayoutDelegate({required this.anchor});
 

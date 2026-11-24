@@ -12,6 +12,7 @@ import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
+import 'model_picker_field.dart';
 
 /// Clean Assistants Studio — ZERO hardcoded mode pills (`Chat | Code | Write | Translate`).
 /// Supports Name, Description, Optional Icon, System Prompt, Default Provider & Model,
@@ -443,48 +444,41 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
             ),
             BistreSettingRow(
               label: l10n.t(L10nKey.settingsAssistantsDefaultModel),
-              bottom: QuillInput(
-                controller: _modelCtrl,
+              bottom: ModelPickerField(
+                controller: ctrl,
+                providerId: _defaultProviderId,
+                textController: _modelCtrl,
                 focusNode: _modelFocus,
                 placeholder: l10n.t(L10nKey.settingsAssistantsUseGlobalDefault),
-                maxLines: 1,
-                submitOnEnter: false,
-                onSubmitted: () {},
+                onSelectedModel: (id) => setState(() => _modelCtrl.text = id),
               ),
             ),
             BistreSettingRow(
               label: l10n.t(L10nKey.settingsAssistantsTemperature),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  InkText(
-                    _temperatureMilli != null
-                        ? tempVal.toStringAsFixed(2)
-                        : l10n.t(L10nKey.settingsAssistantsParamsDefault),
-                    role: InkTextRole.captionMeta,
-                    color: _temperatureMilli != null
-                        ? theme.accentBrass
-                        : theme.inkMuted,
-                  ),
-                  if (_temperatureMilli != null) ...[
-                    const SizedBox(width: 8),
-                    EngravedButton(
-                      label: l10n.t(L10nKey.settingsAppearanceFontReset),
-                      compact: true,
-                      onPressed: () => setState(() => _temperatureMilli = null),
-                    ),
-                  ],
-                ],
-              ),
-              bottom: BistreSlider(
-                value: tempVal,
-                min: 0.0,
-                max: 2.0,
-                step: 0.05,
+              description: _temperatureMilli != null
+                  ? tempVal.toStringAsFixed(2)
+                  : l10n.t(L10nKey.settingsAssistantsModelDefaultNotSent),
+              trailing: BistreSwitch(
+                value: _temperatureMilli != null,
                 semanticsLabel: l10n.t(L10nKey.settingsAssistantsTemperature),
-                onChanged: (v) =>
-                    setState(() => _temperatureMilli = (v * 1000).round()),
+                reduceMotionOverride: ctrl.reduceMotionOverride,
+                onChanged: (enabled) =>
+                    setState(() => _temperatureMilli = enabled ? 700 : null),
               ),
+              bottom: _temperatureMilli != null
+                  ? BistreSlider(
+                      value: tempVal,
+                      min: 0.0,
+                      max: 2.0,
+                      step: 0.05,
+                      semanticsLabel: l10n.t(
+                        L10nKey.settingsAssistantsTemperature,
+                      ),
+                      onChanged: (v) => setState(
+                        () => _temperatureMilli = (v * 1000).round(),
+                      ),
+                    )
+                  : null,
             ),
             BistreSettingRow(
               label: l10n.t(L10nKey.settingsAssistantsMaxTokens),
@@ -499,37 +493,27 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
             ),
             BistreSettingRow(
               label: l10n.t(L10nKey.settingsAssistantsTopP),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  InkText(
-                    _topPMilli != null
-                        ? topPVal.toStringAsFixed(2)
-                        : l10n.t(L10nKey.settingsAssistantsParamsDefault),
-                    role: InkTextRole.captionMeta,
-                    color: _topPMilli != null
-                        ? theme.accentBrass
-                        : theme.inkMuted,
-                  ),
-                  if (_topPMilli != null) ...[
-                    const SizedBox(width: 8),
-                    EngravedButton(
-                      label: l10n.t(L10nKey.settingsAppearanceFontReset),
-                      compact: true,
-                      onPressed: () => setState(() => _topPMilli = null),
-                    ),
-                  ],
-                ],
-              ),
-              bottom: BistreSlider(
-                value: topPVal,
-                min: 0.05,
-                max: 1.0,
-                step: 0.05,
+              description: _topPMilli != null
+                  ? topPVal.toStringAsFixed(2)
+                  : l10n.t(L10nKey.settingsAssistantsModelDefaultNotSent),
+              trailing: BistreSwitch(
+                value: _topPMilli != null,
                 semanticsLabel: l10n.t(L10nKey.settingsAssistantsTopP),
-                onChanged: (v) =>
-                    setState(() => _topPMilli = (v * 1000).round()),
+                reduceMotionOverride: ctrl.reduceMotionOverride,
+                onChanged: (enabled) =>
+                    setState(() => _topPMilli = enabled ? 950 : null),
               ),
+              bottom: _topPMilli != null
+                  ? BistreSlider(
+                      value: topPVal,
+                      min: 0.05,
+                      max: 1.0,
+                      step: 0.05,
+                      semanticsLabel: l10n.t(L10nKey.settingsAssistantsTopP),
+                      onChanged: (v) =>
+                          setState(() => _topPMilli = (v * 1000).round()),
+                    )
+                  : null,
             ),
             Padding(
               padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),

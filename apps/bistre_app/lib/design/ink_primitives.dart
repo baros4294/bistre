@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:vector_graphics/vector_graphics.dart';
 
 import 'bistre_icons.dart' show TapTargetExpander, minTapTarget;
+import 'bistre_selection_controls.dart';
 import 'bistre_theme.dart';
 import 'hover_hint.dart';
 import 'press_feedback.dart';
@@ -316,17 +318,19 @@ class _EngravedButtonState extends State<EngravedButton> {
                             children: [
                               if (widget.leading != null) ...[
                                 widget.leading!,
-                                const SizedBox(width: 7),
+                                if (widget.label.isNotEmpty)
+                                  const SizedBox(width: 7),
                               ],
-                              Flexible(
-                                child: InkText(
-                                  widget.label,
-                                  role: InkTextRole.labelStrong,
-                                  color: fg,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                              if (widget.label.isNotEmpty)
+                                Flexible(
+                                  child: InkText(
+                                    widget.label,
+                                    role: InkTextRole.labelStrong,
+                                    color: fg,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                              ),
                             ],
                           ),
                         ),
@@ -485,8 +489,25 @@ class QuillInput extends StatefulWidget {
   State<QuillInput> createState() => _QuillInputState();
 }
 
-class _QuillInputState extends State<QuillInput> {
+class _QuillInputState extends State<QuillInput>
+    implements TextSelectionGestureDetectorBuilderDelegate {
+  final GlobalKey<EditableTextState> _editableTextKey =
+      GlobalKey<EditableTextState>();
+  final BistreSelectionControls _selectionControls = BistreSelectionControls();
+  late final TextSelectionGestureDetectorBuilder
+  _selectionGestureDetectorBuilder = _QuillSelectionGestureDetectorBuilder(
+    state: this,
+  );
   bool _focused = false;
+
+  @override
+  GlobalKey<EditableTextState> get editableTextKey => _editableTextKey;
+
+  @override
+  bool get forcePressEnabled => false;
+
+  @override
+  bool get selectionEnabled => true;
 
   @override
   void initState() {
@@ -565,6 +586,7 @@ class _QuillInputState extends State<QuillInput> {
             ),
           ),
         EditableText(
+          key: _editableTextKey,
           controller: widget.controller,
           focusNode: widget.focusNode,
           style: BistreTypography.bodyProse(
@@ -574,6 +596,10 @@ class _QuillInputState extends State<QuillInput> {
           cursorColor: theme.accentWax,
           backgroundCursorColor: theme.bgSurface,
           selectionColor: theme.selectionFill,
+          selectionControls: _selectionControls,
+          contextMenuBuilder: buildBistreEditableContextMenu,
+          rendererIgnoresPointer: true,
+          mouseCursor: MouseCursor.defer,
           maxLines: widget.obscureText ? 1 : widget.maxLines,
           minLines: widget.obscureText ? 1 : widget.minLines,
           obscureText: widget.obscureText,
@@ -590,32 +616,53 @@ class _QuillInputState extends State<QuillInput> {
       ],
     );
 
+    final fieldSurface = widget.frameless
+        ? editorStack
+        : DecoratedBox(
+            decoration: BoxDecoration(
+              color: theme.bgElevated,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: _focused ? theme.accentBrass : theme.borderHairline,
+                width: _focused ? 1.8 : 1,
+              ),
+            ),
+            child: Padding(
+              padding: EdgeInsetsDirectional.symmetric(
+                horizontal: BistreSpacing.s12,
+                vertical: widget.compact ? 7 : 10,
+              ),
+              child: editorStack,
+            ),
+          );
+
     return Focus(
       onKeyEvent: _handleKeyEvent,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => widget.focusNode.requestFocus(),
-        child: widget.frameless
-            ? editorStack
-            : DecoratedBox(
-                decoration: BoxDecoration(
-                  color: theme.bgElevated,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: _focused ? theme.accentBrass : theme.borderHairline,
-                    width: _focused ? 1.8 : 1,
-                  ),
-                ),
-                child: Padding(
-                  padding: EdgeInsetsDirectional.symmetric(
-                    horizontal: BistreSpacing.s12,
-                    vertical: widget.compact ? 7 : 10,
-                  ),
-                  child: editorStack,
-                ),
-              ),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.text,
+        child: _selectionGestureDetectorBuilder.buildGestureDetector(
+          behavior: HitTestBehavior.opaque,
+          child: fieldSurface,
+        ),
       ),
     );
+  }
+}
+
+class _QuillSelectionGestureDetectorBuilder
+    extends TextSelectionGestureDetectorBuilder {
+  _QuillSelectionGestureDetectorBuilder({required _QuillInputState state})
+    : _state = state,
+      super(delegate: state);
+
+  final _QuillInputState _state;
+
+  @override
+  void onSingleTapUp(TapDragUpDetails details) {
+    super.onSingleTapUp(details);
+    if (!_state.widget.focusNode.hasFocus) {
+      _state.widget.focusNode.requestFocus();
+    }
   }
 }
 

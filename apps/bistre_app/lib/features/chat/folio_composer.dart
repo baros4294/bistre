@@ -379,7 +379,71 @@ class _FolioComposerState extends State<FolioComposer> {
                   ),
                   child: _BackoffNotice(
                     retryAt: ctrl.backoffRetryAt!,
+                    reasonDetail: ctrl.retryReasonDetail,
                     onRetryNow: () => unawaited(ctrl.retryNow()),
+                  ),
+                ),
+              if (ctrl.liveVoiceActive || ctrl.liveVoiceError != null)
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(
+                    bottom: BistreSpacing.s8,
+                  ),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: theme.bgElevated,
+                      borderRadius: BorderRadius.circular(11),
+                      border: Border.all(
+                        color: ctrl.liveVoiceError != null
+                            ? theme.statusErr.withValues(alpha: 0.5)
+                            : theme.accentBrass.withValues(alpha: 0.6),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsetsDirectional.fromSTEB(
+                        12,
+                        6,
+                        8,
+                        6,
+                      ),
+                      child: Row(
+                        children: [
+                          BistreIcon(
+                            BistreUiIcon.audioLines,
+                            size: 14,
+                            color: ctrl.liveVoiceError != null
+                                ? theme.statusErr
+                                : theme.accentBrass,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: InkText(
+                              ctrl.liveVoiceError ??
+                                  (ctrl.liveVoiceTranscript.isNotEmpty
+                                      ? ctrl.liveVoiceTranscript
+                                      : l10n.t(
+                                          ctrl.liveVoiceState == 'connecting'
+                                              ? L10nKey
+                                                    .composerLiveVoiceConnecting
+                                              : L10nKey
+                                                    .composerLiveVoiceListening,
+                                        )),
+                              role: InkTextRole.captionMeta,
+                              color: ctrl.liveVoiceError != null
+                                  ? theme.statusErr
+                                  : theme.inkPrimary,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          EngravedButton(
+                            label: l10n.t(L10nKey.composerLiveVoiceEnd),
+                            compact: true,
+                            onPressed: () => unawaited(ctrl.stopLiveVoice()),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               if (diag != null)
@@ -533,6 +597,17 @@ class _FolioComposerState extends State<FolioComposer> {
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
+                                      const SizedBox(width: 6),
+                                      EngravedButton(
+                                        label: l10n.t(
+                                          L10nKey.composerSteerNowAction,
+                                        ),
+                                        compact: true,
+                                        onPressed: () => unawaited(
+                                          ctrl.promoteQueuedSteeringNow(item),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
                                       BistreIconButton(
                                         icon: BistreUiIcon.close,
                                         size: 12,
@@ -848,6 +923,17 @@ class _FolioComposerState extends State<FolioComposer> {
                         trailing: <Widget>[
                           if (ctrl.isStreaming) ...[
                             EngravedButton(
+                              label: l10n.t(L10nKey.composerSteerNowAction),
+                              compact: true,
+                              onPressed: () async {
+                                final text = _textController.text.trim();
+                                if (text.isEmpty) return;
+                                _textController.clear();
+                                await ctrl.steerActiveRunNow(text);
+                              },
+                            ),
+                            const SizedBox(width: 6),
+                            EngravedButton(
                               label: l10n.t(L10nKey.composerQueueAction),
                               primary: true,
                               compact: true,
@@ -870,7 +956,60 @@ class _FolioComposerState extends State<FolioComposer> {
                               onPressed: () =>
                                   unawaited(ctrl.cancelStreaming()),
                             ),
-                          ] else
+                          ] else ...[
+                            BistreIconButton(
+                              icon: BistreUiIcon.mic,
+                              size: 14,
+                              dimension: 30,
+                              active: ctrl.dictatingActive,
+                              color: ctrl.dictatingActive
+                                  ? theme.accentWax
+                                  : theme.inkSecondary,
+                              semanticsLabel: l10n.t(
+                                L10nKey.composerVoiceDictate,
+                              ),
+                              onPressed: () async {
+                                final spoken = await ctrl.dictateVoiceOnce();
+                                if (spoken == null || !mounted) return;
+                                // Never mutate while IME composition is active.
+                                if (_textController.value.composing.isValid) {
+                                  return;
+                                }
+                                final cur = _textController.text;
+                                final next = cur.trim().isEmpty
+                                    ? spoken
+                                    : '$cur $spoken';
+                                _textController.value = TextEditingValue(
+                                  text: next,
+                                  selection: TextSelection.collapsed(
+                                    offset: next.length,
+                                  ),
+                                );
+                                _handleTextChanged(next);
+                              },
+                            ),
+                            const SizedBox(width: 4),
+                            EngravedButton(
+                              label:
+                                  MediaQuery.sizeOf(context).width / scale < 600
+                                  ? ''
+                                  : l10n.t(L10nKey.composerLiveVoicePill),
+                              semanticsLabel: l10n.t(
+                                L10nKey.composerLiveVoicePill,
+                              ),
+                              compact: true,
+                              primary: ctrl.liveVoiceActive,
+                              leading: BistreIcon(
+                                BistreUiIcon.audioLines,
+                                size: 13,
+                                color: ctrl.liveVoiceActive
+                                    ? theme.onAccentWax
+                                    : theme.accentBrass,
+                              ),
+                              onPressed: () =>
+                                  unawaited(ctrl.toggleLiveVoiceSession()),
+                            ),
+                            const SizedBox(width: 6),
                             // A quiet Send control: the message, not the button, is
                             // the focal point.
                             EngravedButton(
@@ -883,6 +1022,7 @@ class _FolioComposerState extends State<FolioComposer> {
                               ),
                               onPressed: () => unawaited(_submit()),
                             ),
+                          ],
                         ],
                       ),
                     ),
@@ -914,48 +1054,55 @@ class _ComposerToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!twoRows) {
-      // Leading controls wrap inside the flexible start group, so the gauge and the
-      // trailing actions never push the row past its width.
-      return Row(
-        children: [
-          Expanded(
-            child: Wrap(
+    final scale = textScaleOf(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final effectiveWidth = constraints.maxWidth / scale;
+        final split = twoRows || effectiveWidth < 580;
+        if (!split) {
+          // Leading controls wrap inside the flexible start group, so the gauge and the
+          // trailing actions never push the row past its width.
+          return Row(
+            children: [
+              Expanded(
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  runSpacing: BistreSpacing.s4,
+                  children: leading,
+                ),
+              ),
+              gauge,
+              const SizedBox(width: BistreSpacing.s8),
+              ...trailing,
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    runSpacing: BistreSpacing.s4,
+                    children: leading,
+                  ),
+                ),
+                gauge,
+              ],
+            ),
+            const SizedBox(height: BistreSpacing.s8),
+            Wrap(
+              alignment: WrapAlignment.end,
               crossAxisAlignment: WrapCrossAlignment.center,
               runSpacing: BistreSpacing.s4,
-              children: leading,
+              children: trailing,
             ),
-          ),
-          gauge,
-          const SizedBox(width: BistreSpacing.s8),
-          ...trailing,
-        ],
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Wrap(
-                crossAxisAlignment: WrapCrossAlignment.center,
-                runSpacing: BistreSpacing.s4,
-                children: leading,
-              ),
-            ),
-            gauge,
           ],
-        ),
-        const SizedBox(height: BistreSpacing.s8),
-        Wrap(
-          alignment: WrapAlignment.end,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          runSpacing: BistreSpacing.s4,
-          children: trailing,
-        ),
-      ],
+        );
+      },
     );
   }
 }
@@ -963,10 +1110,15 @@ class _ComposerToolbar extends StatelessWidget {
 /// Backoff notice with countdown, plain reason, and an inline trailing `Retry now`.
 /// The 1 s ticker runs only while a retry is pending (never idle polling).
 class _BackoffNotice extends StatefulWidget {
-  const _BackoffNotice({required this.retryAt, required this.onRetryNow});
+  const _BackoffNotice({
+    required this.retryAt,
+    required this.onRetryNow,
+    this.reasonDetail,
+  });
 
   final DateTime retryAt;
   final VoidCallback onRetryNow;
+  final String? reasonDetail;
 
   @override
   State<_BackoffNotice> createState() => _BackoffNoticeState();
@@ -1017,12 +1169,27 @@ class _BackoffNoticeState extends State<_BackoffNotice> {
             BistreIcon(BistreUiIcon.refresh, size: 13, color: theme.statusWarn),
             const SizedBox(width: BistreSpacing.s8),
             Expanded(
-              child: InkText(
-                l10n.t(L10nKey.chatBackoffNotice, <String, Object?>{
-                  'seconds': seconds,
-                }),
-                role: InkTextRole.captionMeta,
-                color: theme.inkSecondary,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  InkText(
+                    l10n.t(L10nKey.chatBackoffNotice, <String, Object?>{
+                      'seconds': seconds,
+                    }),
+                    role: InkTextRole.captionMeta,
+                    color: theme.inkSecondary,
+                  ),
+                  if (widget.reasonDetail != null &&
+                      widget.reasonDetail!.trim().isNotEmpty)
+                    InkText(
+                      widget.reasonDetail!,
+                      role: InkTextRole.codeBlock,
+                      color: theme.inkMuted,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
               ),
             ),
             EngravedButton(

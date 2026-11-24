@@ -464,6 +464,48 @@ class _ProviderModelConfigSubpageState
     super.dispose();
   }
 
+  bool _fillingCatalog = false;
+
+  String _formatMicrosUsd(int micros) =>
+      (micros / 1000000.0).toStringAsFixed(2);
+
+  Future<void> _fillFromCatalog() async {
+    if (_fillingCatalog) return;
+    setState(() => _fillingCatalog = true);
+    try {
+      final info = await widget.controller.lookupModelCatalogInfo(
+        widget.modelId,
+      );
+      if (!mounted) return;
+      if (info == null) {
+        widget.controller.showToast(L10nKey.toastCatalogNotFound);
+        return;
+      }
+      setState(() {
+        if (info.contextWindow != null && info.contextWindow! > 0) {
+          _ctxCtrl.text = '${info.contextWindow}';
+        }
+        if (info.maxOutputTokens != null && info.maxOutputTokens! > 0) {
+          _outCtrl.text = '${info.maxOutputTokens}';
+        }
+        if (info.inputPerMtokMicros != null) {
+          _inPriceCtrl.text = _formatMicrosUsd(info.inputPerMtokMicros!);
+        }
+        if (info.outputPerMtokMicros != null) {
+          _outPriceCtrl.text = _formatMicrosUsd(info.outputPerMtokMicros!);
+        }
+        if (info.cachedInputPerMtokMicros != null) {
+          _cacheReadCtrl.text = _formatMicrosUsd(
+            info.cachedInputPerMtokMicros!,
+          );
+        }
+      });
+      widget.controller.showToast(L10nKey.toastCatalogFilled);
+    } finally {
+      if (mounted) setState(() => _fillingCatalog = false);
+    }
+  }
+
   void _save() {
     widget.onSaveOverride(
       ModelConfigOverride(
@@ -511,7 +553,9 @@ class _ProviderModelConfigSubpageState
             EngravedButton(
               label: l10n.t(L10nKey.settingsModelFillCatalog),
               compact: true,
-              onPressed: () => unawaited(widget.controller.refreshPrices()),
+              onPressed: _fillingCatalog
+                  ? null
+                  : () => unawaited(_fillFromCatalog()),
             ),
           ],
         ),

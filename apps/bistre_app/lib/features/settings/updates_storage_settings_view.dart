@@ -35,7 +35,10 @@ class _UpdatesStorageSettingsViewState
   @override
   void initState() {
     super.initState();
-    _feedUrlCtrl.text = widget.controller.settings.otaFeedUrl;
+    _feedUrlCtrl.text = widget.controller.settings.otaFeedUrl.isEmpty
+        ? _kDefaultRepoSlug
+        : widget.controller.settings.otaFeedUrl;
+    unawaited(widget.controller.refreshStorageFiles());
   }
 
   @override
@@ -67,6 +70,65 @@ class _UpdatesStorageSettingsViewState
     );
     if (chosen == null || chosen.isEmpty) return;
     await widget.controller.backupDatabaseTo(chosen);
+  }
+
+  Future<void> _exportCurrentChat(String format) async {
+    final l10n = BistreLocalizations.of(context);
+    final ext = format == 'markdown' ? 'md' : 'json';
+    final chosen = await BistreDesktopHost.saveLocalFile(
+      title: l10n.t(L10nKey.settingsStorageExportCurrent),
+      defaultName: 'bistre-chat.$ext',
+      filterLabel: ext == 'md' ? 'Markdown (*.md)' : 'JSON (*.json)',
+      filterSpec: '*.$ext',
+    );
+    if (chosen == null || chosen.isEmpty) return;
+    await widget.controller.exportCurrentThreadToFile(chosen, format: format);
+  }
+
+  Future<void> _exportAllChats() async {
+    final l10n = BistreLocalizations.of(context);
+    final chosen = await BistreDesktopHost.saveLocalFile(
+      title: l10n.t(L10nKey.settingsStorageExportAll),
+      defaultName: 'bistre-chats-export.json',
+      filterLabel: 'JSON (*.json)',
+      filterSpec: '*.json',
+    );
+    if (chosen == null || chosen.isEmpty) return;
+    await widget.controller.exportAllThreadsToFile(chosen);
+  }
+
+  Future<void> _importChats() async {
+    final l10n = BistreLocalizations.of(context);
+    final chosen = await BistreDesktopHost.pickLocalFile(
+      title: l10n.t(L10nKey.settingsStorageImportChats),
+      filterLabel: 'JSON (*.json)',
+      filterSpec: '*.json',
+    );
+    if (chosen == null || chosen.isEmpty) return;
+    await widget.controller.importThreadsFromFile(chosen);
+  }
+
+  Future<void> _exportSettings() async {
+    final l10n = BistreLocalizations.of(context);
+    final chosen = await BistreDesktopHost.saveLocalFile(
+      title: l10n.t(L10nKey.settingsStorageExportSettings),
+      defaultName: 'bistre-settings.json',
+      filterLabel: 'JSON (*.json)',
+      filterSpec: '*.json',
+    );
+    if (chosen == null || chosen.isEmpty) return;
+    await widget.controller.exportSettingsToFile(chosen);
+  }
+
+  Future<void> _importSettings() async {
+    final l10n = BistreLocalizations.of(context);
+    final chosen = await BistreDesktopHost.pickLocalFile(
+      title: l10n.t(L10nKey.settingsStorageImportSettings),
+      filterLabel: 'JSON (*.json)',
+      filterSpec: '*.json',
+    );
+    if (chosen == null || chosen.isEmpty) return;
+    await widget.controller.importSettingsFromFile(chosen);
   }
 
   @override
@@ -203,6 +265,43 @@ class _UpdatesStorageSettingsViewState
                       ),
                     ),
                   ),
+                if (ctrl.lastOtaError != null)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.fromSTEB(
+                      BistreSpacing.s16,
+                      0,
+                      BistreSpacing.s16,
+                      BistreSpacing.s12,
+                    ),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: theme.bgSurface,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: theme.statusErr.withValues(alpha: 0.45),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsetsDirectional.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            InkText(
+                              l10n.t(L10nKey.settingsOtaCheckErrorTitle),
+                              role: InkTextRole.labelStrong,
+                              color: theme.statusErr,
+                            ),
+                            const SizedBox(height: 4),
+                            InkText(
+                              ctrl.lastOtaError!,
+                              role: InkTextRole.codeBlock,
+                              color: theme.inkSecondary,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 BistreSettingRow(
                   label: l10n.t(L10nKey.settingsOtaChannel),
                   trailing: BistreSegmentedControl<String>(
@@ -224,10 +323,24 @@ class _UpdatesStorageSettingsViewState
                 ),
                 BistreSettingRow(
                   label: l10n.t(L10nKey.settingsOtaFeedUrl),
+                  description: l10n.t(L10nKey.settingsOtaRepoHint),
+                  trailing: EngravedButton(
+                    label: l10n.t(L10nKey.settingsAppearanceFontReset),
+                    compact: true,
+                    onPressed: () {
+                      setState(() => _feedUrlCtrl.text = _kDefaultRepoSlug);
+                      unawaited(
+                        ctrl.updateSettings(
+                          s.copyWith(otaFeedUrl: _kDefaultRepoSlug),
+                          quiet: true,
+                        ),
+                      );
+                    },
+                  ),
                   bottom: QuillInput(
                     controller: _feedUrlCtrl,
                     focusNode: _feedUrlFocus,
-                    placeholder: _kFeedUrlHint,
+                    placeholder: _kDefaultRepoSlug,
                     maxLines: 1,
                     submitOnEnter: false,
                     onSubmitted: () => unawaited(_saveFeedAndCheck()),
@@ -237,7 +350,68 @@ class _UpdatesStorageSettingsViewState
             ),
             const SizedBox(height: BistreSpacing.s24),
 
-            // Section 2: Local Storage & Backups
+            // Section 2: Export & Import (Chats + Settings)
+            BistreSettingsSection(
+              title: l10n.t(L10nKey.settingsStorageExportImportTitle),
+              subtitle: l10n.t(L10nKey.settingsStorageExportImportHint),
+              children: [
+                BistreSettingRow(
+                  label: l10n.t(L10nKey.settingsStorageChatsDataLabel),
+                  bottom: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      EngravedButton(
+                        label: l10n.t(L10nKey.settingsStorageExportCurrentMd),
+                        compact: true,
+                        onPressed: ctrl.activeThread == null
+                            ? null
+                            : () => unawaited(_exportCurrentChat('markdown')),
+                      ),
+                      EngravedButton(
+                        label: l10n.t(L10nKey.settingsStorageExportCurrentJson),
+                        compact: true,
+                        onPressed: ctrl.activeThread == null
+                            ? null
+                            : () => unawaited(_exportCurrentChat('json')),
+                      ),
+                      EngravedButton(
+                        label: l10n.t(L10nKey.settingsStorageExportAll),
+                        compact: true,
+                        onPressed: () => unawaited(_exportAllChats()),
+                      ),
+                      EngravedButton(
+                        label: l10n.t(L10nKey.settingsStorageImportChats),
+                        compact: true,
+                        onPressed: () => unawaited(_importChats()),
+                      ),
+                    ],
+                  ),
+                ),
+                BistreSettingRow(
+                  label: l10n.t(L10nKey.settingsStorageSettingsDataLabel),
+                  bottom: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      EngravedButton(
+                        label: l10n.t(L10nKey.settingsStorageExportSettings),
+                        compact: true,
+                        onPressed: () => unawaited(_exportSettings()),
+                      ),
+                      EngravedButton(
+                        label: l10n.t(L10nKey.settingsStorageImportSettings),
+                        compact: true,
+                        onPressed: () => unawaited(_importSettings()),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: BistreSpacing.s24),
+
+            // Section 3: Local Storage, Backups & File Manager
             BistreSettingsSection(
               title: l10n.t(L10nKey.settingsStorageSectionTitle),
               subtitle: l10n.t(L10nKey.settingsEngineTelemetry),
@@ -245,16 +419,16 @@ class _UpdatesStorageSettingsViewState
                 BistreSettingRow(
                   label: l10n.t(L10nKey.settingsStorageDataDir),
                   description: stats?.dataDir ?? '',
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
+                  trailing: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      if (ctrl.isDevEnvironment) ...[
+                      if (ctrl.isDevEnvironment)
                         WaxSealBadge(
                           label: l10n.t(L10nKey.settingsStorageDevBadge),
                           status: WaxSealStatus.warn,
                         ),
-                        const SizedBox(width: 8),
-                      ],
                       EngravedButton(
                         label: l10n.t(L10nKey.settingsStorageOpenFolder),
                         compact: true,
@@ -279,23 +453,108 @@ class _UpdatesStorageSettingsViewState
                           'runs': health.activeRuns,
                         })
                       : null,
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
+                  trailing: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      if (stats != null) ...[
+                      if (stats != null)
                         WaxSealBadge(
                           label: FolioController.formatBytes(stats.dbSizeBytes),
                           status: WaxSealStatus.neutral,
                         ),
-                        const SizedBox(width: 10),
-                      ],
                       EngravedButton(
                         label: l10n.t(L10nKey.settingsStorageBackupDb),
                         compact: true,
                         onPressed: () => unawaited(_backupDatabase()),
                       ),
+                      EngravedButton(
+                        label: l10n.t(L10nKey.settingsStorageCleanUnused),
+                        compact: true,
+                        onPressed: () =>
+                            unawaited(ctrl.cleanUnusedStorageFiles()),
+                      ),
                     ],
                   ),
+                ),
+                BistreSettingRow(
+                  label: l10n.t(L10nKey.settingsStorageFileManagerTitle),
+                  trailing: EngravedButton(
+                    label: l10n.t(L10nKey.settingsStorageRefreshFiles),
+                    compact: true,
+                    onPressed: () => unawaited(ctrl.refreshStorageFiles()),
+                  ),
+                  bottom: ctrl.storageFiles.isEmpty
+                      ? InkText(
+                          l10n.t(L10nKey.settingsStorageFilesEmpty),
+                          role: InkTextRole.captionMeta,
+                          color: theme.inkMuted,
+                        )
+                      : ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 220),
+                          child: SmoothScrollable(
+                            builder: (_, scroll) => SingleChildScrollView(
+                              controller: scroll,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  for (final f in ctrl.storageFiles.take(80))
+                                    Padding(
+                                      padding: const EdgeInsetsDirectional.only(
+                                        bottom: 4,
+                                      ),
+                                      child: FolioSurface(
+                                        borderRadius: 7,
+                                        padding:
+                                            const EdgeInsetsDirectional.fromSTEB(
+                                              10,
+                                              5,
+                                              6,
+                                              5,
+                                            ),
+                                        child: Row(
+                                          children: [
+                                            Expanded(
+                                              child: InkText(
+                                                f.relPath,
+                                                role: InkTextRole.codeBlock,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            InkText(
+                                              FolioController.formatBytes(
+                                                f.sizeBytes,
+                                              ),
+                                              role: InkTextRole.captionMeta,
+                                              color: theme.inkMuted,
+                                            ),
+                                            if (f.deletable) ...[
+                                              const SizedBox(width: 6),
+                                              BistreIconButton(
+                                                icon: BistreUiIcon.trash,
+                                                size: 12,
+                                                dimension: 24,
+                                                semanticsLabel: l10n.t(
+                                                  L10nKey.threadDelete,
+                                                ),
+                                                onPressed: () => unawaited(
+                                                  ctrl.deleteStorageFile(
+                                                    f.relPath,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                 ),
               ],
             ),
@@ -305,5 +564,5 @@ class _UpdatesStorageSettingsViewState
     );
   }
 
-  static const String _kFeedUrlHint = 'https://...';
+  static const String _kDefaultRepoSlug = 'baros4294/bistre';
 }

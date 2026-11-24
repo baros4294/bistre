@@ -11,6 +11,7 @@ import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
+import 'model_picker_field.dart';
 
 /// Dedicated Default Models settings tab:
 /// - Global default provider & model
@@ -123,40 +124,16 @@ class _DefaultModelsSettingsViewState extends State<DefaultModelsSettingsView> {
                 ),
                 BistreSettingRow(
                   label: l10n.t(L10nKey.settingsAssistantsDefaultModel),
-                  bottom: Row(
-                    children: [
-                      Expanded(
-                        child: QuillInput(
-                          controller: _globalModelCtrl,
-                          focusNode: _globalModelFocus,
-                          placeholder: l10n.t(
-                            L10nKey.settingsAssistantsDefaultModel,
-                          ),
-                          maxLines: 1,
-                          submitOnEnter: false,
-                          onSubmitted: () => unawaited(
-                            _save(
-                              dm.copyWith(
-                                globalModelId: _globalModelCtrl.text.trim(),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      EngravedButton(
-                        label: l10n.t(L10nKey.threadSave),
-                        primary: true,
-                        compact: true,
-                        onPressed: () => unawaited(
-                          _save(
-                            dm.copyWith(
-                              globalModelId: _globalModelCtrl.text.trim(),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                  bottom: ModelPickerField(
+                    controller: ctrl,
+                    providerId: dm.globalProviderId.isNotEmpty
+                        ? dm.globalProviderId
+                        : (ctrl.activeProvider?.id ?? ''),
+                    textController: _globalModelCtrl,
+                    focusNode: _globalModelFocus,
+                    placeholder: l10n.t(L10nKey.settingsAssistantsDefaultModel),
+                    onSelectedModel: (id) =>
+                        unawaited(_save(dm.copyWith(globalModelId: id))),
                   ),
                 ),
               ],
@@ -181,6 +158,7 @@ class _DefaultModelsSettingsViewState extends State<DefaultModelsSettingsView> {
                 ),
                 if (!dm.titleFollowGlobal)
                   _ModelSlotRow(
+                    controller: ctrl,
                     providers: providers,
                     selectedProviderId: dm.titleProviderId,
                     modelCtrl: _titleModelCtrl,
@@ -265,6 +243,7 @@ class _DefaultModelsSettingsViewState extends State<DefaultModelsSettingsView> {
                 ),
                 if (!dm.summaryFollowGlobal)
                   _ModelSlotRow(
+                    controller: ctrl,
                     providers: providers,
                     selectedProviderId: dm.summaryProviderId,
                     modelCtrl: _summaryModelCtrl,
@@ -302,6 +281,7 @@ class _DefaultModelsSettingsViewState extends State<DefaultModelsSettingsView> {
                 ),
                 if (!dm.translationFollowGlobal)
                   _ModelSlotRow(
+                    controller: ctrl,
                     providers: providers,
                     selectedProviderId: dm.translationProviderId,
                     modelCtrl: _transModelCtrl,
@@ -372,6 +352,7 @@ class _DefaultModelsSettingsViewState extends State<DefaultModelsSettingsView> {
 
 class _ModelSlotRow extends StatelessWidget {
   const _ModelSlotRow({
+    required this.controller,
     required this.providers,
     required this.selectedProviderId,
     required this.modelCtrl,
@@ -380,6 +361,7 @@ class _ModelSlotRow extends StatelessWidget {
     required this.onSaveModel,
   });
 
+  final FolioController controller;
   final List<EngineProvider> providers;
   final String selectedProviderId;
   final TextEditingController modelCtrl;
@@ -408,25 +390,13 @@ class _ModelSlotRow extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: QuillInput(
-                  controller: modelCtrl,
-                  focusNode: modelFocus,
-                  placeholder: l10n.t(L10nKey.settingsAssistantsDefaultModel),
-                  maxLines: 1,
-                  submitOnEnter: false,
-                  onSubmitted: onSaveModel,
-                ),
-              ),
-              const SizedBox(width: 8),
-              EngravedButton(
-                label: l10n.t(L10nKey.threadSave),
-                compact: true,
-                onPressed: onSaveModel,
-              ),
-            ],
+          ModelPickerField(
+            controller: controller,
+            providerId: selectedProviderId,
+            textController: modelCtrl,
+            focusNode: modelFocus,
+            placeholder: l10n.t(L10nKey.settingsAssistantsDefaultModel),
+            onSelectedModel: (_) => onSaveModel(),
           ),
         ],
       ),

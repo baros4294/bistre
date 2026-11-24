@@ -32,7 +32,7 @@ class _SidebarSlideRevealState extends State<SidebarSlideReveal>
     with SingleTickerProviderStateMixin {
   static final SpringDescription _spring = SpringDescription.withDampingRatio(
     mass: 1,
-    stiffness: 460,
+    stiffness: 720,
   );
   static const Tolerance _tolerance = Tolerance(
     distance: 0.002,
@@ -43,16 +43,19 @@ class _SidebarSlideRevealState extends State<SidebarSlideReveal>
     vsync: this,
     value: widget.open ? 1.0 : 0.0,
   );
+  int _animGeneration = 0;
 
   @override
   void didUpdateWidget(SidebarSlideReveal oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.open == widget.open) return;
     final target = widget.open ? 1.0 : 0.0;
+    final gen = ++_animGeneration;
     if (BistreMotion.shouldReduceMotion(
       context,
       reduceMotionOverride: widget.reduceMotionOverride,
     )) {
+      _progress.stop();
       _progress.value = target;
       return;
     }
@@ -67,7 +70,11 @@ class _SidebarSlideRevealState extends State<SidebarSlideReveal>
               tolerance: _tolerance,
             ),
           )
-          .then((_) => _progress.value = target),
+          .then((_) {
+            if (mounted && gen == _animGeneration) {
+              _progress.value = target;
+            }
+          }),
     );
   }
 

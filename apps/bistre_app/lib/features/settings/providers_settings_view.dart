@@ -38,6 +38,8 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
   String _subpage = 'main'; // main | advanced | model
   String? _editingModelId;
   ProviderAdvancedConfig _advConfig = const ProviderAdvancedConfig();
+  List<String> _storedKeys = const <String>[];
+  final Set<int> _revealedKeyIndices = <int>{};
 
   // Edit form controllers.
   final TextEditingController _nameCtrl = TextEditingController();
@@ -130,6 +132,10 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
     _modelFilter = '';
     _headersCtrl.clear();
     _bodyCtrl.clear();
+    _storedKeys = const <String>[];
+    _revealedKeyIndices.clear();
+    unawaited(widget.controller.ensureHiddenModelsLoaded(p.id));
+    unawaited(_reloadStoredKeys(p.id));
     unawaited(
       widget.controller.loadProviderAdvanced(p.id).then((cfg) {
         if (mounted && _selectedId == p.id) {
@@ -145,6 +151,30 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
       }),
     );
   }
+
+  Future<void> _reloadStoredKeys(String providerId) async {
+    final keys = await widget.controller.loadProviderApiKeys(providerId);
+    if (mounted && _selectedId == providerId) {
+      setState(() {
+        _storedKeys = keys;
+        _revealedKeyIndices.removeWhere((i) => i >= keys.length);
+      });
+    }
+  }
+
+  static String _keyIndexBadge(int oneBased) => '#$oneBased';
+
+  static String _maskKey(String raw) {
+    if (raw.length <= 8) return '••••••••';
+    return '${raw.substring(0, 4)}••••${raw.substring(raw.length - 4)}';
+  }
+
+  static String _defaultBaseUrlForDialect(String dialect) => switch (dialect) {
+    'openai' => 'https://api.openai.com/v1',
+    'google_gemini' => 'https://generativelanguage.googleapis.com',
+    'anthropic' => 'https://api.anthropic.com/v1',
+    _ => 'http://127.0.0.1:11434/v1',
+  };
 
   void _openCreateFlow([ProviderPreset? tpl]) {
     setState(() {
@@ -494,7 +524,11 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
     EngineProvider p,
   ) {
     final isActiveGlobal = ctrl.activeProvider?.id == p.id && p.isReady;
-    final loadedModels = ctrl.modelsForProvider(p.id);
+    final hiddenModels = ctrl.hiddenModelIdsFor(p.id);
+    final loadedModels = ctrl
+        .modelsForProvider(p.id)
+        .where((m) => !hiddenModels.contains(m.id))
+        .toList(growable: false);
     final loadingModels = ctrl.loadingModelsProviderId == p.id;
     final filteredModels = _modelFilter.isEmpty
         ? loadedModels
@@ -596,10 +630,10 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
         ),
         const SizedBox(height: BistreSpacing.s16),
 
-        // API Key Vault Card (supports multi-API-key rotation: one key per line)
+        // API Key Vault Card (per-key list with reveal, promote to primary, remove, and + Add key)
         BistreSettingsSection(
-          title: p.keyHint.contains('(+')
-              ? '${l10n.t(L10nKey.providerFieldApiKey)} (${p.keyHint})'
+          title: _storedKeys.length > 1
+              ? '${l10n.t(L10nKey.providerFieldApiKey)} (${_storedKeys.length})'
               : l10n.t(L10nKey.providerFieldApiKey),
           subtitle: l10n.t(L10nKey.providerMultiKeyHint),
           children: [
@@ -608,6 +642,78 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (_storedKeys.isNotEmpty) ...[
+                    for (var i = 0; i < _storedKeys.length; i++) ...[
+                      FolioSurface(
+                        borderRadius: 8,
+                        padding: const EdgeInsetsDirectional.fromSTEB(
+                          10,
+                          6,
+                          6,
+                          6,
+                        ),
+                        child: Row(
+                          children: [
+                            WaxSealBadge(
+                              label: i == 0
+                                  ? l10n.t(L10nKey.providerKeyPrimaryBadge)
+                                  : _keyIndexBadge(i + 1),
+                              status: i == 0
+                                  ? WaxSealStatus.ok
+                                  : WaxSealStatus.neutral,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: InkText(
+                                _revealedKeyIndices.contains(i)
+                                    ? _storedKeys[i]
+                                    : _maskKey(_storedKeys[i]),
+                                role: InkTextRole.codeBlock,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            BistreIconButton(
+                              icon: _revealedKeyIndices.contains(i)
+                                  ? BistreUiIcon.eyeOff
+                                  : BistreUiIcon.eye,
+                              size: 13,
+                              dimension: 28,
+                              semanticsLabel: _revealedKeyIndices.contains(i)
+                                  ? l10n.t(L10nKey.providerActionHideKey)
+                                  : l10n.t(L10nKey.providerActionShowKey),
+                              onPressed: () => setState(() {
+                                if (!_revealedKeyIndices.add(i)) {
+                                  _revealedKeyIndices.remove(i);
+                                }
+                              }),
+                            ),
+                            if (i > 0)
+                              EngravedButton(
+                                label: l10n.t(L10nKey.providerKeyMakePrimary),
+                                compact: true,
+                                onPressed: () async {
+                                  await ctrl.promoteProviderApiKey(p.id, i);
+                                  await _reloadStoredKeys(p.id);
+                                },
+                              ),
+                            BistreIconButton(
+                              icon: BistreUiIcon.trash,
+                              size: 13,
+                              dimension: 28,
+                              semanticsLabel: l10n.t(L10nKey.threadDelete),
+                              onPressed: () async {
+                                await ctrl.removeProviderApiKeyAt(p.id, i);
+                                await _reloadStoredKeys(p.id);
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                    ],
+                    const SizedBox(height: 6),
+                  ],
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -616,12 +722,10 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                           key: const Key('provider_api_key_input'),
                           controller: _apiKeyCtrl,
                           focusNode: _apiKeyFocus,
-                          placeholder: p.hasApiKey
-                              ? (p.keyHint.isNotEmpty
-                                    ? p.keyHint
-                                    : '••••••••••••••••••••')
-                              : l10n.t(L10nKey.providerFieldApiKeyPlaceholder),
-                          maxLines: _showKey ? 4 : 1,
+                          placeholder: _storedKeys.isEmpty
+                              ? l10n.t(L10nKey.providerFieldApiKeyPlaceholder)
+                              : l10n.t(L10nKey.providerKeyAddPlaceholder),
+                          maxLines: _showKey ? 3 : 1,
                           obscureText: !_showKey,
                           submitOnEnter: false,
                           onSubmitted: () {},
@@ -641,16 +745,24 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                   Row(
                     children: [
                       EngravedButton(
-                        label: l10n.t(L10nKey.providerActionSaveKey),
-                        primary: !p.hasApiKey,
+                        label: _storedKeys.isEmpty
+                            ? l10n.t(L10nKey.providerActionSaveKey)
+                            : l10n.t(L10nKey.providerKeyAddAction),
+                        primary: _storedKeys.isEmpty,
                         compact: true,
                         onPressed: () async {
-                          final ok = await ctrl.saveProviderApiKey(
-                            p.id,
-                            _apiKeyCtrl.text,
-                          );
+                          final ok = _storedKeys.isEmpty
+                              ? await ctrl.saveProviderApiKey(
+                                  p.id,
+                                  _apiKeyCtrl.text,
+                                )
+                              : await ctrl.addProviderApiKey(
+                                  p.id,
+                                  _apiKeyCtrl.text,
+                                );
                           if (ok && mounted) {
                             _apiKeyCtrl.clear();
+                            await _reloadStoredKeys(p.id);
                             if (_advConfig.autoFetchModels) {
                               unawaited(ctrl.fetchModelsForProvider(p.id));
                             }
@@ -662,8 +774,10 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                         EngravedButton(
                           label: l10n.t(L10nKey.providerActionClearKey),
                           compact: true,
-                          onPressed: () =>
-                              unawaited(ctrl.clearProviderApiKey(p.id)),
+                          onPressed: () async {
+                            await ctrl.clearProviderApiKey(p.id);
+                            await _reloadStoredKeys(p.id);
+                          },
                         ),
                       ],
                     ],
@@ -692,16 +806,30 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
             ),
             BistreSettingRow(
               label: l10n.t(L10nKey.providerIconLabel),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
+              trailing: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
+                  EngravedButton(
+                    label: l10n.t(L10nKey.providerIconChange),
+                    compact: true,
+                    leading: LabIcon(
+                      iconSlug: p.iconSlug,
+                      customIconPath: p.customIconPath,
+                      dialect: p.dialect,
+                      providerName: p.name,
+                      size: 15,
+                    ),
+                    onPressed: () =>
+                        setState(() => _iconPickerOpen = !_iconPickerOpen),
+                  ),
                   EngravedButton(
                     label: l10n.t(L10nKey.providerIconCustomUpload),
                     compact: true,
                     onPressed: () => unawaited(_pickCustomProviderIcon(p)),
                   ),
-                  if (p.customIconPath.isNotEmpty) ...[
-                    const SizedBox(width: 6),
+                  if (p.customIconPath.isNotEmpty)
                     EngravedButton(
                       label: l10n.t(L10nKey.providerIconClearCustom),
                       compact: true,
@@ -712,16 +840,6 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                         ),
                       ),
                     ),
-                  ],
-                  const SizedBox(width: 6),
-                  BistreIconButton(
-                    icon: _iconPickerOpen
-                        ? BistreUiIcon.chevronUp
-                        : BistreUiIcon.chevronDown,
-                    semanticsLabel: l10n.t(L10nKey.providerIconLabel),
-                    onPressed: () =>
-                        setState(() => _iconPickerOpen = !_iconPickerOpen),
-                  ),
                 ],
               ),
               bottom: _iconPickerOpen
@@ -735,13 +853,16 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                             selected:
                                 p.customIconPath.isEmpty &&
                                 p.iconSlug == entry.slug,
-                            onTap: () => unawaited(
-                              ctrl.saveProviderConfig(
-                                providerId: p.id,
-                                iconSlug: entry.slug,
-                                customIconPath: '',
-                              ),
-                            ),
+                            onTap: () {
+                              setState(() => _iconPickerOpen = false);
+                              unawaited(
+                                ctrl.saveProviderConfig(
+                                  providerId: p.id,
+                                  iconSlug: entry.slug,
+                                  customIconPath: '',
+                                ),
+                              );
+                            },
                           ),
                       ],
                     )
@@ -760,6 +881,17 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
             ),
             BistreSettingRow(
               label: l10n.t(L10nKey.providerFieldBaseUrl),
+              trailing: EngravedButton(
+                label: l10n.t(L10nKey.settingsAppearanceFontReset),
+                compact: true,
+                onPressed: () {
+                  final def = _defaultBaseUrlForDialect(p.dialect);
+                  setState(() => _baseUrlCtrl.text = def);
+                  unawaited(
+                    ctrl.saveProviderConfig(providerId: p.id, baseUrl: def),
+                  );
+                },
+              ),
               bottom: QuillInput(
                 controller: _baseUrlCtrl,
                 focusNode: _baseUrlFocus,
@@ -771,14 +903,31 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
             ),
             BistreSettingRow(
               label: l10n.t(L10nKey.providerFieldModel),
-              trailing: EngravedButton(
-                label: loadingModels
-                    ? l10n.t(L10nKey.providerActionLoadingModels)
-                    : l10n.t(L10nKey.providerActionLoadModels),
-                compact: true,
-                onPressed: loadingModels
-                    ? null
-                    : () => unawaited(ctrl.fetchModelsForProvider(p.id)),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (hiddenModels.isNotEmpty) ...[
+                    EngravedButton(
+                      label: l10n.t(
+                        L10nKey.settingsProviderRestoreHidden,
+                        <String, Object?>{'count': hiddenModels.length},
+                      ),
+                      compact: true,
+                      onPressed: () =>
+                          unawaited(ctrl.restoreHiddenModelsForProvider(p.id)),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  EngravedButton(
+                    label: loadingModels
+                        ? l10n.t(L10nKey.providerActionLoadingModels)
+                        : l10n.t(L10nKey.providerActionLoadModels),
+                    compact: true,
+                    onPressed: loadingModels
+                        ? null
+                        : () => unawaited(ctrl.fetchModelsForProvider(p.id)),
+                  ),
+                ],
               ),
               bottom: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -796,7 +945,7 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                     QuillInput(
                       controller: _modelFilterCtrl,
                       focusNode: _modelFilterFocus,
-                      placeholder: l10n.t(L10nKey.sidebarFilterPlaceholder),
+                      placeholder: l10n.t(L10nKey.settingsProviderFilterModels),
                       maxLines: 1,
                       submitOnEnter: false,
                       onSubmitted: () {},
@@ -812,7 +961,7 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              for (final m in filteredModels.take(40))
+                              for (final m in filteredModels.take(60))
                                 _SelectableModelRow(
                                   model: m,
                                   selected: _modelCtrl.text.trim() == m.id,
@@ -829,6 +978,9 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                                     _editingModelId = m.id;
                                     _subpage = 'model';
                                   }),
+                                  onHide: () => unawaited(
+                                    ctrl.hideModelForProvider(p.id, m.id),
+                                  ),
                                 ),
                             ],
                           ),
@@ -1221,12 +1373,14 @@ class _SelectableModelRow extends StatefulWidget {
     required this.selected,
     required this.onTap,
     required this.onConfigure,
+    required this.onHide,
   });
 
   final EngineProviderModel model;
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback onConfigure;
+  final VoidCallback onHide;
 
   @override
   State<_SelectableModelRow> createState() => _SelectableModelRowState();
@@ -1286,6 +1440,13 @@ class _SelectableModelRowState extends State<_SelectableModelRow> {
                     dimension: 24,
                     semanticsLabel: l10n.t(L10nKey.settingsTitle),
                     onPressed: widget.onConfigure,
+                  ),
+                  BistreIconButton(
+                    icon: BistreUiIcon.trash,
+                    size: 12,
+                    dimension: 24,
+                    semanticsLabel: l10n.t(L10nKey.threadDelete),
+                    onPressed: widget.onHide,
                   ),
                 ],
               ),

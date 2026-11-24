@@ -5,6 +5,7 @@
 
 import 'api.dart';
 import 'api/harness.dart';
+import 'api/media.dart';
 import 'api/story.dart';
 
 import 'dart:async';
@@ -51,6 +52,11 @@ abstract class BistreRustLibApiImplPlatform
   FfiDraftRecord dco_decode_box_autoadd_ffi_draft_record(dynamic raw);
 
   @protected
+  FfiModelCatalogInfo dco_decode_box_autoadd_ffi_model_catalog_info(
+    dynamic raw,
+  );
+
+  @protected
   FfiNodeRecord dco_decode_box_autoadd_ffi_node_record(dynamic raw);
 
   @protected
@@ -74,6 +80,9 @@ abstract class BistreRustLibApiImplPlatform
   FfiAssistantRecord dco_decode_ffi_assistant_record(dynamic raw);
 
   @protected
+  FfiAttachmentInput dco_decode_ffi_attachment_input(dynamic raw);
+
+  @protected
   FfiCheckpoint dco_decode_ffi_checkpoint(dynamic raw);
 
   @protected
@@ -95,6 +104,9 @@ abstract class BistreRustLibApiImplPlatform
   FfiMemoryEntry dco_decode_ffi_memory_entry(dynamic raw);
 
   @protected
+  FfiModelCatalogInfo dco_decode_ffi_model_catalog_info(dynamic raw);
+
+  @protected
   FfiNodeRecord dco_decode_ffi_node_record(dynamic raw);
 
   @protected
@@ -113,6 +125,9 @@ abstract class BistreRustLibApiImplPlatform
   FfiSteeringMessage dco_decode_ffi_steering_message(dynamic raw);
 
   @protected
+  FfiStorageFileEntry dco_decode_ffi_storage_file_entry(dynamic raw);
+
+  @protected
   FfiStorageStats dco_decode_ffi_storage_stats(dynamic raw);
 
   @protected
@@ -125,10 +140,16 @@ abstract class BistreRustLibApiImplPlatform
   PlatformInt64 dco_decode_i_64(dynamic raw);
 
   @protected
+  List<String> dco_decode_list_String(dynamic raw);
+
+  @protected
   List<FfiAgentRunRecord> dco_decode_list_ffi_agent_run_record(dynamic raw);
 
   @protected
   List<FfiAssistantRecord> dco_decode_list_ffi_assistant_record(dynamic raw);
+
+  @protected
+  List<FfiAttachmentInput> dco_decode_list_ffi_attachment_input(dynamic raw);
 
   @protected
   List<FfiCheckpoint> dco_decode_list_ffi_checkpoint(dynamic raw);
@@ -157,6 +178,9 @@ abstract class BistreRustLibApiImplPlatform
   List<FfiSteeringMessage> dco_decode_list_ffi_steering_message(dynamic raw);
 
   @protected
+  List<FfiStorageFileEntry> dco_decode_list_ffi_storage_file_entry(dynamic raw);
+
+  @protected
   List<FfiThreadSummary> dco_decode_list_ffi_thread_summary(dynamic raw);
 
   @protected
@@ -173,6 +197,11 @@ abstract class BistreRustLibApiImplPlatform
 
   @protected
   FfiDraftRecord? dco_decode_opt_box_autoadd_ffi_draft_record(dynamic raw);
+
+  @protected
+  FfiModelCatalogInfo? dco_decode_opt_box_autoadd_ffi_model_catalog_info(
+    dynamic raw,
+  );
 
   @protected
   FfiNodeRecord? dco_decode_opt_box_autoadd_ffi_node_record(dynamic raw);
@@ -229,6 +258,11 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  FfiModelCatalogInfo sse_decode_box_autoadd_ffi_model_catalog_info(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   FfiNodeRecord sse_decode_box_autoadd_ffi_node_record(
     SseDeserializer deserializer,
   );
@@ -258,6 +292,11 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  FfiAttachmentInput sse_decode_ffi_attachment_input(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   FfiCheckpoint sse_decode_ffi_checkpoint(SseDeserializer deserializer);
 
   @protected
@@ -279,6 +318,11 @@ abstract class BistreRustLibApiImplPlatform
 
   @protected
   FfiMemoryEntry sse_decode_ffi_memory_entry(SseDeserializer deserializer);
+
+  @protected
+  FfiModelCatalogInfo sse_decode_ffi_model_catalog_info(
+    SseDeserializer deserializer,
+  );
 
   @protected
   FfiNodeRecord sse_decode_ffi_node_record(SseDeserializer deserializer);
@@ -307,6 +351,11 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  FfiStorageFileEntry sse_decode_ffi_storage_file_entry(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   FfiStorageStats sse_decode_ffi_storage_stats(SseDeserializer deserializer);
 
   @protected
@@ -321,12 +370,20 @@ abstract class BistreRustLibApiImplPlatform
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
 
   @protected
+  List<String> sse_decode_list_String(SseDeserializer deserializer);
+
+  @protected
   List<FfiAgentRunRecord> sse_decode_list_ffi_agent_run_record(
     SseDeserializer deserializer,
   );
 
   @protected
   List<FfiAssistantRecord> sse_decode_list_ffi_assistant_record(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<FfiAttachmentInput> sse_decode_list_ffi_attachment_input(
     SseDeserializer deserializer,
   );
 
@@ -369,6 +426,11 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  List<FfiStorageFileEntry> sse_decode_list_ffi_storage_file_entry(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<FfiThreadSummary> sse_decode_list_ffi_thread_summary(
     SseDeserializer deserializer,
   );
@@ -387,6 +449,11 @@ abstract class BistreRustLibApiImplPlatform
 
   @protected
   FfiDraftRecord? sse_decode_opt_box_autoadd_ffi_draft_record(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  FfiModelCatalogInfo? sse_decode_opt_box_autoadd_ffi_model_catalog_info(
     SseDeserializer deserializer,
   );
 
@@ -459,6 +526,12 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  void sse_encode_box_autoadd_ffi_model_catalog_info(
+    FfiModelCatalogInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_ffi_node_record(
     FfiNodeRecord self,
     SseSerializer serializer,
@@ -494,6 +567,12 @@ abstract class BistreRustLibApiImplPlatform
   @protected
   void sse_encode_ffi_assistant_record(
     FfiAssistantRecord self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_ffi_attachment_input(
+    FfiAttachmentInput self,
     SseSerializer serializer,
   );
 
@@ -534,6 +613,12 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  void sse_encode_ffi_model_catalog_info(
+    FfiModelCatalogInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_ffi_node_record(FfiNodeRecord self, SseSerializer serializer);
 
   @protected
@@ -564,6 +649,12 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  void sse_encode_ffi_storage_file_entry(
+    FfiStorageFileEntry self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_ffi_storage_stats(
     FfiStorageStats self,
     SseSerializer serializer,
@@ -585,6 +676,9 @@ abstract class BistreRustLibApiImplPlatform
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_String(List<String> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_ffi_agent_run_record(
     List<FfiAgentRunRecord> self,
     SseSerializer serializer,
@@ -593,6 +687,12 @@ abstract class BistreRustLibApiImplPlatform
   @protected
   void sse_encode_list_ffi_assistant_record(
     List<FfiAssistantRecord> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_ffi_attachment_input(
+    List<FfiAttachmentInput> self,
     SseSerializer serializer,
   );
 
@@ -645,6 +745,12 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  void sse_encode_list_ffi_storage_file_entry(
+    List<FfiStorageFileEntry> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_ffi_thread_summary(
     List<FfiThreadSummary> self,
     SseSerializer serializer,
@@ -668,6 +774,12 @@ abstract class BistreRustLibApiImplPlatform
   @protected
   void sse_encode_opt_box_autoadd_ffi_draft_record(
     FfiDraftRecord? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_ffi_model_catalog_info(
+    FfiModelCatalogInfo? self,
     SseSerializer serializer,
   );
 

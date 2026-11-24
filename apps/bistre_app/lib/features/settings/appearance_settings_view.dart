@@ -797,7 +797,7 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
         QuillInput(
           controller: filterCtrl,
           focusNode: filterFocus,
-          placeholder: l10n.t(L10nKey.sidebarFilterPlaceholder),
+          placeholder: l10n.t(L10nKey.settingsAppearanceFontSearch),
           maxLines: 1,
           submitOnEnter: false,
           onSubmitted: () {},
@@ -805,24 +805,42 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
         ),
         const SizedBox(height: 8),
         ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 176),
+          constraints: const BoxConstraints(maxHeight: 204),
           child: SmoothScrollable(
             builder: (_, scroll) => SingleChildScrollView(
               controller: scroll,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  Padding(
+                    padding: const EdgeInsetsDirectional.fromSTEB(6, 2, 6, 4),
+                    child: InkText(
+                      l10n.t(L10nKey.settingsAppearanceFontsBundled),
+                      role: InkTextRole.captionMeta,
+                      color: theme.accentBrass,
+                    ),
+                  ),
                   _FontListRow(
                     label: l10n.t(L10nKey.settingsAppearanceFontDefault),
                     selected: selectedFamily.isEmpty,
                     onTap: onReset,
                   ),
-                  for (final f in visible.take(60))
-                    _FontListRow(
-                      label: f.familyName,
-                      selected: selectedFamily == f.familyName,
-                      onTap: () => onPickFont(f),
+                  if (visible.isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsetsDirectional.fromSTEB(6, 8, 6, 4),
+                      child: InkText(
+                        l10n.t(L10nKey.settingsAppearanceFontsSystem),
+                        role: InkTextRole.captionMeta,
+                        color: theme.inkMuted,
+                      ),
                     ),
+                    for (final f in visible.take(80))
+                      _FontListRow(
+                        label: f.familyName,
+                        selected: selectedFamily == f.familyName,
+                        onTap: () => onPickFont(f),
+                      ),
+                  ],
                 ],
               ),
             ),

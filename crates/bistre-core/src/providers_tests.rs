@@ -4,6 +4,7 @@
     reason = "tests map errors to empty values that the following assertions reject"
 )]
 use super::*;
+use bistre_protocol::NodeRole;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -555,4 +556,34 @@ fn reasoning_effort_reaches_each_dialect_in_its_own_wire_field() {
             assert!(!b.contains(field), "{dialect:?} sent {field}: {b}");
         }
     }
+}
+
+#[test]
+fn gemini_generate_content_thoughts_never_leak_into_full_text_and_plain_json_works() {
+    let thought_chunk = r#"{"candidates":[{"content":{"parts":[{"thought":true,"text":"secret chain"},{"text":"visible answer"}]}}]}"#;
+    assert_eq!(
+        extract_sse_thinking_delta(ProviderDialect::GoogleGemini, thought_chunk).as_deref(),
+        Some("secret chain")
+    );
+    assert_eq!(
+        extract_sse_delta(ProviderDialect::GoogleGemini, thought_chunk).as_deref(),
+        Some("visible answer")
+    );
+
+    // Non-streaming plain-JSON fallbacks across OpenAI Responses, Anthropic, and CustomOpenAi.
+    let oai_plain = r#"{"id":"resp_1","output":[{"type":"message","content":[{"type":"output_text","text":"Hi OAI"}]}]}"#;
+    assert_eq!(
+        extract_sse_delta(ProviderDialect::OpenAi, oai_plain).as_deref(),
+        Some("Hi OAI")
+    );
+    let anth_plain = r#"{"type":"message","content":[{"type":"text","text":"Hi Claude"}]}"#;
+    assert_eq!(
+        extract_sse_delta(ProviderDialect::Anthropic, anth_plain).as_deref(),
+        Some("Hi Claude")
+    );
+    let custom_plain = r#"{"choices":[{"message":{"content":"Hi Local"}}]}"#;
+    assert_eq!(
+        extract_sse_delta(ProviderDialect::CustomOpenAi, custom_plain).as_deref(),
+        Some("Hi Local")
+    );
 }

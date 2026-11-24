@@ -354,6 +354,14 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                       reduceMotionOverride: ctrl.reduceMotionOverride,
                       onCopyCode: (code) => unawaited(ctrl.copyText(code)),
                       onQuoteThinking: widget.onReplyToPassage,
+                      onApproveToolOnce: (callId) => unawaited(
+                        ctrl.respondToolApproval(callId, 'approve_once'),
+                      ),
+                      onApproveToolChat: (callId) => unawaited(
+                        ctrl.respondToolApproval(callId, 'approve_for_thread'),
+                      ),
+                      onDenyTool: (callId) =>
+                          unawaited(ctrl.respondToolApproval(callId, 'deny')),
                       onRewindCheckpoint: (cpId) =>
                           unawaited(ctrl.rewindCheckpoint(cpId)),
                     ),
@@ -424,6 +432,12 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                       onTogglePinReply: () =>
                           unawaited(ctrl.togglePinNode(node.id)),
                       onInspectTurnDetails: () => ctrl.openTurnDetails(node),
+                      isSpeaking: ctrl.speakingNodeId == node.id,
+                      onSpeak: node.role == 'assistant'
+                          ? () => unawaited(
+                              ctrl.speakAssistantMessage(node.id, node.content),
+                            )
+                          : null,
                       onEditResend: node.role == 'user' && !ctrl.isStreaming
                           ? (edited) =>
                                 ctrl.editUserMessageAndResend(node.id, edited)
@@ -695,6 +709,8 @@ class _PassageItem extends StatefulWidget {
     this.isPinnedReply = false,
     this.onTogglePinReply,
     this.onInspectTurnDetails,
+    this.isSpeaking = false,
+    this.onSpeak,
   });
 
   final EngineNode node;
@@ -722,6 +738,8 @@ class _PassageItem extends StatefulWidget {
   final VoidCallback? onToggleContextPin;
   final VoidCallback? onTogglePinReply;
   final VoidCallback? onInspectTurnDetails;
+  final bool isSpeaking;
+  final VoidCallback? onSpeak;
   final Future<bool> Function(String edited)? onEditResend;
   final VoidCallback? onRegenerate;
   final VoidCallback? onDelete;
@@ -1207,6 +1225,18 @@ class _PassageItemState extends State<_PassageItem> {
             semanticsLabel: l10n.t(L10nKey.chatActionCopy),
             onPressed: widget.onCopy,
           ),
+          if (widget.onSpeak != null)
+            BistreIconButton(
+              icon: widget.isSpeaking ? BistreUiIcon.stop : BistreUiIcon.volume,
+              size: 14,
+              dimension: 28,
+              active: widget.isSpeaking,
+              color: widget.isSpeaking ? theme.accentWax : null,
+              semanticsLabel: widget.isSpeaking
+                  ? l10n.t(L10nKey.chatActionStop)
+                  : l10n.t(L10nKey.chatActionListen),
+              onPressed: widget.onSpeak,
+            ),
           if (widget.onRegenerate != null)
             BistreIconButton(
               icon: BistreUiIcon.refresh,

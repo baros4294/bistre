@@ -3749,7 +3749,7 @@
       }
     },
     "chat.context_estimate_hint": {
-      "message": "Counted locally with model-matched BPE tokenizers, after any shortening.",
+      "message": "Counted offline with universal o200k_base BPE tokenizer, after any shortening.",
       "context": "Footnote of the context breakdown popover",
       "tone": "calm_editorial",
       "max_chars": 96,
@@ -5092,20 +5092,6 @@
       "max_chars": 28,
       "placeholders": {}
     },
-    "settings.prefs.global_instructions": {
-      "message": "Global instructions",
-      "context": "Global system instructions field label",
-      "tone": "calm_editorial",
-      "max_chars": 31,
-      "placeholders": {}
-    },
-    "settings.prefs.global_instructions_hint": {
-      "message": "Added before assistant instructions in every chat.",
-      "context": "Global instructions description",
-      "tone": "calm_editorial",
-      "max_chars": 76,
-      "placeholders": {}
-    },
     "settings.prefs.message_nav": {
       "message": "Message navigation rail",
       "context": "Message navigation rail visibility label",
@@ -5448,6 +5434,413 @@
           "example": "18"
         }
       }
+    },
+    "chat.action.listen": {
+      "message": "Read aloud",
+      "context": "Action button to play spoken audio for an assistant reply",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.context_attachments": {
+      "message": "Attachments ({count})",
+      "context": "Row label in context window breakdown showing attached files token usage",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "2"
+        }
+      }
+    },
+    "chat.context_tools": {
+      "message": "Tools & MCP",
+      "context": "Row label in context window breakdown showing enabled tool schema tokens",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "composer.live_voice_connecting": {
+      "message": "Connecting live voice...",
+      "context": "Status banner shown while opening a live bidirectional audio session",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "composer.live_voice_end": {
+      "message": "End",
+      "context": "Button to end the active live voice session",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "composer.live_voice_listening": {
+      "message": "Live voice active — speak now",
+      "context": "Status banner shown while live voice session is actively listening",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "composer.live_voice_pill": {
+      "message": "Live",
+      "context": "Compact composer pill toggling real-time bidirectional live voice",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "composer.steer_now_action": {
+      "message": "Send now",
+      "context": "Button interrupting the current stream to redirect it immediately",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "composer.voice_dictate": {
+      "message": "Dictate with microphone",
+      "context": "Tooltip and screen-reader label for the OS dictation microphone button",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "provider.icon.change": {
+      "message": "Change icon",
+      "context": "Button showing the selected provider icon and opening the icon picker",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.key.add_action": {
+      "message": "Add key",
+      "context": "Button adding another API key to a provider key ring",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "provider.key.add_placeholder": {
+      "message": "Paste another API key to add to rotation...",
+      "context": "Input placeholder when adding an additional API key to a provider",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "provider.key.make_primary": {
+      "message": "Primary",
+      "context": "Button promoting a secondary API key to be the primary key",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "provider.key.primary_badge": {
+      "message": "#1 Primary",
+      "context": "Badge on the first API key in a provider key list",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_cmd_label": {
+      "message": "Command",
+      "context": "Field label for stdio MCP server launch command",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_name_label": {
+      "message": "Server name",
+      "context": "Field label for MCP server display name",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_url_label": {
+      "message": "Server URL",
+      "context": "Field label for HTTP MCP server endpoint URL",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.agent.skills_empty": {
+      "message": "No workspace SKILL.md files found yet. Choose a folder above and scan.",
+      "context": "Empty state for workspace SKILL.md skills discovery in Agent & Tools settings",
+      "tone": "calm_editorial",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "settings.agent.skills_scan": {
+      "message": "Scan skills",
+      "context": "Button scanning workspace folders for SKILL.md files",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.agent.skills_title": {
+      "message": "Workspace skills (SKILL.md)",
+      "context": "Section title for workspace SKILL.md skills inside Agent & Tools settings",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.agent.web_custom": {
+      "message": "Custom URL",
+      "context": "Segmented control option for a custom web search endpoint URL",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.fonts_bundled": {
+      "message": "Bundled with Bistre",
+      "context": "Group header in font picker for Bistre bundled default font",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.appearance.font_search": {
+      "message": "Search fonts...",
+      "context": "Placeholder for the font search box in Appearance settings",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.appearance.fonts_system": {
+      "message": "Installed on this device (not bundled)",
+      "context": "Group header in font picker clarifying system fonts are read from the OS",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {}
+    },
+    "settings.assistants.model_default_not_sent": {
+      "message": "Model default (not sent)",
+      "context": "Description shown when temperature or top-p override switch is turned off",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.desktop.notify_preview": {
+      "message": "Preview",
+      "context": "Button next to notification sound toggle that plays a test chime",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.model.no_loaded": {
+      "message": "No models loaded yet. Click Load models to fetch from this provider.",
+      "context": "Empty state inside searchable model dropdown before fetching models",
+      "tone": "calm_editorial",
+      "max_chars": 88,
+      "placeholders": {}
+    },
+    "settings.model.pick_action": {
+      "message": "Choose",
+      "context": "Button opening the searchable model dropdown",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.ota.check_error_title": {
+      "message": "Update check failed",
+      "context": "Inline error banner heading inside Updates settings when OTA check fails",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.ota.repo_hint": {
+      "message": "Enter owner/repo (e.g. baros4294/bistre) or a direct HTTPS manifest URL.",
+      "context": "Helper description under the Updates repository/feed field",
+      "tone": "calm_editorial",
+      "max_chars": 92,
+      "placeholders": {}
+    },
+    "settings.provider.filter_models": {
+      "message": "Filter models...",
+      "context": "Placeholder for the model search box inside Providers settings",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.provider.restore_hidden": {
+      "message": "Restore hidden ({count})",
+      "context": "Button restoring hidden models for a provider",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "3"
+        }
+      }
+    },
+    "settings.storage.chats_data_label": {
+      "message": "Conversations",
+      "context": "Row label for chat export and import buttons",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.storage.clean_unused": {
+      "message": "Clean unused",
+      "context": "Button removing orphan attachments and temp files",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.storage.export_all": {
+      "message": "Export all chats",
+      "context": "Button exporting all chats as a JSON archive",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.storage.export_current": {
+      "message": "Export current chat",
+      "context": "Save dialog title for exporting the active chat",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.storage.export_current_json": {
+      "message": "Current (.json)",
+      "context": "Button exporting the current chat as JSON",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.storage.export_current_md": {
+      "message": "Current (.md)",
+      "context": "Button exporting the current chat as Markdown",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.storage.export_import_hint": {
+      "message": "Export or restore chats and non-secret settings locally as portable files.",
+      "context": "Subtitle of the Export & Import section in Updates & Storage settings",
+      "tone": "calm_editorial",
+      "max_chars": 108,
+      "placeholders": {}
+    },
+    "settings.storage.export_import_title": {
+      "message": "Export & import",
+      "context": "Section heading for Export & Import in Updates & Storage settings",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.storage.export_settings": {
+      "message": "Export settings",
+      "context": "Button exporting non-secret settings as JSON",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.storage.file_manager_title": {
+      "message": "Data directory files",
+      "context": "Row label for the built-in storage file manager list",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.storage.files_empty": {
+      "message": "No files listed in the data folder.",
+      "context": "Empty state for the storage file manager",
+      "tone": "calm_editorial",
+      "max_chars": 52,
+      "placeholders": {}
+    },
+    "settings.storage.import_chats": {
+      "message": "Import chats",
+      "context": "Button importing chats from a JSON file",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.storage.import_settings": {
+      "message": "Import settings",
+      "context": "Button importing settings from a JSON file",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.storage.refresh_files": {
+      "message": "Refresh",
+      "context": "Button refreshing the storage file manager list",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.storage.settings_data_label": {
+      "message": "Settings",
+      "context": "Row label for settings export and import buttons",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "shell.selection.cut": {
+      "message": "Cut",
+      "context": "Text input right-click context menu cut action",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "shell.selection.paste": {
+      "message": "Paste",
+      "context": "Text input right-click context menu paste action",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "sidebar.clear_all": {
+      "message": "Clear all",
+      "context": "Quiet sidebar button to clear all conversations",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "sidebar.clear_all_confirm": {
+      "message": "Delete all {count} chats?",
+      "context": "Inline confirmation prompt before clearing all chats in the sidebar",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "5"
+        }
+      }
+    },
+    "toast.catalog_filled": {
+      "message": "Model limits and prices filled from catalog",
+      "context": "Toast shown after Fill from catalog succeeds",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "toast.catalog_not_found": {
+      "message": "Model not found in public catalog",
+      "context": "Toast shown when Fill from catalog finds no matching entry",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "toast.chats_cleared": {
+      "message": "All chats cleared",
+      "context": "Toast shown after clearing all chats from the sidebar",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "toast.imported": {
+      "message": "Imported successfully",
+      "context": "Toast shown after importing chats or settings from file",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.storage_cleaned": {
+      "message": "Unused storage files cleaned",
+      "context": "Toast shown after cleaning unused storage files",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
     }
   }
 }

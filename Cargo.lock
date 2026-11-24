@@ -178,7 +178,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bistre-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "base64",
  "bistre-crypto",
@@ -196,11 +196,13 @@ dependencies = [
  "regex",
  "reqwest",
  "rustls",
+ "rustls-platform-verifier",
  "serde",
  "serde_json",
  "tempfile",
  "tiktoken",
  "tokio",
+ "tokio-rustls",
  "tracing",
  "uuid",
  "zeroize",
@@ -209,7 +211,7 @@ dependencies = [
 
 [[package]]
 name = "bistre-crypto"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "argon2",
  "bistre-protocol",
@@ -227,7 +229,7 @@ dependencies = [
 
 [[package]]
 name = "bistre-daemon"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "bistre-core",
  "bistre-protocol",
@@ -241,7 +243,7 @@ dependencies = [
 
 [[package]]
 name = "bistre-ffi"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "bistre-core",
  "bistre-protocol",
@@ -253,7 +255,7 @@ dependencies = [
 
 [[package]]
 name = "bistre-protocol"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -263,7 +265,7 @@ dependencies = [
 
 [[package]]
 name = "bistre-storage"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "bistre-protocol",
  "rusqlite",
@@ -276,7 +278,7 @@ dependencies = [
 
 [[package]]
 name = "bistre-updater"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "bistre-crypto",
  "bistre-protocol",

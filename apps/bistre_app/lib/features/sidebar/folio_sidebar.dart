@@ -45,6 +45,7 @@ class _FolioSidebarState extends State<FolioSidebar> {
   bool _filterFocused = false;
   String? _renamingThreadId;
   String? _pendingDeleteThreadId;
+  bool _confirmingClearAll = false;
 
   @override
   void initState() {
@@ -164,6 +165,64 @@ class _FolioSidebarState extends State<FolioSidebar> {
                     ),
                   ),
                 ),
+              ),
+            if (ctrl.sidebarTab == SidebarTab.chat && ctrl.threads.isNotEmpty)
+              Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(14, 0, 12, 6),
+                child: _confirmingClearAll
+                    ? Row(
+                        children: [
+                          Expanded(
+                            child: InkText(
+                              l10n.t(
+                                L10nKey.sidebarClearAllConfirm,
+                                <String, Object?>{'count': ctrl.threads.length},
+                              ),
+                              role: InkTextRole.captionMeta,
+                              color: theme.statusErr,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          EngravedButton(
+                            label: l10n.t(L10nKey.threadDelete),
+                            compact: true,
+                            leading: BistreIcon(
+                              BistreUiIcon.trash,
+                              size: 12,
+                              color: theme.statusErr,
+                            ),
+                            onPressed: () {
+                              setState(() => _confirmingClearAll = false);
+                              unawaited(ctrl.clearAllThreads());
+                            },
+                          ),
+                          const SizedBox(width: 4),
+                          EngravedButton(
+                            label: l10n.t(L10nKey.threadCancel),
+                            compact: true,
+                            onPressed: () =>
+                                setState(() => _confirmingClearAll = false),
+                          ),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          const Spacer(),
+                          EngravedButton(
+                            label: l10n.t(L10nKey.sidebarClearAll),
+                            compact: true,
+                            leading: BistreIcon(
+                              BistreUiIcon.trash,
+                              size: 12,
+                              color: theme.inkMuted,
+                            ),
+                            onPressed: () =>
+                                setState(() => _confirmingClearAll = true),
+                          ),
+                        ],
+                      ),
               ),
             Expanded(
               // Filter keystrokes rebuild only this list.

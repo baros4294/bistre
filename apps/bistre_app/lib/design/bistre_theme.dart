@@ -186,6 +186,7 @@ class BistreThemeData {
     required this.windowBorder,
     this.typography = BistreTypographyConfig.defaults,
     this.reducedEffects = false,
+    this.syntaxThemeId = '',
   });
 
   final bool isDark;
@@ -211,6 +212,9 @@ class BistreThemeData {
   /// Low-memory mode: overlay drop shadows are skipped (`docs/design/DESIGN.md` §8).
   final bool reducedEffects;
 
+  /// Active code block syntax theme id (`sepia_warm`, `github_light`, `espresso_amber`, `slate_dark`).
+  final String syntaxThemeId;
+
   /// Resolves a complete theme combining the chosen color preset (or Light/Dark default),
   /// user accent preset or custom hex, and user typography preferences.
   static BistreThemeData resolve({
@@ -220,6 +224,7 @@ class BistreThemeData {
     String customAccentHex = '',
     BistreTypographyConfig typography = BistreTypographyConfig.defaults,
     bool reducedEffects = false,
+    String syntaxThemeId = '',
   }) {
     final preset = BistreThemePreset.tryById(themeId);
     final base = preset?.theme ?? (isDark ? warmDark : warmSepia);
@@ -276,6 +281,7 @@ class BistreThemeData {
       windowBorder: base.windowBorder,
       typography: typography,
       reducedEffects: reducedEffects,
+      syntaxThemeId: syntaxThemeId,
     );
   }
 
@@ -594,6 +600,77 @@ class BistreThemePreset {
     if (themeId == 'system') return isDark ? 'night' : 'day';
     return tryById(themeId)?.id ?? (isDark ? 'night' : 'day');
   }
+}
+
+/// Distinct WCAG-checked syntax highlighting token palettes (`sepia_warm`, `github_light`,
+/// `espresso_amber`, `slate_dark`) shared by Settings live preview and chat code fences.
+class BistreSyntaxPalette {
+  const BistreSyntaxPalette({
+    required this.id,
+    required this.background,
+    required this.base,
+    required this.comment,
+    required this.string,
+    required this.keyword,
+    required this.typeOrNumber,
+  });
+
+  final String id;
+  final Color background;
+  final Color base;
+  final Color comment;
+  final Color string;
+  final Color keyword;
+  final Color typeOrNumber;
+
+  static const BistreSyntaxPalette sepiaWarm = BistreSyntaxPalette(
+    id: 'sepia_warm',
+    background: Color(0xFFF6F1E6),
+    base: Color(0xFF2B241D),
+    comment: Color(0xFF7B6F60),
+    string: Color(0xFF2A6F4E),
+    keyword: Color(0xFFA83625),
+    typeOrNumber: Color(0xFF8C5A1E),
+  );
+
+  static const BistreSyntaxPalette githubLight = BistreSyntaxPalette(
+    id: 'github_light',
+    background: Color(0xFFF6F8FA),
+    base: Color(0xFF1F2328),
+    comment: Color(0xFF6E7781),
+    string: Color(0xFF0A3069),
+    keyword: Color(0xFFCF222E),
+    typeOrNumber: Color(0xFF0550AE),
+  );
+
+  static const BistreSyntaxPalette espressoAmber = BistreSyntaxPalette(
+    id: 'espresso_amber',
+    background: Color(0xFF1E1915),
+    base: Color(0xFFEDE4D4),
+    comment: Color(0xFF8F8272),
+    string: Color(0xFF7CC494),
+    keyword: Color(0xFFE8865C),
+    typeOrNumber: Color(0xFFE0B45A),
+  );
+
+  static const BistreSyntaxPalette slateDark = BistreSyntaxPalette(
+    id: 'slate_dark',
+    background: Color(0xFF141820),
+    base: Color(0xFFE6EDF3),
+    comment: Color(0xFF8B949E),
+    string: Color(0xFFA5D6FF),
+    keyword: Color(0xFFFF7B72),
+    typeOrNumber: Color(0xFF79C0FF),
+  );
+
+  static BistreSyntaxPalette forId(String id, {required bool isDark}) =>
+      switch (id) {
+        'sepia_warm' => sepiaWarm,
+        'github_light' => githubLight,
+        'espresso_amber' => espressoAmber,
+        'slate_dark' => slateDark,
+        _ => isDark ? espressoAmber : sepiaWarm,
+      };
 }
 
 /// Dynamic typography role factory honoring user-chosen local fonts & exact px size.

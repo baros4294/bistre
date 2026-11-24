@@ -111,6 +111,10 @@ class _ComposerToolsControlState extends State<ComposerToolsControl> {
     final workspace = ctrl.workspaceRootPath;
     final webSearch = ctrl.webSearchEndpoint;
 
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final maxPopoverWidth = (viewportWidth - 24).clamp(260.0, 392.0);
+    final minPopoverWidth = maxPopoverWidth < 340.0 ? maxPopoverWidth : 340.0;
+
     return Stack(
       children: [
         Positioned.fill(
@@ -130,7 +134,10 @@ class _ComposerToolsControlState extends State<ComposerToolsControl> {
             beginOffset: const Offset(0, 0.06),
             reduceMotionOverride: ctrl.reduceMotionOverride,
             child: ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 280, maxWidth: 340),
+              constraints: BoxConstraints(
+                minWidth: minPopoverWidth,
+                maxWidth: maxPopoverWidth,
+              ),
               child: FolioSurface(
                 tone: FolioTone.elevated,
                 borderRadius: 12,
