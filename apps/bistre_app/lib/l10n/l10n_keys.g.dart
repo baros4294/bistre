@@ -239,6 +239,7 @@ enum L10nKey {
   settingsAgentWebSearch('settings.agent.web_search'),
   settingsAgentWorkspaceDir('settings.agent.workspace_dir'),
   settingsAgentWorkspacePick('settings.agent.workspace_pick'),
+  settingsAllSettings('settings.all_settings'),
   settingsAppearanceAccent('settings.appearance.accent'),
   settingsAppearanceAccentBrass('settings.appearance.accent_brass'),
   settingsAppearanceAccentCobalt('settings.appearance.accent_cobalt'),

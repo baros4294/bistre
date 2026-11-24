@@ -24,10 +24,31 @@ import 'updates_storage_settings_view.dart';
 /// Full-window Studio Atelier Settings Workspace replacing the cramped modal popup.
 /// Provides generous breathing room for Providers & Keys, Assistants, Appearance/Fonts,
 /// Safety & Unlimited Budget, Updates & Local Storage, Language, and Custom Shortcuts.
-class SettingsWorkspace extends StatelessWidget {
+///
+/// Wide windows show the page list beside the page. Narrow windows (phones, large text) show
+/// the vertical, searchable page list first and open a page over it with an `All settings`
+/// back row, like a phone's own settings app (DESIGN "Vertical-First Restraint").
+class SettingsWorkspace extends StatefulWidget {
   const SettingsWorkspace({super.key, required this.controller});
 
   final FolioController controller;
+
+  @override
+  State<SettingsWorkspace> createState() => _SettingsWorkspaceState();
+}
+
+class _SettingsWorkspaceState extends State<SettingsWorkspace> {
+  /// Narrow layout only: the page list is showing. Opening Settings in general lands on the
+  /// list; a link to a specific page (Prices, Shortcuts, Updates) opens that page directly.
+  late bool _narrowList =
+      widget.controller.settingsTab == SettingsTab.providers;
+
+  FolioController get controller => widget.controller;
+
+  void _openPage(SettingsTab tab) {
+    controller.setSettingsTab(tab);
+    setState(() => _narrowList = false);
+  }
 
   static const List<(SettingsTab, L10nKey, BistreUiIcon)> _tabs =
       <(SettingsTab, L10nKey, BistreUiIcon)>[
@@ -81,38 +102,48 @@ class SettingsWorkspace extends StatelessWidget {
                   onBack: ctrl.closeSettings,
                 ),
                 const FolioDivider(),
-                if (!isWide) ...[
-                  _NarrowTabStrip(
-                    tabs: _tabs,
-                    selected: ctrl.settingsTab,
-                    onSelected: ctrl.setSettingsTab,
+                if (!isWide && !_narrowList) ...[
+                  _NarrowPageBar(
+                    title: l10n.t(
+                      _tabs.firstWhere((t) => t.$1 == ctrl.settingsTab).$2,
+                    ),
+                    onAllSettings: () => setState(() => _narrowList = true),
                   ),
                   const FolioDivider(),
                 ],
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (isWide) ...[
-                        SizedBox(
-                          width: textScaledWidth(context, 232),
-                          child: ColoredBox(
-                            color: theme.bgSurface.withValues(
-                              alpha: theme.isDark ? 0.55 : 0.65,
-                            ),
-                            child: _SearchableSettingsNav(
-                              tabs: _tabs,
-                              selected: ctrl.settingsTab,
-                              onSelected: ctrl.setSettingsTab,
+                if (!isWide && _narrowList)
+                  Expanded(
+                    child: _SearchableSettingsNav(
+                      tabs: _tabs,
+                      selected: ctrl.settingsTab,
+                      onSelected: _openPage,
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (isWide) ...[
+                          SizedBox(
+                            width: textScaledWidth(context, 232),
+                            child: ColoredBox(
+                              color: theme.bgSurface.withValues(
+                                alpha: theme.isDark ? 0.55 : 0.65,
+                              ),
+                              child: _SearchableSettingsNav(
+                                tabs: _tabs,
+                                selected: ctrl.settingsTab,
+                                onSelected: ctrl.setSettingsTab,
+                              ),
                             ),
                           ),
-                        ),
-                        const FolioDivider(vertical: true),
+                          const FolioDivider(vertical: true),
+                        ],
+                        Expanded(child: _buildActiveView(ctrl)),
                       ],
-                      Expanded(child: _buildActiveView(ctrl)),
-                    ],
+                    ),
                   ),
-                ),
               ],
             );
           },
@@ -315,41 +346,41 @@ class _SettingsNavTileState extends State<_SettingsNavTile> {
   }
 }
 
-class _NarrowTabStrip extends StatelessWidget {
-  const _NarrowTabStrip({
-    required this.tabs,
-    required this.selected,
-    required this.onSelected,
-  });
+/// Narrow layout: the open page's name with a way back to the page list.
+class _NarrowPageBar extends StatelessWidget {
+  const _NarrowPageBar({required this.title, required this.onAllSettings});
 
-  final List<(SettingsTab, L10nKey, BistreUiIcon)> tabs;
-  final SettingsTab selected;
-  final ValueChanged<SettingsTab> onSelected;
+  final String title;
+  final VoidCallback onAllSettings;
 
   @override
   Widget build(BuildContext context) {
-    final l10n = BistreLocalizations.of(context);
     final theme = BistreTheme.of(context);
-    return ColoredBox(
-      color: theme.bgSurface.withValues(alpha: 0.65),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsetsDirectional.symmetric(
-          horizontal: 12,
-          vertical: 8,
-        ),
-        child: Row(
-          children: [
-            for (var i = 0; i < tabs.length; i++) ...[
-              if (i > 0) const SizedBox(width: 6),
-              InkChip(
-                label: l10n.t(tabs[i].$2),
-                selected: selected == tabs[i].$1,
-                onSelected: () => onSelected(tabs[i].$1),
-              ),
-            ],
-          ],
-        ),
+    final l10n = BistreLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(12, 6, 16, 6),
+      child: Row(
+        children: [
+          EngravedButton(
+            label: l10n.t(L10nKey.settingsAllSettings),
+            compact: true,
+            leading: BistreIcon(
+              BistreUiIcon.chevronStart,
+              size: 13,
+              color: theme.inkSecondary,
+            ),
+            onPressed: onAllSettings,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: InkText(
+              title,
+              role: InkTextRole.labelStrong,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
     );
   }
