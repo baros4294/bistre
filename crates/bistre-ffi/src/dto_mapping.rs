@@ -85,6 +85,7 @@ pub(crate) fn map_assistant(a: AssistantRecord) -> FfiAssistantRecord {
 }
 
 pub(crate) fn map_provider(p: ProviderProfile) -> FfiProviderProfile {
+    let is_local = bistre_core::net::is_loopback_url(&p.base_url);
     FfiProviderProfile {
         id: p.id,
         name: p.name,
@@ -100,6 +101,7 @@ pub(crate) fn map_provider(p: ProviderProfile) -> FfiProviderProfile {
         custom_icon_path: p.custom_icon_path,
         created_at_ms: p.created_at_ms,
         updated_at_ms: p.updated_at_ms,
+        is_local,
     }
 }
 

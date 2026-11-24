@@ -4230,6 +4230,7 @@ impl SseDecode for crate::api::FfiProviderProfile {
         let mut var_customIconPath = <String>::sse_decode(deserializer);
         let mut var_createdAtMs = <i64>::sse_decode(deserializer);
         let mut var_updatedAtMs = <i64>::sse_decode(deserializer);
+        let mut var_isLocal = <bool>::sse_decode(deserializer);
         return crate::api::FfiProviderProfile {
             id: var_id,
             name: var_name,
@@ -4245,6 +4246,7 @@ impl SseDecode for crate::api::FfiProviderProfile {
             custom_icon_path: var_customIconPath,
             created_at_ms: var_createdAtMs,
             updated_at_ms: var_updatedAtMs,
+            is_local: var_isLocal,
         };
     }
 }
@@ -5276,6 +5278,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::FfiProviderProfile {
             self.custom_icon_path.into_into_dart().into_dart(),
             self.created_at_ms.into_into_dart().into_dart(),
             self.updated_at_ms.into_into_dart().into_dart(),
+            self.is_local.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -5689,6 +5692,7 @@ impl SseEncode for crate::api::FfiProviderProfile {
         <String>::sse_encode(self.custom_icon_path, serializer);
         <i64>::sse_encode(self.created_at_ms, serializer);
         <i64>::sse_encode(self.updated_at_ms, serializer);
+        <bool>::sse_encode(self.is_local, serializer);
     }
 }
 

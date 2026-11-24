@@ -155,12 +155,16 @@ class EngineProvider {
     this.customIconPath = '',
     required this.createdAtMs,
     required this.updatedAtMs,
+    this.isLocal = false,
   });
 
   final String id;
   final String name;
   final String dialect;
   final String baseUrl;
+
+  /// The model runs on this device (core decides by parsed host); the picker badges it.
+  final bool isLocal;
   final String defaultModel;
   final String keyHint;
   final bool hasApiKey;

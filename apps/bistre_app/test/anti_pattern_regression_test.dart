@@ -927,6 +927,27 @@ void main() {
     ctrl.dispose();
     await gw.shutdown();
   });
+
+  testWidgets('the model picker marks where each provider runs', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1320, 820);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final (ctrl, gw, l10n) = await boot();
+    await tester.pumpWidget(
+      BistreApp(l10nController: l10n, folioController: ctrl),
+    );
+    await tester.pumpAndSettle();
+    final cloud = l10n.t(L10nKey.chatModelCloud);
+    expect(find.text(cloud), findsNothing);
+    await tester.tap(find.textContaining(ctrl.activeProvider!.name).first);
+    await tester.pumpAndSettle();
+    expect(find.text(cloud), findsNWidgets(ctrl.providers.length));
+    ctrl.dispose();
+    await gw.shutdown();
+  });
 }
 
 bool _endsWithLoneHighSurrogate(String s) {

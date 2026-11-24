@@ -1089,6 +1089,9 @@ class FfiProviderProfile {
   final PlatformInt64 createdAtMs;
   final PlatformInt64 updatedAtMs;
 
+  /// Core's parsed-host loopback decision: the model runs on this device.
+  final bool isLocal;
+
   const FfiProviderProfile({
     required this.id,
     required this.name,
@@ -1104,6 +1107,7 @@ class FfiProviderProfile {
     required this.customIconPath,
     required this.createdAtMs,
     required this.updatedAtMs,
+    required this.isLocal,
   });
 
   @override
@@ -1121,7 +1125,8 @@ class FfiProviderProfile {
       iconSlug.hashCode ^
       customIconPath.hashCode ^
       createdAtMs.hashCode ^
-      updatedAtMs.hashCode;
+      updatedAtMs.hashCode ^
+      isLocal.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1141,7 +1146,8 @@ class FfiProviderProfile {
           iconSlug == other.iconSlug &&
           customIconPath == other.customIconPath &&
           createdAtMs == other.createdAtMs &&
-          updatedAtMs == other.updatedAtMs;
+          updatedAtMs == other.updatedAtMs &&
+          isLocal == other.isLocal;
 }
 
 /// Thin FFI DTO mirror of `SearchHit`.

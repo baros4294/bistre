@@ -84,6 +84,8 @@ pub struct FfiProviderProfile {
     pub custom_icon_path: String,
     pub created_at_ms: i64,
     pub updated_at_ms: i64,
+    /// Core's parsed-host loopback decision: the model runs on this device.
+    pub is_local: bool,
 }
 
 /// Thin FFI DTO mirror of `ProviderModelInfo`.
