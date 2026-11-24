@@ -3906,6 +3906,13 @@
       "tone": "concise_action",
       "max_chars": 14,
       "placeholders": {}
+    },
+    "settings.all_settings": {
+      "message": "Tất cả cài đặt",
+      "context": "Phone settings: back from one settings page to the list of pages",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
     }
   }
 }
