@@ -24,8 +24,9 @@ pub const MAX_OTA_PAYLOAD_BYTES: u64 = 256 * 1024 * 1024;
 /// Hard cap on a manifest or signature document.
 const MAX_OTA_MANIFEST_BYTES: usize = 1024 * 1024;
 
-/// Public Ed25519 Minisign verification key for official Bistre releases (empty until release signing key is provisioned).
-pub const OFFICIAL_RELEASE_PUBKEY_B64: &str = "";
+/// Public Ed25519 Minisign verification key for official Bistre releases (key id `84A60109283936B3`).
+pub const OFFICIAL_RELEASE_PUBKEY_B64: &str =
+    "RWSzNjkoCQGmhPhmWgUEVRju0AEHELP3evLMpoKRKRvhlpCZAL43T2Yb";
 
 #[derive(Debug, Deserialize)]
 struct RemoteUpdateManifest {
@@ -87,14 +88,24 @@ pub fn detect_ownership_mode() -> &'static str {
     "self_managed"
 }
 
-/// Resolves the release key: an explicit key wins, then the embedded official key.
-/// No key means OTA is disabled (fail closed); the signature check is never skipped.
+/// Resolves the release key: an explicit override wins (an explicit empty key fails closed),
+/// otherwise uses `embedded_default`. No key means OTA is disabled; the check is never skipped.
+fn resolve_release_key_with<'a>(
+    release_key: Option<&'a str>,
+    embedded_default: &'a str,
+) -> BistreResult<&'a str> {
+    let selected = match release_key {
+        Some(explicit) => explicit.trim(),
+        None => embedded_default.trim(),
+    };
+    if selected.is_empty() {
+        return Err(BistreError::new(DiagnosticKey::OtaSigningKeyMissing));
+    }
+    Ok(selected)
+}
+
 fn resolve_release_key(release_key: Option<&str>) -> BistreResult<&str> {
-    release_key
-        .map(str::trim)
-        .filter(|k| !k.is_empty())
-        .or_else(|| Some(OFFICIAL_RELEASE_PUBKEY_B64.trim()).filter(|k| !k.is_empty()))
-        .ok_or_else(|| BistreError::new(DiagnosticKey::OtaSigningKeyMissing))
+    resolve_release_key_with(release_key, OFFICIAL_RELEASE_PUBKEY_B64)
 }
 
 /// Performs a zero-telemetry check against `feed_url` (static JSON manifest + mandatory `.minisig`).
@@ -588,13 +599,46 @@ AcVYMmpeIXCzgxq42h3Z3qKtmljay0AsdPqX+qkYbcHmmZxkYR/OZWqy1u7S4gT4X4e+aTVNH15wDFXG
     #[tokio::test]
     async fn missing_release_key_disables_ota_before_any_request()
     -> Result<(), Box<dyn std::error::Error>> {
+        assert_eq!(
+            resolve_release_key_with(None, "").err().map(|e| e.key),
+            Some(DiagnosticKey::OtaSigningKeyMissing)
+        );
         let http = crate::providers::build_http_client()?;
         // Port 9 (discard) is never contacted: the key check runs first.
-        let res =
-            check_for_updates(&http, "http://127.0.0.1:9/manifest.json", "0.1.0", 0, None).await;
+        let res = check_for_updates(
+            &http,
+            "http://127.0.0.1:9/manifest.json",
+            "0.1.0",
+            0,
+            Some(""),
+        )
+        .await;
         assert_eq!(
             res.err().map(|e| e.key),
             Some(DiagnosticKey::OtaSigningKeyMissing)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn official_release_pubkey_verifies_minisign_012_signature_and_rejects_tampering()
+    -> Result<(), Box<dyn std::error::Error>> {
+        const SAMPLE_MANIFEST: &[u8] = br#"{"semver":"1.0.0","track":"track_b","assets":[]}"#;
+        const SAMPLE_SIG: &str = "untrusted comment: signature from minisign secret key\n\
+RUSzNjkoCQGmhLJKWuxwCQ5EJuNVJQndPRi11XbQ61SbTH3mjth6e0ML+bNWiLjjargHeRPWWpsjccwlZgXdIUx7R6vs+3px5Qo=\n\
+trusted comment: bistre v1.0.0\n\
+fgsYLnenA1gdfE3Qca40F0ZfGmgfjF6sYP6BkmoLf+vN0UwGF+ThF99aEy3Gk5XDViORhA2BwS4QcSXGHsHBBQ==\n";
+
+        let resolved = resolve_release_key(None)?;
+        assert_eq!(resolved, OFFICIAL_RELEASE_PUBKEY_B64);
+        verify_minisign_bytes(resolved, SAMPLE_MANIFEST, SAMPLE_SIG)?;
+
+        let tampered = br#"{"semver":"1.0.1","track":"track_b","assets":[]}"#;
+        assert_eq!(
+            verify_minisign_bytes(resolved, tampered, SAMPLE_SIG)
+                .err()
+                .map(|e| e.key),
+            Some(DiagnosticKey::CryptoSignatureInvalid)
         );
         Ok(())
     }
