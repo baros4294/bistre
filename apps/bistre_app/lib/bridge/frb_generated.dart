@@ -4152,8 +4152,8 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   FfiProviderProfile dco_decode_ffi_provider_profile(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 14)
-      throw Exception('unexpected arr length: expect 14 but see ${arr.length}');
+    if (arr.length != 15)
+      throw Exception('unexpected arr length: expect 15 but see ${arr.length}');
     return FfiProviderProfile(
       id: dco_decode_String(arr[0]),
       name: dco_decode_String(arr[1]),
@@ -4169,6 +4169,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       customIconPath: dco_decode_String(arr[11]),
       createdAtMs: dco_decode_i_64(arr[12]),
       updatedAtMs: dco_decode_i_64(arr[13]),
+      isLocal: dco_decode_bool(arr[14]),
     );
   }
 
@@ -4908,6 +4909,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     var var_customIconPath = sse_decode_String(deserializer);
     var var_createdAtMs = sse_decode_i_64(deserializer);
     var var_updatedAtMs = sse_decode_i_64(deserializer);
+    var var_isLocal = sse_decode_bool(deserializer);
     return FfiProviderProfile(
       id: var_id,
       name: var_name,
@@ -4923,6 +4925,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       customIconPath: var_customIconPath,
       createdAtMs: var_createdAtMs,
       updatedAtMs: var_updatedAtMs,
+      isLocal: var_isLocal,
     );
   }
 
@@ -5704,6 +5707,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     sse_encode_String(self.customIconPath, serializer);
     sse_encode_i_64(self.createdAtMs, serializer);
     sse_encode_i_64(self.updatedAtMs, serializer);
+    sse_encode_bool(self.isLocal, serializer);
   }
 
   @protected

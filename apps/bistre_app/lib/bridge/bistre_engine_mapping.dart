@@ -55,6 +55,7 @@ EngineProvider _mapProvider(frb.FfiProviderProfile p) => EngineProvider(
   customIconPath: p.customIconPath,
   createdAtMs: p.createdAtMs.toInt(),
   updatedAtMs: p.updatedAtMs.toInt(),
+  isLocal: p.isLocal,
 );
 
 EngineAssistant _mapAssistant(frb.FfiAssistantRecord a) => EngineAssistant(

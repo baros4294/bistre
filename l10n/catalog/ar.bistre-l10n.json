@@ -3885,6 +3885,27 @@
       "tone": "calm_editorial",
       "max_chars": 140,
       "placeholders": {}
+    },
+    "chat.model_search": {
+      "message": "تصفية النماذج",
+      "context": "Placeholder of the filter field in the model picker",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.model_local": {
+      "message": "على الجهاز",
+      "context": "Badge: this provider runs on the user's own device",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "chat.model_cloud": {
+      "message": "سحابي",
+      "context": "Badge: this provider runs on a remote server",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
     }
   }
 }

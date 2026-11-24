@@ -11,6 +11,7 @@ import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
 import '../../design/press_feedback.dart';
+import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../chat/folio_composer.dart';
@@ -27,6 +28,9 @@ import '../story/story_bible_panel.dart';
 import '../studio/runs_dock_panel.dart';
 import 'chat_tab_strip.dart';
 import 'folio_controller.dart';
+
+/// The model picker shows a filter once a provider lists more models than this.
+const int _kModelFilterThreshold = 6;
 
 class _TogglePaletteIntent extends Intent {
   const _TogglePaletteIntent();
@@ -90,6 +94,8 @@ class _FolioShellScreenState extends State<FolioShellScreen> {
   final TextEditingController _titleRenameCtrl = TextEditingController();
   final FocusNode _titleRenameFocus = FocusNode();
   final FolioOverlayController _providerPopoverCtrl = FolioOverlayController();
+  final TextEditingController _modelQuery = TextEditingController();
+  final FocusNode _modelQueryFocus = FocusNode();
   final LayerLink _providerPillLink = LayerLink();
   bool _narrowDrawerOpen = false;
   bool _isWideViewport = true;
@@ -97,6 +103,8 @@ class _FolioShellScreenState extends State<FolioShellScreen> {
 
   @override
   void dispose() {
+    _modelQuery.dispose();
+    _modelQueryFocus.dispose();
     _composerFocus.dispose();
     _searchController.dispose();
     _searchFocus.dispose();
@@ -800,6 +808,17 @@ class _FolioShellScreenState extends State<FolioShellScreen> {
     );
   }
 
+  /// Models whose id contains every word of the filter, case-insensitively.
+  List<EngineProviderModel> _filterModels(List<EngineProviderModel> models) {
+    final words = _modelQuery.text.toLowerCase().split(' ')
+      ..removeWhere((w) => w.isEmpty);
+    if (words.isEmpty) return models;
+    return [
+      for (final m in models)
+        if (words.every(m.id.toLowerCase().contains)) m,
+    ];
+  }
+
   Widget _buildProviderQuickSwitcher(
     BuildContext context,
     BistreThemeData theme,
@@ -886,20 +905,52 @@ class _FolioShellScreenState extends State<FolioShellScreen> {
                             color: theme.inkMuted,
                           ),
                         ),
-                        for (final m in loadedModels.take(4))
-                          _QuickModelOption(
-                            modelId: m.id,
-                            selected: ctrl.activeModelId == m.id,
-                            onTap: () {
-                              _providerPopoverCtrl.hide();
-                              unawaited(
-                                ctrl.setActiveProviderAndModel(
-                                  activeProvider.id,
-                                  m.id,
-                                ),
-                              );
-                            },
+                        // Long lists get a filter (v2.6.0 searchable model picker).
+                        if (loadedModels.length > _kModelFilterThreshold)
+                          Padding(
+                            padding: const EdgeInsetsDirectional.fromSTEB(
+                              10,
+                              2,
+                              10,
+                              6,
+                            ),
+                            child: QuillInput(
+                              controller: _modelQuery,
+                              focusNode: _modelQueryFocus,
+                              placeholder: l10n.t(L10nKey.chatModelSearch),
+                              maxLines: 1,
+                              compact: true,
+                              submitOnEnter: false,
+                              onSubmitted: () {},
+                              onChanged: (_) => setState(() {}),
+                            ),
                           ),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 260),
+                          child: SmoothScrollable(
+                            builder: (_, scroll) => ListView(
+                              controller: scroll,
+                              shrinkWrap: true,
+                              padding: EdgeInsetsDirectional.zero,
+                              children: [
+                                for (final m in _filterModels(loadedModels))
+                                  _QuickModelOption(
+                                    modelId: m.id,
+                                    selected: ctrl.activeModelId == m.id,
+                                    onTap: () {
+                                      _providerPopoverCtrl.hide();
+                                      unawaited(
+                                        ctrl.setActiveProviderAndModel(
+                                          activeProvider.id,
+                                          m.id,
+                                        ),
+                                      );
+                                    },
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ],
                       const FolioDivider(),
                       _QuickActionFooterRow(
@@ -979,10 +1030,20 @@ class _QuickProviderOptionState extends State<_QuickProviderOption> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        InkText(
-                          p.name,
-                          role: InkTextRole.labelStrong,
-                          color: theme.inkPrimary,
+                        Row(
+                          children: [
+                            Flexible(
+                              child: InkText(
+                                p.name,
+                                role: InkTextRole.labelStrong,
+                                color: theme.inkPrimary,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            _PrivacyBadge(isLocal: p.isLocal),
+                          ],
                         ),
                         InkText(
                           widget.subtitle,
@@ -1004,6 +1065,35 @@ class _QuickProviderOptionState extends State<_QuickProviderOption> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Where the model runs (v2.6.0 `ModelPrivacyBadgeChip`): on this device, or in the cloud.
+class _PrivacyBadge extends StatelessWidget {
+  const _PrivacyBadge({required this.isLocal});
+
+  final bool isLocal;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = BistreTheme.of(context);
+    final l10n = BistreLocalizations.of(context);
+    final color = isLocal ? theme.statusOk : theme.inkMuted;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color),
+      ),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.symmetric(horizontal: 6),
+        child: InkText(
+          l10n.t(isLocal ? L10nKey.chatModelLocal : L10nKey.chatModelCloud),
+          role: InkTextRole.captionMeta,
+          color: color,
+          maxLines: 1,
         ),
       ),
     );
