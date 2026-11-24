@@ -96,7 +96,7 @@ jobs:
           $icons = [BistreSmoke.Shell32]::ExtractIconExW($exe, -1, $null, $null, 0)
           if ($icons -lt 1) { throw 'bistre_app.exe has no embedded icon resource' }
           Write-Output "OK: ProductVersion $($info.ProductVersion), ProductName $($info.ProductName), $icons icon(s)"
-      - name: Stage and package release archive with SHA-256 checksums
+      - name: Stage and package release installers and archives with SHA-256 checksums
         shell: bash
         env:
           RUNNER_OS_NAME: ${{ runner.os }}
@@ -108,11 +108,28 @@ jobs:
           if [ "$RUNNER_OS_NAME" = "Linux" ]; then
             cp -a apps/bistre_app/build/linux/x64/release/bundle/. stage/
             cp target/release/bistre-daemon target/release/bistre-updater stage/
-            tar -czf "dist/bistre-${RELEASE_TAG}-${TARGET_NAME}.tar.gz" -C stage .
+            bash packaging/linux/build-packages.sh "$RELEASE_TAG" stage dist
           else
             cp -a apps/bistre_app/build/windows/x64/runner/Release/. stage/
             cp target/release/bistre-daemon.exe target/release/bistre-updater.exe stage/
             (cd stage && 7z a "../dist/bistre-${RELEASE_TAG}-${TARGET_NAME}.zip" .)
+            iscc_bin="$(command -v iscc || true)"
+            if [ -z "$iscc_bin" ] && [ -f "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
+              iscc_bin="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+            fi
+            if [ -z "$iscc_bin" ]; then
+              echo "ERROR: Inno Setup compiler (ISCC.exe) not found on Windows runner"
+              exit 1
+            fi
+            version="${RELEASE_TAG#v}"
+            stage_win="$(cygpath -w "$(pwd)/stage")"
+            dist_win="$(cygpath -w "$(pwd)/dist")"
+            "$iscc_bin" \
+              "/DMyAppVersion=${version}" \
+              "/DStageDir=${stage_win}" \
+              "/DOutputDir=${dist_win}" \
+              "/DOutputBaseFilename=bistre-${RELEASE_TAG}-${TARGET_NAME}-setup" \
+              "packaging/windows/bistre.iss"
           fi
           (cd dist && sha256sum bistre-* > "SHA256SUMS-${TARGET_NAME}.txt")
           cat "dist/SHA256SUMS-${TARGET_NAME}.txt"
