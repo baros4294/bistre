@@ -796,6 +796,48 @@ void main() {
     await tester.pumpAndSettle();
     expect(fill(), theme.bgElevated);
   });
+
+  testWidgets('icon buttons name themselves after a hover rest', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: BistreTheme(
+          data: BistreThemeData.resolve(isDark: false),
+          child: Overlay(
+            initialEntries: <OverlayEntry>[
+              OverlayEntry(
+                builder: (_) => Center(
+                  child: BistreIconButton(
+                    icon: BistreUiIcon.search,
+                    semanticsLabel: 'Search chats',
+                    onPressed: () {},
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(tester.getCenter(find.byType(BistreIconButton)));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(
+      find.text('Search chats'),
+      findsNothing,
+      reason: 'no hint before the rest',
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(find.text('Search chats'), findsOneWidget);
+    await mouse.moveTo(Offset.zero);
+    await tester.pumpAndSettle();
+    expect(find.text('Search chats'), findsNothing);
+  });
 }
 
 bool _endsWithLoneHighSurrogate(String s) {

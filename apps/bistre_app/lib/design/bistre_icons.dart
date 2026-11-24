@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'bistre_theme.dart';
+import 'hover_hint.dart';
 import 'ink_primitives.dart';
 import 'press_feedback.dart';
 
@@ -146,69 +147,73 @@ class _BistreIconButtonState extends State<BistreIconButton> {
             : theme.inkSecondary);
 
     // Taps up to the minimum target land on this button without changing layout (DESIGN §7).
+    // Every icon button names itself on hover (v2.6.0 `HoverHint`).
     return TapTargetExpander(
       minSize: minTapTarget,
-      child: PressFeedback(
-        enabled: enabled,
-        child: Semantics(
-          button: true,
+      child: HoverHint(
+        message: widget.semanticsLabel,
+        child: PressFeedback(
           enabled: enabled,
-          label: widget.semanticsLabel,
-          child: FocusableActionDetector(
+          child: Semantics(
+            button: true,
             enabled: enabled,
-            onShowHoverHighlight: (v) => setState(() => _hovered = v),
-            onShowFocusHighlight: (v) => setState(() => _focused = v),
-            shortcuts: const <ShortcutActivator, Intent>{
-              SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
-              SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
-            },
-            actions: <Type, Action<Intent>>{
-              ActivateIntent: CallbackAction<ActivateIntent>(
-                onInvoke: (_) {
-                  widget.onPressed?.call();
-                  return null;
-                },
-              ),
-            },
-            child: MouseRegion(
-              cursor: enabled
-                  ? SystemMouseCursors.click
-                  : SystemMouseCursors.basic,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTapDown: enabled
-                    ? (_) => setState(() => _pressed = true)
-                    : null,
-                onTapUp: enabled
-                    ? (_) {
-                        setState(() => _pressed = false);
-                        widget.onPressed?.call();
-                      }
-                    : null,
-                onTapCancel: () => setState(() => _pressed = false),
-                child: Opacity(
-                  opacity: !enabled
-                      ? 0.40
-                      : _pressed
-                      ? 0.72
-                      : 1.0,
-                  child: SizedBox.square(
-                    dimension: widget.dimension,
-                    child: EaseDecoration(
-                      decoration: BoxDecoration(
-                        color: widget.active
-                            ? theme.hoverTint
-                            : (_hovered ? theme.hoverTint : null),
-                        borderRadius: BorderRadius.circular(8),
-                        border: _focused
-                            ? Border.all(color: theme.accentBrass, width: 1.6)
-                            : null,
-                      ),
-                      child: Center(
-                        child: BistreIcon(
-                          widget.icon,
-                          size: widget.size,
-                          color: fg,
+            label: widget.semanticsLabel,
+            child: FocusableActionDetector(
+              enabled: enabled,
+              onShowHoverHighlight: (v) => setState(() => _hovered = v),
+              onShowFocusHighlight: (v) => setState(() => _focused = v),
+              shortcuts: const <ShortcutActivator, Intent>{
+                SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+                SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+              },
+              actions: <Type, Action<Intent>>{
+                ActivateIntent: CallbackAction<ActivateIntent>(
+                  onInvoke: (_) {
+                    widget.onPressed?.call();
+                    return null;
+                  },
+                ),
+              },
+              child: MouseRegion(
+                cursor: enabled
+                    ? SystemMouseCursors.click
+                    : SystemMouseCursors.basic,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapDown: enabled
+                      ? (_) => setState(() => _pressed = true)
+                      : null,
+                  onTapUp: enabled
+                      ? (_) {
+                          setState(() => _pressed = false);
+                          widget.onPressed?.call();
+                        }
+                      : null,
+                  onTapCancel: () => setState(() => _pressed = false),
+                  child: Opacity(
+                    opacity: !enabled
+                        ? 0.40
+                        : _pressed
+                        ? 0.72
+                        : 1.0,
+                    child: SizedBox.square(
+                      dimension: widget.dimension,
+                      child: EaseDecoration(
+                        decoration: BoxDecoration(
+                          color: widget.active
+                              ? theme.hoverTint
+                              : (_hovered ? theme.hoverTint : null),
+                          borderRadius: BorderRadius.circular(8),
+                          border: _focused
+                              ? Border.all(color: theme.accentBrass, width: 1.6)
+                              : null,
+                        ),
+                        child: Center(
+                          child: BistreIcon(
+                            widget.icon,
+                            size: widget.size,
+                            color: fg,
+                          ),
                         ),
                       ),
                     ),
