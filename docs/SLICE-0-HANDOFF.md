@@ -243,3 +243,28 @@ Recorded **2026-11-21** after completing Commit-1 Repo Fortress, Spec Pack, Day-
   Decisions 1-5 still need AGENTS.md §6-§7, DESIGN.md §6, and the `bistre_lints` layout-animation rule updated alongside their implementation.
 - **Performance**: 8-line code chunks cut per-frame text layout from 4.03 to 0.85 ms (PR #24). Idle memory is attributed to the graphics stack, and the app's own share is about 25 MB (Spec 11 §5).
 
+## 23. UX Wave 1: Thinking Effort, Motion, Context Breakdown (2026-11-24)
+- **What changed (PR #27)**, all per the owner decisions in §22:
+  - **Thinking effort reaches providers.** Core sends `ReasoningEffort` in each dialect's own field (Spec 02 "Thinking Effort"), only to models the registry marks reasoning-capable (Spec 03, cache format 3). The composer has a `Thinking: <level>` chip with a seven-stop slider (Auto, Off, Low, Medium, High, Extra, Max).
+  - **Settings pages fill the window width.**
+  - **Motion** (DESIGN §6):
+    - `PressFeedback` springs on every button, chip, and icon button.
+    - `SmoothScrollController` gives smooth wheel scrolling in every main scroll view; trackpad deltas of 16 px or less stay 1:1.
+    - `LiveTurnNotifier` paces streaming text at 92 chars/s, with elastic catch-up above 28 waiting characters and frame callbacks only while text waits.
+    - `DisclosureReveal` animates disclosure heights on a critically damped spring for Thinking, tool details, code fold, prompt-inspector blocks, and skill bodies.
+    - The toast and Jump to latest pop in from 0.90 scale.
+    - The in-app Reduce motion setting now applies app-wide through `MediaQuery.disableAnimations`.
+  - **The context ring is clickable.**
+    - Core `context_usage(thread, leaf, draft)` returns `ContextUsage`: instructions, Write-mode story prompt, history and its turns, and the draft. The gauge total now includes the system prompt, which it used to omit.
+    - The popover shows a stacked bar, one row per category, and the Shorten and Prices actions.
+- **Commands**: `just guard`, `just fmt-check`, `just i18n-check`, `flutter analyze`, `flutter test` (46 passed), `just test-rust` (108 passed, plus the new `context_usage_splits_instructions_history_and_draft`), `cargo clippy -p bistre-core -p bistre-ffi --all-targets -D warnings`, `just codegen-frb`. The regression tests for wheel scrolling, the pacer, and disclosures were each shown to fail without their fix.
+- **Bug found along the way**: a spring stops within its tolerance, which left disclosures 0.04 px short and clipped. `DisclosureReveal` now lands exactly on its target.
+- **Open**:
+  - Overlay exit fades: overlays still close instantly, because `OverlayPortal.hide` is called directly. That needs a hide-after-fade controller.
+  - Colour and value transitions.
+  - Breakdown rows for session cost, files, and tool schemas.
+  - A real tokenizer.
+  - The tools drawer, media controls, theme presets (need plain names from the owner), profile, tooltips, and the context menu.
+  - The full commit-by-commit v2.6.0 audit.
+  - `folio_controller.dart` is at 1,497 of 1,500 lines; split it before adding to it.
+  - Linux goldens for this PR are regenerated from the CI `ui-gallery-linux` artifact.
