@@ -254,14 +254,19 @@ Recorded **2026-11-21** after completing Commit-1 Repo Fortress, Spec Pack, Day-
     - `DisclosureReveal` animates disclosure heights on a critically damped spring for Thinking, tool details, code fold, prompt-inspector blocks, and skill bodies.
     - The toast and Jump to latest pop in from 0.90 scale.
     - The in-app Reduce motion setting now applies app-wide through `MediaQuery.disableAnimations`.
+  - **Also**:
+    - Overlays fade out (`FolioOverlayController`).
+    - Buttons, chips, icon buttons, and switches cross-fade colours (`EaseDecoration`).
+    - 34 custom clickable rows press at 0.985.
+    - Every icon button has a hover hint (`HoverHint`).
+    - The ring's fill eases.
+    - Under 600 logical px the Thinking chip shows only its level and the ring drops its numbers. They had squeezed the chip to `T…` at 200% text (found in the Linux gallery).
   - **The context ring is clickable.**
     - Core `context_usage(thread, leaf, draft)` returns `ContextUsage`: instructions, Write-mode story prompt, history and its turns, and the draft. The gauge total now includes the system prompt, which it used to omit.
     - The popover shows a stacked bar, one row per category, and the Shorten and Prices actions.
 - **Commands**: `just guard`, `just fmt-check`, `just i18n-check`, `flutter analyze`, `flutter test` (46 passed), `just test-rust` (108 passed, plus the new `context_usage_splits_instructions_history_and_draft`), `cargo clippy -p bistre-core -p bistre-ffi --all-targets -D warnings`, `just codegen-frb`. The regression tests for wheel scrolling, the pacer, and disclosures were each shown to fail without their fix.
 - **Bug found along the way**: a spring stops within its tolerance, which left disclosures 0.04 px short and clipped. `DisclosureReveal` now lands exactly on its target.
 - **Open**:
-  - Overlay exit fades: overlays still close instantly, because `OverlayPortal.hide` is called directly. That needs a hide-after-fade controller.
-  - Colour and value transitions.
   - Breakdown rows for session cost, files, and tool schemas.
   - A real tokenizer.
   - The tools drawer, media controls, theme presets (need plain names from the owner), profile, tooltips, and the context menu.
