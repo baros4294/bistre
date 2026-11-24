@@ -143,13 +143,13 @@ pub fn find_on_path(exe: &str) -> Option<PathBuf> {
 /// the Desktop Bridge outside the caller's Win32 Job Object, allowing grandchildren to outlive
 /// `TerminateJobObject` and `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`.
 pub fn is_windows_app_exec_alias(path: &Path) -> bool {
+    let raw = path.to_string_lossy();
     let mut prev_microsoft = false;
-    for comp in path.components() {
-        let name = comp.as_os_str().to_string_lossy();
-        if prev_microsoft && name.eq_ignore_ascii_case("windowsapps") {
+    for segment in raw.split(['\\', '/']) {
+        if prev_microsoft && segment.eq_ignore_ascii_case("windowsapps") {
             return true;
         }
-        prev_microsoft = name.eq_ignore_ascii_case("microsoft");
+        prev_microsoft = segment.eq_ignore_ascii_case("microsoft");
     }
     false
 }
