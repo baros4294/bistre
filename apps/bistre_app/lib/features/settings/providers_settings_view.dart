@@ -7,6 +7,7 @@ import '../../design/bistre_controls.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
@@ -957,86 +958,94 @@ class _ProviderListRowState extends State<_ProviderListRow> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: widget.selected
-                ? theme.bgElevated
-                : (_hovered ? theme.hoverTint : null),
-            borderRadius: BorderRadius.circular(10),
-            border: widget.selected
-                ? Border.all(color: theme.borderHairline)
-                : null,
-            boxShadow: widget.selected ? theme.cardShadow : null,
-          ),
-          child: Padding(
-            padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: 10,
-              vertical: 9,
+      child: PressFeedback(
+        pressScale: kRowPressScale,
+        hoverScale: 1,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: widget.selected
+                  ? theme.bgElevated
+                  : (_hovered ? theme.hoverTint : null),
+              borderRadius: BorderRadius.circular(10),
+              border: widget.selected
+                  ? Border.all(color: theme.borderHairline)
+                  : null,
+              boxShadow: widget.selected ? theme.cardShadow : null,
             ),
-            child: Row(
-              children: [
-                if (widget.selected)
-                  Padding(
-                    padding: const EdgeInsetsDirectional.only(end: 8),
-                    child: SizedBox(
-                      width: 2.5,
-                      height: 18,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: theme.accentBrass,
-                          borderRadius: BorderRadius.circular(2),
+            child: Padding(
+              padding: const EdgeInsetsDirectional.symmetric(
+                horizontal: 10,
+                vertical: 9,
+              ),
+              child: Row(
+                children: [
+                  if (widget.selected)
+                    Padding(
+                      padding: const EdgeInsetsDirectional.only(end: 8),
+                      child: SizedBox(
+                        width: 2.5,
+                        height: 18,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: theme.accentBrass,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
                         ),
                       ),
                     ),
+                  LabIcon(
+                    iconSlug: p.iconSlug,
+                    customIconPath: p.customIconPath,
+                    dialect: p.dialect,
+                    providerName: p.name,
+                    size: 18,
                   ),
-                LabIcon(
-                  iconSlug: p.iconSlug,
-                  customIconPath: p.customIconPath,
-                  dialect: p.dialect,
-                  providerName: p.name,
-                  size: 18,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      InkText(
-                        p.name,
-                        role: widget.selected
-                            ? InkTextRole.labelStrong
-                            : InkTextRole.bodyCompact,
-                        color: p.isEnabled ? theme.inkPrimary : theme.inkMuted,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (p.defaultModel.isNotEmpty)
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         InkText(
-                          p.defaultModel,
-                          role: InkTextRole.captionMeta,
-                          color: theme.inkMuted,
+                          p.name,
+                          role: widget.selected
+                              ? InkTextRole.labelStrong
+                              : InkTextRole.bodyCompact,
+                          color: p.isEnabled
+                              ? theme.inkPrimary
+                              : theme.inkMuted,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox.square(
-                  dimension: 7,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: widget.isActiveGlobal
-                          ? theme.accentWax
-                          : (p.isReady ? theme.statusOk : theme.borderHairline),
-                      shape: BoxShape.circle,
+                        if (p.defaultModel.isNotEmpty)
+                          InkText(
+                            p.defaultModel,
+                            role: InkTextRole.captionMeta,
+                            color: theme.inkMuted,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  SizedBox.square(
+                    dimension: 7,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: widget.isActiveGlobal
+                            ? theme.accentWax
+                            : (p.isReady
+                                  ? theme.statusOk
+                                  : theme.borderHairline),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1070,37 +1079,43 @@ class _TemplateChipState extends State<_TemplateChip> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: widget.selected
-                ? theme.bgElevated
-                : (_hovered ? theme.hoverTint : theme.bgSurface),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: widget.selected ? theme.accentBrass : theme.borderHairline,
+      child: PressFeedback(
+        pressScale: kRowPressScale,
+        hoverScale: 1,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: widget.selected
+                  ? theme.bgElevated
+                  : (_hovered ? theme.hoverTint : theme.bgSurface),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: widget.selected
+                    ? theme.accentBrass
+                    : theme.borderHairline,
+              ),
             ),
-          ),
-          child: Padding(
-            padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: 10,
-              vertical: 7,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                LabIcon(iconSlug: widget.template.iconSlug, size: 16),
-                const SizedBox(width: 7),
-                InkText(
-                  widget.template.name,
-                  role: InkTextRole.captionMeta,
-                  color: widget.selected
-                      ? theme.inkPrimary
-                      : theme.inkSecondary,
-                ),
-              ],
+            child: Padding(
+              padding: const EdgeInsetsDirectional.symmetric(
+                horizontal: 10,
+                vertical: 7,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  LabIcon(iconSlug: widget.template.iconSlug, size: 16),
+                  const SizedBox(width: 7),
+                  InkText(
+                    widget.template.name,
+                    role: InkTextRole.captionMeta,
+                    color: widget.selected
+                        ? theme.inkPrimary
+                        : theme.inkSecondary,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1138,40 +1153,44 @@ class _LabIconChoiceTileState extends State<_LabIconChoiceTile> {
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hovered = true),
         onExit: (_) => setState(() => _hovered = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: widget.selected
-                  ? theme.bgSurface
-                  : (_hovered ? theme.hoverTint : theme.bgCanvas),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
+        child: PressFeedback(
+          pressScale: kRowPressScale,
+          hoverScale: 1,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onTap,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
                 color: widget.selected
-                    ? theme.accentBrass
-                    : theme.borderHairline,
-                width: widget.selected ? 1.5 : 1,
+                    ? theme.bgSurface
+                    : (_hovered ? theme.hoverTint : theme.bgCanvas),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: widget.selected
+                      ? theme.accentBrass
+                      : theme.borderHairline,
+                  width: widget.selected ? 1.5 : 1,
+                ),
               ),
-            ),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.symmetric(
-                horizontal: 8,
-                vertical: 6,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  LabIcon(iconSlug: widget.entry.slug, size: 16),
-                  const SizedBox(width: 6),
-                  InkText(
-                    widget.entry.displayName,
-                    role: InkTextRole.captionMeta,
-                    color: widget.selected
-                        ? theme.inkPrimary
-                        : theme.inkSecondary,
-                  ),
-                ],
+              child: Padding(
+                padding: const EdgeInsetsDirectional.symmetric(
+                  horizontal: 8,
+                  vertical: 6,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    LabIcon(iconSlug: widget.entry.slug, size: 16),
+                    const SizedBox(width: 6),
+                    InkText(
+                      widget.entry.displayName,
+                      role: InkTextRole.captionMeta,
+                      color: widget.selected
+                          ? theme.inkPrimary
+                          : theme.inkSecondary,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -1206,39 +1225,43 @@ class _SelectableModelRowState extends State<_SelectableModelRow> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: widget.selected || _hovered ? theme.hoverTint : null,
-            borderRadius: BorderRadius.circular(7),
-          ),
-          child: Padding(
-            padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: 10,
-              vertical: 6,
+      child: PressFeedback(
+        pressScale: kRowPressScale,
+        hoverScale: 1,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: widget.selected || _hovered ? theme.hoverTint : null,
+              borderRadius: BorderRadius.circular(7),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: InkText(
-                    widget.model.id,
-                    role: InkTextRole.captionMeta,
-                    color: widget.selected
-                        ? theme.inkPrimary
-                        : theme.inkSecondary,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+            child: Padding(
+              padding: const EdgeInsetsDirectional.symmetric(
+                horizontal: 10,
+                vertical: 6,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: InkText(
+                      widget.model.id,
+                      role: InkTextRole.captionMeta,
+                      color: widget.selected
+                          ? theme.inkPrimary
+                          : theme.inkSecondary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-                if (widget.selected)
-                  BistreIcon(
-                    BistreUiIcon.check,
-                    size: 13,
-                    color: theme.accentBrass,
-                  ),
-              ],
+                  if (widget.selected)
+                    BistreIcon(
+                      BistreUiIcon.check,
+                      size: 13,
+                      color: theme.accentBrass,
+                    ),
+                ],
+              ),
             ),
           ),
         ),

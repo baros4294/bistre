@@ -3,6 +3,10 @@ import 'package:flutter/widgets.dart';
 
 import 'bistre_theme.dart';
 
+/// Press scale for wide rows (sidebar chats, list rows, tabs): the full 0.96 would shrink a
+/// 300 px row by 12 px, which reads as a jump rather than a press.
+const double kRowPressScale = 0.985;
+
 /// Spring press and hover feedback for every clickable (DESIGN §6, Parchment v2.6.0
 /// `kissClickable`): pressing scales to 0.96, hovering scales to 1.012 and lifts 0.75 px.
 /// Pointer events pass through untouched, so the action still fires on the event; the motion

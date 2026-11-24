@@ -6,6 +6,7 @@ import '../../bridge/bistre_engine.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
@@ -819,29 +820,35 @@ class _CharacterCardTile extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onToggleActive,
-                  child: Row(
-                    children: [
-                      BistreIcon(
-                        activeInScene
-                            ? BistreUiIcon.check
-                            : BistreUiIcon.assistant,
-                        size: 13,
-                        color: activeInScene ? theme.accentWax : theme.inkMuted,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: InkText(
-                          card.name,
-                          role: InkTextRole.labelStrong,
-                          color: theme.inkPrimary,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                child: PressFeedback(
+                  pressScale: kRowPressScale,
+                  hoverScale: 1,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onToggleActive,
+                    child: Row(
+                      children: [
+                        BistreIcon(
+                          activeInScene
+                              ? BistreUiIcon.check
+                              : BistreUiIcon.assistant,
+                          size: 13,
+                          color: activeInScene
+                              ? theme.accentWax
+                              : theme.inkMuted,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: InkText(
+                            card.name,
+                            role: InkTextRole.labelStrong,
+                            color: theme.inkPrimary,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),

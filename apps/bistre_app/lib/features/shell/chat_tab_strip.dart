@@ -7,6 +7,7 @@ import '../../design/bistre_decorations.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import 'folio_controller.dart';
@@ -83,43 +84,47 @@ class _ChatTabState extends State<_ChatTab> {
               },
             ),
           },
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.onSelect,
-            child: DecoratedBox(
-              decoration: widget.selected
-                  ? rubricMark(theme, fill: theme.bgElevated)
-                  : BoxDecoration(
-                      borderRadius: BorderRadius.circular(6),
-                      border: _focused
-                          ? Border.all(color: theme.accentBrass, width: 2)
-                          : null,
-                    ),
-              child: Padding(
-                padding: const EdgeInsetsDirectional.fromSTEB(10, 2, 2, 2),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 200),
-                      child: InkText(
-                        widget.thread.title,
-                        role: InkTextRole.captionMeta,
-                        color: widget.selected
-                            ? theme.inkPrimary
-                            : theme.inkSecondary,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+          child: PressFeedback(
+            pressScale: kRowPressScale,
+            hoverScale: 1,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onSelect,
+              child: DecoratedBox(
+                decoration: widget.selected
+                    ? rubricMark(theme, fill: theme.bgElevated)
+                    : BoxDecoration(
+                        borderRadius: BorderRadius.circular(6),
+                        border: _focused
+                            ? Border.all(color: theme.accentBrass, width: 2)
+                            : null,
                       ),
-                    ),
-                    BistreIconButton(
-                      icon: BistreUiIcon.close,
-                      size: 11,
-                      dimension: 24,
-                      semanticsLabel: l10n.t(L10nKey.shellCloseTab),
-                      onPressed: widget.onClose,
-                    ),
-                  ],
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.fromSTEB(10, 2, 2, 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 200),
+                        child: InkText(
+                          widget.thread.title,
+                          role: InkTextRole.captionMeta,
+                          color: widget.selected
+                              ? theme.inkPrimary
+                              : theme.inkSecondary,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      BistreIconButton(
+                        icon: BistreUiIcon.close,
+                        size: 11,
+                        dimension: 24,
+                        semanticsLabel: l10n.t(L10nKey.shellCloseTab),
+                        onPressed: widget.onClose,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

@@ -7,6 +7,7 @@ import '../../design/bistre_controls.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
@@ -768,46 +769,50 @@ class _AccentSwatchPillState extends State<_AccentSwatchPill> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: widget.selected
-                ? theme.bgSurface
-                : (_hovered ? theme.hoverTint : theme.bgCanvas),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: widget.selected ? widget.swatch : theme.borderHairline,
-              width: widget.selected ? 1.5 : 1,
+      child: PressFeedback(
+        pressScale: kRowPressScale,
+        hoverScale: 1,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: widget.selected
+                  ? theme.bgSurface
+                  : (_hovered ? theme.hoverTint : theme.bgCanvas),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: widget.selected ? widget.swatch : theme.borderHairline,
+                width: widget.selected ? 1.5 : 1,
+              ),
             ),
-          ),
-          child: Padding(
-            padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: 10,
-              vertical: 6,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox.square(
-                  dimension: 12,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: widget.swatch,
-                      shape: BoxShape.circle,
+            child: Padding(
+              padding: const EdgeInsetsDirectional.symmetric(
+                horizontal: 10,
+                vertical: 6,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox.square(
+                    dimension: 12,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: widget.swatch,
+                        shape: BoxShape.circle,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 7),
-                InkText(
-                  widget.label,
-                  role: InkTextRole.captionMeta,
-                  color: widget.selected
-                      ? theme.inkPrimary
-                      : theme.inkSecondary,
-                ),
-              ],
+                  const SizedBox(width: 7),
+                  InkText(
+                    widget.label,
+                    role: InkTextRole.captionMeta,
+                    color: widget.selected
+                        ? theme.inkPrimary
+                        : theme.inkSecondary,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -841,37 +846,41 @@ class _FontListRowState extends State<_FontListRow> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: widget.selected || _hovered ? theme.hoverTint : null,
-            borderRadius: BorderRadius.circular(7),
-          ),
-          child: Padding(
-            padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: 10,
-              vertical: 7,
+      child: PressFeedback(
+        pressScale: kRowPressScale,
+        hoverScale: 1,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: widget.selected || _hovered ? theme.hoverTint : null,
+              borderRadius: BorderRadius.circular(7),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: InkText(
-                    widget.label,
-                    role: InkTextRole.bodyCompact,
-                    color: widget.selected
-                        ? theme.inkPrimary
-                        : theme.inkSecondary,
+            child: Padding(
+              padding: const EdgeInsetsDirectional.symmetric(
+                horizontal: 10,
+                vertical: 7,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: InkText(
+                      widget.label,
+                      role: InkTextRole.bodyCompact,
+                      color: widget.selected
+                          ? theme.inkPrimary
+                          : theme.inkSecondary,
+                    ),
                   ),
-                ),
-                if (widget.selected)
-                  BistreIcon(
-                    BistreUiIcon.check,
-                    size: 13,
-                    color: theme.accentBrass,
-                  ),
-              ],
+                  if (widget.selected)
+                    BistreIcon(
+                      BistreUiIcon.check,
+                      size: 13,
+                      color: theme.accentBrass,
+                    ),
+                ],
+              ),
             ),
           ),
         ),

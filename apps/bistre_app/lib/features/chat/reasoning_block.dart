@@ -4,6 +4,7 @@ import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/disclosure_reveal.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
@@ -84,50 +85,54 @@ class _ReasoningBlockState extends State<ReasoningBlock> {
             },
           ),
         },
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => setState(() => _expanded = !_expanded),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(6),
-              border: _focused
-                  ? Border.all(color: theme.accentBrass, width: 2)
-                  : null,
-            ),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.symmetric(
-                horizontal: 6,
-                vertical: 6,
+        child: PressFeedback(
+          pressScale: kRowPressScale,
+          hoverScale: 1,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                border: _focused
+                    ? Border.all(color: theme.accentBrass, width: 2)
+                    : null,
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  BistreIcon(
-                    _expanded
-                        ? BistreUiIcon.chevronDown
-                        : BistreUiIcon.chevronEnd,
-                    size: 12,
-                    color: theme.inkMuted,
-                  ),
-                  const SizedBox(width: 4),
-                  if (widget.isStreaming) ...[
+              child: Padding(
+                padding: const EdgeInsetsDirectional.symmetric(
+                  horizontal: 6,
+                  vertical: 6,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                     BistreIcon(
-                      BistreUiIcon.think,
+                      _expanded
+                          ? BistreUiIcon.chevronDown
+                          : BistreUiIcon.chevronEnd,
                       size: 12,
-                      color: theme.accentWax,
+                      color: theme.inkMuted,
                     ),
                     const SizedBox(width: 4),
-                  ],
-                  Flexible(
-                    child: InkText(
-                      headerLabel,
-                      role: InkTextRole.captionMeta,
-                      color: _hovered ? theme.inkPrimary : theme.inkSecondary,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    if (widget.isStreaming) ...[
+                      BistreIcon(
+                        BistreUiIcon.think,
+                        size: 12,
+                        color: theme.accentWax,
+                      ),
+                      const SizedBox(width: 4),
+                    ],
+                    Flexible(
+                      child: InkText(
+                        headerLabel,
+                        role: InkTextRole.captionMeta,
+                        color: _hovered ? theme.inkPrimary : theme.inkSecondary,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

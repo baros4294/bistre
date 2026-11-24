@@ -7,6 +7,7 @@ import '../../design/bistre_controls.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
@@ -328,23 +329,31 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
                           onSelected: () => setState(() => _iconSlug = ''),
                         ),
                         for (final entry in LabIconCatalog.all.take(18))
-                          GestureDetector(
-                            onTap: () => setState(() => _iconSlug = entry.slug),
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: _iconSlug == entry.slug
-                                    ? theme.bgSurface
-                                    : theme.bgCanvas,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
+                          PressFeedback(
+                            pressScale: kRowPressScale,
+                            hoverScale: 1,
+                            child: GestureDetector(
+                              onTap: () =>
+                                  setState(() => _iconSlug = entry.slug),
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
                                   color: _iconSlug == entry.slug
-                                      ? theme.accentBrass
-                                      : theme.borderHairline,
+                                      ? theme.bgSurface
+                                      : theme.bgCanvas,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: _iconSlug == entry.slug
+                                        ? theme.accentBrass
+                                        : theme.borderHairline,
+                                  ),
                                 ),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsetsDirectional.all(6),
-                                child: LabIcon(iconSlug: entry.slug, size: 16),
+                                child: Padding(
+                                  padding: const EdgeInsetsDirectional.all(6),
+                                  child: LabIcon(
+                                    iconSlug: entry.slug,
+                                    size: 16,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -552,62 +561,66 @@ class _AssistantListTileState extends State<_AssistantListTile> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: widget.selected
-                ? theme.bgElevated
-                : (_hovered ? theme.hoverTint : null),
-            borderRadius: BorderRadius.circular(10),
-            border: widget.selected
-                ? Border.all(color: theme.borderHairline)
-                : null,
-            boxShadow: widget.selected ? theme.cardShadow : null,
-          ),
-          child: Padding(
-            padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: 10,
-              vertical: 9,
+      child: PressFeedback(
+        pressScale: kRowPressScale,
+        hoverScale: 1,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: widget.selected
+                  ? theme.bgElevated
+                  : (_hovered ? theme.hoverTint : null),
+              borderRadius: BorderRadius.circular(10),
+              border: widget.selected
+                  ? Border.all(color: theme.borderHairline)
+                  : null,
+              boxShadow: widget.selected ? theme.cardShadow : null,
             ),
-            child: Row(
-              children: [
-                if (a.iconSlug.isNotEmpty)
-                  LabIcon(iconSlug: a.iconSlug, size: 17)
-                else
-                  BistreIcon(
-                    BistreUiIcon.assistant,
-                    size: 16,
-                    color: widget.selected
-                        ? theme.accentBrass
-                        : theme.inkSecondary,
-                  ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      InkText(
-                        a.name,
-                        role: widget.selected
-                            ? InkTextRole.labelStrong
-                            : InkTextRole.bodyCompact,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (a.roleSubtitle.isNotEmpty)
+            child: Padding(
+              padding: const EdgeInsetsDirectional.symmetric(
+                horizontal: 10,
+                vertical: 9,
+              ),
+              child: Row(
+                children: [
+                  if (a.iconSlug.isNotEmpty)
+                    LabIcon(iconSlug: a.iconSlug, size: 17)
+                  else
+                    BistreIcon(
+                      BistreUiIcon.assistant,
+                      size: 16,
+                      color: widget.selected
+                          ? theme.accentBrass
+                          : theme.inkSecondary,
+                    ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         InkText(
-                          a.roleSubtitle,
-                          role: InkTextRole.captionMeta,
-                          color: theme.inkMuted,
+                          a.name,
+                          role: widget.selected
+                              ? InkTextRole.labelStrong
+                              : InkTextRole.bodyCompact,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                    ],
+                        if (a.roleSubtitle.isNotEmpty)
+                          InkText(
+                            a.roleSubtitle,
+                            role: InkTextRole.captionMeta,
+                            color: theme.inkMuted,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -643,41 +656,45 @@ class _ProviderBindingOptionState extends State<_ProviderBindingOption> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: widget.selected || _hovered ? theme.hoverTint : null,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Padding(
-            padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: 10,
-              vertical: 7,
+      child: PressFeedback(
+        pressScale: kRowPressScale,
+        hoverScale: 1,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: widget.selected || _hovered ? theme.hoverTint : null,
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: Row(
-              children: [
-                if (widget.leading != null) ...[
-                  widget.leading!,
-                  const SizedBox(width: 8),
+            child: Padding(
+              padding: const EdgeInsetsDirectional.symmetric(
+                horizontal: 10,
+                vertical: 7,
+              ),
+              child: Row(
+                children: [
+                  if (widget.leading != null) ...[
+                    widget.leading!,
+                    const SizedBox(width: 8),
+                  ],
+                  Expanded(
+                    child: InkText(
+                      widget.label,
+                      role: InkTextRole.bodyCompact,
+                      color: widget.selected
+                          ? theme.inkPrimary
+                          : theme.inkSecondary,
+                    ),
+                  ),
+                  if (widget.selected)
+                    BistreIcon(
+                      BistreUiIcon.check,
+                      size: 13,
+                      color: theme.accentBrass,
+                    ),
                 ],
-                Expanded(
-                  child: InkText(
-                    widget.label,
-                    role: InkTextRole.bodyCompact,
-                    color: widget.selected
-                        ? theme.inkPrimary
-                        : theme.inkSecondary,
-                  ),
-                ),
-                if (widget.selected)
-                  BistreIcon(
-                    BistreUiIcon.check,
-                    size: 13,
-                    color: theme.accentBrass,
-                  ),
-              ],
+              ),
             ),
           ),
         ),

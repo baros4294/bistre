@@ -8,6 +8,7 @@ import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/disclosure_reveal.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
@@ -387,39 +388,43 @@ class _MemorySkillsSettingsViewState extends State<MemorySkillsSettingsView> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () => unawaited(_toggleSkill(sk)),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        InkText(
-                                          sk.name,
-                                          role: InkTextRole.labelStrong,
-                                        ),
-                                        if (sk.description.isNotEmpty) ...[
-                                          const SizedBox(height: 2),
+                            PressFeedback(
+                              pressScale: kRowPressScale,
+                              hoverScale: 1,
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => unawaited(_toggleSkill(sk)),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
                                           InkText(
-                                            sk.description,
-                                            role: InkTextRole.captionMeta,
-                                            color: theme.inkSecondary,
+                                            sk.name,
+                                            role: InkTextRole.labelStrong,
                                           ),
+                                          if (sk.description.isNotEmpty) ...[
+                                            const SizedBox(height: 2),
+                                            InkText(
+                                              sk.description,
+                                              role: InkTextRole.captionMeta,
+                                              color: theme.inkSecondary,
+                                            ),
+                                          ],
                                         ],
-                                      ],
+                                      ),
                                     ),
-                                  ),
-                                  BistreIcon(
-                                    _expandedSkillPath == sk.path
-                                        ? BistreUiIcon.chevronUp
-                                        : BistreUiIcon.chevronDown,
-                                    size: 13,
-                                    color: theme.inkMuted,
-                                  ),
-                                ],
+                                    BistreIcon(
+                                      _expandedSkillPath == sk.path
+                                          ? BistreUiIcon.chevronUp
+                                          : BistreUiIcon.chevronDown,
+                                      size: 13,
+                                      color: theme.inkMuted,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                             DisclosureReveal(

@@ -4,6 +4,7 @@ import '../../design/bistre_controls.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
@@ -79,52 +80,56 @@ class _LanguageChoiceRowState extends State<_LanguageChoiceRow> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: ColoredBox(
-          color: widget.selected || _hovered
-              ? theme.hoverTint
-              : theme.bgElevated,
-          child: Padding(
-            padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: BistreSpacing.s16,
-              vertical: 14,
-            ),
-            child: Row(
-              children: [
-                BistreIcon(
-                  BistreUiIcon.globe,
-                  size: 16,
-                  color: widget.selected
-                      ? theme.accentBrass
-                      : theme.inkSecondary,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: InkText(
-                    widget.name,
-                    role: widget.selected
-                        ? InkTextRole.labelStrong
-                        : InkTextRole.bodyCompact,
-                    color: theme.inkPrimary,
-                  ),
-                ),
-                WaxSealBadge(
-                  label: widget.codeBadge,
-                  status: widget.selected
-                      ? WaxSealStatus.ok
-                      : WaxSealStatus.neutral,
-                ),
-                if (widget.selected) ...[
-                  const SizedBox(width: 10),
+      child: PressFeedback(
+        pressScale: kRowPressScale,
+        hoverScale: 1,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: ColoredBox(
+            color: widget.selected || _hovered
+                ? theme.hoverTint
+                : theme.bgElevated,
+            child: Padding(
+              padding: const EdgeInsetsDirectional.symmetric(
+                horizontal: BistreSpacing.s16,
+                vertical: 14,
+              ),
+              child: Row(
+                children: [
                   BistreIcon(
-                    BistreUiIcon.check,
-                    size: 14,
-                    color: theme.accentBrass,
+                    BistreUiIcon.globe,
+                    size: 16,
+                    color: widget.selected
+                        ? theme.accentBrass
+                        : theme.inkSecondary,
                   ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: InkText(
+                      widget.name,
+                      role: widget.selected
+                          ? InkTextRole.labelStrong
+                          : InkTextRole.bodyCompact,
+                      color: theme.inkPrimary,
+                    ),
+                  ),
+                  WaxSealBadge(
+                    label: widget.codeBadge,
+                    status: widget.selected
+                        ? WaxSealStatus.ok
+                        : WaxSealStatus.neutral,
+                  ),
+                  if (widget.selected) ...[
+                    const SizedBox(width: 10),
+                    BistreIcon(
+                      BistreUiIcon.check,
+                      size: 14,
+                      color: theme.accentBrass,
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),

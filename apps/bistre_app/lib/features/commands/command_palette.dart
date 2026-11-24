@@ -7,6 +7,7 @@ import '../../design/bistre_icons.dart';
 import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
@@ -329,97 +330,108 @@ class _CommandPaletteState extends State<CommandPalette> {
                                             onEnter: (_) => setState(
                                               () => _selectedIndex = index,
                                             ),
-                                            child: GestureDetector(
-                                              behavior: HitTestBehavior.opaque,
-                                              onTap: () => _runEntry(entry),
-                                              child: DecoratedBox(
-                                                decoration: BoxDecoration(
-                                                  color: isSelected
-                                                      ? theme.bgSurface
-                                                      : null,
-                                                  borderRadius:
-                                                      BorderRadius.circular(8),
-                                                  border: isSelected
-                                                      ? Border.all(
-                                                          color: theme
-                                                              .borderHairline,
-                                                        )
-                                                      : null,
-                                                ),
-                                                child: Padding(
-                                                  padding:
-                                                      const EdgeInsetsDirectional.symmetric(
-                                                        horizontal: 10,
-                                                        vertical: 7,
-                                                      ),
-                                                  child: Row(
-                                                    children: [
-                                                      if (isSelected)
-                                                        Padding(
-                                                          padding:
-                                                              const EdgeInsetsDirectional.only(
-                                                                end: 8,
-                                                              ),
-                                                          child: SizedBox(
-                                                            width: 2.5,
-                                                            height: 16,
-                                                            child: DecoratedBox(
-                                                              decoration: BoxDecoration(
-                                                                color: theme
-                                                                    .accentBrass,
-                                                                borderRadius:
-                                                                    BorderRadius.circular(
-                                                                      2,
-                                                                    ),
+                                            child: PressFeedback(
+                                              pressScale: kRowPressScale,
+                                              hoverScale: 1,
+                                              child: GestureDetector(
+                                                behavior:
+                                                    HitTestBehavior.opaque,
+                                                onTap: () => _runEntry(entry),
+                                                child: DecoratedBox(
+                                                  decoration: BoxDecoration(
+                                                    color: isSelected
+                                                        ? theme.bgSurface
+                                                        : null,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          8,
+                                                        ),
+                                                    border: isSelected
+                                                        ? Border.all(
+                                                            color: theme
+                                                                .borderHairline,
+                                                          )
+                                                        : null,
+                                                  ),
+                                                  child: Padding(
+                                                    padding:
+                                                        const EdgeInsetsDirectional.symmetric(
+                                                          horizontal: 10,
+                                                          vertical: 7,
+                                                        ),
+                                                    child: Row(
+                                                      children: [
+                                                        if (isSelected)
+                                                          Padding(
+                                                            padding:
+                                                                const EdgeInsetsDirectional.only(
+                                                                  end: 8,
+                                                                ),
+                                                            child: SizedBox(
+                                                              width: 2.5,
+                                                              height: 16,
+                                                              child: DecoratedBox(
+                                                                decoration: BoxDecoration(
+                                                                  color: theme
+                                                                      .accentBrass,
+                                                                  borderRadius:
+                                                                      BorderRadius.circular(
+                                                                        2,
+                                                                      ),
+                                                                ),
                                                               ),
                                                             ),
                                                           ),
+                                                        BistreIcon(
+                                                          entry.icon,
+                                                          size: 14,
+                                                          color: isSelected
+                                                              ? theme
+                                                                    .accentBrass
+                                                              : theme
+                                                                    .inkSecondary,
                                                         ),
-                                                      BistreIcon(
-                                                        entry.icon,
-                                                        size: 14,
-                                                        color: isSelected
-                                                            ? theme.accentBrass
-                                                            : theme
-                                                                  .inkSecondary,
-                                                      ),
-                                                      const SizedBox(width: 10),
-                                                      Expanded(
-                                                        child: InkText(
-                                                          entry.label,
-                                                          role: isSelected
-                                                              ? InkTextRole
-                                                                    .labelStrong
-                                                              : InkTextRole
-                                                                    .bodyCompact,
-                                                          color:
-                                                              theme.inkPrimary,
-                                                          maxLines: 1,
-                                                          overflow: TextOverflow
-                                                              .ellipsis,
-                                                        ),
-                                                      ),
-                                                      if (entry
-                                                          .shortcut
-                                                          .isNotEmpty) ...[
                                                         const SizedBox(
-                                                          width: 8,
+                                                          width: 10,
                                                         ),
-                                                        if (entry.isKeyCombo)
-                                                          _PaletteKeycaps(
-                                                            combo:
-                                                                entry.shortcut,
-                                                          )
-                                                        else
-                                                          InkText(
-                                                            entry.shortcut,
-                                                            role: InkTextRole
-                                                                .captionMeta,
-                                                            color:
-                                                                theme.inkMuted,
+                                                        Expanded(
+                                                          child: InkText(
+                                                            entry.label,
+                                                            role: isSelected
+                                                                ? InkTextRole
+                                                                      .labelStrong
+                                                                : InkTextRole
+                                                                      .bodyCompact,
+                                                            color: theme
+                                                                .inkPrimary,
+                                                            maxLines: 1,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
                                                           ),
+                                                        ),
+                                                        if (entry
+                                                            .shortcut
+                                                            .isNotEmpty) ...[
+                                                          const SizedBox(
+                                                            width: 8,
+                                                          ),
+                                                          if (entry.isKeyCombo)
+                                                            _PaletteKeycaps(
+                                                              combo: entry
+                                                                  .shortcut,
+                                                            )
+                                                          else
+                                                            InkText(
+                                                              entry.shortcut,
+                                                              role: InkTextRole
+                                                                  .captionMeta,
+                                                              color: theme
+                                                                  .inkMuted,
+                                                            ),
+                                                        ],
                                                       ],
-                                                    ],
+                                                    ),
                                                   ),
                                                 ),
                                               ),

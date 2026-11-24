@@ -6,6 +6,7 @@ import '../../bridge/bistre_engine.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
@@ -263,32 +264,36 @@ class _ManuscriptCanvasState extends State<ManuscriptCanvas> {
           )
         else
           for (final ch in ctrl.storyChapters) ...[
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => ctrl.selectChapter(ch.id),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: activeChapter?.id == ch.id
-                      ? theme.bgElevated
-                      : theme.bgSurface.withValues(alpha: 0.0),
-                  borderRadius: BorderRadius.circular(8),
-                  border: activeChapter?.id == ch.id
-                      ? Border.all(color: theme.borderHairline)
-                      : null,
-                ),
-                child: Padding(
-                  padding: const EdgeInsetsDirectional.symmetric(
-                    horizontal: 10,
-                    vertical: 7,
-                  ),
-                  child: InkText(
-                    _chapterNumberLabel(ch.orderIndex, ch.title),
-                    role: InkTextRole.labelStrong,
+            PressFeedback(
+              pressScale: kRowPressScale,
+              hoverScale: 1,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => ctrl.selectChapter(ch.id),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
                     color: activeChapter?.id == ch.id
-                        ? theme.inkPrimary
-                        : theme.inkSecondary,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                        ? theme.bgElevated
+                        : theme.bgSurface.withValues(alpha: 0.0),
+                    borderRadius: BorderRadius.circular(8),
+                    border: activeChapter?.id == ch.id
+                        ? Border.all(color: theme.borderHairline)
+                        : null,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsetsDirectional.symmetric(
+                      horizontal: 10,
+                      vertical: 7,
+                    ),
+                    child: InkText(
+                      _chapterNumberLabel(ch.orderIndex, ch.title),
+                      role: InkTextRole.labelStrong,
+                      color: activeChapter?.id == ch.id
+                          ? theme.inkPrimary
+                          : theme.inkSecondary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
               ),
@@ -301,29 +306,33 @@ class _ManuscriptCanvasState extends State<ManuscriptCanvas> {
                     top: 3,
                     bottom: 2,
                   ),
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => ctrl.selectScene(sc.id),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: activeScene?.id == sc.id
-                            ? theme.accentBrass.withValues(alpha: 0.14)
-                            : theme.bgSurface.withValues(alpha: 0.0),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsetsDirectional.symmetric(
-                          horizontal: 8,
-                          vertical: 5,
-                        ),
-                        child: InkText(
-                          sc.title,
-                          role: InkTextRole.captionMeta,
+                  child: PressFeedback(
+                    pressScale: kRowPressScale,
+                    hoverScale: 1,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => ctrl.selectScene(sc.id),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
                           color: activeScene?.id == sc.id
-                              ? theme.inkPrimary
-                              : theme.inkMuted,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                              ? theme.accentBrass.withValues(alpha: 0.14)
+                              : theme.bgSurface.withValues(alpha: 0.0),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsetsDirectional.symmetric(
+                            horizontal: 8,
+                            vertical: 5,
+                          ),
+                          child: InkText(
+                            sc.title,
+                            role: InkTextRole.captionMeta,
+                            color: activeScene?.id == sc.id
+                                ? theme.inkPrimary
+                                : theme.inkMuted,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ),
                     ),

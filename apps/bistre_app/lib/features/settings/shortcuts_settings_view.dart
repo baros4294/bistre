@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import '../../design/bistre_controls.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
@@ -189,35 +190,39 @@ class _ShortcutRowState extends State<_ShortcutRow> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: ColoredBox(
-          color: widget.recording || _hovered
-              ? theme.hoverTint
-              : theme.bgElevated,
-          child: Padding(
-            padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: BistreSpacing.s16,
-              vertical: 13,
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: InkText(
-                    widget.label,
-                    role: InkTextRole.bodyCompact,
-                    color: theme.inkPrimary,
+      child: PressFeedback(
+        pressScale: kRowPressScale,
+        hoverScale: 1,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: ColoredBox(
+            color: widget.recording || _hovered
+                ? theme.hoverTint
+                : theme.bgElevated,
+            child: Padding(
+              padding: const EdgeInsetsDirectional.symmetric(
+                horizontal: BistreSpacing.s16,
+                vertical: 13,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: InkText(
+                      widget.label,
+                      role: InkTextRole.bodyCompact,
+                      color: theme.inkPrimary,
+                    ),
                   ),
-                ),
-                if (widget.recording)
-                  WaxSealBadge(
-                    label: widget.recordHint,
-                    status: WaxSealStatus.warn,
-                  )
-                else
-                  _KeycapStrip(combo: widget.combo),
-              ],
+                  if (widget.recording)
+                    WaxSealBadge(
+                      label: widget.recordHint,
+                      status: WaxSealStatus.warn,
+                    )
+                  else
+                    _KeycapStrip(combo: widget.combo),
+                ],
+              ),
             ),
           ),
         ),

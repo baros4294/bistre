@@ -4,6 +4,7 @@ import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/disclosure_reveal.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
@@ -204,81 +205,85 @@ class _ToolActivityRowState extends State<_ToolActivityRow> {
             cursor: hasExpandableDetails
                 ? SystemMouseCursors.click
                 : SystemMouseCursors.basic,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: hasExpandableDetails
-                  ? () => setState(() => _expanded = !_expanded)
-                  : null,
-              child: Padding(
-                padding: const EdgeInsetsDirectional.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 7,
-                      height: 7,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: statusColor,
-                          shape: BoxShape.circle,
+            child: PressFeedback(
+              pressScale: kRowPressScale,
+              hoverScale: 1,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: hasExpandableDetails
+                    ? () => setState(() => _expanded = !_expanded)
+                    : null,
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 7,
+                        height: 7,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: statusColor,
+                            shape: BoxShape.circle,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    BistreIcon(
-                      BistreUiIcon.terminal,
-                      size: 13,
-                      color: theme.inkMuted,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: InkText(
-                        entry.summary.isNotEmpty
-                            ? entry.summary
-                            : entry.toolName,
-                        role: InkTextRole.captionMeta,
-                        color: theme.inkPrimary,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (durationBadge.isNotEmpty) ...[
                       const SizedBox(width: 8),
-                      InkText(
-                        durationBadge,
-                        role: InkTextRole.captionMeta,
-                        color: theme.inkMuted,
-                      ),
-                    ],
-                    const SizedBox(width: 8),
-                    InkText(
-                      statusText,
-                      role: InkTextRole.captionMeta,
-                      color: statusColor,
-                    ),
-                    if (entry.checkpointId != null &&
-                        widget.onRewindCheckpoint != null) ...[
-                      const SizedBox(width: 8),
-                      EngravedButton(
-                        label: l10n.t(L10nKey.toolRewind),
-                        compact: true,
-                        onPressed: () =>
-                            widget.onRewindCheckpoint!(entry.checkpointId!),
-                      ),
-                    ],
-                    if (hasExpandableDetails) ...[
-                      const SizedBox(width: 6),
                       BistreIcon(
-                        _expanded
-                            ? BistreUiIcon.chevronUp
-                            : BistreUiIcon.chevronDown,
+                        BistreUiIcon.terminal,
                         size: 13,
                         color: theme.inkMuted,
                       ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: InkText(
+                          entry.summary.isNotEmpty
+                              ? entry.summary
+                              : entry.toolName,
+                          role: InkTextRole.captionMeta,
+                          color: theme.inkPrimary,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (durationBadge.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        InkText(
+                          durationBadge,
+                          role: InkTextRole.captionMeta,
+                          color: theme.inkMuted,
+                        ),
+                      ],
+                      const SizedBox(width: 8),
+                      InkText(
+                        statusText,
+                        role: InkTextRole.captionMeta,
+                        color: statusColor,
+                      ),
+                      if (entry.checkpointId != null &&
+                          widget.onRewindCheckpoint != null) ...[
+                        const SizedBox(width: 8),
+                        EngravedButton(
+                          label: l10n.t(L10nKey.toolRewind),
+                          compact: true,
+                          onPressed: () =>
+                              widget.onRewindCheckpoint!(entry.checkpointId!),
+                        ),
+                      ],
+                      if (hasExpandableDetails) ...[
+                        const SizedBox(width: 6),
+                        BistreIcon(
+                          _expanded
+                              ? BistreUiIcon.chevronUp
+                              : BistreUiIcon.chevronDown,
+                          size: 13,
+                          color: theme.inkMuted,
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),

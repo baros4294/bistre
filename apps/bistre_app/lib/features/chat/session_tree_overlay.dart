@@ -4,6 +4,7 @@ import '../../bridge/bistre_engine.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
@@ -222,66 +223,70 @@ class _TreeNodeRowState extends State<_TreeNodeRow> {
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hovered = true),
         onExit: (_) => setState(() => _hovered = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onSelect,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: _hovered
-                  ? theme.hoverTint
-                  : widget.onActivePath
-                  ? theme.bgSurface.withValues(alpha: 0.72)
-                  : null,
-              borderRadius: BorderRadius.circular(9),
-              border: Border.all(
-                color: widget.onActivePath
-                    ? theme.accentBrass.withValues(alpha: 0.55)
-                    : theme.borderHairline.withValues(alpha: 0.6),
+        child: PressFeedback(
+          pressScale: kRowPressScale,
+          hoverScale: 1,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onSelect,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: _hovered
+                    ? theme.hoverTint
+                    : widget.onActivePath
+                    ? theme.bgSurface.withValues(alpha: 0.72)
+                    : null,
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(
+                  color: widget.onActivePath
+                      ? theme.accentBrass.withValues(alpha: 0.55)
+                      : theme.borderHairline.withValues(alpha: 0.6),
+                ),
               ),
-            ),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.symmetric(
-                horizontal: 10,
-                vertical: 8,
-              ),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 7,
-                    height: 7,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: widget.onActivePath
-                            ? theme.accentBrass
-                            : theme.inkMuted.withValues(alpha: 0.45),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        InkText(
-                          widget.roleLabel,
-                          role: InkTextRole.captionMeta,
+              child: Padding(
+                padding: const EdgeInsetsDirectional.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 7,
+                      height: 7,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
                           color: widget.onActivePath
                               ? theme.accentBrass
-                              : theme.inkMuted,
+                              : theme.inkMuted.withValues(alpha: 0.45),
+                          shape: BoxShape.circle,
                         ),
-                        const SizedBox(height: 2),
-                        InkText(
-                          widget.summary,
-                          role: InkTextRole.bodyCompact,
-                          color: theme.inkPrimary,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          InkText(
+                            widget.roleLabel,
+                            role: InkTextRole.captionMeta,
+                            color: widget.onActivePath
+                                ? theme.accentBrass
+                                : theme.inkMuted,
+                          ),
+                          const SizedBox(height: 2),
+                          InkText(
+                            widget.summary,
+                            role: InkTextRole.bodyCompact,
+                            color: theme.inkPrimary,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
