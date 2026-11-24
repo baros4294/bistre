@@ -118,12 +118,20 @@ class _ContextGaugeRingState extends State<ContextGaugeRing> {
       mainAxisSize: MainAxisSize.min,
       children: [
         RepaintBoundary(
-          child: CustomPaint(
-            size: Size.square(widget.size),
-            painter: _GaugePainter(
-              fraction: fraction,
-              track: theme.borderHairline,
-              fill: ringColor,
+          // The fill eases to a new value (DESIGN §6: counters ease, never snap).
+          child: TweenAnimationBuilder<double>(
+            tween: Tween<double>(end: fraction),
+            duration: BistreMotion.shouldReduceMotion(context)
+                ? Duration.zero
+                : BistreMotion.travelling,
+            curve: Curves.easeOut,
+            builder: (context, value, _) => CustomPaint(
+              size: Size.square(widget.size),
+              painter: _GaugePainter(
+                fraction: value,
+                track: theme.borderHairline,
+                fill: ringColor,
+              ),
             ),
           ),
         ),
