@@ -28,7 +28,12 @@ class ContextGaugeRing extends StatefulWidget {
     this.loadWithDraft,
     this.onShorten,
     this.onOpenPrices,
+    this.showLabel = true,
   });
+
+  /// Narrow windows and large text show only the ring; the numbers stay in its screen-reader
+  /// label and the popover.
+  final bool showLabel;
 
   final EngineContextUsage usage;
   final int? limitTokens;
@@ -122,18 +127,19 @@ class _ContextGaugeRingState extends State<ContextGaugeRing> {
             ),
           ),
         ),
-        const SizedBox(width: 6),
-        InkText(
-          limit == null
-              ? compact(used)
-              : l10n.t(L10nKey.chatContextGaugeShort, <String, Object?>{
-                  'used': compact(used),
-                  'limit': compact(limit),
-                  'percent': (fraction * 100).round(),
-                }),
-          role: InkTextRole.captionMeta,
-          color: _hovered ? theme.inkSecondary : theme.inkMuted,
-        ),
+        if (widget.showLabel) const SizedBox(width: 6),
+        if (widget.showLabel)
+          InkText(
+            limit == null
+                ? compact(used)
+                : l10n.t(L10nKey.chatContextGaugeShort, <String, Object?>{
+                    'used': compact(used),
+                    'limit': compact(limit),
+                    'percent': (fraction * 100).round(),
+                  }),
+            role: InkTextRole.captionMeta,
+            color: _hovered ? theme.inkSecondary : theme.inkMuted,
+          ),
       ],
     );
     return FolioOverlay(
