@@ -10,6 +10,7 @@ import 'package:bistre_app/design/press_feedback.dart';
 import 'package:bistre_app/design/smooth_scroll.dart';
 import 'package:bistre_app/features/chat/code_wrap_scope.dart';
 import 'package:bistre_app/features/chat/content_direction.dart';
+import 'package:bistre_app/features/chat/context_gauge_ring.dart';
 import 'package:bistre_app/features/chat/folio_message_feed.dart';
 import 'package:bistre_app/features/chat/markdown_folio_view.dart';
 import 'package:bistre_app/features/chat/tool_timeline_view.dart';
@@ -22,6 +23,7 @@ import 'package:bistre_app/main.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -462,8 +464,8 @@ void main() {
       final thread = ctrl.activeThread!.id;
       final leaf = ctrl.visibleBranchNodes.last.id;
       final expected = await gw.contextUsage(thread, leaf);
-      expect(expected, greaterThan(0));
-      expect(ctrl.contextUsedTokens.value, expected);
+      expect(expected.totalTokens, greaterThan(0));
+      expect(ctrl.contextUsage.value, expected);
 
       // A different chat asks core again and shows that chat's number.
       final other = ctrl.threads.firstWhere((t) => t.id != thread).id;
@@ -471,8 +473,10 @@ void main() {
       await pumpEventQueue();
       final otherLeaf = ctrl.visibleBranchNodes.lastOrNull?.id;
       expect(
-        ctrl.contextUsedTokens.value,
-        otherLeaf == null ? 0 : await gw.contextUsage(other, otherLeaf),
+        ctrl.contextUsage.value,
+        otherLeaf == null
+            ? EngineContextUsage.empty
+            : await gw.contextUsage(other, otherLeaf),
       );
       ctrl.dispose();
       await gw.shutdown();
@@ -508,6 +512,41 @@ void main() {
     );
     expect(text, findsOneWidget);
     expect(Directionality.of(tester.element(text)), TextDirection.ltr);
+  });
+
+  testWidgets('the context ring opens a breakdown of what fills the chat', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1320, 820);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final (ctrl, gw, l10n) = await boot();
+    await tester.pumpWidget(
+      BistreApp(l10nController: l10n, folioController: ctrl),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(l10n.t(L10nKey.chatContextTitle)), findsNothing);
+    await tester.tap(find.byType(ContextGaugeRing));
+    await tester.pumpAndSettle();
+    expect(find.text(l10n.t(L10nKey.chatContextTitle)), findsOneWidget);
+    expect(find.text(l10n.t(L10nKey.chatContextInstructions)), findsOneWidget);
+    final turns = ctrl.contextUsage.value.historyTurns;
+    expect(
+      find.text(
+        l10n.t(L10nKey.chatContextHistory, <String, Object?>{'count': turns}),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text(l10n.t(L10nKey.chatContextFree)), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.text(l10n.t(L10nKey.chatContextTitle)), findsNothing);
+
+    ctrl.dispose();
+    await gw.shutdown();
   });
 
   testWidgets(

@@ -189,7 +189,13 @@ abstract interface class BistreEngineGateway {
 
   /// Estimated tokens the next request sends for the branch ending at [leafNodeId] (core
   /// applies compaction and the context pin exactly as a run does).
-  Future<int> contextUsage(String threadId, String leafNodeId);
+  /// What the next request sends for the branch ending at [leafNodeId], by category, with
+  /// [draft] as the message about to be sent.
+  Future<EngineContextUsage> contextUsage(
+    String threadId,
+    String leafNodeId, {
+    String draft = '',
+  });
 
   /// Records the user's approval of one exact call; returns a one-use permit id.
   Future<String> approveToolCall({
@@ -797,8 +803,25 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
       frb.modelContextTokens(model: model);
 
   @override
-  Future<int> contextUsage(String threadId, String leafNodeId) =>
-      frb.contextUsage(threadId: threadId, leafNodeId: leafNodeId);
+  Future<EngineContextUsage> contextUsage(
+    String threadId,
+    String leafNodeId, {
+    String draft = '',
+  }) async {
+    final u = await frb.contextUsage(
+      threadId: threadId,
+      leafNodeId: leafNodeId,
+      draft: draft,
+    );
+    return EngineContextUsage(
+      systemTokens: u.systemTokens,
+      storyTokens: u.storyTokens,
+      historyTokens: u.historyTokens,
+      historyTurns: u.historyTurns,
+      draftTokens: u.draftTokens,
+      totalTokens: u.totalTokens,
+    );
+  }
 
   @override
   Future<String> approveToolCall({

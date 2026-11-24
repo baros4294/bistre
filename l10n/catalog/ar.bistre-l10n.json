@@ -3696,6 +3696,86 @@
         }
       }
     },
+    "chat.context_open": {
+      "message": "عرض ما يملأ هذه المحادثة",
+      "context": "Screen-reader hint on the composer context ring; tapping opens the breakdown",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "chat.context_title": {
+      "message": "ما يملأ هذه المحادثة",
+      "context": "Heading of the context breakdown popover",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "chat.context_instructions": {
+      "message": "التعليمات",
+      "context": "Breakdown row: the assistant or chat system prompt",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.context_story": {
+      "message": "ملاحظات القصة والبطاقات",
+      "context": "Breakdown row: Write-mode story notes, character cards, persona, and lore added to the prompt",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.context_history": {
+      "message": "{count, plural, =0{سجل المحادثة} one{سجل المحادثة (رسالة واحدة)} two{سجل المحادثة (رسالتان)} other{سجل المحادثة ({count} رسائل)}}",
+      "context": "Breakdown row: earlier messages resent with the next request",
+      "tone": "concise_action",
+      "max_chars": 48,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "4"
+        }
+      }
+    },
+    "chat.context_draft": {
+      "message": "مسودتك",
+      "context": "Breakdown row: the unsent composer text",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.context_free": {
+      "message": "مساحة متاحة",
+      "context": "Breakdown row: tokens left before the model limit",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.context_tokens": {
+      "message": "{tokens} رمز",
+      "context": "Token count beside a breakdown row",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {
+        "tokens": {
+          "type": "string",
+          "example": "1.2k"
+        }
+      }
+    },
+    "chat.context_estimate_hint": {
+      "message": "تقدير بنحو 4 أحرف لكل رمز، بعد أي اختصار.",
+      "context": "Footnote of the context breakdown popover",
+      "tone": "calm_editorial",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "chat.context_prices": {
+      "message": "الأسعار",
+      "context": "Popover action opening the model prices settings",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
     "chat.code.fold": {
       "message": "طي الشيفرة",
       "context": "Hides the body of a code block",

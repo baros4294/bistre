@@ -909,3 +909,45 @@ class EngineCronJob {
   final String? lastRunId;
   final String lastStatus;
 }
+
+/// What the next request sends for one branch, by category, from core (`context_usage`).
+/// Counts are estimates (about 4 characters per token).
+class EngineContextUsage {
+  const EngineContextUsage({
+    this.systemTokens = 0,
+    this.storyTokens = 0,
+    this.historyTokens = 0,
+    this.historyTurns = 0,
+    this.draftTokens = 0,
+    this.totalTokens = 0,
+  });
+
+  static const EngineContextUsage empty = EngineContextUsage();
+
+  final int systemTokens;
+  final int storyTokens;
+  final int historyTokens;
+  final int historyTurns;
+  final int draftTokens;
+  final int totalTokens;
+
+  @override
+  bool operator ==(Object other) =>
+      other is EngineContextUsage &&
+      other.systemTokens == systemTokens &&
+      other.storyTokens == storyTokens &&
+      other.historyTokens == historyTokens &&
+      other.historyTurns == historyTurns &&
+      other.draftTokens == draftTokens &&
+      other.totalTokens == totalTokens;
+
+  @override
+  int get hashCode => Object.hash(
+    systemTokens,
+    storyTokens,
+    historyTokens,
+    historyTurns,
+    draftTokens,
+    totalTokens,
+  );
+}

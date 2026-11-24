@@ -42,7 +42,7 @@ mod tests;
 
 pub use bistre_crypto::VaultKey;
 use bistre_protocol::lock_or_recover;
-pub use engine_client::EngineClient;
+pub use engine_client::{ContextUsage, EngineClient};
 use engine_runs::{StreamServices, execute_durable_stream_loop, utc_day_start_unix_ms};
 
 use std::collections::HashMap;

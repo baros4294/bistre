@@ -752,18 +752,31 @@ class FakeEngineGateway implements BistreEngineGateway {
   Future<void> refreshPrices() async => refreshPricesCalls++;
 
   @override
-  Future<int> contextUsage(String threadId, String leafNodeId) async {
+  Future<EngineContextUsage> contextUsage(
+    String threadId,
+    String leafNodeId, {
+    String draft = '',
+  }) async {
     // Same estimate as core (~4 characters per token) over the leaf's ancestry.
     final nodes = await listNodes(threadId);
     final byId = <String, EngineNode>{for (final n in nodes) n.id: n};
     var chars = 0;
+    var turns = 0;
     var node = byId[leafNodeId];
     for (var hops = 0; node != null && hops <= nodes.length; hops++) {
       chars += node.content.length;
+      turns++;
       final parent = node.parentId;
       node = parent == null ? null : byId[parent];
     }
-    return (chars + 3) ~/ 4;
+    final history = (chars + 3) ~/ 4;
+    final draftTokens = (draft.trim().length + 3) ~/ 4;
+    return EngineContextUsage(
+      historyTokens: history,
+      historyTurns: turns,
+      draftTokens: draftTokens,
+      totalTokens: history + draftTokens,
+    );
   }
 
   @override

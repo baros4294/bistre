@@ -3696,6 +3696,86 @@
         }
       }
     },
+    "chat.context_open": {
+      "message": "Show what fills this conversation",
+      "context": "Screen-reader hint on the composer context ring; tapping opens the breakdown",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "chat.context_title": {
+      "message": "What fills this conversation",
+      "context": "Heading of the context breakdown popover",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "chat.context_instructions": {
+      "message": "Instructions",
+      "context": "Breakdown row: the assistant or chat system prompt",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.context_story": {
+      "message": "Story notes and cards",
+      "context": "Breakdown row: Write-mode story notes, character cards, persona, and lore added to the prompt",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.context_history": {
+      "message": "{count, plural, =0{Chat history} one{Chat history (1 message)} other{Chat history ({count} messages)}}",
+      "context": "Breakdown row: earlier messages resent with the next request",
+      "tone": "concise_action",
+      "max_chars": 48,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "4"
+        }
+      }
+    },
+    "chat.context_draft": {
+      "message": "Your draft",
+      "context": "Breakdown row: the unsent composer text",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.context_free": {
+      "message": "Free space",
+      "context": "Breakdown row: tokens left before the model limit",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.context_tokens": {
+      "message": "{tokens} tokens",
+      "context": "Token count beside a breakdown row",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {
+        "tokens": {
+          "type": "string",
+          "example": "1.2k"
+        }
+      }
+    },
+    "chat.context_estimate_hint": {
+      "message": "Estimated at about 4 characters per token, after any shortening.",
+      "context": "Footnote of the context breakdown popover",
+      "tone": "calm_editorial",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "chat.context_prices": {
+      "message": "Prices",
+      "context": "Popover action opening the model prices settings",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
     "chat.code.fold": {
       "message": "Fold code",
       "context": "Hides the body of a code block",

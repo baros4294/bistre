@@ -12,6 +12,33 @@ use super::{
     subagents, tools,
 };
 
+/// What the next request for one branch sends, split the way the composer's context breakdown
+/// shows it. Counts are estimates (about 4 characters per token, plus a small frame per turn).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ContextUsage {
+    /// The assistant's or chat's system prompt.
+    pub system_tokens: u64,
+    /// Write mode only: story notes, cards, persona, lore, and chapters added to the prompt.
+    pub story_tokens: u64,
+    /// The turns the request resends (after any compaction or context pin).
+    pub history_tokens: u64,
+    /// How many turns that is.
+    pub history_turns: u32,
+    /// The unsent composer draft.
+    pub draft_tokens: u64,
+}
+
+impl ContextUsage {
+    /// Everything the next request would send, draft included.
+    #[must_use]
+    pub fn total(&self) -> u64 {
+        self.system_tokens
+            .saturating_add(self.story_tokens)
+            .saturating_add(self.history_tokens)
+            .saturating_add(self.draft_tokens)
+    }
+}
+
 /// Unified engine boundary implemented by:
 /// - `InProcessEngine` (Android embedded & desktop direct mode)
 /// - `LocalIpcEngine` (Desktop UDS/Named Pipe to `bistre-daemon`)
@@ -195,12 +222,14 @@ pub trait EngineClient: Send + Sync {
     fn latest_event_cursor(&self) -> BoxFuture<'_, BistreResult<u64>>;
     /// The model's conversation limit in tokens, from the cached public model lists.
     fn model_context_tokens(&self, model: String) -> BoxFuture<'_, BistreResult<Option<u32>>>;
-    /// Estimated tokens the next request sends for the branch ending at `leaf_node_id`.
+    /// What the next request sends for the branch ending at `leaf_node_id`, by category,
+    /// counting `draft` as the message about to be sent.
     fn context_usage(
         &self,
         thread_id: String,
         leaf_node_id: String,
-    ) -> BoxFuture<'_, BistreResult<u64>>;
+        draft: String,
+    ) -> BoxFuture<'_, BistreResult<ContextUsage>>;
     /// Starts a public price-list refresh now (the user's "Update prices now").
     fn refresh_prices(&self) -> BoxFuture<'_, BistreResult<()>>;
     /// Records the user's approval of one exact tool call; returns a one-use permit id.

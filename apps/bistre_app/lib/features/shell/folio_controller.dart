@@ -156,9 +156,10 @@ class FolioController extends ChangeNotifier {
     super.notifyListeners();
   }
 
-  /// Estimated tokens the next request sends for the visible branch, from core. Only the
-  /// composer's gauge listens.
-  final ValueNotifier<int> contextUsedTokens = ValueNotifier<int>(0);
+  /// What the next request sends for the visible branch, by category, from core. Only the
+  /// composer's context ring listens.
+  final ValueNotifier<EngineContextUsage> contextUsage =
+      ValueNotifier<EngineContextUsage>(EngineContextUsage.empty);
   String? _contextUsageKey;
   int _contextUsageSeq = 0;
 
@@ -172,16 +173,16 @@ class FolioController extends ChangeNotifier {
     _contextUsageKey = key;
     final seq = ++_contextUsageSeq;
     if (thread == null || leaf == null) {
-      contextUsedTokens.value = 0;
+      contextUsage.value = EngineContextUsage.empty;
       return;
     }
     unawaited(
       _gateway
           .contextUsage(thread, leaf)
           .then(
-            (tokens) {
+            (usage) {
               if (seq != _contextUsageSeq || _disposed) return;
-              contextUsedTokens.value = tokens;
+              contextUsage.value = usage;
             },
             onError: (Object e) {
               if (seq != _contextUsageSeq || _disposed) return;
@@ -1484,7 +1485,7 @@ class FolioController extends ChangeNotifier {
     toast.dispose();
     search.dispose();
     sidebarFilterQuery.dispose();
-    contextUsedTokens.dispose();
+    contextUsage.dispose();
     draftSavedState.dispose();
     // The user deleted these chats; closing the app inside the Undo window must not bring
     // them back.

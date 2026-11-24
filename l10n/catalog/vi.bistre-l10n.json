@@ -3696,6 +3696,86 @@
         }
       }
     },
+    "chat.context_open": {
+      "message": "Xem những gì chiếm chỗ trong cuộc trò chuyện",
+      "context": "Screen-reader hint on the composer context ring; tapping opens the breakdown",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "chat.context_title": {
+      "message": "Những gì chiếm chỗ trong cuộc trò chuyện",
+      "context": "Heading of the context breakdown popover",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "chat.context_instructions": {
+      "message": "Chỉ dẫn",
+      "context": "Breakdown row: the assistant or chat system prompt",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.context_story": {
+      "message": "Ghi chú truyện và thẻ nhân vật",
+      "context": "Breakdown row: Write-mode story notes, character cards, persona, and lore added to the prompt",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.context_history": {
+      "message": "{count, plural, =0{Lịch sử trò chuyện} other{Lịch sử trò chuyện ({count} tin nhắn)}}",
+      "context": "Breakdown row: earlier messages resent with the next request",
+      "tone": "concise_action",
+      "max_chars": 48,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "4"
+        }
+      }
+    },
+    "chat.context_draft": {
+      "message": "Bản nháp của bạn",
+      "context": "Breakdown row: the unsent composer text",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.context_free": {
+      "message": "Còn trống",
+      "context": "Breakdown row: tokens left before the model limit",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.context_tokens": {
+      "message": "{tokens} token",
+      "context": "Token count beside a breakdown row",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {
+        "tokens": {
+          "type": "string",
+          "example": "1.2k"
+        }
+      }
+    },
+    "chat.context_estimate_hint": {
+      "message": "Ước tính khoảng 4 ký tự cho mỗi token, sau khi đã rút gọn.",
+      "context": "Footnote of the context breakdown popover",
+      "tone": "calm_editorial",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "chat.context_prices": {
+      "message": "Giá",
+      "context": "Popover action opening the model prices settings",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
     "chat.code.fold": {
       "message": "Thu gọn mã",
       "context": "Hides the body of a code block",
