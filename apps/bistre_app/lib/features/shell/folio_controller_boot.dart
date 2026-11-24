@@ -56,7 +56,10 @@ extension FolioBootActions on FolioController {
       // Fire-and-forget: platform probes must never block startup.
       unawaited(
         detectLowMemoryHost().then((low) {
-          if (low && !_disposed) setLowMemoryMode(true);
+          if (low && !_disposed) {
+            setLowMemoryMode(true);
+            unawaited(configureGpuResourceCacheCap(lowMemory: true));
+          }
         }),
       );
       _settings = await _gateway.loadSettings();
