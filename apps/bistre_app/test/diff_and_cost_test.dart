@@ -72,7 +72,7 @@ void main() {
       ),
     );
     await tester.tap(find.textContaining('edit lib.rs'));
-    await tester.pump();
+    await tester.pumpAndSettle(); // the details disclosure grows open
   }
 
   testWidgets('wide layouts offer the Split diff toggle', (tester) async {

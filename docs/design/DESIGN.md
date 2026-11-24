@@ -96,7 +96,7 @@ Owner decisions (2026-11-24): Bistre should feel at least as alive as Parchment 
   - press scales to **0.96** (spring damping 0.78, stiffness 680);
   - hover scales to **1.012** and lifts **0.75 dp** (spring, no bounce, stiffness 560);
   - the focus ring shows for keyboard focus only, never after a pointer press.
-- **Disclosures animate their height** (Thinking, the context breakdown, the tools drawer, code fold, settings sections, inspector panels): the size eases on a critically damped spring while the content fades in over `arriving` and out over `leaving`. Fast input interrupts it cleanly.
+- **Disclosures animate their height** (Thinking, the context breakdown, the tools drawer, code fold, settings sections, inspector panels): the size eases on a critically damped spring (stiffness 420) while the content fades with it. Fast input reverses it from the current height and speed. Every disclosure uses `DisclosureReveal` (`lib/design/disclosure_reveal.dart`), the only sanctioned height animation; today it runs Thinking, tool-step details, code fold, prompt-inspector blocks, and skill bodies.
 - **Overlays and pills**:
   - modals, menus, and popovers fade and rise in over `arriving`, and leave over `leaving`. That is quicker than `v2.6.0`'s 250 ms, but never an abrupt snap.
   - Floating pills (toasts, Jump to latest) pop in from half their height, scale 0.90 to 1 and fade, on a brisk spring (stiffness 580).

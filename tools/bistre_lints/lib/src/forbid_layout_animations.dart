@@ -5,13 +5,13 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/error/error.dart';
 
-/// Mechanically enforces ADR-0011 / DESIGN.md Section 6:
-/// Animate `transform` and `opacity` only; never animate layout properties.
+/// Mechanically enforces DESIGN.md Section 6: animate `transform` and `opacity`; the only height
+/// animation is a disclosure, and it goes through `DisclosureReveal` (`lib/design/disclosure_reveal.dart`).
 class ForbidLayoutAnimationsRule extends AnalysisRule {
   static const LintCode code = LintCode(
     'bistre_forbid_layout_animations',
     'Implicit layout-mutating animation widget is forbidden in Bistre.',
-    correctionMessage: 'Use instant state transitions (0ms for frequent actions) or animate transform/opacity only honoring BistreMotion.overlayDuration(context).',
+    correctionMessage: 'Animate transform/opacity honoring BistreMotion, or use DisclosureReveal for a disclosure height.',
     severity: DiagnosticSeverity.ERROR,
   );
 
