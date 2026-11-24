@@ -140,7 +140,8 @@ async fn end_to_end_agentic_tool_loop_reads_file_and_handles_approval_deny()
         }
     });
 
-    let engine = crate::InProcessEngine::open(dir.path(), None)?;
+    let engine =
+        crate::InProcessEngine::open(dir.path(), Some(bistre_crypto::VaultKey::generate()?))?;
     engine
         .set_kv_meta(
             "agent.workspace_root".to_owned(),
