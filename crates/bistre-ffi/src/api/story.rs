@@ -129,7 +129,7 @@ pub async fn list_story_progressions_json(entry_id: Option<String>) -> Result<St
     serde_json::to_string(&items).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
-/// Adds a Novelcrafter-style Chronological Progression from JSON.
+/// Adds a chronological progression to a Story Bible entry from JSON.
 #[frb]
 pub async fn add_story_progression_json(prog_json: String) -> Result<String, String> {
     let engine = current_engine()?;

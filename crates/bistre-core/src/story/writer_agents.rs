@@ -1,4 +1,4 @@
-//! Writing & Roleplay Helper Agents and Turn Routers (Wave E):
+//! Writing & Roleplay Helper Agents and Turn Routers:
 //! - Two-Phase Prewriter (clarifying writing brief before prose)
 //! - Background Continuity Librarian (editable Era Summaries + contradiction audit, Wallet Shield aware)
 //! - Group Scene Turn Router (`natural` | `round_robin` | `manual`)

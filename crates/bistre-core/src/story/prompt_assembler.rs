@@ -1,4 +1,4 @@
-//! Cache-Preserving Visual Story Prompt Assembler & Live Prompt Inspector Report (Wave E).
+//! Cache-Preserving Visual Story Prompt Assembler & Live Prompt Inspector Report.
 //!
 //! Strictly enforces a **Prompt-Cache Prefix Boundary**:
 //! - Static Cached Prefix (`is_static_prefix = true`): System Prompt + Active Character Card(s) +

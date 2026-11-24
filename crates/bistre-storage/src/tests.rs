@@ -44,7 +44,7 @@ fn dag_branching_draft_persistence_fts5_latency_and_checkpoint() -> TestResult {
             thread.id.clone(),
             Some(alpha_head.clone()),
             NodeRole::Assistant,
-            format!("Branch alpha Vietnamese tiếng Việt entry #{idx} parchment folio"),
+            format!("Branch alpha Vietnamese tiếng Việt entry #{idx} sepia note"),
             None,
         )?;
         {
@@ -143,7 +143,7 @@ fn v1_expand_migration_pinning_assistants_settings_and_delete_cascade() -> TestR
     // Round-trip settings in kv_meta including Unlimited spending (None) & continuous typography.
     let saved = Some(storage.save_settings(AppSettings {
         theme: "night".to_owned(),
-        trust_preset: TrustPreset::Parchment,
+        trust_preset: TrustPreset::Strict,
         wallet_daily_ceiling_micros: None,
         font_size_px: 18,
         prose_font_family: "Georgia".to_owned(),
@@ -154,8 +154,11 @@ fn v1_expand_migration_pinning_assistants_settings_and_delete_cascade() -> TestR
     assert_eq!(loaded.as_ref().map(|s| s.theme.as_str()), Some("night"));
     assert_eq!(
         loaded.as_ref().map(|s| s.trust_preset),
-        Some(TrustPreset::Parchment)
+        Some(TrustPreset::Strict)
     );
+    assert_eq!(TrustPreset::parse("parchment"), TrustPreset::Strict);
+    assert_eq!(TrustPreset::parse("parchment_safe"), TrustPreset::Strict);
+    assert_eq!(TrustPreset::parse("off"), TrustPreset::Off);
     assert_eq!(
         loaded.as_ref().and_then(|s| s.wallet_daily_ceiling_micros),
         None
@@ -495,5 +498,59 @@ fn schema_v7_story_bible_progressions_manuscript_and_time_machine() -> TestResul
         })?,
     );
     assert_eq!(scene.map(|s| s.word_count), Some(5));
+    Ok(())
+}
+
+#[test]
+fn schema_v9_perf_indexes_eliminate_temp_sorts_and_ledger_scans() -> TestResult {
+    let dir = tempdir()?;
+    let db_path = dir.path().join("v9_plan.sqlite");
+    let storage = StorageHandle::open(&db_path)?;
+    assert_eq!(storage.health()?.schema_version, CURRENT_SCHEMA_VERSION);
+
+    let conn = Connection::open(&db_path)?;
+    let explain = |sql: &str| -> Result<String, rusqlite::Error> {
+        let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}"))?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(3))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows.join(" | "))
+    };
+
+    let nodes_plan = explain("SELECT id FROM nodes WHERE thread_id = 't1' ORDER BY rowid ASC")?;
+    assert!(
+        nodes_plan.contains("idx_nodes_thread_rowid"),
+        "expected idx_nodes_thread_rowid in plan, got: {nodes_plan}"
+    );
+    assert!(
+        !nodes_plan.contains("TEMP B-TREE"),
+        "unexpected temp B-tree sort in nodes plan: {nodes_plan}"
+    );
+
+    let threads_plan = explain(
+        "SELECT id FROM threads WHERE workspace_id = 'w1' ORDER BY is_pinned DESC, updated_at_ms DESC",
+    )?;
+    assert!(
+        threads_plan.contains("idx_threads_ws_pinned_updated"),
+        "expected idx_threads_ws_pinned_updated in plan, got: {threads_plan}"
+    );
+    assert!(
+        !threads_plan.contains("TEMP B-TREE"),
+        "unexpected temp B-tree sort in threads plan: {threads_plan}"
+    );
+
+    let job_plan = explain(
+        "SELECT COUNT(*) FROM wallet_ledger WHERE job_id = 'req-1' AND status != 'reserved'",
+    )?;
+    assert!(
+        job_plan.contains("idx_wallet_ledger_job"),
+        "expected idx_wallet_ledger_job in plan, got: {job_plan}"
+    );
+
+    let reserved_plan = explain("DELETE FROM wallet_ledger WHERE status = 'reserved'")?;
+    assert!(
+        reserved_plan.contains("idx_wallet_ledger_reserved"),
+        "expected idx_wallet_ledger_reserved in plan, got: {reserved_plan}"
+    );
     Ok(())
 }

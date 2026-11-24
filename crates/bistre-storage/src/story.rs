@@ -1,4 +1,4 @@
-//! Schema v7 Expand-Contract tables and CRUD for Bistre's Writing & Roleplay Studio (Wave E).
+//! Schema v7 Expand-Contract tables and CRUD for Bistre's Writing & Roleplay Studio.
 //!
 //! Strictly additive migration (`v6_to_v7`) so N-1 binaries remain safely readable.
 
@@ -434,7 +434,7 @@ impl StorageHandle {
         })
     }
 
-    /// Adds a Novelcrafter-style Chronological Progression to a Story Bible entry.
+    /// Adds a chronological progression to a Story Bible entry.
     pub fn add_story_progression(
         &self,
         mut prog: StoryProgressionRecord,

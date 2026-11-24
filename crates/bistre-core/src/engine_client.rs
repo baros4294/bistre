@@ -8,8 +8,8 @@ use super::{
     SignedPackManifest, SteeringMessage, StorageStats, StoryChapterRecord, StoryEntryRecord,
     StoryProgressionRecord, StorySceneRecord, StorySnapshotRecord, StoryThreadStateRecord,
     SystemPowerEvent, ThreadMode, ThreadPatch, ThreadSummary, UpdateCheckResult, UserPersonaRecord,
-    WorkspaceCheckpointRecord, WorkspaceSummary, broadcast, hooks, mcp, providers, skills, story,
-    subagents, tools,
+    WorkspaceCheckpointRecord, WorkspaceSummary, broadcast, hooks, mcp, skills, story, subagents,
+    tools,
 };
 
 /// What the next request for one branch sends, split the way the composer's context breakdown
@@ -279,9 +279,6 @@ pub trait EngineClient: Send + Sync {
         &self,
         thread_id: String,
     ) -> BoxFuture<'_, BistreResult<Option<String>>>;
-    fn discover_local_servers(
-        &self,
-    ) -> BoxFuture<'_, BistreResult<Vec<providers::LocalServerDiscovery>>>;
     fn discover_mcp_server(
         &self,
         server: mcp::McpServerConfig,

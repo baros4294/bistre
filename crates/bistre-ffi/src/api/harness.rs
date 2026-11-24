@@ -139,17 +139,6 @@ pub async fn get_context_start_pin(thread_id: String) -> Result<Option<String>, 
         .map_err(crate::dto_mapping::ffi_err)
 }
 
-/// Probes loopback Ollama, LM Studio, llama.cpp, and KoboldCPP servers (`$0` local priority).
-#[frb]
-pub async fn discover_local_servers_json() -> Result<String, String> {
-    let engine = current_engine()?;
-    let found = engine
-        .discover_local_servers()
-        .await
-        .map_err(crate::dto_mapping::ffi_err)?;
-    serde_json::to_string(&found).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
-}
-
 /// Discovers tools from a Streamable HTTP MCP server (`2026-07-28` primary -> `2025-11-25` fallback).
 #[frb]
 pub async fn discover_mcp_server_json(server_config_json: String) -> Result<String, String> {

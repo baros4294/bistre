@@ -416,7 +416,7 @@ async fn stop_interrupts_a_request_waiting_for_its_first_token()
     Ok(())
 }
 
-/// Parchment `c7f9ca55`/`39fdc2e4`/`83592e4f`: opaque reasoning signatures replayed to another
+/// Opaque reasoning signatures replayed to another provider or wire format must be stripped
 /// provider or step caused HTTP 400s. Bistre replays text only; this pins that down for every
 /// dialect, including a reply produced by a different provider.
 #[test]

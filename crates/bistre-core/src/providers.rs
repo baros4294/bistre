@@ -43,15 +43,6 @@ pub struct StreamOutcome {
     pub notices: Vec<(DiagnosticKey, String)>,
 }
 
-/// Discovered local loopback inference server (`$0` priority, Spec 03).
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct LocalServerDiscovery {
-    pub kind: String,
-    pub name: String,
-    pub base_url: String,
-    pub models: Vec<String>,
-}
-
 /// Exact integer micro-USD cost from live registry rates (zero floats, zero hardcoded rates).
 /// Loopback inference is free; an unpriced model is `None` (unknown, never guessed).
 pub fn estimate_cost_micros(
@@ -285,11 +276,21 @@ where
 struct StreamState {
     out: StreamOutcome,
     text_norm: StreamingTextBuffer,
+    started_at: Option<std::time::Instant>,
     thinking_started: Option<std::time::Instant>,
     terminal_seen: bool,
 }
 
 impl StreamState {
+    fn mark_first_token(&mut self) {
+        if self.out.usage.first_token_ms == 0
+            && let Some(t0) = self.started_at
+        {
+            self.out.usage.first_token_ms =
+                u64::try_from(t0.elapsed().as_millis()).unwrap_or(u64::MAX);
+        }
+    }
+
     fn handle_payload<F, T>(
         &mut self,
         dialect: ProviderDialect,
@@ -310,6 +311,7 @@ impl StreamState {
         if let Some(thought) = extract_sse_thinking_delta(dialect, payload)
             && !thought.is_empty()
         {
+            self.mark_first_token();
             let start = *self
                 .thinking_started
                 .get_or_insert_with(std::time::Instant::now);
@@ -320,6 +322,7 @@ impl StreamState {
         if let Some(delta) = extract_sse_delta(dialect, payload) {
             let clean = self.text_norm.push(&delta);
             if !clean.is_empty() {
+                self.mark_first_token();
                 self.out.full_text.push_str(&clean);
                 on_delta(&clean);
             }
@@ -371,7 +374,10 @@ where
         gen_params,
         store_server_state,
     );
-    let mut state = StreamState::default();
+    let mut state = StreamState {
+        started_at: Some(std::time::Instant::now()),
+        ..StreamState::default()
+    };
     // Stop must take effect while connecting and while waiting for the first token, not only
     // between chunks (the first-token budget is 300 s).
     let dispatched = tokio::select! {
@@ -469,63 +475,6 @@ pub async fn until_cancelled(flag: &AtomicBool) {
     while !flag.load(Ordering::SeqCst) {
         tokio::time::sleep(CANCEL_POLL_INTERVAL).await;
     }
-}
-
-/// Probes common local inference servers (Ollama, LM Studio, `llama.cpp`, `KoboldCPP`) on loopback (`$0` priority).
-pub async fn discover_local_servers() -> Vec<LocalServerDiscovery> {
-    let Ok(fast_http) = crate::http_clients::loopback_client(
-        Duration::from_millis(350),
-        Duration::from_millis(800),
-    ) else {
-        return Vec::new();
-    };
-
-    let targets: [(&str, &str, &str, &str); 4] = [
-        (
-            "ollama",
-            "Ollama (Local)",
-            "http://127.0.0.1:11434/v1",
-            "http://127.0.0.1:11434/api/tags",
-        ),
-        (
-            "lmstudio",
-            "LM Studio (Local)",
-            "http://127.0.0.1:1234/v1",
-            "http://127.0.0.1:1234/v1/models",
-        ),
-        (
-            "llamacpp",
-            "llama.cpp (Local)",
-            "http://127.0.0.1:8080/v1",
-            "http://127.0.0.1:8080/v1/models",
-        ),
-        (
-            "koboldcpp",
-            "KoboldCPP (Local)",
-            "http://127.0.0.1:5001/v1",
-            "http://127.0.0.1:5001/v1/models",
-        ),
-    ];
-
-    let mut found = Vec::new();
-    for (kind, name, base_url, probe_url) in targets {
-        if let Ok(resp) = fast_http.get(probe_url).send().await
-            && resp.status().is_success()
-            && let Ok(body) = resp.json::<Value>().await
-        {
-            let models = parse_models_payload(ProviderDialect::CustomOpenAi, &body)
-                .into_iter()
-                .map(|m| m.id)
-                .collect();
-            found.push(LocalServerDiscovery {
-                kind: kind.to_owned(),
-                name: name.to_owned(),
-                base_url: base_url.to_owned(),
-                models,
-            });
-        }
-    }
-    found
 }
 
 fn milli_to_json_number(milli: u32) -> Value {
@@ -1101,6 +1050,21 @@ fn extract_openai_chat_reasoning_delta(val: &Value) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+fn merge_anthropic_usage_block(u: &Value, usage: &mut UsageMetrics) {
+    if let Some(v) = u.get("input_tokens").and_then(Value::as_u64) {
+        usage.input_tokens = v;
+    }
+    if let Some(v) = u.get("output_tokens").and_then(Value::as_u64) {
+        usage.output_tokens = v;
+    }
+    if let Some(v) = u.get("cache_read_input_tokens").and_then(Value::as_u64) {
+        usage.cached_input_tokens = v;
+    }
+    if let Some(v) = u.get("cache_creation_input_tokens").and_then(Value::as_u64) {
+        usage.cache_creation_input_tokens = v;
+    }
+}
+
 /// Extracts exact integer token counts from SSE lifecycle frames across all 4 supported dialects.
 pub fn merge_sse_usage(dialect: ProviderDialect, json_str: &str, usage: &mut UsageMetrics) {
     let Ok(val) = serde_json::from_str::<Value>(json_str) else {
@@ -1135,24 +1099,22 @@ pub fn merge_sse_usage(dialect: ProviderDialect, json_str: &str, usage: &mut Usa
                 {
                     usage.cached_input_tokens = v;
                 }
+                if let Some(v) = u
+                    .get("output_tokens_details")
+                    .or_else(|| u.get("completion_tokens_details"))
+                    .and_then(|d| d.get("reasoning_tokens"))
+                    .and_then(Value::as_u64)
+                {
+                    usage.reasoning_tokens = v;
+                }
             }
         }
         ProviderDialect::Anthropic => {
             if let Some(u) = val.get("message").and_then(|m| m.get("usage")) {
-                if let Some(v) = u.get("input_tokens").and_then(Value::as_u64) {
-                    usage.input_tokens = v;
-                }
-                if let Some(v) = u.get("cache_read_input_tokens").and_then(Value::as_u64) {
-                    usage.cached_input_tokens = v;
-                }
+                merge_anthropic_usage_block(u, usage);
             }
             if let Some(u) = val.get("usage") {
-                if let Some(v) = u.get("input_tokens").and_then(Value::as_u64) {
-                    usage.input_tokens = v;
-                }
-                if let Some(v) = u.get("output_tokens").and_then(Value::as_u64) {
-                    usage.output_tokens = v;
-                }
+                merge_anthropic_usage_block(u, usage);
             }
         }
         ProviderDialect::GoogleGemini => {
@@ -1186,6 +1148,13 @@ pub fn merge_sse_usage(dialect: ProviderDialect, json_str: &str, usage: &mut Usa
                     .and_then(Value::as_u64)
                 {
                     usage.cached_input_tokens = v;
+                }
+                if let Some(v) = u
+                    .get("thoughtsTokenCount")
+                    .or_else(|| u.get("total_thought_tokens"))
+                    .and_then(Value::as_u64)
+                {
+                    usage.reasoning_tokens = v;
                 }
             }
         }

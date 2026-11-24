@@ -503,3 +503,67 @@ async fn non_read_only_tools_require_an_exact_user_approval() -> BistreResult<()
     );
     engine.shutdown().await
 }
+
+#[tokio::test]
+async fn trust_preset_off_denies_all_tools_and_strict_requires_permit_for_reads() -> BistreResult<()>
+{
+    let tmp = tempdir().map_err(|_| BistreError::new(DiagnosticKey::InternalError))?;
+    let ws = tmp.path().join("ws");
+    std::fs::create_dir_all(&ws).map_err(|_| BistreError::new(DiagnosticKey::InternalError))?;
+    std::fs::write(ws.join("note.txt"), "hello\n")
+        .map_err(|_| BistreError::new(DiagnosticKey::InternalError))?;
+
+    let engine = InProcessEngine::open(tmp.path(), Some(VaultKey::generate()?))?;
+    let root = ws.to_string_lossy().into_owned();
+    let read_args = r#"{"path":"note.txt"}"#.to_owned();
+
+    // Off preset fails closed on both approval and execution.
+    let mut settings = engine.load_settings().await?;
+    settings.trust_preset = bistre_protocol::TrustPreset::Off;
+    engine.save_settings(settings.clone()).await?;
+    let blocked_approve = engine
+        .approve_tool_call("t".into(), "read".into(), read_args.clone())
+        .await;
+    assert_eq!(
+        blocked_approve.err().map(|e| e.key),
+        Some(DiagnosticKey::ToolTierBlocked)
+    );
+    let blocked_exec = engine
+        .execute_workspace_tool(
+            root.clone(),
+            "t".into(),
+            "read".into(),
+            read_args.clone(),
+            None,
+        )
+        .await;
+    assert_eq!(
+        blocked_exec.err().map(|e| e.key),
+        Some(DiagnosticKey::ToolTierBlocked)
+    );
+
+    // Strict preset requires explicit permit even for Tier-0 read.
+    settings.trust_preset = bistre_protocol::TrustPreset::Strict;
+    engine.save_settings(settings).await?;
+    let needs_permit = engine
+        .execute_workspace_tool(
+            root.clone(),
+            "t".into(),
+            "read".into(),
+            read_args.clone(),
+            None,
+        )
+        .await;
+    assert_eq!(
+        needs_permit.err().map(|e| e.key),
+        Some(DiagnosticKey::ToolApprovalRequired)
+    );
+    let permit = engine
+        .approve_tool_call("t".into(), "read".into(), read_args.clone())
+        .await?;
+    let allowed = engine
+        .execute_workspace_tool(root, "t".into(), "read".into(), read_args, Some(permit))
+        .await?;
+    assert!(allowed.output_text.contains("hello"));
+    engine.shutdown().await
+}
