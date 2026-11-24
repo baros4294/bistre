@@ -36,7 +36,7 @@ class FolioComposer extends StatefulWidget {
 
 class _FolioComposerState extends State<FolioComposer> {
   final TextEditingController _textController = TextEditingController();
-  final OverlayPortalController _assistantMenuCtrl = OverlayPortalController();
+  final FolioOverlayController _assistantMenuCtrl = FolioOverlayController();
   final LayerLink _assistantLink = LayerLink();
   int _syncedDraftEpoch = -1;
   bool _focused = false;

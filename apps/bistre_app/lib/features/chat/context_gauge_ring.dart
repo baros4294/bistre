@@ -48,7 +48,7 @@ class ContextGaugeRing extends StatefulWidget {
 }
 
 class _ContextGaugeRingState extends State<ContextGaugeRing> {
-  final OverlayPortalController _popover = OverlayPortalController();
+  final FolioOverlayController _popover = FolioOverlayController();
   final LayerLink _link = LayerLink();
   EngineContextUsage? _withDraft;
   int _loadSeq = 0;

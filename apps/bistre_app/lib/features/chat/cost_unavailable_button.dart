@@ -20,7 +20,7 @@ class CostUnavailableButton extends StatefulWidget {
 }
 
 class _CostUnavailableButtonState extends State<CostUnavailableButton> {
-  final OverlayPortalController _popover = OverlayPortalController();
+  final FolioOverlayController _popover = FolioOverlayController();
   final LayerLink _link = LayerLink();
 
   @override

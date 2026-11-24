@@ -541,7 +541,10 @@ void main() {
     );
     expect(find.text(l10n.t(L10nKey.chatContextFree)), findsOneWidget);
 
+    // Escape fades the popover out (DESIGN §6) before removing it.
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump(const Duration(milliseconds: 40));
+    expect(find.text(l10n.t(L10nKey.chatContextTitle)), findsOneWidget);
     await tester.pumpAndSettle();
     expect(find.text(l10n.t(L10nKey.chatContextTitle)), findsNothing);
 

@@ -46,7 +46,7 @@ class ThinkingControl extends StatefulWidget {
 }
 
 class _ThinkingControlState extends State<ThinkingControl> {
-  final OverlayPortalController _popover = OverlayPortalController();
+  final FolioOverlayController _popover = FolioOverlayController();
   final LayerLink _link = LayerLink();
 
   @override
