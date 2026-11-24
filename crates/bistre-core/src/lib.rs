@@ -30,6 +30,7 @@ pub mod sse;
 pub mod ssrf;
 pub mod story;
 pub mod subagents;
+pub mod tokenizer;
 pub mod tools;
 pub mod vault_key;
 pub mod wallet;

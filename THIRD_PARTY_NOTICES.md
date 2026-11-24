@@ -11,3 +11,9 @@ All three faces are distributed as OFL-compliant subsets (glyph coverage in `doc
 
 ## Pre-Compiled AI Lab Vector Icons (MIT License)
 - **Lobe Icons (`@lobehub/icons-static-svg` v1.104.0)** — Copyright © LobeHub. Licensed under the MIT License. Compiled offline to binary `.vec` assets under `apps/bistre_app/assets/icons/labs/`. Brand trademarks belong to their respective owners.
+
+## Embedded Offline BPE Tokenizer Vocabularies (MIT / Apache-2.0)
+- **tiktoken (`tiktoken` v5.1.1)** — Pure-Rust BPE tokenizer engine (MIT OR Apache-2.0) with `ruzstd` (MIT).
+- **OpenAI Vocabularies (`tiktoken-vocab-openai` v1.0.0)** — `o200k_base`, `o200k_harmony`, and `cl100k_base` (MIT).
+- **Alibaba Qwen Vocabularies (`tiktoken-vocab-qwen` v1.0.0)** — `qwen2` and `qwen3_5` (Apache-2.0).
+- **Zhipu GLM Vocabularies (`tiktoken-vocab-zhipu` v1.0.0)** — `glm4` and `glm5` (MIT).

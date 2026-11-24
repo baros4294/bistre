@@ -196,14 +196,15 @@ void main() {
       isTrue,
     );
 
-    // Core's conversation-limit estimate for the branch (the gauge's number).
+    // Core's offline BPE token count for the branch (the gauge's number).
+    // "a draft of about forty characters long.." = 8 exact o200k_base tokens.
     final usage = await gateway.contextUsage(
       thread.id,
       nodesAfterStream.last.id,
       draft: 'a draft of about forty characters long..',
     );
     expect(usage.historyTokens, greaterThan(0));
-    expect(usage.draftTokens, 10);
+    expect(usage.draftTokens, 8);
     expect(
       usage.totalTokens,
       usage.systemTokens +

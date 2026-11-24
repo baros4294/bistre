@@ -199,6 +199,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tiktoken",
  "tokio",
  "tracing",
  "uuid",
@@ -2173,6 +2174,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b74b56ffa8bb2830709a538c2cbcae9aa062db0d2a42563bfb09bdaae44020eb"
 
 [[package]]
+name = "rustc-hash"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b1e7f9a428571be2dc5bc0505c13fb6bf936822b894ec87abf8a08a4e51742d"
+
+[[package]]
 name = "rustc_version"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2282,6 +2289,15 @@ name = "rustversion"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
+
+[[package]]
+name = "ruzstd"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69e4ce4a039f42bf25920b95667e4d789e98749ab11bbb8d2c2936f788421bb5"
+dependencies = [
+ "twox-hash",
+]
 
 [[package]]
 name = "same-file"
@@ -2628,6 +2644,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "tiktoken"
+version = "5.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "35246b0490624a815ff67bac1407cbcde90838a2312d94565ab15fa883e57158"
+dependencies = [
+ "regex",
+ "rustc-hash",
+ "ruzstd",
+ "tiktoken-vocab-openai",
+ "tiktoken-vocab-qwen",
+ "tiktoken-vocab-zhipu",
+]
+
+[[package]]
+name = "tiktoken-vocab-openai"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85976400a4532e23985f1107744c683cd02352bbb1e99d95eabef86706800953"
+
+[[package]]
+name = "tiktoken-vocab-qwen"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "894944f512da3ce1216ea227537f0d0f9e772e2962e4a0cf28415359da162ccd"
+
+[[package]]
+name = "tiktoken-vocab-zhipu"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "abd4e387cdf2cd130c1ba1e0db4e967f58dddafb2e367c4124d6a2ab4a4c0f68"
+
+[[package]]
 name = "tinystr"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2800,6 +2848,12 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+
+[[package]]
+name = "twox-hash"
+version = "2.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86a801b3cea342a06d468c8710662aa29e5e05e4f5c0d62f00bbb7f2ad7941c2"
 
 [[package]]
 name = "typed-path"
