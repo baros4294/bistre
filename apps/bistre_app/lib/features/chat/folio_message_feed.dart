@@ -10,6 +10,7 @@ import '../../design/bistre_icons.dart';
 import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_selection_controls.dart';
 import '../../design/bistre_theme.dart';
+import '../../design/context_menu.dart';
 import '../../design/ink_primitives.dart';
 import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
@@ -833,8 +834,65 @@ class _PassageItemState extends State<_PassageItem> {
     return FocusableActionDetector(
       onShowHoverHighlight: (v) => setState(() => _hovered = v),
       onShowFocusHighlight: (v) => setState(() => _focused = v),
-      child: inner,
+      child: ContextMenuRegion(
+        entries: _editing
+            ? const <ContextMenuEntry>[]
+            : _menuEntries(l10n, isAssistant),
+        child: inner,
+      ),
     );
+  }
+
+  /// Right-click menu: the same actions as the hover bar (v2.6.0 `PlatformContextMenu`).
+  List<ContextMenuEntry> _menuEntries(
+    BistreLocalizationController l10n,
+    bool isAssistant,
+  ) {
+    final w = widget;
+    final edit = w.onEditResend;
+    final regenerate = w.onRegenerate;
+    final pin = w.onToggleContextPin;
+    final delete = w.onDelete;
+    return <ContextMenuEntry>[
+      if (isAssistant)
+        ContextMenuEntry(
+          label: l10n.t(L10nKey.chatActionReply),
+          icon: BistreUiIcon.reply,
+          onSelected: w.onReply,
+        ),
+      if (!isAssistant && edit != null)
+        ContextMenuEntry(
+          label: l10n.t(L10nKey.chatActionEdit),
+          icon: BistreUiIcon.edit,
+          onSelected: _startEdit,
+        ),
+      ContextMenuEntry(
+        label: l10n.t(L10nKey.chatActionCopy),
+        icon: BistreUiIcon.copy,
+        onSelected: w.onCopy,
+      ),
+      if (regenerate != null)
+        ContextMenuEntry(
+          label: l10n.t(L10nKey.chatActionRegenerate),
+          icon: BistreUiIcon.refresh,
+          onSelected: regenerate,
+        ),
+      if (pin != null)
+        ContextMenuEntry(
+          label: l10n.t(L10nKey.chatPinContextStart),
+          icon: w.isPinnedContextStart
+              ? BistreUiIcon.pinFilled
+              : BistreUiIcon.pin,
+          onSelected: pin,
+        ),
+      if (delete != null)
+        ContextMenuEntry(
+          label: l10n.t(L10nKey.chatActionDelete),
+          icon: BistreUiIcon.trash,
+          onSelected: delete,
+          destructive: true,
+        ),
+    ];
   }
 
   Widget _buildInlineEditor(

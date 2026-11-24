@@ -4,6 +4,7 @@ import 'package:bistre_app/bridge/bistre_engine.dart';
 import 'package:bistre_app/design/bistre_controls.dart';
 import 'package:bistre_app/design/bistre_icons.dart';
 import 'package:bistre_app/design/bistre_theme.dart';
+import 'package:bistre_app/design/context_menu.dart';
 import 'package:bistre_app/design/disclosure_reveal.dart';
 import 'package:bistre_app/design/ink_primitives.dart';
 import 'package:bistre_app/design/press_feedback.dart';
@@ -837,6 +838,52 @@ void main() {
     await mouse.moveTo(Offset.zero);
     await tester.pumpAndSettle();
     expect(find.text('Search chats'), findsNothing);
+  });
+
+  testWidgets('right-clicking a message opens its actions menu', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1320, 820);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final (ctrl, gw, l10n) = await boot();
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map<Object?, Object?>)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await tester.pumpWidget(
+      BistreApp(l10nController: l10n, folioController: ctrl),
+    );
+    await tester.pumpAndSettle();
+
+    final message = find.byType(ContextMenuRegion).first;
+    await tester.tap(message, buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    final copy = find.text(l10n.t(L10nKey.chatActionCopy));
+    expect(copy, findsOneWidget);
+    expect(find.text(l10n.t(L10nKey.chatActionDelete)), findsWidgets);
+
+    await tester.tap(copy);
+    await tester.pumpAndSettle();
+    expect(copied, isNotNull);
+    expect(copied, isNotEmpty);
+    expect(copy, findsNothing, reason: 'choosing an entry closes the menu');
+
+    ctrl.dispose();
+    await gw.shutdown();
   });
 }
 
