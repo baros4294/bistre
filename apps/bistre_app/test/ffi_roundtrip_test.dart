@@ -131,7 +131,7 @@ void main() {
         theme: 'night',
         layoutMode: 'open_folio',
         locale: 'vi',
-        trustPreset: 'parchment_safe',
+        trustPreset: 'strict',
         walletDailyCeilingMicros: null,
         fontSizePx: 18,
         lineHeightBps: 17500,
@@ -234,7 +234,7 @@ void main() {
     expect(stats.schemaVersion, greaterThanOrEqualTo(7));
     expect(stats.dbSizeBytes, greaterThan(0));
 
-    // Wave E: Live Rust FFI round-trip for Character Cards, Story Bible + Progressions, Chapters/Scenes & Prompt Inspector.
+    // Live Rust FFI round-trip for Character Cards, Story Bible + Progressions, Chapters/Scenes & Prompt Inspector.
     final card = await gateway.upsertCharacterCard(
       const EngineCharacterCard(
         name: 'Lyra Vance',
@@ -284,7 +284,7 @@ void main() {
       isFalse,
     );
 
-    // Wave A: Verify durable agent runs, mid-stream steering queue, and OS power guard over live FFI.
+    // Verify durable agent runs, mid-stream steering queue, and OS power guard over live FFI.
     final runs = await gateway.listAgentRuns(threadId: thread.id);
     expect(runs, isNotEmpty);
     final steered = await gateway.enqueueSteering(

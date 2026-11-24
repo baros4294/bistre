@@ -17,11 +17,36 @@ const List<String> androidSqliteCflags = <String>[
   '-fno-asynchronous-unwind-tables',
   '-DSQLITE_OMIT_LOAD_EXTENSION',
   '-DSQLITE_OMIT_DEPRECATED',
+  '-DSQLITE_OMIT_UTF16',
+  '-DSQLITE_OMIT_TRACE',
+  '-DSQLITE_OMIT_PROGRESS_CALLBACK',
+  '-DSQLITE_OMIT_TCL_VARIABLE',
 ];
 
 void main(List<String> args) async {
   await build(args, (BuildInput input, BuildOutputBuilder output) async {
     final extraEnv = <String, String>{};
+    // Share the workspace `target/` directory with Cargo & `Swatinem/rust-cache` so
+    // `flutter test`, `flutter build`, and `bistre-daemon` reuse compiled Rust rlibs instead
+    // of rebuilding ~280 crates from scratch inside `.dart_tool/hooks_runner/`.
+    final existingTargetDir = Platform.environment['CARGO_TARGET_DIR']?.trim();
+    if (existingTargetDir == null || existingTargetDir.isEmpty) {
+      final repoRoot = Directory.fromUri(input.packageRoot.resolve('../..'));
+      if (File('${repoRoot.path}${Platform.pathSeparator}Cargo.toml')
+          .existsSync()) {
+        extraEnv['CARGO_TARGET_DIR'] =
+            '${repoRoot.path}${Platform.pathSeparator}target';
+      }
+    }
+
+    if (_isAndroidBuild(input)) {
+      // Activate `[profile.release-android]` size settings on Android release builds.
+      extraEnv['CARGO_PROFILE_RELEASE_OPT_LEVEL'] = 'z';
+      extraEnv['CARGO_PROFILE_RELEASE_LTO'] = 'fat';
+      extraEnv['CARGO_PROFILE_RELEASE_CODEGEN_UNITS'] = '1';
+      extraEnv['CARGO_PROFILE_RELEASE_PANIC'] = 'abort';
+      extraEnv['CARGO_PROFILE_RELEASE_STRIP'] = 'symbols';
+    }
     final androidNdk = _discoverAndroidNdk();
     if (androidNdk != null && androidNdk.isNotEmpty) {
       extraEnv['ANDROID_NDK_HOME'] = androidNdk;
@@ -64,6 +89,20 @@ void main(List<String> args) async {
       extraCargoEnvironmentVariables: extraEnv,
     ).run(input: input, output: output);
   });
+}
+
+bool _isAndroidBuild(BuildInput input) {
+  final cfg = input.json['config'];
+  if (cfg is! Map) return false;
+  final ext = cfg['extensions'];
+  if (ext is Map) {
+    final codeAssets = ext['code_assets'];
+    if (codeAssets is Map && codeAssets['target_os'] == 'android') {
+      return true;
+    }
+  }
+  final code = cfg['code'];
+  return code is Map && code['target_os'] == 'android';
 }
 
 String? _discoverAndroidNdk() {

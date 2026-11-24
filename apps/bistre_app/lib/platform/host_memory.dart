@@ -8,7 +8,7 @@ import 'desktop_host.dart';
 /// Hosts with less physical memory than this run in low-memory mode (Spec 11 §3).
 const int kLowMemoryThresholdBytes = 4 * 1024 * 1024 * 1024;
 
-/// GPU resource cache cap (Parchment v2.6.0 `desktopMain/.../Main.kt:183-188`):
+/// GPU resource cache cap tuned to host memory:
 /// 48 MiB on normal hosts, 32 MiB on `< 4 GiB` hosts, preventing Intel UMA bloat.
 const int kGpuResourceCacheNormalBytes = 48 * 1024 * 1024;
 const int kGpuResourceCacheLowMemoryBytes = 32 * 1024 * 1024;

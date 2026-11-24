@@ -15,8 +15,7 @@ import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import 'folio_controller.dart';
 
-/// Open-tab overview modal / bottom sheet (Parchment v2.6.0 `MobileTabSwitcherModal`,
-/// `ParchmentModalsAndNavigation.kt:199-469`):
+/// Open-tab overview modal / bottom sheet:
 /// - Compact screens (`!isWide`): bottom sheet (`topStart/topEnd = 18`, full width, up to 84% height).
 /// - Wide screens (`isWide`): centered modal (`maxWidth: 860`, 92% width, up to 80% height).
 /// - 1 column on very narrow effective widths (`< 420 px` including 200% text), 2 columns otherwise.
@@ -163,9 +162,22 @@ class _TabSwitcherModalState extends State<TabSwitcherModal> {
                               ),
                             ],
                           ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
+                          Wrap(
+                            spacing: BistreSpacing.s4,
+                            runSpacing: BistreSpacing.s4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
+                              if (ctrl.emptyOpenTabs.isNotEmpty)
+                                EngravedButton(
+                                  label: l10n.t(
+                                    L10nKey.shellTabsCloseEmpty,
+                                    <String, Object?>{
+                                      'count': ctrl.emptyOpenTabs.length,
+                                    },
+                                  ),
+                                  compact: true,
+                                  onPressed: ctrl.closeEmptyTabs,
+                                ),
                               EngravedButton(
                                 label: l10n.t(L10nKey.shellTabsNewTab),
                                 primary: true,
@@ -180,7 +192,6 @@ class _TabSwitcherModalState extends State<TabSwitcherModal> {
                                   unawaited(ctrl.createNewFolio());
                                 },
                               ),
-                              const SizedBox(width: BistreSpacing.s4),
                               BistreIconButton(
                                 icon: BistreUiIcon.close,
                                 size: 15,

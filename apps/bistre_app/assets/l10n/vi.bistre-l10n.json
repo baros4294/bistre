@@ -1145,7 +1145,7 @@
       "placeholders": {}
     },
     "settings.assistants.name_placeholder": {
-      "message": "Tên (VD: Trợ lý kiểm tra mã)",
+      "message": "Tên",
       "context": "Input placeholder for new assistant name",
       "tone": "calm_editorial",
       "max_chars": 48,
@@ -2807,20 +2807,6 @@
       "max_chars": 28,
       "placeholders": {}
     },
-    "provider.detect_local": {
-      "message": "Tìm máy chủ cục bộ",
-      "context": "Button to auto-detect Ollama, LM Studio, llama.cpp, KoboldCPP",
-      "tone": "concise_action",
-      "max_chars": 32,
-      "placeholders": {}
-    },
-    "provider.local_none": {
-      "message": "Không tìm thấy máy chủ cục bộ nào đang chạy.",
-      "context": "Status shown when local loopback scan finds nothing",
-      "tone": "calm_editorial",
-      "max_chars": 64,
-      "placeholders": {}
-    },
     "provider.custom_headers": {
       "message": "HTTP header tùy chỉnh (JSON)",
       "context": "Advanced provider field for custom HTTP headers JSON",
@@ -2998,7 +2984,7 @@
     },
     "story.progressions_title": {
       "message": "Diễn biến theo chương",
-      "context": "Novelcrafter-style chronological updates gated by chapter order",
+      "context": "Chronological entity updates gated by chapter order",
       "tone": "calm_editorial",
       "max_chars": 32,
       "placeholders": {}
@@ -4286,6 +4272,1182 @@
       "tone": "concise_action",
       "max_chars": 16,
       "placeholders": {}
+    },
+    "shell.tabs.close_empty": {
+      "message": "Đóng {count} tab trống",
+      "context": "Bulk action button in the tab switcher to close all empty untitled tabs",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "2"
+        }
+      }
+    },
+    "chat.tools.button": {
+      "message": "Công cụ",
+      "context": "Composer chip opening the turn tools and options popover",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.tools.title": {
+      "message": "Công cụ & tùy chọn",
+      "context": "Heading inside the composer tools popover",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.tools.workspace": {
+      "message": "Tệp không gian làm việc",
+      "context": "Status row inside composer tools popover showing bound workspace folder",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.tools.web_search": {
+      "message": "Tìm kiếm web",
+      "context": "Status row inside composer tools popover for configured web search",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.tools.stateless": {
+      "message": "Riêng tư (không lưu máy chủ)",
+      "context": "Toggle row inside composer tools popover for stateless requests",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.tools.prefill_label": {
+      "message": "Mở đầu câu trả lời",
+      "context": "Label for optional assistant reply prefix input in composer tools popover",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.tools.prefill_placeholder": {
+      "message": "Văn bản mở đầu tùy chọn...",
+      "context": "Placeholder for optional reply prefill input",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "chat.thinking.custom_label": {
+      "message": "Mức tùy chỉnh",
+      "context": "Label for custom thinking effort input inside the Thinking popover",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.thinking.custom_placeholder": {
+      "message": "vd: low, high, max",
+      "context": "Placeholder for custom thinking effort input",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.pin_reply": {
+      "message": "Ghim phản hồi",
+      "context": "Action to pin a message inside the current chat",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.unpin_reply": {
+      "message": "Bỏ ghim phản hồi",
+      "context": "Action to remove a pin from a message inside the current chat",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.pinned.title": {
+      "message": "Phản hồi đã ghim ({count})",
+      "context": "Heading for the pinned replies modal listing pinned messages in this chat",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "2"
+        }
+      }
+    },
+    "chat.pinned.empty": {
+      "message": "Chưa có phản hồi nào được ghim.",
+      "context": "Empty state inside the pinned replies panel",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "chat.notes.title": {
+      "message": "Ghi chú cuộc trò chuyện",
+      "context": "Heading for the per-chat private notes panel",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.notes.placeholder": {
+      "message": "Ghi chú riêng cho cuộc trò chuyện (không gửi tới mô hình)...",
+      "context": "Placeholder inside the per-chat notes text area",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "chat.turn.details": {
+      "message": "Chi tiết lượt trả lời",
+      "context": "Menu item to inspect raw metadata and sources for a reply",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.turn.raw_metadata": {
+      "message": "Siêu dữ liệu thô",
+      "context": "Heading for JSON turn metadata disclosure in the turn details modal",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.turn.sources": {
+      "message": "Nguồn ({count})",
+      "context": "Heading for web citations detected in a reply",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "3"
+        }
+      }
+    },
+    "chat.usage.duration_label": {
+      "message": "Thời lượng",
+      "context": "Generation duration row label in turn usage popover",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.usage.speed_label": {
+      "message": "Tốc độ",
+      "context": "Output tokens per second row label in turn usage popover",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.attachment.preview": {
+      "message": "Xem trước tệp đính kèm",
+      "context": "Title of the modal showing an attached file or image",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.svg.preview": {
+      "message": "Xem trước",
+      "context": "Button on an SVG code card to preview the vector diagram",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.svg.source": {
+      "message": "Mã nguồn",
+      "context": "Button on an SVG card to toggle back to source code",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.profile.avatar": {
+      "message": "Ảnh đại diện",
+      "context": "Row label in Appearance > Profile for choosing a local avatar image",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.profile.avatar_choose": {
+      "message": "Chọn ảnh...",
+      "context": "Button to browse for a local profile picture file",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.profile.avatar_clear": {
+      "message": "Xóa",
+      "context": "Button to remove the chosen profile picture",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.budget.chat_limit": {
+      "message": "Giới hạn cuộc trò chuyện (USD)",
+      "context": "Optional per-chat spending cap label in Safety & Budget settings",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.budget.chat_limit_hint": {
+      "message": "Giới hạn tùy chọn cho cuộc trò chuyện này. Để trống để dùng giới hạn ngày.",
+      "context": "Helper caption under per-chat spending limit input",
+      "tone": "calm_editorial",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "settings.agent.permissions_title": {
+      "message": "Quyền công cụ",
+      "context": "Section title in Agent & Tools settings for per-tool approval rules",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.agent.perm_ask": {
+      "message": "Hỏi",
+      "context": "Per-tool permission option requiring user approval each time",
+      "tone": "concise_action",
+      "max_chars": 12,
+      "placeholders": {}
+    },
+    "settings.agent.perm_allow": {
+      "message": "Cho phép",
+      "context": "Per-tool permission option permitting read/safe execution automatically",
+      "tone": "concise_action",
+      "max_chars": 12,
+      "placeholders": {}
+    },
+    "settings.agent.perm_off": {
+      "message": "Tắt",
+      "context": "Per-tool permission option disabling the tool",
+      "tone": "concise_action",
+      "max_chars": 12,
+      "placeholders": {}
+    },
+    "settings.mcp.presets_title": {
+      "message": "Thêm nhanh máy chủ phổ biến",
+      "context": "Heading above preset chips in MCP settings",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "tool.shell_steps": {
+      "message": "Các bước lệnh ({count})",
+      "context": "Heading showing split shell pipeline/chain steps in a tool approval card",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "2"
+        }
+      }
+    },
+    "settings.appearance.file_filter_fonts": {
+      "message": "Phông chữ",
+      "context": "Native file picker filter label for .ttf and .otf font files",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "settings.providers.file_filter_images": {
+      "message": "Hình ảnh",
+      "context": "Native file picker filter label for .png, .jpg, and .webp image files",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.action.more": {
+      "message": "Thêm thao tác",
+      "context": "Button expanding secondary message actions",
+      "tone": "calm_editorial",
+      "max_chars": 25,
+      "placeholders": {}
+    },
+    "chat.checklist.summary": {
+      "message": "{done}/{total} bước",
+      "context": "Collapsed agent step checklist summary",
+      "tone": "calm_editorial",
+      "max_chars": 31,
+      "placeholders": {
+        "done": {
+          "type": "int",
+          "example": "3"
+        },
+        "total": {
+          "type": "int",
+          "example": "4"
+        }
+      }
+    },
+    "chat.checklist.summary_timed": {
+      "message": "Đã làm {seconds} giây — {done}/{total} bước",
+      "context": "Collapsed timed agent step checklist summary",
+      "tone": "calm_editorial",
+      "max_chars": 55,
+      "placeholders": {
+        "seconds": {
+          "type": "int",
+          "example": "12"
+        },
+        "done": {
+          "type": "int",
+          "example": "3"
+        },
+        "total": {
+          "type": "int",
+          "example": "4"
+        }
+      }
+    },
+    "chat.effort.adaptive": {
+      "message": "Tự điều chỉnh",
+      "context": "Adaptive thinking effort chip",
+      "tone": "calm_editorial",
+      "max_chars": 25,
+      "placeholders": {}
+    },
+    "chat.jump_to_latest": {
+      "message": "Đến tin mới nhất",
+      "context": "Jump to newest message button",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.mode.heading": {
+      "message": "Chế độ",
+      "context": "Heading for conversation mode selector",
+      "tone": "calm_editorial",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "chat.nav.filter_placeholder": {
+      "message": "Lọc lượt tin...",
+      "context": "Placeholder for message map filter input",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.nav.map": {
+      "message": "Bản đồ hội thoại",
+      "context": "Title for message navigation map popover",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.nav.next": {
+      "message": "Lượt sau",
+      "context": "Next turn navigation tooltip",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.nav.prev": {
+      "message": "Lượt trước",
+      "context": "Previous turn navigation tooltip",
+      "tone": "calm_editorial",
+      "max_chars": 22,
+      "placeholders": {}
+    },
+    "chat.nav.prompts_only": {
+      "message": "Câu hỏi",
+      "context": "Filter chip showing only user prompts in message map",
+      "tone": "calm_editorial",
+      "max_chars": 19,
+      "placeholders": {}
+    },
+    "chat.nav.top": {
+      "message": "Lên đầu",
+      "context": "Jump to top of conversation tooltip",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.open_here": {
+      "message": "Mở tại đây",
+      "context": "Open split-view thread in primary pane",
+      "tone": "calm_editorial",
+      "max_chars": 22,
+      "placeholders": {}
+    },
+    "chat.pinned_replies.open": {
+      "message": "Xem tất cả",
+      "context": "Open full pinned replies modal",
+      "tone": "calm_editorial",
+      "max_chars": 22,
+      "placeholders": {}
+    },
+    "chat.pinned_replies.title": {
+      "message": "Tin đã ghim",
+      "context": "Section heading for pinned replies",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.usage.cached_tokens": {
+      "message": "Token tái sử dụng",
+      "context": "Cached input tokens read from prompt cache",
+      "tone": "calm_editorial",
+      "max_chars": 29,
+      "placeholders": {}
+    },
+    "chat.usage.cache_write_tokens": {
+      "message": "Lưu tái sử dụng",
+      "context": "Input tokens written into prompt cache",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.usage.reasoning_tokens": {
+      "message": "Token suy nghĩ",
+      "context": "Tokens spent on model thinking",
+      "tone": "calm_editorial",
+      "max_chars": 26,
+      "placeholders": {}
+    },
+    "chat.usage.ttft_label": {
+      "message": "Token đầu tiên",
+      "context": "Time to first token latency label",
+      "tone": "calm_editorial",
+      "max_chars": 26,
+      "placeholders": {}
+    },
+    "composer.mention.diff_desc": {
+      "message": "Đính kèm thay đổi git hiện tại",
+      "context": "Description for @diff mention",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "composer.mention.file_desc": {
+      "message": "Đính kèm tệp trong thư mục",
+      "context": "Description for @file mention",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "composer.mention.mcp_desc": {
+      "message": "Dùng công cụ MCP đã kết nối",
+      "context": "Description for @mcp mention",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "composer.mention.memory_desc": {
+      "message": "Lấy từ bộ nhớ đã lưu",
+      "context": "Description for @memory mention",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "composer.mention.mount_desc": {
+      "message": "Chọn thư mục làm việc",
+      "context": "Description for @mount mention",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "composer.mention.thread_desc": {
+      "message": "Tham chiếu cuộc trò chuyện khác",
+      "context": "Description for @thread mention",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "composer.slash.build_desc": {
+      "message": "Chuyển sang chế độ lập trình",
+      "context": "Description for /build slash command",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "composer.slash.clear_desc": {
+      "message": "Bắt đầu cuộc trò chuyện mới",
+      "context": "Description for /clear slash command",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "composer.slash.compact_desc": {
+      "message": "Rút gọn lịch sử cuộc trò chuyện",
+      "context": "Description for /compact slash command",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "composer.slash.plan_desc": {
+      "message": "Lập kế hoạch không sửa tệp",
+      "context": "Description for /plan slash command",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "composer.slash.tree_desc": {
+      "message": "Xem các nhánh hội thoại",
+      "context": "Description for /tree slash command",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "composer.slash.write_desc": {
+      "message": "Chuyển sang chế độ viết lách",
+      "context": "Description for /write slash command",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "palette.split_view": {
+      "message": "Bật/tắt chia đôi màn hình",
+      "context": "Command palette action to toggle side-by-side split view",
+      "tone": "calm_editorial",
+      "max_chars": 37,
+      "placeholders": {}
+    },
+    "provider.extra_body_label": {
+      "message": "Trường JSON bổ sung",
+      "context": "Label for optional extra JSON body fields in provider advanced settings",
+      "tone": "calm_editorial",
+      "max_chars": 31,
+      "placeholders": {}
+    },
+    "provider.extra_body_placeholder": {
+      "message": "{\"top_k\": 40}",
+      "context": "Placeholder for extra JSON fields",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "provider.headers_label": {
+      "message": "Header HTTP tùy chỉnh",
+      "context": "Label for custom HTTP headers",
+      "tone": "calm_editorial",
+      "max_chars": 33,
+      "placeholders": {}
+    },
+    "provider.headers_placeholder": {
+      "message": "X-Custom-Header: value",
+      "context": "Placeholder for custom HTTP headers",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "provider.multi_key_hint": {
+      "message": "Lưu mã hóa trên thiết bị. Dán nhiều khóa (mỗi dòng một khóa) để tự động xoay vòng khi quá giới hạn.",
+      "context": "Hint explaining multi-API-key rotation and local vault storage",
+      "tone": "calm_editorial",
+      "max_chars": 140,
+      "placeholders": {}
+    },
+    "settings.agent.add_folder": {
+      "message": "Thêm thư mục",
+      "context": "Add another workspace folder button",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.agent.choose_folder": {
+      "message": "Chọn thư mục...",
+      "context": "Choose workspace folder button",
+      "tone": "calm_editorial",
+      "max_chars": 27,
+      "placeholders": {}
+    },
+    "settings.agent.computer_use": {
+      "message": "Điều khiển màn hình (tùy chọn)",
+      "context": "Toggle for opt-in computer use tool",
+      "tone": "calm_editorial",
+      "max_chars": 42,
+      "placeholders": {}
+    },
+    "settings.agent.computer_use_hint": {
+      "message": "Mặc định tắt. Mọi thao tác đều cần xác nhận; không lưu ảnh chụp màn hình.",
+      "context": "Safety description for opt-in computer use",
+      "tone": "calm_editorial",
+      "max_chars": 120,
+      "placeholders": {}
+    },
+    "settings.agent.import_mcp_json": {
+      "message": "Nhập JSON",
+      "context": "Import MCP servers from JSON file button",
+      "tone": "calm_editorial",
+      "max_chars": 22,
+      "placeholders": {}
+    },
+    "settings.agent.no_folders": {
+      "message": "Chưa chọn thư mục làm việc.",
+      "context": "Empty state when no workspace folder is chosen",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.agent.web_ddg": {
+      "message": "DuckDuckGo (không khóa)",
+      "context": "Keyless DuckDuckGo web search chip",
+      "tone": "calm_editorial",
+      "max_chars": 35,
+      "placeholders": {}
+    },
+    "settings.back": {
+      "message": "Quay lại",
+      "context": "Back button inside settings subpages",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "settings.default_models.follow_global": {
+      "message": "Dùng lựa chọn chung",
+      "context": "Toggle to inherit global default model",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.default_models.global_heading": {
+      "message": "Mặc định chung",
+      "context": "Global default model section heading",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.default_models.global_hint": {
+      "message": "Dùng cho trò chuyện mới và tác vụ nền trừ khi được ghi đè bên dưới.",
+      "context": "Global default model section description",
+      "tone": "calm_editorial",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "settings.default_models.summary_heading": {
+      "message": "Rút gọn hội thoại",
+      "context": "Summary/compaction model section heading",
+      "tone": "calm_editorial",
+      "max_chars": 30,
+      "placeholders": {}
+    },
+    "settings.default_models.target_lang": {
+      "message": "Ngôn ngữ đích",
+      "context": "Target translation language field label",
+      "tone": "calm_editorial",
+      "max_chars": 26,
+      "placeholders": {}
+    },
+    "settings.default_models.title_heading": {
+      "message": "Tiêu đề trò chuyện",
+      "context": "Title generation model section heading",
+      "tone": "calm_editorial",
+      "max_chars": 30,
+      "placeholders": {}
+    },
+    "settings.default_models.title_prompt": {
+      "message": "Lệnh tạo tiêu đề",
+      "context": "Editable prompt template for generating chat titles",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.default_models.translation_heading": {
+      "message": "Dịch thuật",
+      "context": "Translation model section heading",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.desktop.heading": {
+      "message": "Ứng dụng máy tính",
+      "context": "Desktop app settings section heading",
+      "tone": "calm_editorial",
+      "max_chars": 29,
+      "placeholders": {}
+    },
+    "settings.desktop.notify": {
+      "message": "Thông báo khi xong ở nền",
+      "context": "OS desktop notification toggle",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "settings.desktop.notify_sound": {
+      "message": "Phát âm thanh thông báo",
+      "context": "Notification sound toggle",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.desktop.run_startup": {
+      "message": "Khởi động cùng hệ thống",
+      "context": "Run on OS startup toggle",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.desktop.system_tray": {
+      "message": "Hiển thị ở khay hệ thống",
+      "context": "System tray icon toggle",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.model.context_limit": {
+      "message": "Giới hạn ngữ cảnh (token)",
+      "context": "Model context window limit field",
+      "tone": "calm_editorial",
+      "max_chars": 37,
+      "placeholders": {}
+    },
+    "settings.model.fill_catalog": {
+      "message": "Điền từ danh mục",
+      "context": "Button to refresh/fill model limits and prices from catalog",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.model.limits_heading": {
+      "message": "Giới hạn token",
+      "context": "Model token limits section heading",
+      "tone": "calm_editorial",
+      "max_chars": 26,
+      "placeholders": {}
+    },
+    "settings.model.price_input": {
+      "message": "Đầu vào (USD / 1M)",
+      "context": "Input token price per 1M USD",
+      "tone": "calm_editorial",
+      "max_chars": 30,
+      "placeholders": {}
+    },
+    "settings.model.price_output": {
+      "message": "Đầu ra (USD / 1M)",
+      "context": "Output token price per 1M USD",
+      "tone": "calm_editorial",
+      "max_chars": 29,
+      "placeholders": {}
+    },
+    "settings.model.price_reasoning": {
+      "message": "Suy nghĩ (USD / 1M)",
+      "context": "Reasoning token price per 1M USD",
+      "tone": "calm_editorial",
+      "max_chars": 31,
+      "placeholders": {}
+    },
+    "settings.model.price_reused": {
+      "message": "Tái sử dụng (USD / 1M)",
+      "context": "Cache read price per 1M USD",
+      "tone": "calm_editorial",
+      "max_chars": 34,
+      "placeholders": {}
+    },
+    "settings.model.price_saved": {
+      "message": "Lưu ngắn (USD / 1M)",
+      "context": "Cache write 5m price per 1M USD",
+      "tone": "calm_editorial",
+      "max_chars": 31,
+      "placeholders": {}
+    },
+    "settings.model.price_saved_long": {
+      "message": "Lưu dài (USD / 1M)",
+      "context": "Cache write 1h price per 1M USD",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.model.pricing_heading": {
+      "message": "Giá tùy chỉnh",
+      "context": "Per-model pricing section heading",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.model.reply_limit": {
+      "message": "Giới hạn trả lời (token)",
+      "context": "Model max output tokens field",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.prefs.behavior_heading": {
+      "message": "Hành vi & hướng dẫn",
+      "context": "Behavior and global instructions section heading",
+      "tone": "calm_editorial",
+      "max_chars": 34,
+      "placeholders": {}
+    },
+    "settings.prefs.collapse_code": {
+      "message": "Tự thu gọn khối mã dài",
+      "context": "Auto-collapse code blocks toggle",
+      "tone": "calm_editorial",
+      "max_chars": 42,
+      "placeholders": {}
+    },
+    "settings.prefs.collapse_thinking": {
+      "message": "Tự thu gọn suy nghĩ sau trả lời",
+      "context": "Auto-collapse thinking block toggle",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {}
+    },
+    "settings.prefs.confirm_delete": {
+      "message": "Hỏi trước khi xóa cuộc trò chuyện",
+      "context": "Confirm before deleting chat toggle",
+      "tone": "calm_editorial",
+      "max_chars": 45,
+      "placeholders": {}
+    },
+    "settings.prefs.display_heading": {
+      "message": "Hiển thị trò chuyện",
+      "context": "Chat display preferences heading",
+      "tone": "calm_editorial",
+      "max_chars": 31,
+      "placeholders": {}
+    },
+    "settings.prefs.global_instructions": {
+      "message": "Hướng dẫn chung",
+      "context": "Global system instructions field label",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.prefs.global_instructions_hint": {
+      "message": "Thêm trước hướng dẫn trợ lý trong mọi cuộc trò chuyện.",
+      "context": "Global instructions description",
+      "tone": "calm_editorial",
+      "max_chars": 76,
+      "placeholders": {}
+    },
+    "settings.prefs.message_nav": {
+      "message": "Thanh điều hướng tin nhắn",
+      "context": "Message navigation rail visibility label",
+      "tone": "calm_editorial",
+      "max_chars": 37,
+      "placeholders": {}
+    },
+    "settings.prefs.nav_always": {
+      "message": "Luôn hiện",
+      "context": "Always show message navigation rail",
+      "tone": "calm_editorial",
+      "max_chars": 21,
+      "placeholders": {}
+    },
+    "settings.prefs.nav_hidden": {
+      "message": "Ẩn",
+      "context": "Hide message navigation rail",
+      "tone": "calm_editorial",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.prefs.nav_scrolling": {
+      "message": "Khi cuộn",
+      "context": "Show message navigation rail while scrolling",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "settings.prefs.render_math": {
+      "message": "Hiển thị công thức toán",
+      "context": "Math formula rendering toggle",
+      "tone": "calm_editorial",
+      "max_chars": 35,
+      "placeholders": {}
+    },
+    "settings.prefs.render_user_md": {
+      "message": "Định dạng tin của bạn bằng Markdown",
+      "context": "Render user messages as Markdown toggle",
+      "tone": "calm_editorial",
+      "max_chars": 47,
+      "placeholders": {}
+    },
+    "settings.prefs.rendering_heading": {
+      "message": "Hiển thị & mã nguồn",
+      "context": "Rendering preferences section heading",
+      "tone": "calm_editorial",
+      "max_chars": 31,
+      "placeholders": {}
+    },
+    "settings.prefs.show_chat_dates": {
+      "message": "Hiện nhóm ngày ở thanh bên",
+      "context": "Show date buckets in sidebar toggle",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.prefs.show_model_name": {
+      "message": "Hiện tên mô hình trên câu trả lời",
+      "context": "Show model name toggle",
+      "tone": "calm_editorial",
+      "max_chars": 45,
+      "placeholders": {}
+    },
+    "settings.prefs.show_provider_model": {
+      "message": "Hiện tên nhà cung cấp sau mô hình",
+      "context": "Show provider after model toggle",
+      "tone": "calm_editorial",
+      "max_chars": 45,
+      "placeholders": {}
+    },
+    "settings.prefs.show_thinking": {
+      "message": "Hiện tóm tắt suy nghĩ",
+      "context": "Show thinking cards toggle",
+      "tone": "calm_editorial",
+      "max_chars": 34,
+      "placeholders": {}
+    },
+    "settings.prefs.show_tools": {
+      "message": "Hiện danh sách bước công cụ",
+      "context": "Show tool cards toggle",
+      "tone": "calm_editorial",
+      "max_chars": 39,
+      "placeholders": {}
+    },
+    "settings.prefs.syntax_theme": {
+      "message": "Màu cú pháp mã nguồn",
+      "context": "Code syntax theme selector label",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.provider.advanced_title": {
+      "message": "Nâng cao",
+      "context": "Advanced provider settings button and subpage title",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "settings.provider.api_format": {
+      "message": "Định dạng API",
+      "context": "Custom provider wire dialect label",
+      "tone": "calm_editorial",
+      "max_chars": 25,
+      "placeholders": {}
+    },
+    "settings.provider.auth_bearer": {
+      "message": "Bearer",
+      "context": "Bearer auth header mode",
+      "tone": "calm_editorial",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.provider.auth_mode": {
+      "message": "Chế độ xác thực",
+      "context": "Authentication header mode label",
+      "tone": "calm_editorial",
+      "max_chars": 27,
+      "placeholders": {}
+    },
+    "settings.provider.auth_native": {
+      "message": "Mặc định",
+      "context": "Native provider auth header mode",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "settings.provider.auth_query": {
+      "message": "Tham số URL",
+      "context": "Query param auth mode",
+      "tone": "calm_editorial",
+      "max_chars": 23,
+      "placeholders": {}
+    },
+    "settings.provider.auto_fetch": {
+      "message": "Tự động tải mô hình sau khi lưu khóa",
+      "context": "Auto-fetch models toggle",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "settings.provider.bg_poll": {
+      "message": "Thăm dò nền cho phản hồi dài",
+      "context": "Gemini background polling toggle",
+      "tone": "calm_editorial",
+      "max_chars": 46,
+      "placeholders": {}
+    },
+    "settings.provider.endpoint_override": {
+      "message": "Đường dẫn API tùy chỉnh",
+      "context": "Optional custom server URL path label",
+      "tone": "calm_editorial",
+      "max_chars": 35,
+      "placeholders": {}
+    },
+    "settings.provider.legacy_fallback": {
+      "message": "Cho phép địa chỉ dự phòng",
+      "context": "Allow Gemini fallback server URL toggle",
+      "tone": "calm_editorial",
+      "max_chars": 37,
+      "placeholders": {}
+    },
+    "settings.provider.protocol_heading": {
+      "message": "Giao thức & xác thực",
+      "context": "Protocol settings card title",
+      "tone": "calm_editorial",
+      "max_chars": 34,
+      "placeholders": {}
+    },
+    "settings.provider.stateful_chain": {
+      "message": "Nối chuỗi trên máy chủ",
+      "context": "Stateful server chaining toggle",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.provider.store_server": {
+      "message": "Cho phép lưu trên máy chủ",
+      "context": "Provider server-side storage opt-in toggle",
+      "tone": "calm_editorial",
+      "max_chars": 37,
+      "placeholders": {}
+    },
+    "settings.provider.store_server_hint": {
+      "message": "Mặc định tắt để nhà cung cấp không giữ yêu cầu của bạn.",
+      "context": "Privacy explanation for server-side storage toggle",
+      "tone": "calm_editorial",
+      "max_chars": 88,
+      "placeholders": {}
+    },
+    "settings.provider.test_action": {
+      "message": "Kiểm tra",
+      "context": "Test provider connection button",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "settings.sub.default_models": {
+      "message": "Mô hình mặc định, tiêu đề, rút gọn và dịch",
+      "context": "Mobile settings subtitle for Default Models",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.sub.world_book": {
+      "message": "Thẻ nhân vật và mục thế giới quan",
+      "context": "Mobile settings subtitle for World Book & Cards",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {}
+    },
+    "settings.tab.default_models": {
+      "message": "Mô hình mặc định",
+      "context": "Settings tab label for Default Models",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.tab.world_book": {
+      "message": "Thế giới & Thẻ",
+      "context": "Settings tab label for World Book & Cards",
+      "tone": "calm_editorial",
+      "max_chars": 26,
+      "placeholders": {}
+    },
+    "settings.updates.available": {
+      "message": "Đã có bản cập nhật v{version}",
+      "context": "Slim top banner message for an available app update",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "version": {
+          "type": "string",
+          "example": "0.2.0"
+        }
+      }
+    },
+    "settings.updates.stage": {
+      "message": "Cập nhật",
+      "context": "Primary action button in top update banner",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "settings.world_book.add_entry": {
+      "message": "Thêm mục",
+      "context": "Add lorebook entry button",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "settings.world_book.cards_empty": {
+      "message": "Chưa nhập thẻ nhân vật nào.",
+      "context": "Empty state for character cards",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.world_book.cards_heading": {
+      "message": "Thẻ nhân vật & kịch bản",
+      "context": "Character cards section heading",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.world_book.cards_hint": {
+      "message": "Nhập tệp .png, .json hoặc .charx cục bộ.",
+      "context": "Character cards hint",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.world_book.entry_body": {
+      "message": "Nội dung chi tiết",
+      "context": "Lorebook entry content placeholder",
+      "tone": "calm_editorial",
+      "max_chars": 29,
+      "placeholders": {}
+    },
+    "settings.world_book.entry_keys": {
+      "message": "Từ khóa (cách nhau bằng dấu phẩy)",
+      "context": "Lorebook keyword triggers placeholder",
+      "tone": "calm_editorial",
+      "max_chars": 45,
+      "placeholders": {}
+    },
+    "settings.world_book.entry_title": {
+      "message": "Tiêu đề",
+      "context": "Lorebook entry title placeholder",
+      "tone": "calm_editorial",
+      "max_chars": 19,
+      "placeholders": {}
+    },
+    "settings.world_book.import_card": {
+      "message": "Nhập thẻ",
+      "context": "Import character card button",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "settings.world_book.lore_empty": {
+      "message": "Chưa có mục thế giới quan nào.",
+      "context": "Empty state for lorebook entries",
+      "tone": "calm_editorial",
+      "max_chars": 42,
+      "placeholders": {}
+    },
+    "settings.world_book.lore_heading": {
+      "message": "Mục thế giới quan",
+      "context": "Lorebook section heading",
+      "tone": "calm_editorial",
+      "max_chars": 30,
+      "placeholders": {}
+    },
+    "settings.world_book.lore_hint": {
+      "message": "Tự động chèn khi từ khóa xuất hiện trong cuộc trò chuyện.",
+      "context": "Lorebook description",
+      "tone": "calm_editorial",
+      "max_chars": 88,
+      "placeholders": {}
+    },
+    "toast.provider.connection_failed": {
+      "message": "Kiểm tra kết nối thất bại. Hãy xem lại khóa hoặc địa chỉ.",
+      "context": "Toast message when provider Test fails",
+      "tone": "calm_editorial",
+      "max_chars": 72,
+      "placeholders": {}
+    },
+    "toast.provider.connection_ok": {
+      "message": "Kết nối ổn ({seconds}s — tìm thấy {count} mô hình)",
+      "context": "Toast message when provider Test succeeds",
+      "tone": "calm_editorial",
+      "max_chars": 68,
+      "placeholders": {
+        "seconds": {
+          "type": "string",
+          "example": "0.4"
+        },
+        "count": {
+          "type": "int",
+          "example": "18"
+        }
+      }
     }
   }
 }

@@ -9,9 +9,9 @@ import 'bistre_theme.dart';
 import 'hover_hint.dart';
 import 'press_feedback.dart';
 
-/// 1. `ParchmentScaffold`: Edge-to-edge inset-safe page shell (Android 15/16 compliant).
-class ParchmentScaffold extends StatelessWidget {
-  const ParchmentScaffold({
+/// 1. `BistreScaffold`: Edge-to-edge inset-safe page shell (Android 15/16 compliant).
+class BistreScaffold extends StatelessWidget {
+  const BistreScaffold({
     super.key,
     required this.header,
     required this.body,
@@ -57,7 +57,7 @@ class ParchmentScaffold extends StatelessWidget {
 
 enum FolioTone { canvas, surface, elevated }
 
-/// 2. `FolioSurface`: Tonal parchment container with subtle 1px hairline border.
+/// 2. `FolioSurface`: Tonal paper container with subtle 1px hairline border.
 class FolioSurface extends StatelessWidget {
   const FolioSurface({
     super.key,

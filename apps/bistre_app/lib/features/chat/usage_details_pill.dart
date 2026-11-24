@@ -12,10 +12,9 @@ import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
 
-/// Interactive per-turn token & cost summary pill (Parchment v2.6.0 `UsageDetailsPill`,
-/// `MessageTurnFooter.kt:482-552, 598-665`).
+/// Interactive per-turn token, timing, and cost summary pill.
 /// Shows the compact meta summary at rest, a hover hint on pointer rest, and opens a
-/// focusable breakdown card on tap/Enter/Space with model, input/output tokens, and cost.
+/// focusable breakdown card on tap/Enter/Space with model, input/output tokens, speed, and cost.
 class UsageDetailsPill extends StatefulWidget {
   const UsageDetailsPill({
     super.key,
@@ -183,10 +182,53 @@ class _UsageDetailsPillState extends State<UsageDetailsPill> {
                         label: l10n.t(L10nKey.chatUsageInputTokens),
                         value: '${u.inputTokens}',
                       ),
+                      if (u.cachedInputTokens > 0) ...[
+                        const SizedBox(height: 3),
+                        _DetailRow(
+                          label: l10n.t(L10nKey.chatUsageCachedTokens),
+                          value: '${u.cachedInputTokens}',
+                        ),
+                      ],
+                      if (u.cacheCreationInputTokens > 0) ...[
+                        const SizedBox(height: 3),
+                        _DetailRow(
+                          label: l10n.t(L10nKey.chatUsageCacheWriteTokens),
+                          value: '${u.cacheCreationInputTokens}',
+                        ),
+                      ],
+                      if (u.reasoningTokens > 0) ...[
+                        const SizedBox(height: 3),
+                        _DetailRow(
+                          label: l10n.t(L10nKey.chatUsageReasoningTokens),
+                          value: '${u.reasoningTokens}',
+                        ),
+                      ],
                       const SizedBox(height: 3),
                       _DetailRow(
                         label: l10n.t(L10nKey.chatUsageOutputTokens),
                         value: '${u.outputTokens}',
+                      ),
+                      const SizedBox(height: 3),
+                    ],
+                    if (u.firstTokenMs > 0) ...[
+                      _DetailRow(
+                        label: l10n.t(L10nKey.chatUsageTtftLabel),
+                        value:
+                            '${(u.firstTokenMs / 1000.0).toStringAsFixed(2)}s',
+                      ),
+                      const SizedBox(height: 3),
+                    ],
+                    if (u.elapsedMs > 0) ...[
+                      _DetailRow(
+                        label: l10n.t(L10nKey.chatUsageDurationLabel),
+                        value: '${(u.elapsedMs / 1000.0).toStringAsFixed(1)}s',
+                      ),
+                      const SizedBox(height: 3),
+                    ],
+                    if (u.tokensPerSecond case final tps?) ...[
+                      _DetailRow(
+                        label: l10n.t(L10nKey.chatUsageSpeedLabel),
+                        value: '${tps.toStringAsFixed(1)} tok/s',
                       ),
                       const SizedBox(height: 3),
                     ],

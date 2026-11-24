@@ -10,7 +10,7 @@ import 'hover_hint.dart';
 import 'ink_primitives.dart';
 import 'press_feedback.dart';
 
-/// Bistre's 57 bespoke editorial `.vec` UI icons (`assets/icons/ui/*.vec`).
+/// Bistre's offline-compiled `.vec` UI icons (`assets/icons/ui/*.vec`).
 enum BistreUiIcon {
   sidebar('sidebar'),
   newChat('new_chat'),
@@ -147,7 +147,7 @@ class _BistreIconButtonState extends State<BistreIconButton> {
             : theme.inkSecondary);
 
     // Taps up to the minimum target land on this button without changing layout (DESIGN §7).
-    // Every icon button names itself on hover (v2.6.0 `HoverHint`).
+    // Every icon button names itself on hover via `HoverHint`.
     // Keeping `SizedBox.square` outside the hover/press wrappers makes the fixed button a
     // relayout boundary so sibling layout changes never re-lay out its subtree.
     return TapTargetExpander(

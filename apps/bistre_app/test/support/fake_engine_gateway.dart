@@ -860,10 +860,6 @@ class FakeEngineGateway implements BistreEngineGateway {
       _contextPins[threadId];
 
   @override
-  Future<List<EngineLocalServer>> discoverLocalServers() async =>
-      const <EngineLocalServer>[];
-
-  @override
   Future<EngineMcpDiscoveryReport> discoverMcpServer(
     EngineMcpServerConfig server,
   ) async => const EngineMcpDiscoveryReport(

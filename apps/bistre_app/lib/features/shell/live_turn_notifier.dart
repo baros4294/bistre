@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -53,9 +51,9 @@ class LiveTurnNotifier extends ValueNotifier<LiveTurn?> {
 
   String _pendingText = '';
   String _pendingThinking = '';
-  Timer? _flushTimer;
   int? _frameCallbackId;
   Duration? _lastFrame;
+  Duration? _lastPublishFrame;
   double _carryText = 0;
   double _carryThinking = 0;
 
@@ -83,28 +81,31 @@ class LiveTurnNotifier extends ValueNotifier<LiveTurn?> {
     _schedule();
   }
 
+  bool get _pacingActive =>
+      shouldPace() &&
+      !SchedulerBinding
+          .instance
+          .platformDispatcher
+          .accessibilityFeatures
+          .disableAnimations;
+
   void _schedule() {
-    if (shouldPace() &&
-        !SchedulerBinding
-            .instance
-            .platformDispatcher
-            .accessibilityFeatures
-            .disableAnimations) {
-      _frameCallbackId ??= SchedulerBinding.instance.scheduleFrameCallback(
-        _revealFrame,
-      );
-      return;
-    }
-    if (minInterval == Duration.zero) {
+    if (!_pacingActive && minInterval == Duration.zero) {
+      // Unpaced mode (Reduce motion / instant): Rust FFI already coalesces deltas per 16 ms
+      // frame, so publish immediately when no reading pace or low-memory throttle is active.
       flush();
       return;
     }
-    _flushTimer ??= Timer(minInterval, flush);
+    // Paced and low-memory 30 fps modes both lock strictly to Flutter's VSync frame callback
+    // (zero raw `Timer` beat-frequency drift against display refresh).
+    _frameCallbackId ??= SchedulerBinding.instance.scheduleFrameCallback(
+      _onVsyncFrame,
+    );
   }
 
   /// Publishes buffered deltas now.
   void flush() {
-    _stopTimers();
+    _stopFrameCallback();
     final turn = value;
     if (turn == null || (_pendingText.isEmpty && _pendingThinking.isEmpty)) {
       return;
@@ -117,10 +118,36 @@ class LiveTurnNotifier extends ValueNotifier<LiveTurn?> {
     _pendingThinking = '';
   }
 
-  void _revealFrame(Duration timestamp) {
+  void _onVsyncFrame(Duration timestamp) {
     _frameCallbackId = null;
     final turn = value;
-    if (turn == null) return;
+    if (turn == null || (_pendingText.isEmpty && _pendingThinking.isEmpty)) {
+      _lastFrame = null;
+      return;
+    }
+    if (minInterval > Duration.zero && _lastPublishFrame != null) {
+      if (timestamp - _lastPublishFrame! < minInterval) {
+        _frameCallbackId = SchedulerBinding.instance.scheduleFrameCallback(
+          _onVsyncFrame,
+        );
+        return;
+      }
+    }
+    if (_pacingActive) {
+      _revealFrame(timestamp, turn);
+      return;
+    }
+    _lastFrame = null;
+    _lastPublishFrame = timestamp;
+    value = turn.copyWith(
+      text: '${turn.text}$_pendingText',
+      thinking: '${turn.thinking}$_pendingThinking',
+    );
+    _pendingText = '';
+    _pendingThinking = '';
+  }
+
+  void _revealFrame(Duration timestamp, LiveTurn turn) {
     final last = _lastFrame;
     final seconds = last == null
         ? 1 / 60
@@ -135,6 +162,7 @@ class LiveTurnNotifier extends ValueNotifier<LiveTurn?> {
     _carryText = textCarry;
     _carryThinking = thinkCarry;
     if (textCount > 0 || thinkCount > 0) {
+      _lastPublishFrame = timestamp;
       value = turn.copyWith(
         text: '${turn.text}${_pendingText.substring(0, textCount)}',
         thinking:
@@ -148,7 +176,7 @@ class LiveTurnNotifier extends ValueNotifier<LiveTurn?> {
       return;
     }
     _frameCallbackId = SchedulerBinding.instance.scheduleFrameCallback(
-      _revealFrame,
+      _onVsyncFrame,
     );
   }
 
@@ -175,21 +203,20 @@ class LiveTurnNotifier extends ValueNotifier<LiveTurn?> {
 
   static bool _isHighSurrogate(int unit) => unit >= 0xD800 && unit <= 0xDBFF;
 
-  void _stopTimers() {
+  void _stopFrameCallback() {
     final id = _frameCallbackId;
     if (id != null) {
       SchedulerBinding.instance.cancelFrameCallbackWithId(id);
     }
     _frameCallbackId = null;
     _lastFrame = null;
+    _lastPublishFrame = null;
     _carryText = 0;
     _carryThinking = 0;
-    _flushTimer?.cancel();
-    _flushTimer = null;
   }
 
   void _dropPending() {
-    _stopTimers();
+    _stopFrameCallback();
     _pendingText = '';
     _pendingThinking = '';
   }

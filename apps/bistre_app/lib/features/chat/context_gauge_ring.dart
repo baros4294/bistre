@@ -16,7 +16,7 @@ import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
 
 /// Compact radial conversation-limit gauge (`docs/design/DESIGN.md` §8) that opens a breakdown
-/// of what fills the conversation (Parchment v2.6.0 `ContextWindowBreakdownPopover`).
+/// of what fills the conversation context window.
 ///
 /// [usage] comes from core (`context_usage`): what the next request sends, after any compaction
 /// or context pin, so the gauge never counts text the model will not see. Opening the popover

@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../bridge/bistre_engine.dart';
@@ -8,11 +10,12 @@ import '../../design/bistre_icons.dart';
 import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
-import '../../design/press_feedback.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
+import '../../platform/desktop_host.dart';
 import '../shell/folio_controller.dart';
-import 'chat_mode_selector.dart';
+import 'composer_tools_control.dart';
+import 'composer_trigger_menu.dart';
 import 'context_gauge_ring.dart';
 import 'thinking_control.dart';
 
@@ -37,48 +40,195 @@ class FolioComposer extends StatefulWidget {
 
 class _FolioComposerState extends State<FolioComposer> {
   final TextEditingController _textController = TextEditingController();
-  final FolioOverlayController _assistantMenuCtrl = FolioOverlayController();
-  final LayerLink _assistantLink = LayerLink();
   int _syncedDraftEpoch = -1;
   bool _focused = false;
   String _triggerPrefix = '';
+  String _triggerQuery = '';
+  int _triggerSelectedIndex = 0;
 
-  /// Command tokens offered after `@` / `/` (syntax, not translatable copy).
-  static const List<String> _mentionOptions = <String>[
-    '@file ',
-    '@diff ',
-    '@thread ',
-    '@memory ',
-    '@mcp ',
-  ];
-
-  static const List<String> _slashOptions = <String>[
-    '/plan',
-    '/build',
-    '/write',
-    '/compact',
-    '/tree',
-    '/clear',
-  ];
+  List<ComposerTriggerItem> _buildTriggerItems(
+    BistreLocalizationController l10n,
+    FolioController ctrl,
+  ) {
+    final q = _triggerQuery.toLowerCase();
+    if (_triggerPrefix == '/') {
+      final items = <ComposerTriggerItem>[
+        ComposerTriggerItem(
+          token: '/plan',
+          label: '/plan',
+          description: l10n.t(L10nKey.composerSlashPlanDesc),
+          icon: BistreUiIcon.document,
+        ),
+        ComposerTriggerItem(
+          token: '/build',
+          label: '/build',
+          description: l10n.t(L10nKey.composerSlashBuildDesc),
+          icon: BistreUiIcon.code,
+        ),
+        ComposerTriggerItem(
+          token: '/write',
+          label: '/write',
+          description: l10n.t(L10nKey.composerSlashWriteDesc),
+          icon: BistreUiIcon.edit,
+        ),
+        ComposerTriggerItem(
+          token: '/compact',
+          label: '/compact',
+          description: l10n.t(L10nKey.composerSlashCompactDesc),
+          icon: BistreUiIcon.think,
+        ),
+        ComposerTriggerItem(
+          token: '/tree',
+          label: '/tree',
+          description: l10n.t(L10nKey.composerSlashTreeDesc),
+          icon: BistreUiIcon.branchTree,
+        ),
+        ComposerTriggerItem(
+          token: '/clear',
+          label: '/clear',
+          description: l10n.t(L10nKey.composerSlashClearDesc),
+          icon: BistreUiIcon.newChat,
+        ),
+        for (final skill in ctrl.discoveredSkills)
+          ComposerTriggerItem(
+            token: '/${skill.name}',
+            label: '/${skill.name}',
+            description: skill.description,
+            icon: BistreUiIcon.think,
+            badge: l10n.t(L10nKey.settingsTabMemory),
+          ),
+      ];
+      if (q.isEmpty) return items;
+      return items
+          .where(
+            (i) =>
+                i.label.toLowerCase().contains(q) ||
+                i.description.toLowerCase().contains(q),
+          )
+          .toList();
+    }
+    final items = <ComposerTriggerItem>[
+      ComposerTriggerItem(
+        token: '@mount',
+        label: '@mount',
+        description: l10n.t(L10nKey.composerMentionMountDesc),
+        icon: BistreUiIcon.folder,
+      ),
+      ComposerTriggerItem(
+        token: '@file ',
+        label: '@file',
+        description: l10n.t(L10nKey.composerMentionFileDesc),
+        icon: BistreUiIcon.document,
+      ),
+      ComposerTriggerItem(
+        token: '@diff ',
+        label: '@diff',
+        description: l10n.t(L10nKey.composerMentionDiffDesc),
+        icon: BistreUiIcon.code,
+      ),
+      ComposerTriggerItem(
+        token: '@memory ',
+        label: '@memory',
+        description: l10n.t(L10nKey.composerMentionMemoryDesc),
+        icon: BistreUiIcon.memory,
+      ),
+      ComposerTriggerItem(
+        token: '@thread ',
+        label: '@thread',
+        description: l10n.t(L10nKey.composerMentionThreadDesc),
+        icon: BistreUiIcon.chat,
+      ),
+      ComposerTriggerItem(
+        token: '@mcp ',
+        label: '@mcp',
+        description: l10n.t(L10nKey.composerMentionMcpDesc),
+        icon: BistreUiIcon.server,
+      ),
+    ];
+    final root = ctrl.workspaceRootPath.trim();
+    if (root.isNotEmpty && BistreDesktopHost.isSafeLocalFolder(root)) {
+      try {
+        final dir = Directory(root);
+        var added = 0;
+        for (final ent in dir.listSync(followLinks: false)) {
+          if (added >= 12) break;
+          final name = ent.path
+              .replaceAll(r'\', '/')
+              .split('/')
+              .where((p) => p.isNotEmpty)
+              .lastOrNull;
+          if (name == null || name.startsWith('.')) continue;
+          final isDir = ent is Directory;
+          items.add(
+            ComposerTriggerItem(
+              token: '@file $name ',
+              label: name,
+              description: root,
+              icon: isDir ? BistreUiIcon.folder : BistreUiIcon.document,
+            ),
+          );
+          added++;
+        }
+      } on FileSystemException {
+        // Unreadable folder: keep static mention options.
+      }
+    }
+    if (q.isEmpty) return items;
+    return items
+        .where(
+          (i) =>
+              i.label.toLowerCase().contains(q) ||
+              i.description.toLowerCase().contains(q),
+        )
+        .toList();
+  }
 
   void _handleTextChanged(String text) {
     widget.controller.scheduleDraftSave(text);
     final trimmedStart = text.trimLeft();
     String nextTrigger = '';
+    String nextQuery = '';
     if (trimmedStart.startsWith('/') && !trimmedStart.contains(' ')) {
       nextTrigger = '/';
-    } else if (text.endsWith('@') ||
-        RegExp(r'(?:^|\s)@[a-zA-Z]*$').hasMatch(text)) {
-      nextTrigger = '@';
+      nextQuery = trimmedStart.substring(1);
+    } else {
+      final match = RegExp(r'(?:^|\s)@([a-zA-Z0-9._/-]*)$').firstMatch(text);
+      if (match != null) {
+        nextTrigger = '@';
+        nextQuery = match.group(1) ?? '';
+      }
     }
-    if (nextTrigger != _triggerPrefix) {
-      setState(() => _triggerPrefix = nextTrigger);
+    if (nextTrigger != _triggerPrefix || nextQuery != _triggerQuery) {
+      setState(() {
+        _triggerPrefix = nextTrigger;
+        _triggerQuery = nextQuery;
+        _triggerSelectedIndex = 0;
+      });
     }
   }
 
   void _applyTriggerOption(String token) {
     final ctrl = widget.controller;
-    setState(() => _triggerPrefix = '');
+    setState(() {
+      _triggerPrefix = '';
+      _triggerQuery = '';
+      _triggerSelectedIndex = 0;
+    });
+    if (token == '@mount') {
+      final current = _textController.text;
+      final replaced = current.replaceFirst(RegExp(r'@[a-zA-Z0-9._/-]*$'), '');
+      _textController.value = TextEditingValue(
+        text: replaced,
+        selection: TextSelection.collapsed(offset: replaced.length),
+      );
+      unawaited(() async {
+        final picked = await BistreDesktopHost.pickLocalFolder(title: token);
+        if (picked != null && picked.isNotEmpty) {
+          await ctrl.setWorkspaceRootPath(picked);
+        }
+      }());
+      return;
+    }
     if (token.startsWith('/')) {
       _textController.clear();
       switch (token) {
@@ -94,11 +244,28 @@ class _FolioComposerState extends State<FolioComposer> {
           ctrl.openSessionTree();
         case '/clear':
           unawaited(ctrl.createNewFolio());
+        default:
+          final skillName = token.substring(1);
+          final skill = ctrl.discoveredSkills
+              .where((s) => s.name == skillName)
+              .firstOrNull;
+          if (skill != null) {
+            unawaited(() async {
+              final body = await ctrl.loadSkillBody(skill.path);
+              if (!mounted || body.trim().isEmpty) return;
+              final inserted = '$body\n';
+              _textController.value = TextEditingValue(
+                text: inserted,
+                selection: TextSelection.collapsed(offset: inserted.length),
+              );
+            }());
+          }
       }
+      widget.focusNode.requestFocus();
       return;
     }
     final current = _textController.text;
-    final replaced = current.replaceFirst(RegExp(r'@[a-zA-Z]*$'), token);
+    final replaced = current.replaceFirst(RegExp(r'@[a-zA-Z0-9._/-]*$'), token);
     _textController.value = TextEditingValue(
       text: replaced,
       selection: TextSelection.collapsed(offset: replaced.length),
@@ -237,7 +404,7 @@ class _FolioComposerState extends State<FolioComposer> {
                           8,
                           8,
                         ),
-                        // Parchment v2.6.0 notice: a status dot, one plain sentence in body ink,
+                        // Compact inline notice: a status dot, one plain sentence in body ink,
                         // one fix button, and dismiss; announced to screen readers.
                         child: Row(
                           children: [
@@ -435,53 +602,35 @@ class _FolioComposerState extends State<FolioComposer> {
                       const FolioDivider(),
                     ],
                     if (_triggerPrefix.isNotEmpty) ...[
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: theme.bgSurface.withValues(alpha: 0.72),
-                          borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(15),
-                          ),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsetsDirectional.fromSTEB(
-                            BistreSpacing.s12,
-                            8,
-                            BistreSpacing.s12,
-                            8,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                      Builder(
+                        builder: (context) {
+                          final items = _buildTriggerItems(l10n, ctrl);
+                          if (items.isEmpty) return const SizedBox.shrink();
+                          final safeIdx = _triggerSelectedIndex.clamp(
+                            0,
+                            items.length - 1,
+                          );
+                          return Column(
                             mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              InkText(
-                                _triggerPrefix == '/'
+                              ComposerTriggerMenu(
+                                title: _triggerPrefix == '/'
                                     ? l10n.t(L10nKey.composerSlashTitle)
                                     : l10n.t(L10nKey.composerMentionTitle),
-                                role: InkTextRole.captionMeta,
-                                color: theme.accentBrass,
+                                items: items,
+                                selectedIndex: safeIdx,
+                                reduceMotionOverride: ctrl.reduceMotionOverride,
+                                onHoverIndex: (idx) =>
+                                    setState(() => _triggerSelectedIndex = idx),
+                                onSelect: (item) =>
+                                    _applyTriggerOption(item.token),
                               ),
-                              const SizedBox(height: 6),
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 6,
-                                children: [
-                                  for (final item
-                                      in _triggerPrefix == '/'
-                                          ? _slashOptions
-                                          : _mentionOptions)
-                                    InkChip(
-                                      label: item.trim(),
-                                      selected: false,
-                                      onSelected: () =>
-                                          _applyTriggerOption(item),
-                                    ),
-                                ],
-                              ),
+                              const FolioDivider(),
                             ],
-                          ),
-                        ),
+                          );
+                        },
                       ),
-                      const FolioDivider(),
                     ],
                     if (ctrl.attachments.isNotEmpty) ...[
                       Padding(
@@ -514,16 +663,26 @@ class _FolioComposerState extends State<FolioComposer> {
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      BistreIcon(
-                                        BistreUiIcon.paperclip,
-                                        size: 11,
-                                        color: theme.accentBrass,
-                                      ),
-                                      const SizedBox(width: 5),
-                                      InkText(
-                                        att.name,
-                                        role: InkTextRole.captionMeta,
-                                        color: theme.inkPrimary,
+                                      GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTap: () =>
+                                            ctrl.openAttachmentPreview(att),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            BistreIcon(
+                                              BistreUiIcon.paperclip,
+                                              size: 11,
+                                              color: theme.accentBrass,
+                                            ),
+                                            const SizedBox(width: 5),
+                                            InkText(
+                                              att.name,
+                                              role: InkTextRole.captionMeta,
+                                              color: theme.inkPrimary,
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                       const SizedBox(width: 4),
                                       BistreIconButton(
@@ -552,22 +711,66 @@ class _FolioComposerState extends State<FolioComposer> {
                         BistreSpacing.s16,
                         BistreSpacing.s8,
                       ),
-                      child: QuillInput(
-                        key: const Key('composer_input'),
-                        controller: _textController,
-                        focusNode: widget.focusNode,
-                        placeholder: ctrl.isStreaming
-                            ? l10n.t(L10nKey.composerSteerPlaceholder)
-                            : assistant != null
-                            ? l10n.t(
-                                L10nKey.composerPlaceholderAssistant,
-                                <String, Object?>{'name': assistant.name},
-                              )
-                            : l10n.t(L10nKey.shellComposerPlaceholder),
-                        submitOnEnter: ctrl.sendOnEnter,
-                        frameless: true,
-                        onSubmitted: () => unawaited(_submit()),
-                        onChanged: _handleTextChanged,
+                      child: Focus(
+                        onKeyEvent: (_, event) {
+                          if (_triggerPrefix.isEmpty ||
+                              event is! KeyDownEvent) {
+                            return KeyEventResult.ignored;
+                          }
+                          final items = _buildTriggerItems(l10n, ctrl);
+                          if (items.isEmpty) return KeyEventResult.ignored;
+                          if (event.logicalKey == LogicalKeyboardKey.escape) {
+                            setState(() {
+                              _triggerPrefix = '';
+                              _triggerQuery = '';
+                            });
+                            return KeyEventResult.handled;
+                          }
+                          if (event.logicalKey ==
+                              LogicalKeyboardKey.arrowDown) {
+                            setState(
+                              () => _triggerSelectedIndex =
+                                  (_triggerSelectedIndex + 1) % items.length,
+                            );
+                            return KeyEventResult.handled;
+                          }
+                          if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                            setState(
+                              () => _triggerSelectedIndex =
+                                  (_triggerSelectedIndex - 1 + items.length) %
+                                  items.length,
+                            );
+                            return KeyEventResult.handled;
+                          }
+                          if (event.logicalKey == LogicalKeyboardKey.tab ||
+                              event.logicalKey == LogicalKeyboardKey.enter) {
+                            final chosen =
+                                items[_triggerSelectedIndex.clamp(
+                                  0,
+                                  items.length - 1,
+                                )];
+                            _applyTriggerOption(chosen.token);
+                            return KeyEventResult.handled;
+                          }
+                          return KeyEventResult.ignored;
+                        },
+                        child: QuillInput(
+                          key: const Key('composer_input'),
+                          controller: _textController,
+                          focusNode: widget.focusNode,
+                          placeholder: ctrl.isStreaming
+                              ? l10n.t(L10nKey.composerSteerPlaceholder)
+                              : assistant != null
+                              ? l10n.t(
+                                  L10nKey.composerPlaceholderAssistant,
+                                  <String, Object?>{'name': assistant.name},
+                                )
+                              : l10n.t(L10nKey.shellComposerPlaceholder),
+                          submitOnEnter: ctrl.sendOnEnter,
+                          frameless: true,
+                          onSubmitted: () => unawaited(_submit()),
+                          onChanged: _handleTextChanged,
+                        ),
                       ),
                     ),
                     Padding(
@@ -611,14 +814,12 @@ class _FolioComposerState extends State<FolioComposer> {
                             ),
                           ),
                           const SizedBox(width: 4),
-                          if (ctrl.activeThread != null) ...[
-                            ChatModeSelector(
-                              activeMode: ctrl.activeThreadMode,
-                              onSelect: (m) =>
-                                  unawaited(ctrl.setActiveThreadMode(m)),
-                            ),
-                            const SizedBox(width: 4),
-                          ],
+                          ComposerToolsControl(
+                            controller: ctrl,
+                            compact:
+                                MediaQuery.sizeOf(context).width / scale < 600,
+                          ),
+                          const SizedBox(width: 4),
                           ThinkingControl(
                             compact:
                                 MediaQuery.sizeOf(context).width / scale < 600,
@@ -627,24 +828,6 @@ class _FolioComposerState extends State<FolioComposer> {
                             onChanged: (v) =>
                                 unawaited(ctrl.setReasoningEffort(v)),
                           ),
-                          const SizedBox(width: 4),
-                          if (assistant != null)
-                            FolioOverlay(
-                              controller: _assistantMenuCtrl,
-                              overlayBuilder: (ctx) => _buildAssistantPopover(
-                                ctx,
-                                theme,
-                                l10n,
-                                ctrl,
-                              ),
-                              child: CompositedTransformTarget(
-                                link: _assistantLink,
-                                child: _AssistantTriggerPill(
-                                  assistant: assistant,
-                                  onTap: _assistantMenuCtrl.toggle,
-                                ),
-                              ),
-                            ),
                           // Only this label rebuilds when a draft save lands.
                           ValueListenableBuilder<bool>(
                             valueListenable: ctrl.draftSavedState,
@@ -688,7 +871,7 @@ class _FolioComposerState extends State<FolioComposer> {
                                   unawaited(ctrl.cancelStreaming()),
                             ),
                           ] else
-                            // A quiet Send (Parchment v2.6.0): the message, not the button, is
+                            // A quiet Send control: the message, not the button, is
                             // the focal point.
                             EngravedButton(
                               label: l10n.t(L10nKey.shellComposerSend),
@@ -712,256 +895,10 @@ class _FolioComposerState extends State<FolioComposer> {
       ),
     );
   }
-
-  Widget _buildAssistantPopover(
-    BuildContext context,
-    BistreThemeData theme,
-    BistreLocalizationController l10n,
-    FolioController ctrl,
-  ) {
-    final dir = Directionality.of(context);
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: _assistantMenuCtrl.hide,
-            child: const SizedBox.expand(),
-          ),
-        ),
-        CompositedTransformFollower(
-          link: _assistantLink,
-          showWhenUnlinked: false,
-          targetAnchor: AlignmentDirectional.topStart.resolve(dir),
-          followerAnchor: AlignmentDirectional.bottomStart.resolve(dir),
-          offset: const Offset(0, -8),
-          child: FolioFadeSlide(
-            beginOffset: const Offset(0, 0.06),
-            reduceMotionOverride: ctrl.reduceMotionOverride,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 268),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: FolioSurface(
-                  tone: FolioTone.elevated,
-                  padding: const EdgeInsetsDirectional.symmetric(vertical: 6),
-                  borderRadius: 12,
-                  boxShadow: theme.floatingShadow,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsetsDirectional.fromSTEB(
-                          12,
-                          4,
-                          12,
-                          6,
-                        ),
-                        child: InkText(
-                          l10n.t(L10nKey.sidebarSectionAssistants),
-                          role: InkTextRole.captionMeta,
-                          color: theme.inkMuted,
-                        ),
-                      ),
-                      const FolioDivider(),
-                      for (final EngineAssistant a in ctrl.assistants)
-                        _AssistantPopoverOption(
-                          assistant: a,
-                          selected: ctrl.activeAssistantId == a.id,
-                          onTap: () {
-                            _assistantMenuCtrl.hide();
-                            unawaited(ctrl.selectAssistant(a.id));
-                          },
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _AssistantTriggerPill extends StatefulWidget {
-  const _AssistantTriggerPill({required this.assistant, required this.onTap});
-
-  final EngineAssistant assistant;
-  final VoidCallback onTap;
-
-  @override
-  State<_AssistantTriggerPill> createState() => _AssistantTriggerPillState();
-}
-
-class _AssistantTriggerPillState extends State<_AssistantTriggerPill> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    final hasLabIcon = widget.assistant.iconSlug.isNotEmpty;
-
-    return Semantics(
-      button: true,
-      label: widget.assistant.name,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        child: PressFeedback(
-          pressScale: kRowPressScale,
-          hoverScale: 1,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.onTap,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: _hovered
-                    ? theme.bgSurface
-                    : theme.bgSurface.withValues(alpha: 0.60),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Padding(
-                padding: const EdgeInsetsDirectional.symmetric(
-                  horizontal: 9,
-                  vertical: 5,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (hasLabIcon)
-                      LabIcon(iconSlug: widget.assistant.iconSlug, size: 13)
-                    else
-                      BistreIcon(
-                        BistreUiIcon.assistant,
-                        size: 13,
-                        color: theme.accentBrass,
-                      ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: InkText(
-                        widget.assistant.name,
-                        role: InkTextRole.captionMeta,
-                        color: theme.inkSecondary,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 5),
-                    BistreIcon(
-                      BistreUiIcon.chevronDown,
-                      size: 11,
-                      color: theme.inkMuted,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AssistantPopoverOption extends StatefulWidget {
-  const _AssistantPopoverOption({
-    required this.assistant,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final EngineAssistant assistant;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  State<_AssistantPopoverOption> createState() =>
-      _AssistantPopoverOptionState();
-}
-
-class _AssistantPopoverOptionState extends State<_AssistantPopoverOption> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    final hasLabIcon = widget.assistant.iconSlug.isNotEmpty;
-
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: PressFeedback(
-        pressScale: kRowPressScale,
-        hoverScale: 1,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: _hovered || widget.selected ? theme.hoverTint : null,
-            ),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.symmetric(
-                horizontal: 12,
-                vertical: 8,
-              ),
-              child: Row(
-                children: [
-                  if (hasLabIcon)
-                    LabIcon(iconSlug: widget.assistant.iconSlug, size: 15)
-                  else
-                    BistreIcon(
-                      BistreUiIcon.assistant,
-                      size: 14,
-                      color: widget.selected
-                          ? theme.accentBrass
-                          : theme.inkSecondary,
-                    ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        InkText(
-                          widget.assistant.name,
-                          role: InkTextRole.labelStrong,
-                          color: theme.inkPrimary,
-                        ),
-                        if (widget.assistant.roleSubtitle.isNotEmpty)
-                          InkText(
-                            widget.assistant.roleSubtitle,
-                            role: InkTextRole.captionMeta,
-                            color: theme.inkMuted,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                      ],
-                    ),
-                  ),
-                  if (widget.selected)
-                    BistreIcon(
-                      BistreUiIcon.check,
-                      size: 13,
-                      color: theme.accentBrass,
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 /// Bottom composer controls: one row normally; two rows on compact phones while streaming or
-/// at large text so `Stop` / `Queue` / `Send` never squeeze the assistant picker.
+/// at large text so `Stop` / `Queue` / `Send` never squeeze the leading tools.
 class _ComposerToolbar extends StatelessWidget {
   const _ComposerToolbar({
     required this.twoRows,

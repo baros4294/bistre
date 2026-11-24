@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -8,8 +9,8 @@ import 'bistre_theme.dart';
 import 'ink_primitives.dart';
 import 'press_feedback.dart';
 
-/// Pure `package:flutter/widgets.dart` continuous slider with keyboard support,
-/// RTL-aware fill, visible brass focus ring, and zero layout animations.
+/// Pure `package:flutter/widgets.dart` smooth VSYNC slider with keyboard support,
+/// RTL-aware fill, critically damped thumb glide, visible brass focus ring, and zero layout animations.
 class BistreSlider extends StatefulWidget {
   const BistreSlider({
     super.key,
@@ -20,6 +21,7 @@ class BistreSlider extends StatefulWidget {
     required this.semanticsLabel,
     this.step = 1.0,
     this.onChangeEnd,
+    this.reduceMotionOverride = false,
   });
 
   final double value;
@@ -29,15 +31,78 @@ class BistreSlider extends StatefulWidget {
   final ValueChanged<double> onChanged;
   final ValueChanged<double>? onChangeEnd;
   final String semanticsLabel;
+  final bool reduceMotionOverride;
 
   @override
   State<BistreSlider> createState() => _BistreSliderState();
 }
 
-class _BistreSliderState extends State<BistreSlider> {
+class _BistreSliderState extends State<BistreSlider>
+    with SingleTickerProviderStateMixin {
+  static final SpringDescription _thumbSpring =
+      SpringDescription.withDampingRatio(mass: 1, stiffness: 520);
+  static const Tolerance _tolerance = Tolerance(
+    distance: 0.002,
+    velocity: 0.02,
+  );
+
+  late final AnimationController _animFrac;
   bool _focused = false;
   bool _hovered = false;
   bool _dragging = false;
+  double? _dragFraction;
+
+  double _fractionFor(double v) {
+    final span = (widget.max - widget.min).abs();
+    return span > 0 ? ((v - widget.min) / span).clamp(0.0, 1.0) : 0.0;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _animFrac = AnimationController.unbounded(
+      vsync: this,
+      value: _fractionFor(widget.value),
+    );
+  }
+
+  @override
+  void didUpdateWidget(BistreSlider oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_dragging) return;
+    final target = _fractionFor(widget.value);
+    if ((target - _animFrac.value).abs() < 0.0005) return;
+    _animateTo(target);
+  }
+
+  void _animateTo(double target) {
+    if (BistreMotion.shouldReduceMotion(
+      context,
+      reduceMotionOverride: widget.reduceMotionOverride,
+    )) {
+      _animFrac.value = target;
+      return;
+    }
+    unawaited(
+      _animFrac
+          .animateWith(
+            SpringSimulation(
+              _thumbSpring,
+              _animFrac.value,
+              target,
+              _animFrac.velocity,
+              tolerance: _tolerance,
+            ),
+          )
+          .then((_) => _animFrac.value = target),
+    );
+  }
+
+  @override
+  void dispose() {
+    _animFrac.dispose();
+    super.dispose();
+  }
 
   double _snap(double raw) {
     final clamped = raw.clamp(widget.min, widget.max);
@@ -46,11 +111,23 @@ class _BistreSliderState extends State<BistreSlider> {
     return (widget.min + steps * widget.step).clamp(widget.min, widget.max);
   }
 
-  void _updateFromLocalOffset(double dx, double width, bool isRtl) {
+  void _updateFromLocalOffset(
+    double dx,
+    double width,
+    bool isRtl, {
+    required bool dragging,
+  }) {
     if (width <= 0) return;
     final rawFrac = (dx / width).clamp(0.0, 1.0);
     final frac = isRtl ? (1.0 - rawFrac) : rawFrac;
+    if (dragging) {
+      _dragFraction = frac;
+      _animFrac.value = frac;
+    }
     final next = _snap(widget.min + frac * (widget.max - widget.min));
+    if (!dragging) {
+      _animateTo(_fractionFor(next));
+    }
     if ((next - widget.value).abs() > 1e-6) {
       widget.onChanged(next);
     }
@@ -60,10 +137,6 @@ class _BistreSliderState extends State<BistreSlider> {
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
     final isRtl = Directionality.of(context) == TextDirection.rtl;
-    final span = (widget.max - widget.min).abs();
-    final fraction = span > 0
-        ? ((widget.value - widget.min) / span).clamp(0.0, 1.0)
-        : 0.0;
 
     return Semantics(
       slider: true,
@@ -83,6 +156,7 @@ class _BistreSliderState extends State<BistreSlider> {
             onInvoke: (intent) {
               final dir = isRtl ? -intent.delta : intent.delta;
               final next = _snap(widget.value + dir * widget.step);
+              _animateTo(_fractionFor(next));
               widget.onChanged(next);
               widget.onChangeEnd?.call(next);
               return null;
@@ -96,80 +170,121 @@ class _BistreSliderState extends State<BistreSlider> {
               final trackW = constraints.maxWidth;
               const thumbSize = 16.0;
               final usableW = (trackW - thumbSize).clamp(0.0, double.infinity);
-              final visualFrac = isRtl ? (1.0 - fraction) : fraction;
-              final thumbOffset = visualFrac * usableW;
 
               return GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTapDown: (d) {
-                  _updateFromLocalOffset(d.localPosition.dx, trackW, isRtl);
+                  _updateFromLocalOffset(
+                    d.localPosition.dx,
+                    trackW,
+                    isRtl,
+                    dragging: false,
+                  );
                   widget.onChangeEnd?.call(widget.value);
                 },
                 onHorizontalDragStart: (d) {
                   setState(() => _dragging = true);
-                  _updateFromLocalOffset(d.localPosition.dx, trackW, isRtl);
+                  _updateFromLocalOffset(
+                    d.localPosition.dx,
+                    trackW,
+                    isRtl,
+                    dragging: true,
+                  );
                 },
-                onHorizontalDragUpdate: (d) =>
-                    _updateFromLocalOffset(d.localPosition.dx, trackW, isRtl),
+                onHorizontalDragUpdate: (d) => _updateFromLocalOffset(
+                  d.localPosition.dx,
+                  trackW,
+                  isRtl,
+                  dragging: true,
+                ),
                 onHorizontalDragEnd: (_) {
-                  setState(() => _dragging = false);
+                  setState(() {
+                    _dragging = false;
+                    _dragFraction = null;
+                  });
+                  _animateTo(_fractionFor(widget.value));
                   widget.onChangeEnd?.call(widget.value);
+                },
+                onHorizontalDragCancel: () {
+                  setState(() {
+                    _dragging = false;
+                    _dragFraction = null;
+                  });
+                  _animateTo(_fractionFor(widget.value));
                 },
                 child: SizedBox(
                   height: 30,
                   width: trackW,
-                  child: Stack(
-                    alignment: AlignmentDirectional.centerStart,
-                    children: [
-                      SizedBox(
-                        height: 4,
-                        width: trackW,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: theme.bgSurface,
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: theme.borderHairline,
-                              width: 0.5,
-                            ),
-                          ),
-                        ),
-                      ),
-                      Align(
+                  child: AnimatedBuilder(
+                    animation: _animFrac,
+                    builder: (context, _) {
+                      final fraction = (_dragFraction ?? _animFrac.value).clamp(
+                        0.0,
+                        1.0,
+                      );
+                      final visualFrac = isRtl ? (1.0 - fraction) : fraction;
+                      final thumbOffset = visualFrac * usableW;
+                      final thumbScale = _dragging
+                          ? 1.15
+                          : (_hovered || _focused ? 1.08 : 1.0);
+
+                      return Stack(
                         alignment: AlignmentDirectional.centerStart,
-                        child: FractionallySizedBox(
-                          widthFactor: fraction,
-                          child: SizedBox(
+                        children: [
+                          SizedBox(
                             height: 4,
+                            width: trackW,
                             child: DecoratedBox(
                               decoration: BoxDecoration(
-                                color: theme.accentBrass,
+                                color: theme.bgSurface,
                                 borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: theme.borderHairline,
+                                  width: 0.5,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
-                      Transform.translate(
-                        offset: Offset(thumbOffset, 0),
-                        child: SizedBox.square(
-                          dimension: thumbSize,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: theme.bgElevated,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: _focused || _dragging || _hovered
-                                    ? theme.accentBrass
-                                    : theme.inkSecondary,
-                                width: _focused || _dragging ? 2.2 : 1.6,
+                          Align(
+                            alignment: AlignmentDirectional.centerStart,
+                            child: FractionallySizedBox(
+                              widthFactor: fraction,
+                              child: SizedBox(
+                                height: 4,
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: theme.accentBrass,
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                ),
                               ),
-                              boxShadow: theme.cardShadow,
                             ),
                           ),
-                        ),
-                      ),
-                    ],
+                          Transform.translate(
+                            offset: Offset(thumbOffset, 0),
+                            child: Transform.scale(
+                              scale: thumbScale,
+                              child: SizedBox.square(
+                                dimension: thumbSize,
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: theme.bgElevated,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: _focused || _dragging || _hovered
+                                          ? theme.accentBrass
+                                          : theme.inkSecondary,
+                                      width: _focused || _dragging ? 2.2 : 1.6,
+                                    ),
+                                    boxShadow: theme.cardShadow,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ),
               );

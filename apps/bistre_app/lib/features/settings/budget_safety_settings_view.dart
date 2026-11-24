@@ -29,6 +29,8 @@ class BudgetSafetySettingsView extends StatefulWidget {
 class _BudgetSafetySettingsViewState extends State<BudgetSafetySettingsView> {
   final TextEditingController _customAmountCtrl = TextEditingController();
   final FocusNode _customAmountFocus = FocusNode();
+  final TextEditingController _chatLimitCtrl = TextEditingController();
+  final FocusNode _chatLimitFocus = FocusNode();
 
   static const List<(int, String)> _quickCaps = <(int, String)>[
     (1000000, r'$1.00'),
@@ -47,6 +49,8 @@ class _BudgetSafetySettingsViewState extends State<BudgetSafetySettingsView> {
   void dispose() {
     _customAmountCtrl.dispose();
     _customAmountFocus.dispose();
+    _chatLimitCtrl.dispose();
+    _chatLimitFocus.dispose();
     super.dispose();
   }
 
@@ -58,6 +62,23 @@ class _BudgetSafetySettingsViewState extends State<BudgetSafetySettingsView> {
     } else if (_customAmountCtrl.text.isEmpty) {
       _customAmountCtrl.text = '10.00';
     }
+    final chatCap = widget.controller.activeChatSpendLimitMicros;
+    _chatLimitCtrl.text = chatCap != null
+        ? FolioController.formatMicrosUsd(chatCap).replaceFirst(r'$', '')
+        : '';
+  }
+
+  void _applyChatLimit() {
+    final text = _chatLimitCtrl.text.trim();
+    if (text.isEmpty) {
+      unawaited(widget.controller.setActiveChatSpendLimitMicros(null));
+      return;
+    }
+    final parsed = FolioController.parseUsdToMicros(text);
+    if (parsed == null || parsed <= 0) return;
+    _chatLimitCtrl.text = FolioController.formatMicrosUsd(parsed)
+        .replaceFirst(r'$', '');
+    unawaited(widget.controller.setActiveChatSpendLimitMicros(parsed));
   }
 
   void _applyCustomAmount() {
@@ -280,6 +301,46 @@ class _BudgetSafetySettingsViewState extends State<BudgetSafetySettingsView> {
                       ],
                     ),
                   ),
+                if (ctrl.activeThread != null)
+                  BistreSettingRow(
+                    label: l10n.t(L10nKey.settingsBudgetChatLimit),
+                    description: l10n.t(L10nKey.settingsBudgetChatLimitHint),
+                    trailing: Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 120,
+                          child: QuillInput(
+                            controller: _chatLimitCtrl,
+                            focusNode: _chatLimitFocus,
+                            placeholder: _kDefaultAmountHint,
+                            maxLines: 1,
+                            compact: true,
+                            submitOnEnter: false,
+                            onSubmitted: _applyChatLimit,
+                          ),
+                        ),
+                        EngravedButton(
+                          label: l10n.t(L10nKey.settingsBudgetApplyAmount),
+                          compact: true,
+                          onPressed: _applyChatLimit,
+                        ),
+                        if (ctrl.activeChatSpendLimitMicros != null)
+                          EngravedButton(
+                            label: l10n.t(L10nKey.settingsProfileAvatarClear),
+                            compact: true,
+                            onPressed: () {
+                              _chatLimitCtrl.clear();
+                              unawaited(
+                                ctrl.setActiveChatSpendLimitMicros(null),
+                              );
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: BistreSpacing.s24),
@@ -312,20 +373,28 @@ class _BudgetSafetySettingsViewState extends State<BudgetSafetySettingsView> {
             ),
             const SizedBox(height: BistreSpacing.s24),
 
-            // Permissions & Privacy
+            // Permissions (Off / Strict / Balanced / Sandbox)
             BistreSettingsSection(
               title: l10n.t(L10nKey.settingsTrustPresetHeading),
               children: [
                 BistreSettingRow(
                   label: l10n.t(L10nKey.settingsTrustPresetHeading),
                   trailing: BistreSegmentedControl<String>(
-                    selected: s.trustPreset,
+                    selected:
+                        s.trustPreset == 'parchment' ||
+                            s.trustPreset == 'parchment_safe'
+                        ? 'strict'
+                        : s.trustPreset,
                     onSelected: (v) => unawaited(
                       ctrl.updateSettings(s.copyWith(trustPreset: v)),
                     ),
                     options: <BistreSegmentedOption<String>>[
                       BistreSegmentedOption<String>(
-                        value: 'parchment_safe',
+                        value: 'off',
+                        label: l10n.t(L10nKey.settingsAgentPermOff),
+                      ),
+                      BistreSegmentedOption<String>(
+                        value: 'strict',
                         label: l10n.t(L10nKey.settingsTrustParchment),
                       ),
                       BistreSegmentedOption<String>(
@@ -337,30 +406,6 @@ class _BudgetSafetySettingsViewState extends State<BudgetSafetySettingsView> {
                         label: l10n.t(L10nKey.settingsTrustUnchained),
                       ),
                     ],
-                  ),
-                ),
-                BistreSettingRow(
-                  label: l10n.t(L10nKey.settingsTrustLocalFirst),
-                  trailing: BistreSwitch(
-                    value: s.walletLocalFirst,
-                    semanticsLabel: l10n.t(L10nKey.settingsTrustLocalFirst),
-                    reduceMotionOverride: ctrl.reduceMotionOverride,
-                    onChanged: (v) => unawaited(
-                      ctrl.updateSettings(s.copyWith(walletLocalFirst: v)),
-                    ),
-                  ),
-                ),
-                BistreSettingRow(
-                  label: l10n.t(L10nKey.settingsTrustStateless),
-                  trailing: BistreSwitch(
-                    value: s.providerStatelessDefault,
-                    semanticsLabel: l10n.t(L10nKey.settingsTrustStateless),
-                    reduceMotionOverride: ctrl.reduceMotionOverride,
-                    onChanged: (v) => unawaited(
-                      ctrl.updateSettings(
-                        s.copyWith(providerStatelessDefault: v),
-                      ),
-                    ),
                   ),
                 ),
               ],

@@ -149,7 +149,7 @@ void main() {
       Directionality(
         textDirection: TextDirection.ltr,
         child: BistreTheme(
-          data: BistreThemeData.dayParchment,
+          data: BistreThemeData.warmSepia,
           child: Center(
             child: Builder(
               builder: (context) {
@@ -193,7 +193,7 @@ void main() {
         child: Directionality(
           textDirection: TextDirection.ltr,
           child: BistreTheme(
-            data: BistreThemeData.dayParchment,
+            data: BistreThemeData.warmSepia,
             child: MediaQuery.fromView(
               view: tester.view,
               child: CodeWrapScope(
@@ -978,73 +978,72 @@ void main() {
     await gw.shutdown();
   });
 
-  testWidgets(
-    'phone settings match v2.6.0: card list, one page, back and swipe step back',
-    (WidgetTester tester) async {
-      tester.view.physicalSize = const Size(390, 844);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final (ctrl, gw, l10n) = await boot();
-      await tester.pumpWidget(
-        BistreApp(l10nController: l10n, folioController: ctrl),
-      );
-      await tester.pumpAndSettle();
-      ctrl.openSettings();
-      await tester.pumpAndSettle();
+  testWidgets('phone settings: card list, one page, back and swipe step back', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final (ctrl, gw, l10n) = await boot();
+    await tester.pumpWidget(
+      BistreApp(l10nController: l10n, folioController: ctrl),
+    );
+    await tester.pumpAndSettle();
+    ctrl.openSettings();
+    await tester.pumpAndSettle();
 
-      // Root: one header (Settings + Chat), search, and every page as a vertical card.
-      final appearance = find.text(l10n.t(L10nKey.settingsTabAppearance));
-      final shortcuts = find.text(l10n.t(L10nKey.settingsTabShortcuts));
-      expect(find.text(l10n.t(L10nKey.settingsChat)), findsOneWidget);
-      expect(
-        find.text(l10n.t(L10nKey.settingsSearchPlaceholder)),
-        findsOneWidget,
-      );
-      expect(find.text(l10n.t(L10nKey.settingsSubShortcuts)), findsOneWidget);
-      await tester.dragUntilVisible(
-        shortcuts,
-        find.byType(SingleChildScrollView).last,
-        const Offset(0, -200),
-      );
-      expect(
-        tester.getTopLeft(shortcuts).dy,
-        greaterThan(tester.getTopLeft(appearance).dy),
-      );
-      expect(
-        tester.getTopLeft(shortcuts).dx,
-        tester.getTopLeft(appearance).dx,
-        reason: 'a vertical list, not a sideways strip',
-      );
+    // Root: one header (Settings + Chat), search, and every page as a vertical card.
+    final appearance = find.text(l10n.t(L10nKey.settingsTabAppearance));
+    final shortcuts = find.text(l10n.t(L10nKey.settingsTabShortcuts));
+    expect(find.text(l10n.t(L10nKey.settingsChat)), findsOneWidget);
+    expect(
+      find.text(l10n.t(L10nKey.settingsSearchPlaceholder)),
+      findsOneWidget,
+    );
+    expect(find.text(l10n.t(L10nKey.settingsSubShortcuts)), findsOneWidget);
+    await tester.dragUntilVisible(
+      shortcuts,
+      find.byType(SingleChildScrollView).last,
+      const Offset(0, -200),
+    );
+    expect(
+      tester.getTopLeft(shortcuts).dy,
+      greaterThan(tester.getTopLeft(appearance).dy),
+    );
+    expect(
+      tester.getTopLeft(shortcuts).dx,
+      tester.getTopLeft(appearance).dx,
+      reason: 'a vertical list, not a sideways strip',
+    );
 
-      // A page opens alone, with a Settings back button.
-      await tester.tap(appearance);
-      await tester.pumpAndSettle();
-      expect(find.text(l10n.t(L10nKey.settingsProfileName)), findsWidgets);
-      expect(shortcuts, findsNothing);
+    // A page opens alone, with a Settings back button.
+    await tester.tap(appearance);
+    await tester.pumpAndSettle();
+    expect(find.text(l10n.t(L10nKey.settingsProfileName)), findsWidgets);
+    expect(shortcuts, findsNothing);
 
-      // Android back: page -> list -> chat.
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      expect(appearance, findsOneWidget);
-      expect(ctrl.settingsOpen, isTrue);
+    // Android back: page -> list -> chat.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(appearance, findsOneWidget);
+    expect(ctrl.settingsOpen, isTrue);
 
-      // Swipe from the start edge also steps back from a page.
-      await tester.tap(appearance);
-      await tester.pumpAndSettle();
-      await tester.dragFrom(const Offset(20, 400), const Offset(200, 0));
-      await tester.pumpAndSettle();
-      expect(appearance, findsOneWidget);
+    // Swipe from the start edge also steps back from a page.
+    await tester.tap(appearance);
+    await tester.pumpAndSettle();
+    await tester.dragFrom(const Offset(20, 400), const Offset(200, 0));
+    await tester.pumpAndSettle();
+    expect(appearance, findsOneWidget);
 
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      expect(ctrl.settingsOpen, isFalse);
-      ctrl.dispose();
-      await gw.shutdown();
-    },
-  );
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(ctrl.settingsOpen, isFalse);
+    ctrl.dispose();
+    await gw.shutdown();
+  });
 
-  testWidgets('Android back closes the innermost layer first (v2.6.0 order)', (
+  testWidgets('Android back closes the innermost layer first', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(1320, 820);

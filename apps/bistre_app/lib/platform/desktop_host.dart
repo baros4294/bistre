@@ -70,20 +70,65 @@ class BistreDesktopHost {
 
   static const MethodChannel _channel = MethodChannel('bistre/desktop_host');
   static VoidCallback? _onSystemThemeChanged;
+  static void Function(DesktopWindowBounds bounds)? _onWindowBoundsChanged;
+  static bool _channelHandlerAttached = false;
 
-  static void attachSystemThemeListener(VoidCallback callback) {
-    _onSystemThemeChanged = callback;
-    if (!Platform.isWindows) return;
+  static void _ensureChannelHandler() {
+    if (_channelHandlerAttached || !Platform.isWindows) return;
+    _channelHandlerAttached = true;
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'onSystemThemeChanged') {
         _onSystemThemeChanged?.call();
+      } else if (call.method == 'onWindowBoundsChanged') {
+        final raw = call.arguments;
+        if (raw is Map<Object?, Object?>) {
+          final x = (raw['x'] as num?)?.toInt();
+          final y = (raw['y'] as num?)?.toInt();
+          final w = (raw['width'] as num?)?.toInt();
+          final h = (raw['height'] as num?)?.toInt();
+          final max = raw['maximized'] as bool? ?? false;
+          if (x != null &&
+              y != null &&
+              w != null &&
+              h != null &&
+              w >= 720 &&
+              h >= 520) {
+            _onWindowBoundsChanged?.call(
+              DesktopWindowBounds(
+                x: x,
+                y: y,
+                width: w,
+                height: h,
+                maximized: max,
+              ),
+            );
+          }
+        }
       }
     });
+  }
+
+  static void attachSystemThemeListener(VoidCallback callback) {
+    _onSystemThemeChanged = callback;
+    _ensureChannelHandler();
   }
 
   /// Removes [callback] if it is the registered system-theme listener.
   static void detachSystemThemeListener(VoidCallback callback) {
     if (_onSystemThemeChanged == callback) _onSystemThemeChanged = null;
+  }
+
+  static void attachWindowBoundsListener(
+    void Function(DesktopWindowBounds bounds) callback,
+  ) {
+    _onWindowBoundsChanged = callback;
+    _ensureChannelHandler();
+  }
+
+  static void detachWindowBoundsListener(
+    void Function(DesktopWindowBounds bounds) callback,
+  ) {
+    if (_onWindowBoundsChanged == callback) _onWindowBoundsChanged = null;
   }
 
   /// Syncs Windows 11 native title bar colors cleanly to Bistre's active theme.
@@ -154,6 +199,117 @@ class BistreDesktopHost {
       return null;
     } on MissingPluginException {
       return null;
+    }
+  }
+
+  /// Opens a native OS folder picker (Windows `IFileOpenDialog` `FOS_PICKFOLDERS`,
+  /// Android `ACTION_OPEN_DOCUMENT_TREE`, Linux `zenity`/`kdialog`).
+  static Future<String?> pickLocalFolder({required String title}) async {
+    if (Platform.isWindows || Platform.isAndroid) {
+      try {
+        final chosen = await _channel.invokeMethod<String>(
+          'pickLocalFolder',
+          <String, Object?>{'title': title},
+        );
+        if (chosen == null || chosen.trim().isEmpty) return null;
+        return chosen.trim();
+      } on PlatformException {
+        return null;
+      } on MissingPluginException {
+        return null;
+      }
+    }
+    if (Platform.isLinux) {
+      for (final cmd in const <(String, List<String>)>[
+        ('zenity', <String>['--file-selection', '--directory']),
+        ('kdialog', <String>['--getexistingdirectory', '.']),
+      ]) {
+        try {
+          final args = cmd.$1 == 'zenity'
+              ? <String>[...cmd.$2, '--title=$title']
+              : <String>[...cmd.$2, '--title', title];
+          final res = await Process.run(cmd.$1, args);
+          if (res.exitCode == 0) {
+            final path = (res.stdout as String? ?? '').trim();
+            if (path.isNotEmpty) return path;
+          }
+          return null;
+        } on ProcessException {
+          continue;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Whether the native desktop window is currently the OS foreground window.
+  static Future<bool> isWindowFocused() async {
+    if (!Platform.isWindows) return true;
+    try {
+      return await _channel.invokeMethod<bool>('isWindowFocused') ?? true;
+    } on PlatformException {
+      return true;
+    } on MissingPluginException {
+      return true;
+    }
+  }
+
+  /// Sends a native OS desktop notification (Windows tray balloon / Linux `notify-send`).
+  static Future<void> showNotification({
+    required String title,
+    required String body,
+    bool playSound = false,
+  }) async {
+    if (Platform.isWindows) {
+      try {
+        await _channel.invokeMethod<bool>('showNotification', <String, Object?>{
+          'title': title,
+          'body': body,
+          'playSound': playSound,
+        });
+      } on PlatformException {
+        return;
+      } on MissingPluginException {
+        return;
+      }
+      return;
+    }
+    if (Platform.isLinux) {
+      try {
+        await Process.start('notify-send', <String>[title, body]);
+      } on ProcessException {
+        return;
+      }
+    }
+  }
+
+  /// Registers or unregisters run-on-startup (`HKCU\...\Run` on Windows).
+  static Future<bool> setAutoStart(bool enabled) async {
+    if (!Platform.isWindows) return false;
+    try {
+      return await _channel.invokeMethod<bool>(
+            'setAutoStart',
+            <String, Object?>{'enabled': enabled},
+          ) ??
+          false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  /// Enables or disables the native system tray icon.
+  static Future<void> setTrayEnabled(bool enabled) async {
+    if (!Platform.isWindows) return;
+    try {
+      await _channel.invokeMethod<bool>('setTrayEnabled', <String, Object?>{
+        'enabled': enabled,
+      });
+    } on PlatformException {
+      return;
+    } on MissingPluginException {
+      return;
     }
   }
 

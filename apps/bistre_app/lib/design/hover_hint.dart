@@ -6,7 +6,7 @@ import 'bistre_motion_widgets.dart';
 import 'bistre_theme.dart';
 import 'ink_primitives.dart';
 
-/// A quiet hint bubble that names a control after the pointer rests on it (Parchment v2.6.0
+/// A quiet hint bubble that names a control after the pointer rests on it.
 /// `HoverHint`): it appears 500 ms after hover starts, under the control (above it near the
 /// bottom edge, start- or end-aligned near the sides), and goes on exit or press. Pointer-only:
 /// touch has no hover, and screen readers already get the control's own label.

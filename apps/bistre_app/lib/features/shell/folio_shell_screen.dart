@@ -12,8 +12,10 @@ import '../../design/bistre_theme.dart';
 import '../../design/hover_hint.dart';
 import '../../design/ink_primitives.dart';
 import '../../design/press_feedback.dart';
+import '../../design/sidebar_slide_reveal.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
+import '../chat/chat_overlays.dart';
 import '../chat/folio_composer.dart';
 import '../chat/folio_message_feed.dart';
 import '../chat/session_tree_overlay.dart';
@@ -29,6 +31,7 @@ import '../studio/runs_dock_panel.dart';
 import 'chat_tab_strip.dart';
 import 'folio_controller.dart';
 import 'model_picker_popover.dart';
+import 'split_secondary_pane.dart';
 import 'tab_switcher_modal.dart';
 
 class _TogglePaletteIntent extends Intent {
@@ -113,14 +116,21 @@ class _FolioShellScreenState extends State<FolioShellScreen>
     WidgetsBinding.instance.addObserver(this);
   }
 
-  /// Android back, in Parchment v2.6.0's order (`ParchmentApp.kt` L478-L531): the innermost
-  /// open layer closes first; with nothing open, the app exits as usual. Settings runs its own
-  /// back steps (`settings_workspace.dart`), so it is left to them.
+  /// Android back: the innermost open layer closes first; with nothing open, the app exits
+  /// as usual. Settings runs its own back steps (`settings_workspace.dart`), so it is left to them.
   @override
   Future<bool> didPopRoute() async {
     final ctrl = widget.controller;
     if (!mounted || ctrl.settingsOpen) return false;
-    if (ctrl.commandPaletteOpen) {
+    if (ctrl.previewingAttachment != null) {
+      ctrl.closeAttachmentPreview();
+    } else if (ctrl.inspectingTurnNode != null) {
+      ctrl.closeTurnDetails();
+    } else if (ctrl.pinnedPanelOpen) {
+      ctrl.closePinnedPanel();
+    } else if (ctrl.chatNotesOpen) {
+      ctrl.closeChatNotes();
+    } else if (ctrl.commandPaletteOpen) {
       ctrl.closeCommandPalette();
     } else if (ctrl.tabSwitcherOpen) {
       ctrl.closeTabSwitcher();
@@ -453,8 +463,33 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                         )
                       : messageFeed;
 
-                  final workspace = ParchmentScaffold(
-                    header: _buildHeader(theme, l10n, ctrl, isWide: isWide),
+                  final updateCheck = ctrl.updateCheck;
+                  final topBanner = FolioTopBanner(
+                    visible: ctrl.showUpdateBanner && updateCheck != null,
+                    icon: BistreUiIcon.download,
+                    message: updateCheck == null
+                        ? ''
+                        : l10n.t(
+                            L10nKey.settingsUpdatesAvailable,
+                            <String, Object?>{
+                              'version': updateCheck.latestVersion,
+                            },
+                          ),
+                    actionLabel: l10n.t(L10nKey.settingsUpdatesStage),
+                    onAction: () => unawaited(ctrl.stageAvailableUpdate()),
+                    dismissLabel: l10n.t(L10nKey.threadCancel),
+                    onDismiss: ctrl.dismissUpdateBanner,
+                  );
+
+                  final workspace = BistreScaffold(
+                    header: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildHeader(theme, l10n, ctrl, isWide: isWide),
+                        topBanner,
+                      ],
+                    ),
                     body: workspaceBody,
                     footer: isWriteMode && ctrl.manuscriptViewActive
                         ? const SizedBox.shrink()
@@ -476,22 +511,55 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (isWide && ctrl.sidebarOpen) ...[
-                          FolioSidebar(
-                            controller: ctrl,
-                            onSelectThreadComplete: () {},
+                        if (isWide)
+                          SidebarSlideReveal(
+                            open: ctrl.sidebarOpen,
+                            reduceMotionOverride: ctrl.reduceMotionOverride,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                FolioSidebar(
+                                  controller: ctrl,
+                                  onSelectThreadComplete: () {},
+                                ),
+                                const FolioDivider(vertical: true),
+                              ],
+                            ),
                           ),
-                          const FolioDivider(vertical: true),
-                        ],
                         Expanded(child: workspace),
-                        if (canDockInspector && ctrl.inspectorOpen) ...[
+                        if (canDockInspector && ctrl.splitViewOpen) ...[
                           const FolioDivider(vertical: true),
-                          ChatInspectorDrawer(controller: ctrl),
+                          Expanded(child: SplitSecondaryPane(controller: ctrl)),
                         ],
-                        if (canDockInspector && ctrl.studioPaneOpen) ...[
-                          const FolioDivider(vertical: true),
-                          runsDock,
-                        ],
+                        if (canDockInspector)
+                          SidebarSlideReveal(
+                            open: ctrl.inspectorOpen,
+                            fromTrailingEdge: true,
+                            reduceMotionOverride: ctrl.reduceMotionOverride,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const FolioDivider(vertical: true),
+                                ChatInspectorDrawer(controller: ctrl),
+                              ],
+                            ),
+                          ),
+                        if (canDockInspector)
+                          SidebarSlideReveal(
+                            open: ctrl.studioPaneOpen,
+                            fromTrailingEdge: true,
+                            reduceMotionOverride: ctrl.reduceMotionOverride,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const FolioDivider(vertical: true),
+                                runsDock,
+                              ],
+                            ),
+                          ),
                       ],
                     ),
                   );
@@ -504,7 +572,11 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                               (ctrl.inspectorOpen || ctrl.studioPaneOpen)) ||
                           ctrl.commandPaletteOpen ||
                           ctrl.tabSwitcherOpen ||
-                          ctrl.sessionTreeOpen);
+                          ctrl.sessionTreeOpen ||
+                          ctrl.pinnedPanelOpen ||
+                          ctrl.chatNotesOpen ||
+                          ctrl.inspectingTurnNode != null ||
+                          ctrl.previewingAttachment != null);
                   return Stack(
                     fit: StackFit.expand,
                     children: [
@@ -563,19 +635,53 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                           onlyUserPrompts: ctrl.sessionTreePromptsOnly,
                           onClose: ctrl.closeSessionTree,
                         ),
+                      if (ctrl.pinnedPanelOpen)
+                        PinnedRepliesModal(
+                          controller: ctrl,
+                          onClose: ctrl.closePinnedPanel,
+                        ),
+                      if (ctrl.chatNotesOpen)
+                        ChatNotesModal(
+                          controller: ctrl,
+                          onClose: ctrl.closeChatNotes,
+                        ),
+                      if (ctrl.inspectingTurnNode case final inspected?)
+                        TurnDetailsModal(
+                          node: inspected,
+                          controller: ctrl,
+                          onClose: ctrl.closeTurnDetails,
+                        ),
+                      if (ctrl.previewingAttachment case final previewAtt?)
+                        AttachmentViewerModal(
+                          attachment: previewAtt,
+                          reduceMotionOverride: ctrl.reduceMotionOverride,
+                          onClose: ctrl.closeAttachmentPreview,
+                        ),
                       // Only the toast rebuilds when a notice shows or hides.
                       ValueListenableBuilder<ToastMessage?>(
                         valueListenable: ctrl.toast,
                         builder: (context, toast, _) => toast == null
                             ? const SizedBox.shrink()
                             : FolioToastBanner(
-                                key: ValueKey<L10nKey>(toast.key),
-                                message: l10n.t(toast.key),
+                                key: ValueKey<Object>(
+                                  Object.hash(toast.key, toast.args?.length),
+                                ),
+                                message: l10n.t(
+                                  toast.key,
+                                  toast.args ?? const <String, Object?>{},
+                                ),
+                                dotColor: switch (toast.tone) {
+                                  ToastTone.ok => theme.statusOk,
+                                  ToastTone.error => theme.statusErr,
+                                  ToastTone.info => theme.accentBrass,
+                                },
                                 reduceMotionOverride: ctrl.reduceMotionOverride,
                                 actionLabel: toast.actionKey == null
                                     ? null
                                     : l10n.t(toast.actionKey!),
                                 onAction: toast.onAction,
+                                dismissLabel: l10n.t(L10nKey.threadCancel),
+                                onDismiss: ctrl.dismissToast,
                               ),
                       ),
                     ],
@@ -618,7 +724,7 @@ class _FolioShellScreenState extends State<FolioShellScreen>
               final headerW = headerConstraints.maxWidth;
               final stackActions =
                   scale >= kHeaderStackTextScale && headerW / scale < 600;
-              // One bar (DESIGN §10, Parchment v2.6.0): title with the model as an interactive
+              // Single top bar (DESIGN §10): title with the model as an interactive
               // subtitle; trailing new chat, Studio, and settings. Mode, branches, inspector,
               // search, and the palette live in the composer, Ctrl+K, and shortcuts.
               final leading = <Widget>[
@@ -750,7 +856,7 @@ class _FolioShellScreenState extends State<FolioShellScreen>
               final openTabCount = ctrl.openTabs.length;
               final bgStreaming = ctrl.backgroundStreamingCount;
               final trailing = <Widget>[
-                // Compact tab badge (`TopEditorialBar` `ParchmentModalsAndNavigation.kt:667-703`):
+                // Compact tab badge in the top bar:
                 // shown on narrow screens once >1 tab is open or any background chat is streaming.
                 if (!isWide && (openTabCount > 1 || bgStreaming > 0)) ...[
                   _CompactTabBadge(
@@ -766,16 +872,28 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                   const SizedBox(width: 4),
                 ],
                 BistreIconButton(
+                  icon: BistreUiIcon.edit,
+                  active:
+                      ctrl.chatNotesOpen ||
+                      ctrl.activeChatNotes.trim().isNotEmpty ||
+                      (active?.systemPromptOverride?.trim().isNotEmpty ??
+                          false),
+                  semanticsLabel: l10n.t(L10nKey.chatNotesTitle),
+                  onPressed: ctrl.toggleChatNotes,
+                ),
+                BistreIconButton(
                   icon: BistreUiIcon.newChat,
                   semanticsLabel: l10n.t(L10nKey.sidebarNewFolio),
                   onPressed: () => unawaited(ctrl.createNewFolio()),
                 ),
-                BistreIconButton(
-                  icon: BistreUiIcon.server,
-                  active: ctrl.studioPaneOpen,
-                  semanticsLabel: l10n.t(L10nKey.studioTitle),
-                  onPressed: ctrl.toggleStudioPane,
-                ),
+                if (ctrl.studioPaneOpen ||
+                    ctrl.agentRuns.any((r) => r.isActive))
+                  BistreIconButton(
+                    icon: BistreUiIcon.server,
+                    active: ctrl.studioPaneOpen,
+                    semanticsLabel: l10n.t(L10nKey.studioTitle),
+                    onPressed: ctrl.toggleStudioPane,
+                  ),
                 BistreIconButton(
                   icon: BistreUiIcon.settings,
                   semanticsLabel: l10n.t(L10nKey.sidebarSettings),
@@ -889,7 +1007,7 @@ class _FolioShellScreenState extends State<FolioShellScreen>
 }
 
 /// Compact header tab counter badge shown on narrow screens (`TopEditorialBar`,
-/// `ParchmentModalsAndNavigation.kt:667-703`) when `> 1` tab is open or any
+/// Compact tab switcher badge shown when `> 1` tab is open or any
 /// background chat is streaming.
 class _CompactTabBadge extends StatefulWidget {
   const _CompactTabBadge({

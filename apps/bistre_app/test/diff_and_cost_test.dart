@@ -36,7 +36,7 @@ void main() {
         child: Directionality(
           textDirection: TextDirection.ltr,
           child: BistreTheme(
-            data: BistreThemeData.dayParchment,
+            data: BistreThemeData.warmSepia,
             child: Overlay(
               initialEntries: <OverlayEntry>[
                 OverlayEntry(builder: (_) => Center(child: child)),

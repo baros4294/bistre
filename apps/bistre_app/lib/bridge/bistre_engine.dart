@@ -235,7 +235,6 @@ abstract interface class BistreEngineGateway {
     String? nodeId,
   });
   Future<String?> getContextStartPin(String threadId);
-  Future<List<EngineLocalServer>> discoverLocalServers();
   Future<EngineMcpDiscoveryReport> discoverMcpServer(
     EngineMcpServerConfig server,
   );
@@ -914,17 +913,6 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
   @override
   Future<String?> getContextStartPin(String threadId) =>
       frb.getContextStartPin(threadId: threadId);
-
-  @override
-  Future<List<EngineLocalServer>> discoverLocalServers() async {
-    final raw = await frb.discoverLocalServersJson();
-    final decoded = jsonDecode(raw);
-    if (decoded is! List<Object?>) return const <EngineLocalServer>[];
-    return decoded
-        .whereType<Map<String, Object?>>()
-        .map(EngineLocalServer.fromJson)
-        .toList(growable: false);
-  }
 
   @override
   Future<EngineMcpDiscoveryReport> discoverMcpServer(

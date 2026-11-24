@@ -27,6 +27,11 @@ class FlutterWindow : public Win32Window {
 
  private:
   void RegisterDesktopHostChannel();
+  void EmitWindowBoundsChanged();
+  void EnsureTrayIcon(bool enable);
+  void ShowTrayBalloon(const std::wstring& title,
+                       const std::wstring& body,
+                       bool play_sound);
   void HandleDesktopHostCall(
       const flutter::MethodCall<flutter::EncodableValue>& call,
       std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
@@ -34,6 +39,10 @@ class FlutterWindow : public Win32Window {
   flutter::DartProject project_;
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> host_channel_;
+  bool has_shown_ = false;
+  bool pending_maximized_ = false;
+  bool tray_enabled_ = false;
+  bool tray_icon_added_ = false;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

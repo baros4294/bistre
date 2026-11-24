@@ -66,7 +66,7 @@ class _ReasoningBlockState extends State<ReasoningBlock> {
         : l10n.t(L10nKey.chatThinkingLabel);
 
     final hasText = widget.thinkingText.trim().isNotEmpty;
-    // Parchment v2.6.0: a quiet `> Thought 2.4s` on the trailing edge above the reply; expanding
+    // Quiet `> Thought 2.4s` disclosure on the trailing edge above the reply; expanding
     // shows a tinted panel whose content fades in (the size snaps; layout never animates).
     final toggle = Semantics(
       button: true,

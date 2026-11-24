@@ -2,7 +2,7 @@ part of 'folio_controller.dart';
 
 /// Studio, memory, skills, automation, and writing/roleplay actions of [FolioController].
 extension FolioStudioActions on FolioController {
-  // --- Wave C Studio Tabs, Session Tree, Multimodal Attachments & Provider QoL ---
+  // --- Studio Tabs, Session Tree, Multimodal Attachments & Provider QoL ---
 
   StudioTab get studioTab => _studioTab;
 
@@ -11,8 +11,6 @@ extension FolioStudioActions on FolioController {
   bool get sessionTreePromptsOnly => _sessionTreePromptsOnly;
 
   List<ComposerAttachment> get attachments => _attachments;
-
-  bool get detectingLocalServers => _detectingLocalServers;
 
   List<EngineNode> get allThreadNodes => _nodes;
 
@@ -187,7 +185,7 @@ extension FolioStudioActions on FolioController {
         'icon_slug': provider.iconSlug,
       });
 
-  // --- Wave D Memory, Progressive Skills & Scheduled Automations ---
+  // --- Memory, Progressive Skills & Scheduled Automations ---
 
   List<EngineMemoryEntry> get memoryEntries => _memoryEntries;
 
@@ -348,7 +346,7 @@ extension FolioStudioActions on FolioController {
     _notify();
   }
 
-  // --- Wave E Writing & Roleplay Studio State & Actions ---
+  // --- Writing & Roleplay Studio State & Actions ---
 
   List<EngineCharacterCard> get characterCards => _characterCards;
 

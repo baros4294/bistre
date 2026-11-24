@@ -26,9 +26,7 @@ class _ModelOption {
   final String vendorGroup;
 }
 
-/// Cross-provider searchable model picker popover (Parchment v2.6.0
-/// `SepiaSearchableModelPicker`, `ParchmentModelPickerAndStats.kt:365-686`,
-/// and `TopEditorialBar` popover, `ParchmentModalsAndNavigation.kt:539-656`):
+/// Cross-provider searchable model picker popover:
 /// - Search input at top (`Enter` selects top match, clear button resets query & filters).
 /// - Provider filter chips when more than one provider has models.
 /// - Vendor/family filter chips when at least two slash-prefixed families exist.

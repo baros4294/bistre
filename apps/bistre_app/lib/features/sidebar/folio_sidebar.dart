@@ -184,14 +184,10 @@ class _FolioSidebarState extends State<FolioSidebar> {
                     ctrl.filteredThreads,
                     emptyText: l10n.t(L10nKey.sidebarEmptyFiltered),
                   ),
-                  SidebarTab.pinned => _buildGroupedChatsList(
+                  SidebarTab.pinned => _buildPinnedCombinedList(
                     theme,
                     l10n,
                     ctrl,
-                    ctrl.pinnedThreads,
-                    emptyText: l10n.t(L10nKey.sidebarPinnedEmpty),
-                    isPinnedEmpty: true,
-                    groupByDate: false,
                   ),
                 },
               ),
@@ -283,6 +279,130 @@ class _FolioSidebarState extends State<FolioSidebar> {
     );
   }
 
+  Widget _buildPinnedCombinedList(
+    BistreThemeData theme,
+    BistreLocalizationController l10n,
+    FolioController ctrl,
+  ) {
+    final pinnedThreads = ctrl.pinnedThreads;
+    final pinnedNodes = ctrl.pinnedNodes;
+    if (pinnedThreads.isEmpty && pinnedNodes.isEmpty) {
+      return _buildGroupedChatsList(
+        theme,
+        l10n,
+        ctrl,
+        const <EngineThread>[],
+        emptyText: l10n.t(L10nKey.sidebarPinnedEmpty),
+        isPinnedEmpty: true,
+        groupByDate: false,
+      );
+    }
+    final showAssistantSubtitle = ctrl.assistants.length > 1;
+    final items = <_PinnedSidebarEntry>[];
+    if (pinnedThreads.isNotEmpty) {
+      items.add(const _PinnedSidebarHeader(isReplies: false, isFirst: true));
+      for (final t in pinnedThreads) {
+        items.add(_PinnedSidebarThread(t));
+      }
+    }
+    if (pinnedNodes.isNotEmpty) {
+      items.add(
+        _PinnedSidebarHeader(isReplies: true, isFirst: pinnedThreads.isEmpty),
+      );
+      for (final n in pinnedNodes) {
+        items.add(_PinnedSidebarNode(n));
+      }
+    }
+    return SmoothScrollable(
+      builder: (_, scroll) => ListView.builder(
+        controller: scroll,
+        padding: _kListPadding,
+        itemCount: items.length,
+        itemBuilder: (context, index) {
+          final item = items[index];
+          return switch (item) {
+            _PinnedSidebarHeader(isReplies: false) => Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(10, 4, 10, 4),
+              child: InkText(
+                l10n.t(L10nKey.sidebarTabChat),
+                role: InkTextRole.captionMeta,
+                color: theme.inkMuted,
+              ),
+            ),
+            _PinnedSidebarHeader(isReplies: true) => Padding(
+              padding: EdgeInsetsDirectional.fromSTEB(
+                10,
+                item.isFirst ? 4 : 12,
+                10,
+                4,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: InkText(
+                      l10n.t(L10nKey.chatPinnedRepliesTitle),
+                      role: InkTextRole.captionMeta,
+                      color: theme.inkMuted,
+                    ),
+                  ),
+                  EngravedButton(
+                    label: l10n.t(L10nKey.chatPinnedRepliesOpen),
+                    compact: true,
+                    onPressed: ctrl.togglePinnedPanel,
+                  ),
+                ],
+              ),
+            ),
+            _PinnedSidebarThread(:final thread) => _buildThreadRow(
+              theme,
+              l10n,
+              ctrl,
+              thread,
+              subtitle: showAssistantSubtitle
+                  ? ctrl.assistantNameFor(thread.assistantId)
+                  : null,
+            ),
+            _PinnedSidebarNode(:final node) => Padding(
+              padding: const EdgeInsetsDirectional.only(bottom: 4),
+              child: PressFeedback(
+                pressScale: kRowPressScale,
+                hoverScale: 1,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: ctrl.togglePinnedPanel,
+                  child: FolioSurface(
+                    tone: FolioTone.canvas,
+                    padding: const EdgeInsetsDirectional.fromSTEB(10, 7, 10, 7),
+                    borderRadius: 8,
+                    child: Row(
+                      children: [
+                        BistreIcon(
+                          BistreUiIcon.pinFilled,
+                          size: 11,
+                          color: theme.accentBrass,
+                        ),
+                        const SizedBox(width: 7),
+                        Expanded(
+                          child: InkText(
+                            node.content.replaceAll('\n', ' ').trim(),
+                            role: InkTextRole.captionMeta,
+                            color: theme.inkPrimary,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          };
+        },
+      ),
+    );
+  }
+
   Widget _buildGroupedChatsList(
     BistreThemeData theme,
     BistreLocalizationController l10n,
@@ -325,24 +445,25 @@ class _FolioSidebarState extends State<FolioSidebar> {
     }
 
     final showAssistantSubtitle = ctrl.assistants.length > 1;
-    // Lazily laid out: with hundreds of chats only the visible rows are built.
+    // Virtualized: with 300+ chats only the ~14 rows inside the viewport are built.
     if (!groupByDate) {
       return SmoothScrollable(
-        builder: (_, scroll) => ListView(
+        builder: (_, scroll) => ListView.builder(
           controller: scroll,
           padding: _kListPadding,
-          children: [
-            for (final t in threads)
-              _buildThreadRow(
-                theme,
-                l10n,
-                ctrl,
-                t,
-                subtitle: showAssistantSubtitle
-                    ? ctrl.assistantNameFor(t.assistantId)
-                    : null,
-              ),
-          ],
+          itemCount: threads.length,
+          itemBuilder: (context, index) {
+            final t = threads[index];
+            return _buildThreadRow(
+              theme,
+              l10n,
+              ctrl,
+              t,
+              subtitle: showAssistantSubtitle
+                  ? ctrl.assistantNameFor(t.assistantId)
+                  : null,
+            );
+          },
         ),
       );
     }
@@ -361,46 +482,49 @@ class _FolioSidebarState extends State<FolioSidebar> {
       return L10nKey.sidebarGroupOlder;
     }
 
-    final widgets = <Widget>[];
+    final entries = <_ChatListEntry>[];
     L10nKey? lastBucket;
     for (final t in threads) {
       final bucket = bucketFor(t);
       if (bucket != lastBucket) {
         lastBucket = bucket;
-        widgets.add(
-          Padding(
-            padding: EdgeInsetsDirectional.fromSTEB(
-              10,
-              widgets.isEmpty ? 4 : 12,
-              10,
-              4,
-            ),
-            child: InkText(
-              l10n.t(bucket),
-              role: InkTextRole.captionMeta,
-              color: theme.inkMuted,
-            ),
-          ),
-        );
+        entries.add(_ChatListHeader(bucket, isFirst: entries.isEmpty));
       }
-      widgets.add(
-        _buildThreadRow(
-          theme,
-          l10n,
-          ctrl,
-          t,
-          subtitle: showAssistantSubtitle
-              ? ctrl.assistantNameFor(t.assistantId)
-              : null,
-        ),
-      );
+      entries.add(_ChatListThread(t));
     }
 
     return SmoothScrollable(
-      builder: (_, scroll) => ListView(
+      builder: (_, scroll) => ListView.builder(
         controller: scroll,
         padding: _kListPadding,
-        children: widgets,
+        itemCount: entries.length,
+        itemBuilder: (context, index) {
+          final entry = entries[index];
+          return switch (entry) {
+            _ChatListHeader(:final labelKey, :final isFirst) => Padding(
+              padding: EdgeInsetsDirectional.fromSTEB(
+                10,
+                isFirst ? 4 : 12,
+                10,
+                4,
+              ),
+              child: InkText(
+                l10n.t(labelKey),
+                role: InkTextRole.captionMeta,
+                color: theme.inkMuted,
+              ),
+            ),
+            _ChatListThread(:final thread) => _buildThreadRow(
+              theme,
+              l10n,
+              ctrl,
+              thread,
+              subtitle: showAssistantSubtitle
+                  ? ctrl.assistantNameFor(thread.assistantId)
+                  : null,
+            ),
+          };
+        },
       ),
     );
   }
@@ -973,3 +1097,38 @@ const EdgeInsetsDirectional _kListPadding = EdgeInsetsDirectional.fromSTEB(
   10,
   12,
 );
+
+sealed class _ChatListEntry {
+  const _ChatListEntry();
+}
+
+final class _ChatListHeader extends _ChatListEntry {
+  const _ChatListHeader(this.labelKey, {required this.isFirst});
+  final L10nKey labelKey;
+  final bool isFirst;
+}
+
+final class _ChatListThread extends _ChatListEntry {
+  const _ChatListThread(this.thread);
+  final EngineThread thread;
+}
+
+sealed class _PinnedSidebarEntry {
+  const _PinnedSidebarEntry();
+}
+
+final class _PinnedSidebarHeader extends _PinnedSidebarEntry {
+  const _PinnedSidebarHeader({required this.isReplies, required this.isFirst});
+  final bool isReplies;
+  final bool isFirst;
+}
+
+final class _PinnedSidebarThread extends _PinnedSidebarEntry {
+  const _PinnedSidebarThread(this.thread);
+  final EngineThread thread;
+}
+
+final class _PinnedSidebarNode extends _PinnedSidebarEntry {
+  const _PinnedSidebarNode(this.node);
+  final EngineNode node;
+}

@@ -15,6 +15,7 @@ import '../../l10n/l10n_keys.g.dart';
 import '../../platform/desktop_host.dart';
 import '../../platform/font_manager.dart';
 import '../shell/folio_controller.dart';
+import 'appearance_preferences_extra.dart';
 
 /// End-user Appearance & Typography Studio — ZERO forced presets:
 /// - Live Typography & Accent Preview Card
@@ -91,7 +92,7 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
     final l10n = BistreLocalizations.of(context);
     final chosen = await BistreDesktopHost.pickLocalFile(
       title: l10n.t(L10nKey.settingsAppearanceFontBrowse),
-      filterLabel: 'Fonts',
+      filterLabel: l10n.t(L10nKey.settingsAppearanceFileFilterFonts),
       filterSpec: '*.ttf;*.otf',
     );
     if (chosen == null || chosen.isEmpty) return;
@@ -140,6 +141,17 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
     );
   }
 
+  Future<void> _pickProfileAvatar() async {
+    final l10n = BistreLocalizations.of(context);
+    final chosen = await BistreDesktopHost.pickLocalFile(
+      title: l10n.t(L10nKey.settingsProfileAvatar),
+      filterLabel: l10n.t(L10nKey.settingsProvidersFileFilterImages),
+      filterSpec: '*.png;*.webp;*.jpg;*.jpeg',
+    );
+    if (chosen == null || chosen.isEmpty) return;
+    await widget.controller.setProfileAvatarPath(chosen);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
@@ -171,6 +183,53 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
                       compact: true,
                       onSubmitted: _commitName,
                     ),
+                  ),
+                ),
+                BistreSettingRow(
+                  label: l10n.t(L10nKey.settingsProfileAvatar),
+                  description: ctrl.profileAvatarPath.isNotEmpty
+                      ? ctrl.profileAvatarPath
+                      : null,
+                  trailing: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      ClipOval(
+                        child: Container(
+                          width: 34,
+                          height: 34,
+                          color: theme.bgSurface,
+                          alignment: Alignment.center,
+                          child:
+                              ctrl.profileAvatarPath.isNotEmpty &&
+                                  File(ctrl.profileAvatarPath).existsSync()
+                              ? Image.file(
+                                  File(ctrl.profileAvatarPath),
+                                  width: 34,
+                                  height: 34,
+                                  fit: BoxFit.cover,
+                                )
+                              : BistreIcon(
+                                  BistreUiIcon.assistant,
+                                  size: 16,
+                                  color: theme.inkMuted,
+                                ),
+                        ),
+                      ),
+                      EngravedButton(
+                        label: l10n.t(L10nKey.settingsProfileAvatarChoose),
+                        compact: true,
+                        onPressed: () => unawaited(_pickProfileAvatar()),
+                      ),
+                      if (ctrl.profileAvatarPath.isNotEmpty)
+                        EngravedButton(
+                          label: l10n.t(L10nKey.settingsProfileAvatarClear),
+                          compact: true,
+                          onPressed: () =>
+                              unawaited(ctrl.setProfileAvatarPath('')),
+                        ),
+                    ],
                   ),
                 ),
               ],
@@ -646,22 +705,9 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
                     ],
                   ),
                 ),
-                BistreSettingRow(
-                  label: l10n.t(L10nKey.settingsAppearanceSendEnter),
-                  trailing: BistreSwitch(
-                    value: s.sendOnEnter,
-                    semanticsLabel: l10n.t(L10nKey.settingsAppearanceSendEnter),
-                    reduceMotionOverride: ctrl.reduceMotionOverride,
-                    onChanged: (v) => unawaited(
-                      ctrl.updateSettings(
-                        s.copyWith(sendOnEnter: v),
-                        quiet: true,
-                      ),
-                    ),
-                  ),
-                ),
               ],
             ),
+            AppearancePreferencesExtra(controller: ctrl),
           ],
         ),
       ),
@@ -952,7 +998,7 @@ class _FontListRowState extends State<_FontListRow> {
   }
 }
 
-/// Visual gallery of the 9 color theme presets (`ParchmentProfileSettings.kt:144-192`).
+/// Visual gallery of the color theme presets.
 class _ThemePresetChoices extends StatelessWidget {
   const _ThemePresetChoices({
     required this.activePresetId,
@@ -1009,8 +1055,7 @@ class _ThemePresetChoices extends StatelessWidget {
   }
 }
 
-/// Miniature preview of the app in [preset]: sidebar strip, page, sample letters, and accent rule
-/// (`ParchmentProfileSettings.kt:164-192`).
+/// Miniature preview of the app in [preset]: sidebar strip, page, sample letters, and accent rule.
 class _ThemePreviewCard extends StatefulWidget {
   const _ThemePreviewCard({
     required this.preset,

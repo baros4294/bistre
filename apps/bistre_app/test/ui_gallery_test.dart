@@ -10,7 +10,7 @@ import 'support/gallery_harness.dart';
 
 void main() {
   testWidgets(
-    'UIGalleryTest captures all 28 redesigned Studio Atelier screens (Waves A-E) with real bundled fonts and color lab icons',
+    'UIGalleryTest captures Studio Atelier screens with real bundled fonts and color lab icons',
     (WidgetTester tester) async {
       await loadBundledFonts();
       final outDir = Directory('build/ui_gallery')..createSync(recursive: true);
@@ -190,7 +190,7 @@ void main() {
       await tester.tap(find.bySemanticsLabel('Toggle sidebar'));
       await capturePng(tester, key2, outDir, '18_mobile_drawer.png');
 
-      // --- Wave A-E High-DPI Gallery Screens (19..28) ---
+      // --- Studio, Agent, Memory, and Writing High-DPI Gallery Screens ---
       tester.view.physicalSize = const Size(1360, 860);
       await tester.pumpAndSettle();
       // Close narrow drawer if open and ensure clean desktop layout.
@@ -212,7 +212,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 19. Wave A: Docked Studio Pane [Runs] with OS Sleep Guard active + durable run.
+      // 19. Docked Studio Pane [Runs] with OS Sleep Guard active + durable run.
       ctrl3.setStudioTab(StudioTab.runs);
       await capturePng(
         tester,
@@ -221,7 +221,7 @@ void main() {
         '19_studio_runs_and_sleep_guard.png',
       );
 
-      // 20. Wave B: Expanded Thinking / Reasoning Block on assistant passage.
+      // 20. Expanded Thinking / Reasoning Block on assistant message.
       ctrl3.toggleStudioPane();
       ctrl3.focusBranchNode('n-2b');
       await tester.pumpAndSettle();
@@ -236,7 +236,7 @@ void main() {
         '20_chat_thinking_and_tool_timeline.png',
       );
 
-      // 21. Wave C: Rich Studio Canvas (GFM Table + NotoSansMath LaTeX + Mermaid Flowchart).
+      // 21. Rich Studio Canvas (GFM Table + NotoSansMath LaTeX + Mermaid Flowchart).
       await ctrl3.selectThread('t-rich');
       await capturePng(
         tester,
@@ -245,18 +245,18 @@ void main() {
         '21_chat_rich_table_math_mermaid.png',
       );
 
-      // 22. Wave C: Visual DAG Session Tree Overlay.
+      // 22. Visual DAG Session Tree Overlay.
       await ctrl3.selectThread('t-1');
       ctrl3.openSessionTree();
       await capturePng(tester, key3, outDir, '22_session_tree_overlay.png');
 
-      // 23. Wave A/B: Full-Window Settings -> Agent, Tools & Sleep (Workspace, MCP, Sleep Guard, Termux).
+      // 23. Full-Window Settings -> Agent, Tools & Sleep (Workspace, MCP, Sleep Guard, Termux).
       ctrl3.closeSessionTree();
       ctrl3.openSettings(SettingsTab.agent);
       await capturePng(tester, key3, outDir, '23_settings_agent_tools_mcp.png');
 
-      // 24. Wave D: Full-Window Settings -> Memory & Skills (Saved Memory, Cron Schedules, SKILL.md).
-      await ctrl3.setWorkspaceRootPath('C:/baros4294/bistre');
+      // 24. Full-Window Settings -> Memory & Skills (Saved Memory, Cron Schedules, SKILL.md).
+      await ctrl3.setWorkspaceRootPath('/workspace/bistre');
       await ctrl3.refreshMemorySkillsAndCron();
       ctrl3.setSettingsTab(SettingsTab.memory);
       await tester.pump(const Duration(seconds: 3));
@@ -267,18 +267,18 @@ void main() {
         '24_settings_memory_skills_cron.png',
       );
 
-      // 25. Wave E: Write Mode + Studio Pane [Story Bible] (CCv3 Cards, Persona, Lorebook V3 + Progressions, Regex).
+      // 25. Write Mode + Studio Pane [Story Bible] (CCv3 Cards, Persona, Lorebook V3 + Progressions, Regex).
       ctrl3.closeSettings();
       await ctrl3.selectThread('t-write');
       await ctrl3.refreshStoryStudio();
       ctrl3.setStudioTab(StudioTab.story);
       await capturePng(tester, key3, outDir, '25_studio_story_bible_panel.png');
 
-      // 26. Wave E: Write Mode + Studio Pane [Prompt Inspector] (Token Bar, Prompt Cache Boundary, Lorebook Trace).
+      // 26. Write Mode + Studio Pane [Prompt Inspector] (Token Bar, Prompt Cache Boundary, Lorebook Trace).
       ctrl3.setStudioTab(StudioTab.prompt);
       await capturePng(tester, key3, outDir, '26_studio_prompt_inspector.png');
 
-      // 27. Wave E: Write Mode Roleplay Controls + Editorial Pure-TextSpan Dialogue Highlighting.
+      // 27. Write Mode Roleplay Controls + Editorial Pure-TextSpan Dialogue Highlighting.
       ctrl3.toggleStudioPane();
       await capturePng(
         tester,
@@ -287,7 +287,7 @@ void main() {
         '27_write_roleplay_controls_dialogue.png',
       );
 
-      // 28. Wave E: Write Mode Long-Form Manuscript Canvas (Chapters/Scenes, Beats -> Prose, Inline Rewrite Laser Tools).
+      // 28. Write Mode Long-Form Manuscript Canvas (Chapters/Scenes, Beats -> Prose, Inline Rewrite Laser Tools).
       ctrl3.toggleManuscriptView(true);
       await capturePng(
         tester,

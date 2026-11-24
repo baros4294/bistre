@@ -29,6 +29,7 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
   String? _selectedId;
   bool _creating = false;
   bool _iconPickerOpen = false;
+  bool _nameRequiredError = false;
 
   final TextEditingController _nameCtrl = TextEditingController();
   final TextEditingController _subtitleCtrl = TextEditingController();
@@ -85,6 +86,7 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
     _selectedId = a.id;
     _creating = false;
     _iconPickerOpen = false;
+    _nameRequiredError = false;
     _nameCtrl.text = a.name;
     _subtitleCtrl.text = a.roleSubtitle;
     _promptCtrl.text = a.systemPrompt;
@@ -100,6 +102,7 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
     _selectedId = null;
     _creating = true;
     _iconPickerOpen = false;
+    _nameRequiredError = false;
     _nameCtrl.clear();
     _subtitleCtrl.clear();
     _promptCtrl.clear();
@@ -109,10 +112,21 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
     _temperatureMilli = null;
     _topPMilli = null;
     _maxTokensCtrl.clear();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _nameFocus.requestFocus();
+    });
   }
 
   Future<void> _save() async {
     final ctrl = widget.controller;
+    if (_nameCtrl.text.trim().isEmpty) {
+      setState(() => _nameRequiredError = true);
+      _nameFocus.requestFocus();
+      return;
+    }
+    if (_nameRequiredError) {
+      setState(() => _nameRequiredError = false);
+    }
     final parsedMaxTokens = int.tryParse(_maxTokensCtrl.text.trim());
     if (_creating || _selectedId == null) {
       final ok = await ctrl.createCustomAssistant(
@@ -270,13 +284,34 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
           children: [
             BistreSettingRow(
               label: l10n.t(L10nKey.settingsAssistantsNamePlaceholder),
-              bottom: QuillInput(
-                controller: _nameCtrl,
-                focusNode: _nameFocus,
-                placeholder: l10n.t(L10nKey.settingsAssistantsNamePlaceholder),
-                maxLines: 1,
-                submitOnEnter: false,
-                onSubmitted: () {},
+              bottom: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  QuillInput(
+                    controller: _nameCtrl,
+                    focusNode: _nameFocus,
+                    placeholder: l10n.t(
+                      L10nKey.settingsAssistantsNamePlaceholder,
+                    ),
+                    maxLines: 1,
+                    submitOnEnter: false,
+                    onChanged: (_) {
+                      if (_nameRequiredError &&
+                          _nameCtrl.text.trim().isNotEmpty) {
+                        setState(() => _nameRequiredError = false);
+                      }
+                    },
+                    onSubmitted: () => unawaited(_save()),
+                  ),
+                  if (_nameRequiredError) ...[
+                    const SizedBox(height: 6),
+                    InkText(
+                      l10n.t(L10nKey.diagValidationInvalidInput),
+                      role: InkTextRole.captionMeta,
+                      color: theme.statusErr,
+                    ),
+                  ],
+                ],
               ),
             ),
             BistreSettingRow(

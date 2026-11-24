@@ -14,6 +14,7 @@ import '../../l10n/l10n_keys.g.dart';
 import '../../platform/desktop_host.dart';
 import '../shell/folio_controller.dart';
 import 'provider_presets.dart';
+import 'provider_subpages.dart';
 
 /// Full-window Providers & Keys Studio:
 /// - Every provider (including starter OpenAI/Gemini/Anthropic) is freely editable & deletable.
@@ -34,6 +35,9 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
   bool _showKey = false;
   bool _iconPickerOpen = false;
   bool _confirmDelete = false;
+  String _subpage = 'main'; // main | advanced | model
+  String? _editingModelId;
+  ProviderAdvancedConfig _advConfig = const ProviderAdvancedConfig();
 
   // Edit form controllers.
   final TextEditingController _nameCtrl = TextEditingController();
@@ -51,7 +55,6 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
   final FocusNode _headersFocus = FocusNode();
   final FocusNode _bodyFocus = FocusNode();
   String _modelFilter = '';
-  bool _scannedLocal = false;
 
   // Add-provider form controllers.
   final TextEditingController _newNameCtrl = TextEditingController();
@@ -117,6 +120,8 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
     _confirmDelete = false;
     _iconPickerOpen = false;
     _showKey = false;
+    _subpage = 'main';
+    _editingModelId = null;
     _nameCtrl.text = p.name;
     _baseUrlCtrl.text = p.baseUrl;
     _modelCtrl.text = p.defaultModel;
@@ -125,6 +130,13 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
     _modelFilter = '';
     _headersCtrl.clear();
     _bodyCtrl.clear();
+    unawaited(
+      widget.controller.loadProviderAdvanced(p.id).then((cfg) {
+        if (mounted && _selectedId == p.id) {
+          setState(() => _advConfig = cfg);
+        }
+      }),
+    );
     unawaited(
       widget.controller.loadProviderOverrides(p.id).then((pair) {
         if (!mounted || _selectedId != p.id) return;
@@ -151,7 +163,7 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
     final l10n = BistreLocalizations.of(context);
     final chosen = await BistreDesktopHost.pickLocalFile(
       title: l10n.t(L10nKey.providerIconCustomUpload),
-      filterLabel: 'Images',
+      filterLabel: l10n.t(L10nKey.settingsProvidersFileFilterImages),
       filterSpec: '*.png;*.webp;*.jpg;*.jpeg',
     );
     if (chosen == null || chosen.isEmpty) return;
@@ -172,15 +184,51 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
         .where((p) => p.id == _selectedId)
         .firstOrNull;
 
+    Widget buildRightPane() {
+      if (_creating) return _buildCreatePanel(theme, l10n, ctrl);
+      if (selected == null) return _buildEmptyState(theme, l10n);
+      if (_subpage == 'advanced') {
+        return ProviderAdvancedSubpage(
+          controller: ctrl,
+          provider: selected,
+          initialConfig: _advConfig,
+          headersCtrl: _headersCtrl,
+          headersFocus: _headersFocus,
+          bodyCtrl: _bodyCtrl,
+          bodyFocus: _bodyFocus,
+          onBack: () => setState(() => _subpage = 'main'),
+          onSaved: (next) => setState(() => _advConfig = next),
+        );
+      }
+      if (_subpage == 'model' && _editingModelId != null) {
+        final mid = _editingModelId!;
+        return ProviderModelConfigSubpage(
+          controller: ctrl,
+          provider: selected,
+          modelId: mid,
+          config: _advConfig.modelOverrides[mid] ?? const ModelConfigOverride(),
+          onBack: () => setState(() => _subpage = 'main'),
+          onSaveOverride: (ov) {
+            final nextMap = Map<String, ModelConfigOverride>.from(
+              _advConfig.modelOverrides,
+            )..[mid] = ov;
+            final nextCfg = _advConfig.copyWith(modelOverrides: nextMap);
+            setState(() {
+              _advConfig = nextCfg;
+              _subpage = 'main';
+            });
+            unawaited(ctrl.saveProviderAdvanced(selected.id, nextCfg));
+          },
+        );
+      }
+      return _buildDetailPanel(theme, l10n, ctrl, selected);
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= 680;
         final listPane = _buildProviderList(theme, l10n, ctrl);
-        final detailPane = _creating
-            ? _buildCreatePanel(theme, l10n, ctrl)
-            : (selected != null
-                  ? _buildDetailPanel(theme, l10n, ctrl, selected)
-                  : _buildEmptyState(theme, l10n));
+        final detailPane = buildRightPane();
 
         if (!wide) {
           return SmoothScrollable(
@@ -251,66 +299,6 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
           ),
           onPressed: () => _openCreateFlow(kProviderPresets.first),
         ),
-        const SizedBox(height: 6),
-        EngravedButton(
-          label: l10n.t(L10nKey.providerDetectLocal),
-          compact: true,
-          leading: BistreIcon(
-            BistreUiIcon.server,
-            size: 13,
-            color: theme.accentBrass,
-          ),
-          onPressed: ctrl.detectingLocalServers
-              ? null
-              : () async {
-                  await ctrl.discoverLocalServers();
-                  if (mounted) setState(() => _scannedLocal = true);
-                },
-        ),
-        if (_scannedLocal) ...[
-          const SizedBox(height: 8),
-          if (ctrl.discoveredLocalServers.isEmpty)
-            InkText(
-              l10n.t(L10nKey.providerLocalNone),
-              role: InkTextRole.captionMeta,
-              color: theme.inkMuted,
-            )
-          else
-            for (final srv in ctrl.discoveredLocalServers) ...[
-              FolioSurface(
-                padding: const EdgeInsetsDirectional.all(8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: InkText(
-                        srv.name,
-                        role: InkTextRole.captionMeta,
-                        color: theme.inkPrimary,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    EngravedButton(
-                      label: l10n.t(L10nKey.providerAddButton),
-                      compact: true,
-                      onPressed: () => unawaited(
-                        ctrl.createProvider(
-                          name: srv.name,
-                          dialect: 'custom_openai',
-                          baseUrl: srv.baseUrl,
-                          defaultModel: srv.models.isNotEmpty
-                              ? srv.models.first
-                              : '',
-                          iconSlug: srv.kind == 'ollama' ? 'ollama' : 'server',
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 4),
-            ],
-        ],
         const SizedBox(height: BistreSpacing.s12),
         for (final p in ctrl.providers) ...[
           _ProviderListRow(
@@ -578,8 +566,22 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
-              if (p.isReady && !isActiveGlobal)
+              const SizedBox(width: 8),
+              EngravedButton(
+                label: l10n.t(L10nKey.settingsProviderTestAction),
+                compact: true,
+                onPressed: loadingModels
+                    ? null
+                    : () => unawaited(ctrl.testProviderConnection(p.id)),
+              ),
+              const SizedBox(width: 6),
+              EngravedButton(
+                label: l10n.t(L10nKey.settingsProviderAdvancedTitle),
+                compact: true,
+                onPressed: () => setState(() => _subpage = 'advanced'),
+              ),
+              if (p.isReady && !isActiveGlobal) ...[
+                const SizedBox(width: 6),
                 EngravedButton(
                   label: l10n.t(L10nKey.providerActionUseProvider),
                   primary: true,
@@ -588,15 +590,18 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                     ctrl.setActiveProviderAndModel(p.id, _modelCtrl.text),
                   ),
                 ),
+              ],
             ],
           ),
         ),
         const SizedBox(height: BistreSpacing.s16),
 
-        // API Key Vault Card
+        // API Key Vault Card (supports multi-API-key rotation: one key per line)
         BistreSettingsSection(
-          title: l10n.t(L10nKey.providerFieldApiKey),
-          subtitle: l10n.t(L10nKey.providerVaultNote),
+          title: p.keyHint.contains('(+')
+              ? '${l10n.t(L10nKey.providerFieldApiKey)} (${p.keyHint})'
+              : l10n.t(L10nKey.providerFieldApiKey),
+          subtitle: l10n.t(L10nKey.providerMultiKeyHint),
           children: [
             Padding(
               padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
@@ -604,6 +609,7 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
                         child: QuillInput(
@@ -611,9 +617,11 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                           controller: _apiKeyCtrl,
                           focusNode: _apiKeyFocus,
                           placeholder: p.hasApiKey
-                              ? '••••••••••••••••••••'
+                              ? (p.keyHint.isNotEmpty
+                                    ? p.keyHint
+                                    : '••••••••••••••••••••')
                               : l10n.t(L10nKey.providerFieldApiKeyPlaceholder),
-                          maxLines: 1,
+                          maxLines: _showKey ? 4 : 1,
                           obscureText: !_showKey,
                           submitOnEnter: false,
                           onSubmitted: () {},
@@ -643,6 +651,9 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                           );
                           if (ok && mounted) {
                             _apiKeyCtrl.clear();
+                            if (_advConfig.autoFetchModels) {
+                              unawaited(ctrl.fetchModelsForProvider(p.id));
+                            }
                           }
                         },
                       ),
@@ -814,6 +825,10 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                                       ),
                                     );
                                   },
+                                  onConfigure: () => setState(() {
+                                    _editingModelId = m.id;
+                                    _subpage = 'model';
+                                  }),
                                 ),
                             ],
                           ),
@@ -1205,11 +1220,13 @@ class _SelectableModelRow extends StatefulWidget {
     required this.model,
     required this.selected,
     required this.onTap,
+    required this.onConfigure,
   });
 
   final EngineProviderModel model;
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback onConfigure;
 
   @override
   State<_SelectableModelRow> createState() => _SelectableModelRowState();
@@ -1221,6 +1238,7 @@ class _SelectableModelRowState extends State<_SelectableModelRow> {
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
+    final l10n = BistreLocalizations.of(context);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
@@ -1254,12 +1272,21 @@ class _SelectableModelRowState extends State<_SelectableModelRow> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  if (widget.selected)
+                  if (widget.selected) ...[
                     BistreIcon(
                       BistreUiIcon.check,
                       size: 13,
                       color: theme.accentBrass,
                     ),
+                    const SizedBox(width: 4),
+                  ],
+                  BistreIconButton(
+                    icon: BistreUiIcon.settings,
+                    size: 12,
+                    dimension: 24,
+                    semanticsLabel: l10n.t(L10nKey.settingsTitle),
+                    onPressed: widget.onConfigure,
+                  ),
                 ],
               ),
             ),

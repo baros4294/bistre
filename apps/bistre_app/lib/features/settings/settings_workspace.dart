@@ -15,11 +15,13 @@ import 'agent_tools_settings_view.dart';
 import 'appearance_settings_view.dart';
 import 'assistants_settings_view.dart';
 import 'budget_safety_settings_view.dart';
+import 'default_models_settings_view.dart';
 import 'language_settings_view.dart';
 import 'memory_skills_settings_view.dart';
 import 'providers_settings_view.dart';
 import 'shortcuts_settings_view.dart';
 import 'updates_storage_settings_view.dart';
+import 'worldbook_cards_settings_view.dart';
 
 part 'settings_mobile.dart';
 
@@ -27,6 +29,11 @@ part 'settings_mobile.dart';
 const List<(SettingsTab, L10nKey, BistreUiIcon)>
 _kSettingsTabs = <(SettingsTab, L10nKey, BistreUiIcon)>[
   (SettingsTab.providers, L10nKey.settingsTabProviders, BistreUiIcon.key),
+  (
+    SettingsTab.defaultModels,
+    L10nKey.settingsTabDefaultModels,
+    BistreUiIcon.think,
+  ),
   (
     SettingsTab.assistants,
     L10nKey.settingsTabAssistants,
@@ -36,6 +43,7 @@ _kSettingsTabs = <(SettingsTab, L10nKey, BistreUiIcon)>[
   (SettingsTab.trust, L10nKey.settingsTabTrust, BistreUiIcon.shield),
   (SettingsTab.agent, L10nKey.settingsTabAgent, BistreUiIcon.code),
   (SettingsTab.memory, L10nKey.settingsTabMemory, BistreUiIcon.memory),
+  (SettingsTab.worldBook, L10nKey.settingsTabWorldBook, BistreUiIcon.document),
   (SettingsTab.updates, L10nKey.settingsTabUpdates, BistreUiIcon.download),
   (SettingsTab.language, L10nKey.settingsTabLanguage, BistreUiIcon.globe),
   (SettingsTab.shortcuts, L10nKey.settingsTabShortcuts, BistreUiIcon.keyboard),
@@ -46,8 +54,8 @@ _kSettingsTabs = <(SettingsTab, L10nKey, BistreUiIcon)>[
 /// Safety & Unlimited Budget, Updates & Local Storage, Language, and Custom Shortcuts.
 ///
 /// At 720 px and wider the page list sits beside the page. Narrower windows (phones, large
-/// text) use the Parchment v2.6.0 phone layout (`settings_mobile.dart`): a card list of pages,
-/// one page at a time, Android back and a start-edge swipe stepping back.
+/// text) use the compact phone layout (`settings_mobile.dart`): a card list of pages,
+/// one page at a time, with Android back and a start-edge swipe stepping back.
 class SettingsWorkspace extends StatefulWidget {
   const SettingsWorkspace({super.key, required this.controller});
 
@@ -74,7 +82,7 @@ class _SettingsWorkspaceState extends State<SettingsWorkspace>
     super.dispose();
   }
 
-  /// Android back (v2.6.0 order): clear the search, then leave the page, then close Settings.
+  /// Android back order: clear the search, then leave the page, then close Settings.
   @override
   Future<bool> didPopRoute() async {
     if (!mounted) return false;
@@ -122,13 +130,33 @@ class _SettingsWorkspaceState extends State<SettingsWorkspace>
                             child: _SearchableSettingsNav(
                               tabs: _kSettingsTabs,
                               selected: ctrl.settingsTab,
-                              onSelected: ctrl.setSettingsTab,
+                              onSelected: ctrl.openSettingsAt,
                             ),
                           ),
                         ),
                         const FolioDivider(vertical: true),
                       ],
-                      Expanded(child: _buildActiveView(ctrl)),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (ctrl.highlightedSettingKey != null &&
+                                ctrl.highlightedSettingKey!.isNotEmpty)
+                              _HighlightedSettingBanner(
+                                label: ctrl.highlightedSettingKey!,
+                                onDismiss: ctrl.clearHighlightedSetting,
+                              ),
+                            Expanded(
+                              child: FolioFadeSlide(
+                                key: ValueKey<SettingsTab>(ctrl.settingsTab),
+                                beginOffset: const Offset(0, 0.012),
+                                reduceMotionOverride: ctrl.reduceMotionOverride,
+                                child: _buildActiveView(ctrl),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -143,11 +171,13 @@ class _SettingsWorkspaceState extends State<SettingsWorkspace>
   Widget _buildActiveView(FolioController ctrl) {
     return switch (ctrl.settingsTab) {
       SettingsTab.providers => ProvidersSettingsView(controller: ctrl),
+      SettingsTab.defaultModels => DefaultModelsSettingsView(controller: ctrl),
       SettingsTab.assistants => AssistantsSettingsView(controller: ctrl),
       SettingsTab.appearance => AppearanceSettingsView(controller: ctrl),
       SettingsTab.trust => BudgetSafetySettingsView(controller: ctrl),
       SettingsTab.agent => AgentToolsSettingsView(controller: ctrl),
       SettingsTab.memory => MemorySkillsSettingsView(controller: ctrl),
+      SettingsTab.worldBook => WorldbookCardsSettingsView(controller: ctrl),
       SettingsTab.updates => UpdatesStorageSettingsView(controller: ctrl),
       SettingsTab.language => LanguageSettingsView(controller: ctrl),
       SettingsTab.shortcuts => ShortcutsSettingsView(controller: ctrl),
@@ -335,7 +365,7 @@ class _SettingsNavTileState extends State<_SettingsNavTile> {
 }
 
 /// Catalog key prefixes whose text belongs to each settings page; searching matches the page
-/// name and every label on it ("Search all settings", Parchment v2.6.0).
+/// name and every label on it.
 const Map<SettingsTab, List<String>> _searchPrefixes =
     <SettingsTab, List<String>>{
       SettingsTab.providers: <String>['provider.', 'settings.tab.providers'],
@@ -375,7 +405,7 @@ bool _tabMatches(
 }
 
 /// The settings on [tab] whose label matches [q] (short labels only, not hints), so the
-/// results say which setting matched (v2.6.0 per-setting search results).
+/// results say which setting matched.
 List<String> _matchingLabels(
   BistreLocalizationController l10n,
   SettingsTab tab,
@@ -403,7 +433,7 @@ class _SearchableSettingsNav extends StatefulWidget {
 
   final List<(SettingsTab, L10nKey, BistreUiIcon)> tabs;
   final SettingsTab selected;
-  final ValueChanged<SettingsTab> onSelected;
+  final void Function(SettingsTab tab, [String? matchLabel]) onSelected;
 
   @override
   State<_SearchableSettingsNav> createState() => _SearchableSettingsNavState();
@@ -464,7 +494,7 @@ class _SearchableSettingsNavState extends State<_SearchableSettingsNav> {
                     hoverScale: 1,
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onTap: () => widget.onSelected(t.$1),
+                      onTap: () => widget.onSelected(t.$1, label),
                       child: Padding(
                         padding: const EdgeInsetsDirectional.symmetric(
                           vertical: 4,
@@ -490,6 +520,56 @@ class _SearchableSettingsNavState extends State<_SearchableSettingsNav> {
                   color: theme.inkMuted,
                 ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HighlightedSettingBanner extends StatelessWidget {
+  const _HighlightedSettingBanner({
+    required this.label,
+    required this.onDismiss,
+  });
+
+  final String label;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = BistreTheme.of(context);
+    final l10n = BistreLocalizations.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.accentBrass.withValues(alpha: theme.isDark ? 0.18 : 0.12),
+        border: Border(bottom: BorderSide(color: theme.borderHairline)),
+      ),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.symmetric(
+          horizontal: 18,
+          vertical: 8,
+        ),
+        child: Row(
+          children: [
+            BistreIcon(BistreUiIcon.search, size: 14, color: theme.accentBrass),
+            const SizedBox(width: 8),
+            Expanded(
+              child: InkText(
+                label,
+                role: InkTextRole.labelStrong,
+                color: theme.inkPrimary,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            BistreIconButton(
+              icon: BistreUiIcon.close,
+              size: 13,
+              dimension: 28,
+              semanticsLabel: l10n.t(L10nKey.settingsClearSearch),
+              onPressed: onDismiss,
+            ),
           ],
         ),
       ),
