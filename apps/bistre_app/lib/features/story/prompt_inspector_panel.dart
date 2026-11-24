@@ -7,6 +7,7 @@ import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/disclosure_reveal.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
@@ -266,55 +267,61 @@ class _PromptBlockCardState extends State<_PromptBlockCard> {
     final theme = BistreTheme.of(context);
     final b = widget.block;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() => _expanded = !_expanded),
-      child: FolioSurface(
-        tone: FolioTone.elevated,
-        borderRadius: 10,
-        padding: const EdgeInsetsDirectional.all(10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                BistreIcon(
-                  _expanded
-                      ? BistreUiIcon.chevronDown
-                      : BistreUiIcon.chevronEnd,
-                  size: 12,
-                  color: theme.inkMuted,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
+    return PressFeedback(
+      pressScale: kRowPressScale,
+      hoverScale: 1,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() => _expanded = !_expanded),
+        child: FolioSurface(
+          tone: FolioTone.elevated,
+          borderRadius: 10,
+          padding: const EdgeInsetsDirectional.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  BistreIcon(
+                    _expanded
+                        ? BistreUiIcon.chevronDown
+                        : BistreUiIcon.chevronEnd,
+                    size: 12,
+                    color: theme.inkMuted,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: InkText(
+                      b.label,
+                      role: InkTextRole.labelStrong,
+                      color: theme.inkPrimary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  InkText(
+                    _formatTokenCount(b.estimatedTokens),
+                    role: InkTextRole.captionMeta,
+                    color: b.isStaticPrefix
+                        ? theme.statusOk
+                        : theme.accentBrass,
+                  ),
+                ],
+              ),
+              DisclosureReveal(
+                open: _expanded,
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.only(top: 6),
                   child: InkText(
-                    b.label,
-                    role: InkTextRole.labelStrong,
-                    color: theme.inkPrimary,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    b.content,
+                    role: InkTextRole.captionMeta,
+                    color: theme.inkSecondary,
                   ),
                 ),
-                const SizedBox(width: 6),
-                InkText(
-                  _formatTokenCount(b.estimatedTokens),
-                  role: InkTextRole.captionMeta,
-                  color: b.isStaticPrefix ? theme.statusOk : theme.accentBrass,
-                ),
-              ],
-            ),
-            DisclosureReveal(
-              open: _expanded,
-              child: Padding(
-                padding: const EdgeInsetsDirectional.only(top: 6),
-                child: InkText(
-                  b.content,
-                  role: InkTextRole.captionMeta,
-                  color: theme.inkSecondary,
-                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

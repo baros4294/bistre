@@ -8,6 +8,7 @@ import '../../design/bistre_icons.dart';
 import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
@@ -804,49 +805,53 @@ class _AssistantTriggerPillState extends State<_AssistantTriggerPill> {
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hovered = true),
         onExit: (_) => setState(() => _hovered = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: _hovered
-                  ? theme.bgSurface
-                  : theme.bgSurface.withValues(alpha: 0.60),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.symmetric(
-                horizontal: 9,
-                vertical: 5,
+        child: PressFeedback(
+          pressScale: kRowPressScale,
+          hoverScale: 1,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onTap,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: _hovered
+                    ? theme.bgSurface
+                    : theme.bgSurface.withValues(alpha: 0.60),
+                borderRadius: BorderRadius.circular(8),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (hasLabIcon)
-                    LabIcon(iconSlug: widget.assistant.iconSlug, size: 13)
-                  else
+              child: Padding(
+                padding: const EdgeInsetsDirectional.symmetric(
+                  horizontal: 9,
+                  vertical: 5,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (hasLabIcon)
+                      LabIcon(iconSlug: widget.assistant.iconSlug, size: 13)
+                    else
+                      BistreIcon(
+                        BistreUiIcon.assistant,
+                        size: 13,
+                        color: theme.accentBrass,
+                      ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: InkText(
+                        widget.assistant.name,
+                        role: InkTextRole.captionMeta,
+                        color: theme.inkSecondary,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
                     BistreIcon(
-                      BistreUiIcon.assistant,
-                      size: 13,
-                      color: theme.accentBrass,
+                      BistreUiIcon.chevronDown,
+                      size: 11,
+                      color: theme.inkMuted,
                     ),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: InkText(
-                      widget.assistant.name,
-                      role: InkTextRole.captionMeta,
-                      color: theme.inkSecondary,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 5),
-                  BistreIcon(
-                    BistreUiIcon.chevronDown,
-                    size: 11,
-                    color: theme.inkMuted,
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -884,59 +889,63 @@ class _AssistantPopoverOptionState extends State<_AssistantPopoverOption> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: _hovered || widget.selected ? theme.hoverTint : null,
-          ),
-          child: Padding(
-            padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: 12,
-              vertical: 8,
+      child: PressFeedback(
+        pressScale: kRowPressScale,
+        hoverScale: 1,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: _hovered || widget.selected ? theme.hoverTint : null,
             ),
-            child: Row(
-              children: [
-                if (hasLabIcon)
-                  LabIcon(iconSlug: widget.assistant.iconSlug, size: 15)
-                else
-                  BistreIcon(
-                    BistreUiIcon.assistant,
-                    size: 14,
-                    color: widget.selected
-                        ? theme.accentBrass
-                        : theme.inkSecondary,
-                  ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      InkText(
-                        widget.assistant.name,
-                        role: InkTextRole.labelStrong,
-                        color: theme.inkPrimary,
-                      ),
-                      if (widget.assistant.roleSubtitle.isNotEmpty)
+            child: Padding(
+              padding: const EdgeInsetsDirectional.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+              child: Row(
+                children: [
+                  if (hasLabIcon)
+                    LabIcon(iconSlug: widget.assistant.iconSlug, size: 15)
+                  else
+                    BistreIcon(
+                      BistreUiIcon.assistant,
+                      size: 14,
+                      color: widget.selected
+                          ? theme.accentBrass
+                          : theme.inkSecondary,
+                    ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                         InkText(
-                          widget.assistant.roleSubtitle,
-                          role: InkTextRole.captionMeta,
-                          color: theme.inkMuted,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          widget.assistant.name,
+                          role: InkTextRole.labelStrong,
+                          color: theme.inkPrimary,
                         ),
-                    ],
+                        if (widget.assistant.roleSubtitle.isNotEmpty)
+                          InkText(
+                            widget.assistant.roleSubtitle,
+                            role: InkTextRole.captionMeta,
+                            color: theme.inkMuted,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-                if (widget.selected)
-                  BistreIcon(
-                    BistreUiIcon.check,
-                    size: 13,
-                    color: theme.accentBrass,
-                  ),
-              ],
+                  if (widget.selected)
+                    BistreIcon(
+                      BistreUiIcon.check,
+                      size: 13,
+                      color: theme.accentBrass,
+                    ),
+                ],
+              ),
             ),
           ),
         ),

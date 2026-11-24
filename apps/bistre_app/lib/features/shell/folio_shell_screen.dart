@@ -10,6 +10,7 @@ import '../../design/bistre_icons.dart';
 import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../chat/folio_composer.dart';
@@ -948,55 +949,59 @@ class _QuickProviderOptionState extends State<_QuickProviderOption> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: _hovered || widget.selected ? theme.hoverTint : null,
-          ),
-          child: Padding(
-            padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: 12,
-              vertical: 8,
+      child: PressFeedback(
+        pressScale: kRowPressScale,
+        hoverScale: 1,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: _hovered || widget.selected ? theme.hoverTint : null,
             ),
-            child: Row(
-              children: [
-                LabIcon(
-                  iconSlug: p.iconSlug,
-                  customIconPath: p.customIconPath,
-                  dialect: p.dialect,
-                  providerName: p.name,
-                  size: 17,
-                  framed: true,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      InkText(
-                        p.name,
-                        role: InkTextRole.labelStrong,
-                        color: theme.inkPrimary,
-                      ),
-                      InkText(
-                        widget.subtitle,
-                        role: InkTextRole.captionMeta,
-                        color: theme.inkMuted,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+            child: Padding(
+              padding: const EdgeInsetsDirectional.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+              child: Row(
+                children: [
+                  LabIcon(
+                    iconSlug: p.iconSlug,
+                    customIconPath: p.customIconPath,
+                    dialect: p.dialect,
+                    providerName: p.name,
+                    size: 17,
+                    framed: true,
                   ),
-                ),
-                if (widget.selected)
-                  BistreIcon(
-                    BistreUiIcon.check,
-                    size: 13,
-                    color: theme.accentBrass,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        InkText(
+                          p.name,
+                          role: InkTextRole.labelStrong,
+                          color: theme.inkPrimary,
+                        ),
+                        InkText(
+                          widget.subtitle,
+                          role: InkTextRole.captionMeta,
+                          color: theme.inkMuted,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
                   ),
-              ],
+                  if (widget.selected)
+                    BistreIcon(
+                      BistreUiIcon.check,
+                      size: 13,
+                      color: theme.accentBrass,
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1030,38 +1035,42 @@ class _QuickModelOptionState extends State<_QuickModelOption> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: _hovered || widget.selected ? theme.hoverTint : null,
-          ),
-          child: Padding(
-            padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: 14,
-              vertical: 6,
+      child: PressFeedback(
+        pressScale: kRowPressScale,
+        hoverScale: 1,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: _hovered || widget.selected ? theme.hoverTint : null,
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: InkText(
-                    widget.modelId,
-                    role: InkTextRole.captionMeta,
-                    color: widget.selected
-                        ? theme.inkPrimary
-                        : theme.inkSecondary,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+            child: Padding(
+              padding: const EdgeInsetsDirectional.symmetric(
+                horizontal: 14,
+                vertical: 6,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: InkText(
+                      widget.modelId,
+                      role: InkTextRole.captionMeta,
+                      color: widget.selected
+                          ? theme.inkPrimary
+                          : theme.inkSecondary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-                if (widget.selected)
-                  BistreIcon(
-                    BistreUiIcon.check,
-                    size: 12,
-                    color: theme.accentBrass,
-                  ),
-              ],
+                  if (widget.selected)
+                    BistreIcon(
+                      BistreUiIcon.check,
+                      size: 12,
+                      color: theme.accentBrass,
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1090,30 +1099,34 @@ class _QuickActionFooterRowState extends State<_QuickActionFooterRow> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: DecoratedBox(
-          decoration: BoxDecoration(color: _hovered ? theme.hoverTint : null),
-          child: Padding(
-            padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: 14,
-              vertical: 10,
-            ),
-            child: Row(
-              children: [
-                BistreIcon(
-                  BistreUiIcon.settings,
-                  size: 14,
-                  color: theme.accentBrass,
-                ),
-                const SizedBox(width: 8),
-                InkText(
-                  widget.label,
-                  role: InkTextRole.labelStrong,
-                  color: theme.accentBrass,
-                ),
-              ],
+      child: PressFeedback(
+        pressScale: kRowPressScale,
+        hoverScale: 1,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: DecoratedBox(
+            decoration: BoxDecoration(color: _hovered ? theme.hoverTint : null),
+            child: Padding(
+              padding: const EdgeInsetsDirectional.symmetric(
+                horizontal: 14,
+                vertical: 10,
+              ),
+              child: Row(
+                children: [
+                  BistreIcon(
+                    BistreUiIcon.settings,
+                    size: 14,
+                    color: theme.accentBrass,
+                  ),
+                  const SizedBox(width: 8),
+                  InkText(
+                    widget.label,
+                    role: InkTextRole.labelStrong,
+                    color: theme.accentBrass,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1202,23 +1215,27 @@ class _HeaderPressableState extends State<_HeaderPressable> {
             },
           ),
         },
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onPressed,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(6),
-              border: _focused
-                  ? Border.all(color: theme.accentBrass, width: 2)
-                  : null,
-            ),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 24),
-              child: Align(
-                alignment: AlignmentDirectional.centerStart,
-                widthFactor: 1,
-                heightFactor: 1,
-                child: widget.child,
+        child: PressFeedback(
+          pressScale: kRowPressScale,
+          hoverScale: 1,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onPressed,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                border: _focused
+                    ? Border.all(color: theme.accentBrass, width: 2)
+                    : null,
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 24),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  widthFactor: 1,
+                  heightFactor: 1,
+                  child: widget.child,
+                ),
               ),
             ),
           ),

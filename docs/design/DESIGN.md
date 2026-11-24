@@ -95,6 +95,7 @@ Owner decisions (2026-11-24): Bistre should feel at least as alive as Parchment 
 - **Pointer feedback on every clickable** (buttons, chips, icon buttons, rows, tabs, header pressables), built into the shared primitives so every screen gets it:
   - press scales to **0.96** (spring damping 0.78, stiffness 680);
   - hover scales to **1.012** and lifts **0.75 dp** (spring, no bounce, stiffness 560);
+  - wide rows (sidebar chats, list rows, tabs) press to **0.985** and only lift on hover, so a 300 px row never visibly jumps (`kRowPressScale`);
   - the focus ring shows for keyboard focus only, never after a pointer press.
 - **Disclosures animate their height** (Thinking, the context breakdown, the tools drawer, code fold, settings sections, inspector panels): the size eases on a critically damped spring (stiffness 420) while the content fades with it. Fast input reverses it from the current height and speed. Every disclosure uses `DisclosureReveal` (`lib/design/disclosure_reveal.dart`), the only sanctioned height animation; today it runs Thinking, tool-step details, code fold, prompt-inspector blocks, and skill bodies.
 - **Overlays and pills**:

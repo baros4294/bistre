@@ -8,6 +8,7 @@ import '../../design/bistre_icons.dart';
 import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
@@ -565,45 +566,49 @@ class _OverrideTileState extends State<_OverrideTile> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: widget.selected
-                ? theme.bgSurface
-                : (_hovered ? theme.hoverTint : null),
-            borderRadius: BorderRadius.circular(7),
-          ),
-          child: Padding(
-            padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: 8,
-              vertical: 6,
+      child: PressFeedback(
+        pressScale: kRowPressScale,
+        hoverScale: 1,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: widget.selected
+                  ? theme.bgSurface
+                  : (_hovered ? theme.hoverTint : null),
+              borderRadius: BorderRadius.circular(7),
             ),
-            child: Row(
-              children: [
-                widget.leading,
-                const SizedBox(width: 8),
-                Expanded(
-                  child: InkText(
-                    widget.label,
-                    role: widget.selected
-                        ? InkTextRole.labelStrong
-                        : InkTextRole.captionMeta,
-                    color: widget.selected
-                        ? theme.inkPrimary
-                        : theme.inkSecondary,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+            child: Padding(
+              padding: const EdgeInsetsDirectional.symmetric(
+                horizontal: 8,
+                vertical: 6,
+              ),
+              child: Row(
+                children: [
+                  widget.leading,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: InkText(
+                      widget.label,
+                      role: widget.selected
+                          ? InkTextRole.labelStrong
+                          : InkTextRole.captionMeta,
+                      color: widget.selected
+                          ? theme.inkPrimary
+                          : theme.inkSecondary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-                if (widget.selected)
-                  BistreIcon(
-                    BistreUiIcon.check,
-                    size: 13,
-                    color: theme.accentBrass,
-                  ),
-              ],
+                  if (widget.selected)
+                    BistreIcon(
+                      BistreUiIcon.check,
+                      size: 13,
+                      color: theme.accentBrass,
+                    ),
+                ],
+              ),
             ),
           ),
         ),

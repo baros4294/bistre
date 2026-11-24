@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 
@@ -112,26 +113,30 @@ class _ModeOptionState extends State<_ModeOption> {
             },
           ),
         },
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: widget.selected ? theme.bgElevated : null,
-              borderRadius: BorderRadius.circular(999),
-              border: _focused
-                  ? Border.all(color: theme.accentBrass, width: 2)
-                  : null,
-            ),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.symmetric(
-                horizontal: 10,
-                vertical: 5,
+        child: PressFeedback(
+          pressScale: kRowPressScale,
+          hoverScale: 1,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onTap,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: widget.selected ? theme.bgElevated : null,
+                borderRadius: BorderRadius.circular(999),
+                border: _focused
+                    ? Border.all(color: theme.accentBrass, width: 2)
+                    : null,
               ),
-              child: InkText(
-                widget.label,
-                role: InkTextRole.captionMeta,
-                color: widget.selected ? theme.inkPrimary : theme.inkMuted,
+              child: Padding(
+                padding: const EdgeInsetsDirectional.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                child: InkText(
+                  widget.label,
+                  role: InkTextRole.captionMeta,
+                  color: widget.selected ? theme.inkPrimary : theme.inkMuted,
+                ),
               ),
             ),
           ),

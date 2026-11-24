@@ -9,6 +9,7 @@ import '../../design/bistre_decorations.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
@@ -561,103 +562,107 @@ class _AssistantListTileState extends State<_AssistantListTile> {
         },
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.onTap,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: widget.isSelected
-                    ? theme.bgElevated
-                    : (_hovered ? theme.hoverTint : null),
-                borderRadius: BorderRadius.circular(9),
-                border: _focused
-                    ? Border.all(color: theme.accentBrass, width: 1.4)
-                    : null,
-                boxShadow: widget.isSelected ? theme.cardShadow : null,
-              ),
-              child: Padding(
-                padding: const EdgeInsetsDirectional.fromSTEB(10, 8, 8, 8),
-                child: Row(
-                  children: [
-                    SizedBox.square(
-                      dimension: 28,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: widget.isSelected
-                              ? theme.bgSurface
-                              : theme.bgCanvas.withValues(alpha: 0.7),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Center(
-                          child: hasLabIcon
-                              ? LabIcon(
-                                  iconSlug: widget.assistant.iconSlug,
-                                  size: 16,
-                                )
-                              : BistreIcon(
-                                  BistreUiIcon.assistant,
-                                  size: 14,
-                                  color: widget.isSelected
-                                      ? theme.accentBrass
-                                      : theme.inkSecondary,
-                                ),
+          child: PressFeedback(
+            pressScale: kRowPressScale,
+            hoverScale: 1,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onTap,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: widget.isSelected
+                      ? theme.bgElevated
+                      : (_hovered ? theme.hoverTint : null),
+                  borderRadius: BorderRadius.circular(9),
+                  border: _focused
+                      ? Border.all(color: theme.accentBrass, width: 1.4)
+                      : null,
+                  boxShadow: widget.isSelected ? theme.cardShadow : null,
+                ),
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.fromSTEB(10, 8, 8, 8),
+                  child: Row(
+                    children: [
+                      SizedBox.square(
+                        dimension: 28,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: widget.isSelected
+                                ? theme.bgSurface
+                                : theme.bgCanvas.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Center(
+                            child: hasLabIcon
+                                ? LabIcon(
+                                    iconSlug: widget.assistant.iconSlug,
+                                    size: 16,
+                                  )
+                                : BistreIcon(
+                                    BistreUiIcon.assistant,
+                                    size: 14,
+                                    color: widget.isSelected
+                                        ? theme.accentBrass
+                                        : theme.inkSecondary,
+                                  ),
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          InkText(
-                            widget.assistant.name,
-                            role: widget.isSelected
-                                ? InkTextRole.labelStrong
-                                : InkTextRole.bodyCompact,
-                            color: theme.inkPrimary,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (preview.isNotEmpty)
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
                             InkText(
-                              preview,
-                              role: InkTextRole.captionMeta,
-                              color: theme.inkMuted,
+                              widget.assistant.name,
+                              role: widget.isSelected
+                                  ? InkTextRole.labelStrong
+                                  : InkTextRole.bodyCompact,
+                              color: theme.inkPrimary,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                        ],
-                      ),
-                    ),
-                    if (showActions) ...[
-                      BistreIconButton(
-                        icon: BistreUiIcon.edit,
-                        size: 13,
-                        dimension: 24,
-                        semanticsLabel: l10n.t(
-                          L10nKey.settingsAssistantsEditTitle,
+                            if (preview.isNotEmpty)
+                              InkText(
+                                preview,
+                                role: InkTextRole.captionMeta,
+                                color: theme.inkMuted,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                          ],
                         ),
-                        onPressed: widget.onEdit,
                       ),
-                      if (widget.canDelete && widget.onDelete != null)
+                      if (showActions) ...[
                         BistreIconButton(
-                          icon: BistreUiIcon.trash,
+                          icon: BistreUiIcon.edit,
                           size: 13,
                           dimension: 24,
-                          color: theme.inkMuted,
                           semanticsLabel: l10n.t(
-                            L10nKey.settingsAssistantsDeleteAction,
+                            L10nKey.settingsAssistantsEditTitle,
                           ),
-                          onPressed: widget.onDelete,
+                          onPressed: widget.onEdit,
                         ),
-                    ] else if (widget.isSelected)
-                      BistreIcon(
-                        BistreUiIcon.check,
-                        size: 13,
-                        color: theme.accentBrass,
-                      ),
-                  ],
+                        if (widget.canDelete && widget.onDelete != null)
+                          BistreIconButton(
+                            icon: BistreUiIcon.trash,
+                            size: 13,
+                            dimension: 24,
+                            color: theme.inkMuted,
+                            semanticsLabel: l10n.t(
+                              L10nKey.settingsAssistantsDeleteAction,
+                            ),
+                            onPressed: widget.onDelete,
+                          ),
+                      ] else if (widget.isSelected)
+                        BistreIcon(
+                          BistreUiIcon.check,
+                          size: 13,
+                          color: theme.accentBrass,
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -721,109 +726,113 @@ class _ThreadListTileState extends State<_ThreadListTile> {
         },
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.onTap,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: widget.isSelected
-                    ? theme.bgElevated
-                    : (_hovered ? theme.hoverTint : null),
-                borderRadius: BorderRadius.circular(9),
-                border: _focused
-                    ? Border.all(color: theme.accentBrass, width: 1.4)
-                    : null,
-                boxShadow: widget.isSelected ? theme.cardShadow : null,
-              ),
-              child: Padding(
-                padding: const EdgeInsetsDirectional.fromSTEB(10, 8, 6, 8),
-                child: Row(
-                  children: [
-                    // The single bold rubric mark (`docs/design/DESIGN.md` §1.1).
-                    if (widget.isSelected)
-                      Padding(
-                        padding: const EdgeInsetsDirectional.only(end: 8),
-                        child: SizedBox(
-                          width: kRubricMarkWidth,
-                          height: 18,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: theme.accentWax,
-                              borderRadius: BorderRadius.circular(2),
+          child: PressFeedback(
+            pressScale: kRowPressScale,
+            hoverScale: 1,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onTap,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: widget.isSelected
+                      ? theme.bgElevated
+                      : (_hovered ? theme.hoverTint : null),
+                  borderRadius: BorderRadius.circular(9),
+                  border: _focused
+                      ? Border.all(color: theme.accentBrass, width: 1.4)
+                      : null,
+                  boxShadow: widget.isSelected ? theme.cardShadow : null,
+                ),
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.fromSTEB(10, 8, 6, 8),
+                  child: Row(
+                    children: [
+                      // The single bold rubric mark (`docs/design/DESIGN.md` §1.1).
+                      if (widget.isSelected)
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(end: 8),
+                          child: SizedBox(
+                            width: kRubricMarkWidth,
+                            height: 18,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: theme.accentWax,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          InkText(
-                            widget.thread.title,
-                            role: widget.isSelected
-                                ? InkTextRole.labelStrong
-                                : InkTextRole.bodyCompact,
-                            color: theme.inkPrimary,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (widget.subtitle != null &&
-                              widget.subtitle!.isNotEmpty)
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
                             InkText(
-                              widget.subtitle!,
-                              role: InkTextRole.captionMeta,
-                              color: theme.inkMuted,
+                              widget.thread.title,
+                              role: widget.isSelected
+                                  ? InkTextRole.labelStrong
+                                  : InkTextRole.bodyCompact,
+                              color: theme.inkPrimary,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                        ],
-                      ),
-                    ),
-                    if (showActions) ...[
-                      BistreIconButton(
-                        icon: widget.thread.isPinned
-                            ? BistreUiIcon.pinFilled
-                            : BistreUiIcon.pin,
-                        size: 13,
-                        dimension: 24,
-                        color: widget.thread.isPinned
-                            ? theme.accentBrass
-                            : theme.inkMuted,
-                        semanticsLabel: widget.thread.isPinned
-                            ? l10n.t(L10nKey.threadUnpin)
-                            : l10n.t(L10nKey.threadPin),
-                        onPressed: widget.onTogglePin,
-                      ),
-                      BistreIconButton(
-                        icon: BistreUiIcon.edit,
-                        size: 13,
-                        dimension: 24,
-                        semanticsLabel: l10n.t(L10nKey.threadRename),
-                        onPressed: widget.onRename,
-                      ),
-                      BistreIconButton(
-                        icon: BistreUiIcon.trash,
-                        size: 13,
-                        dimension: 24,
-                        color: widget.isConfirmingDelete
-                            ? theme.statusErr
-                            : theme.inkMuted,
-                        semanticsLabel: widget.isConfirmingDelete
-                            ? l10n.t(L10nKey.threadConfirmDelete)
-                            : l10n.t(L10nKey.threadDelete),
-                        onPressed: widget.onRequestDelete,
-                      ),
-                    ] else if (widget.thread.isPinned)
-                      Padding(
-                        padding: const EdgeInsetsDirectional.only(end: 4),
-                        child: BistreIcon(
-                          BistreUiIcon.pinFilled,
-                          size: 12,
-                          color: theme.accentBrass.withValues(alpha: 0.78),
+                            if (widget.subtitle != null &&
+                                widget.subtitle!.isNotEmpty)
+                              InkText(
+                                widget.subtitle!,
+                                role: InkTextRole.captionMeta,
+                                color: theme.inkMuted,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                          ],
                         ),
                       ),
-                  ],
+                      if (showActions) ...[
+                        BistreIconButton(
+                          icon: widget.thread.isPinned
+                              ? BistreUiIcon.pinFilled
+                              : BistreUiIcon.pin,
+                          size: 13,
+                          dimension: 24,
+                          color: widget.thread.isPinned
+                              ? theme.accentBrass
+                              : theme.inkMuted,
+                          semanticsLabel: widget.thread.isPinned
+                              ? l10n.t(L10nKey.threadUnpin)
+                              : l10n.t(L10nKey.threadPin),
+                          onPressed: widget.onTogglePin,
+                        ),
+                        BistreIconButton(
+                          icon: BistreUiIcon.edit,
+                          size: 13,
+                          dimension: 24,
+                          semanticsLabel: l10n.t(L10nKey.threadRename),
+                          onPressed: widget.onRename,
+                        ),
+                        BistreIconButton(
+                          icon: BistreUiIcon.trash,
+                          size: 13,
+                          dimension: 24,
+                          color: widget.isConfirmingDelete
+                              ? theme.statusErr
+                              : theme.inkMuted,
+                          semanticsLabel: widget.isConfirmingDelete
+                              ? l10n.t(L10nKey.threadConfirmDelete)
+                              : l10n.t(L10nKey.threadDelete),
+                          onPressed: widget.onRequestDelete,
+                        ),
+                      ] else if (widget.thread.isPinned)
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(end: 4),
+                          child: BistreIcon(
+                            BistreUiIcon.pinFilled,
+                            size: 12,
+                            color: theme.accentBrass.withValues(alpha: 0.78),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -881,44 +890,48 @@ class _QuietSidebarActionState extends State<_QuietSidebarAction> {
         },
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.onTap,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: widget.selected
-                    ? theme.bgElevated
-                    : (_hovered ? theme.hoverTint : null),
-                borderRadius: BorderRadius.circular(8),
-                border: _focused
-                    ? Border.all(color: theme.accentBrass, width: 1.4)
-                    : null,
-              ),
-              child: Padding(
-                padding: const EdgeInsetsDirectional.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
+          child: PressFeedback(
+            pressScale: kRowPressScale,
+            hoverScale: 1,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onTap,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: widget.selected
+                      ? theme.bgElevated
+                      : (_hovered ? theme.hoverTint : null),
+                  borderRadius: BorderRadius.circular(8),
+                  border: _focused
+                      ? Border.all(color: theme.accentBrass, width: 1.4)
+                      : null,
                 ),
-                child: Row(
-                  children: [
-                    BistreIcon(
-                      widget.icon,
-                      size: 15,
-                      color: widget.accentIcon || widget.selected
-                          ? theme.accentBrass
-                          : theme.inkSecondary,
-                    ),
-                    const SizedBox(width: 9),
-                    Expanded(
-                      child: InkText(
-                        widget.label,
-                        role: InkTextRole.bodyCompact,
-                        color: theme.inkPrimary,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      BistreIcon(
+                        widget.icon,
+                        size: 15,
+                        color: widget.accentIcon || widget.selected
+                            ? theme.accentBrass
+                            : theme.inkSecondary,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: InkText(
+                          widget.label,
+                          role: InkTextRole.bodyCompact,
+                          color: theme.inkPrimary,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

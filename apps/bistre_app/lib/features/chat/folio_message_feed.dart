@@ -11,6 +11,7 @@ import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_selection_controls.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
@@ -403,32 +404,36 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                 ),
                 child: MouseRegion(
                   cursor: SystemMouseCursors.click,
-                  child: GestureDetector(
-                    onTap: () => widget.onSelectSearchHit(hit),
-                    child: FolioSurface(
-                      tone: FolioTone.elevated,
-                      boxShadow: theme.cardShadow,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              BistreIcon(
-                                BistreUiIcon.search,
-                                size: 13,
-                                color: theme.accentBrass,
-                              ),
-                              const SizedBox(width: 6),
-                              InkText(
-                                roleLabel,
-                                role: InkTextRole.captionMeta,
-                                color: theme.accentBrass,
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: BistreSpacing.s4),
-                          InkText(hit.snippet, role: InkTextRole.bodyCompact),
-                        ],
+                  child: PressFeedback(
+                    pressScale: kRowPressScale,
+                    hoverScale: 1,
+                    child: GestureDetector(
+                      onTap: () => widget.onSelectSearchHit(hit),
+                      child: FolioSurface(
+                        tone: FolioTone.elevated,
+                        boxShadow: theme.cardShadow,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                BistreIcon(
+                                  BistreUiIcon.search,
+                                  size: 13,
+                                  color: theme.accentBrass,
+                                ),
+                                const SizedBox(width: 6),
+                                InkText(
+                                  roleLabel,
+                                  role: InkTextRole.captionMeta,
+                                  color: theme.accentBrass,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: BistreSpacing.s4),
+                            InkText(hit.snippet, role: InkTextRole.bodyCompact),
+                          ],
+                        ),
                       ),
                     ),
                   ),
