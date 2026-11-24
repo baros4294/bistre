@@ -343,6 +343,11 @@ impl EngineClient for InProcessEngine {
                 .system_prompt_override
                 .clone()
                 .unwrap_or_else(|| assistant.map_or_default(|a| a.system_prompt));
+            let system_prompt = crate::engine_runs::with_user_name(
+                system_prompt,
+                &settings.user_display_name,
+                thread.mode,
+            );
 
             let user_node = self.storage.append_node(
                 thread_id.clone(),
@@ -403,6 +408,11 @@ impl EngineClient for InProcessEngine {
                 .system_prompt_override
                 .clone()
                 .unwrap_or_else(|| assistant.map_or_default(|a| a.system_prompt));
+            let system_prompt = crate::engine_runs::with_user_name(
+                system_prompt,
+                &settings.user_display_name,
+                thread.mode,
+            );
 
             self.spawn_live_stream(
                 &thread,

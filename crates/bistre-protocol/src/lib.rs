@@ -617,6 +617,10 @@ pub struct AppSettings {
     /// only when the user asks, and unknown prices count as `$0` toward the daily limit.
     #[serde(default = "default_true")]
     pub pricing_auto_refresh: bool,
+    /// The user's name: shown on their messages, and told to the model in chats that do not
+    /// bring their own persona (Write mode does). Empty: not shared.
+    #[serde(default)]
+    pub user_display_name: String,
 }
 
 fn default_code_wrap_mode() -> String {
@@ -667,6 +671,7 @@ impl Default for AppSettings {
             termux_bridge_enabled: false,
             code_wrap_mode: default_code_wrap_mode(),
             pricing_auto_refresh: true,
+            user_display_name: String::new(),
         }
     }
 }

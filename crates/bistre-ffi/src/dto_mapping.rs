@@ -142,6 +142,7 @@ pub(crate) fn map_settings(s: AppSettings) -> FfiAppSettings {
         termux_bridge_enabled: s.termux_bridge_enabled,
         code_wrap_mode: s.code_wrap_mode,
         pricing_auto_refresh: s.pricing_auto_refresh,
+        user_display_name: s.user_display_name,
     }
 }
 

@@ -674,6 +674,7 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
             termuxBridgeEnabled: settings.termuxBridgeEnabled,
             codeWrapMode: settings.codeWrapMode,
             pricingAutoRefresh: settings.pricingAutoRefresh,
+            userDisplayName: settings.userDisplayName,
           ),
         ),
       );

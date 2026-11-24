@@ -136,6 +136,7 @@ pub struct FfiAppSettings {
     pub termux_bridge_enabled: bool,
     pub code_wrap_mode: String,
     pub pricing_auto_refresh: bool,
+    pub user_display_name: String,
 }
 
 /// Thin FFI DTO mirror of `ThreadSummary`.
@@ -965,6 +966,7 @@ pub async fn save_settings(settings: FfiAppSettings) -> Result<FfiAppSettings, S
             termux_bridge_enabled: settings.termux_bridge_enabled,
             code_wrap_mode: settings.code_wrap_mode,
             pricing_auto_refresh: settings.pricing_auto_refresh,
+            user_display_name: settings.user_display_name,
         })
         .await
         .map_err(crate::dto_mapping::ffi_err)?;

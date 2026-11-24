@@ -324,6 +324,7 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                       ),
                     _PassageItem(
                       node: node,
+                      userName: ctrl.settings.userDisplayName.trim(),
                       assistantName:
                           ctrl.activeAssistant?.name ??
                           l10n.t(L10nKey.shellRoleAssistant),
@@ -612,6 +613,7 @@ bool get _isTouchPlatform =>
 class _PassageItem extends StatefulWidget {
   const _PassageItem({
     required this.node,
+    this.userName = '',
     required this.assistantName,
     required this.activeProvider,
     required this.layoutMode,
@@ -635,6 +637,9 @@ class _PassageItem extends StatefulWidget {
   });
 
   final EngineNode node;
+
+  /// Settings > Your name; empty shows the plain `You` label.
+  final String userName;
   final String assistantName;
   final EngineProvider? activeProvider;
   final FolioLayoutMode layoutMode;
@@ -700,6 +705,8 @@ class _PassageItemState extends State<_PassageItem> {
     final isAssistant = widget.node.role == 'assistant';
     final speaker = isAssistant
         ? widget.assistantName
+        : widget.userName.isNotEmpty
+        ? widget.userName
         : l10n.t(L10nKey.shellRoleUser);
     final usage = isAssistant ? widget.node.usageMeta : null;
     final actionBar = _buildActionBar(theme, l10n, isAssistant);
