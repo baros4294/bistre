@@ -6,6 +6,7 @@ import '../../bridge/bistre_engine.dart';
 import '../../design/bistre_controls.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
+import '../../design/disclosure_reveal.dart';
 import '../../design/ink_primitives.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
@@ -421,27 +422,35 @@ class _MemorySkillsSettingsViewState extends State<MemorySkillsSettingsView> {
                                 ],
                               ),
                             ),
-                            if (_expandedSkillPath == sk.path &&
-                                _expandedSkillBody.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              const FolioDivider(),
-                              const SizedBox(height: 8),
-                              ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxHeight: 200,
-                                ),
-                                child: SmoothScrollable(
-                                  builder: (_, scroll) => SingleChildScrollView(
-                                    controller: scroll,
-                                    child: InkText(
-                                      _expandedSkillBody,
-                                      role: InkTextRole.codeBlock,
-                                      color: theme.inkSecondary,
+                            DisclosureReveal(
+                              open:
+                                  _expandedSkillPath == sk.path &&
+                                  _expandedSkillBody.isNotEmpty,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  const SizedBox(height: 8),
+                                  const FolioDivider(),
+                                  const SizedBox(height: 8),
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      maxHeight: 200,
+                                    ),
+                                    child: SmoothScrollable(
+                                      builder: (_, scroll) =>
+                                          SingleChildScrollView(
+                                            controller: scroll,
+                                            child: InkText(
+                                              _expandedSkillBody,
+                                              role: InkTextRole.codeBlock,
+                                              color: theme.inkSecondary,
+                                            ),
+                                          ),
                                     ),
                                   ),
-                                ),
+                                ],
                               ),
-                            ],
+                            ),
                           ],
                         ),
                       ),

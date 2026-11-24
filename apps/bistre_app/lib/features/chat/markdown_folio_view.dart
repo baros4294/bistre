@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
+import '../../design/disclosure_reveal.dart';
 import '../../design/ink_primitives.dart';
 import '../../design/math_font_gate.dart';
 import '../../l10n/bistre_localizations.dart';
@@ -832,20 +833,36 @@ class _FencedCodeCardState extends State<_FencedCodeCard> {
                   ),
                 ),
               ),
-              if (!_folded) const FolioDivider(),
-              if (_folded)
-                const SizedBox.shrink()
-              else if (wrap)
-                Padding(
-                  padding: const EdgeInsetsDirectional.fromSTEB(14, 12, 18, 12),
-                  child: codeText,
-                )
-              else
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsetsDirectional.fromSTEB(14, 12, 18, 12),
-                  child: codeText,
+              DisclosureReveal(
+                open: !_folded,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const FolioDivider(),
+                    if (wrap)
+                      Padding(
+                        padding: const EdgeInsetsDirectional.fromSTEB(
+                          14,
+                          12,
+                          18,
+                          12,
+                        ),
+                        child: codeText,
+                      )
+                    else
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsetsDirectional.fromSTEB(
+                          14,
+                          12,
+                          18,
+                          12,
+                        ),
+                        child: codeText,
+                      ),
+                  ],
                 ),
+              ),
             ],
           ),
         ),

@@ -71,7 +71,7 @@ void main() {
       ),
     );
     await tester.tap(find.textContaining('process_util.rs').first);
-    await tester.pump();
+    await tester.pumpAndSettle(); // the details disclosure grows open
     await tester.tap(find.text(l10n.t(L10nKey.toolDiffSplit)));
     await capturePng(tester, diffKey, outDir, '34_desktop_split_diff.png');
     expect(tester.takeException(), isNull);

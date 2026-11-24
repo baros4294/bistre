@@ -4,6 +4,7 @@ import 'package:bistre_app/bridge/bistre_engine.dart';
 import 'package:bistre_app/design/bistre_controls.dart';
 import 'package:bistre_app/design/bistre_icons.dart';
 import 'package:bistre_app/design/bistre_theme.dart';
+import 'package:bistre_app/design/disclosure_reveal.dart';
 import 'package:bistre_app/design/ink_primitives.dart';
 import 'package:bistre_app/design/press_feedback.dart';
 import 'package:bistre_app/design/smooth_scroll.dart';
@@ -674,6 +675,42 @@ void main() {
       live.shouldPace = () => false; // Reduce motion: each batch shows at once
       live.appendText('t', 'z');
       expect(live.value!.text.endsWith('z'), isTrue);
+    },
+  );
+
+  testWidgets(
+    'disclosures grow open on a spring and snap under reduced motion',
+    (WidgetTester tester) async {
+      Future<void> pumpReveal({required bool open, required bool reduce}) =>
+          tester.pumpWidget(
+            MediaQuery(
+              data: MediaQueryData(disableAnimations: reduce),
+              child: Directionality(
+                textDirection: TextDirection.ltr,
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: DisclosureReveal(
+                    open: open,
+                    child: const SizedBox(key: Key('body'), height: 200),
+                  ),
+                ),
+              ),
+            ),
+          );
+      double height() => tester.getSize(find.byType(DisclosureReveal)).height;
+
+      await pumpReveal(open: false, reduce: false);
+      expect(find.byKey(const Key('body')), findsNothing);
+      await pumpReveal(open: true, reduce: false);
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(height(), greaterThan(0));
+      expect(height(), lessThan(200));
+      await tester.pumpAndSettle();
+      expect(height(), 200);
+
+      await pumpReveal(open: false, reduce: true);
+      await tester.pump();
+      expect(find.byKey(const Key('body')), findsNothing);
     },
   );
 }

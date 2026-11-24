@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
+import '../../design/disclosure_reveal.dart';
 import '../../design/ink_primitives.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
@@ -313,35 +314,47 @@ class _ToolActivityRowState extends State<_ToolActivityRow> {
               ),
             ),
           ],
-          if (_expanded && hasExpandableDetails) ...[
-            const FolioDivider(),
-            Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(12, 10, 12, 10),
+          if (hasExpandableDetails)
+            DisclosureReveal(
+              open: _expanded,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (entry.diffText != null &&
-                      entry.diffText!.trim().isNotEmpty)
-                    _DiffViewer(diffText: entry.diffText!),
-                  if (entry.outputText.trim().isNotEmpty &&
-                      (entry.diffText == null || entry.diffText!.isEmpty))
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 220),
-                      child: SmoothScrollable(
-                        builder: (_, scroll) => SingleChildScrollView(
-                          controller: scroll,
-                          child: InkText(
-                            entry.outputText.trim(),
-                            role: InkTextRole.codeBlock,
-                            color: theme.inkSecondary,
-                          ),
-                        ),
-                      ),
+                  const FolioDivider(),
+                  Padding(
+                    padding: const EdgeInsetsDirectional.fromSTEB(
+                      12,
+                      10,
+                      12,
+                      10,
                     ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (entry.diffText != null &&
+                            entry.diffText!.trim().isNotEmpty)
+                          _DiffViewer(diffText: entry.diffText!),
+                        if (entry.outputText.trim().isNotEmpty &&
+                            (entry.diffText == null || entry.diffText!.isEmpty))
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 220),
+                            child: SmoothScrollable(
+                              builder: (_, scroll) => SingleChildScrollView(
+                                controller: scroll,
+                                child: InkText(
+                                  entry.outputText.trim(),
+                                  role: InkTextRole.codeBlock,
+                                  color: theme.inkSecondary,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
-          ],
         ],
       ),
     );

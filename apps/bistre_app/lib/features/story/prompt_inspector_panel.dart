@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import '../../bridge/bistre_engine.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
+import '../../design/disclosure_reveal.dart';
 import '../../design/ink_primitives.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
@@ -302,14 +303,17 @@ class _PromptBlockCardState extends State<_PromptBlockCard> {
                 ),
               ],
             ),
-            if (_expanded) ...[
-              const SizedBox(height: 6),
-              InkText(
-                b.content,
-                role: InkTextRole.captionMeta,
-                color: theme.inkSecondary,
+            DisclosureReveal(
+              open: _expanded,
+              child: Padding(
+                padding: const EdgeInsetsDirectional.only(top: 6),
+                child: InkText(
+                  b.content,
+                  role: InkTextRole.captionMeta,
+                  color: theme.inkSecondary,
+                ),
               ),
-            ],
+            ),
           ],
         ),
       ),

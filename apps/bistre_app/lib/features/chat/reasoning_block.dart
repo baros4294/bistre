@@ -1,8 +1,8 @@
 import 'package:flutter/widgets.dart';
 
 import '../../design/bistre_icons.dart';
-import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
+import '../../design/disclosure_reveal.dart';
 import '../../design/ink_primitives.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
@@ -141,9 +141,9 @@ class _ReasoningBlockState extends State<ReasoningBlock> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Align(alignment: AlignmentDirectional.centerEnd, child: toggle),
-          if (_expanded && hasText)
-            FolioFadeSlide(
-              beginOffset: Offset.zero,
+          if (hasText)
+            DisclosureReveal(
+              open: _expanded,
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   color: theme.bgSurface.withValues(
