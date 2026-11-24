@@ -755,6 +755,47 @@ void main() {
       expect(find.byKey(const Key('body')), findsNothing);
     },
   );
+
+  testWidgets('chip colours cross-fade when selected', (
+    WidgetTester tester,
+  ) async {
+    final theme = BistreThemeData.resolve(isDark: false);
+    Future<void> pumpChip({required bool selected}) => tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: BistreTheme(
+          data: theme,
+          child: Center(
+            child: InkChip(
+              label: 'High',
+              selected: selected,
+              onSelected: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    Color? fill() {
+      final box = tester.widget<DecoratedBox>(
+        find
+            .descendant(
+              of: find.byType(EaseDecoration),
+              matching: find.byType(DecoratedBox),
+            )
+            .first,
+      );
+      return (box.decoration as BoxDecoration).color;
+    }
+
+    await pumpChip(selected: false);
+    expect(fill(), theme.bgSurface);
+    await pumpChip(selected: true);
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(fill(), isNot(theme.bgSurface));
+    expect(fill(), isNot(theme.bgElevated));
+    await tester.pumpAndSettle();
+    expect(fill(), theme.bgElevated);
+  });
 }
 
 bool _endsWithLoneHighSurrogate(String s) {

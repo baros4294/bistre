@@ -284,7 +284,7 @@ class _EngravedButtonState extends State<EngravedButton> {
                       : 1.0,
                   child: ConstrainedBox(
                     constraints: BoxConstraints(minHeight: minH, minWidth: 40),
-                    child: DecoratedBox(
+                    child: EaseDecoration(
                       decoration: BoxDecoration(
                         color: bg,
                         borderRadius: BorderRadius.circular(9),
@@ -685,7 +685,7 @@ class _InkChipState extends State<InkChip> {
                     minHeight: 36,
                     minWidth: 36,
                   ),
-                  child: DecoratedBox(
+                  child: EaseDecoration(
                     decoration: BoxDecoration(
                       color: widget.selected
                           ? theme.bgElevated

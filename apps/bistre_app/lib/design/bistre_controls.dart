@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'bistre_decorations.dart';
 import 'bistre_theme.dart';
 import 'ink_primitives.dart';
+import 'press_feedback.dart';
 
 /// Pure `package:flutter/widgets.dart` continuous slider with keyboard support,
 /// RTL-aware fill, visible brass focus ring, and zero layout animations.
@@ -274,7 +275,7 @@ class _BistreSwitchState extends State<BistreSwitch>
             child: SizedBox(
               width: 42,
               height: 24,
-              child: DecoratedBox(
+              child: EaseDecoration(
                 decoration: BoxDecoration(
                   color: widget.value ? theme.accentWax : theme.bgSurface,
                   borderRadius: BorderRadius.circular(999),
