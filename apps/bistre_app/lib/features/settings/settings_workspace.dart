@@ -361,7 +361,10 @@ const Map<SettingsTab, List<String>> _searchPrefixes =
     <SettingsTab, List<String>>{
       SettingsTab.providers: <String>['provider.', 'settings.tab.providers'],
       SettingsTab.assistants: <String>['settings.assistants', 'assistant.'],
-      SettingsTab.appearance: <String>['settings.appearance'],
+      SettingsTab.appearance: <String>[
+        'settings.appearance',
+        'settings.profile',
+      ],
       SettingsTab.trust: <String>[
         'settings.trust',
         'settings.budget',
@@ -417,6 +420,26 @@ class _SearchableSettingsNavState extends State<_SearchableSettingsNav> {
     );
   }
 
+  /// The settings on [tab] whose label matches [q] (short labels only, not hints), so the
+  /// results say which setting matched (v2.6.0 per-setting search results).
+  List<String> _matchingLabels(
+    BistreLocalizationController l10n,
+    SettingsTab tab,
+    String q,
+  ) {
+    if (q.isEmpty) return const <String>[];
+    final prefixes = _searchPrefixes[tab] ?? const <String>[];
+    final out = <String>{};
+    for (final k in L10nKey.values) {
+      if (!prefixes.any(k.key.startsWith)) continue;
+      final text = l10n.t(k);
+      if (text.length > 48 || text.contains('{')) continue;
+      if (text.toLowerCase().contains(q)) out.add(text);
+      if (out.length == 3) break;
+    }
+    return out.toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = BistreLocalizations.of(context);
@@ -450,6 +473,33 @@ class _SearchableSettingsNavState extends State<_SearchableSettingsNav> {
                 onTap: () => widget.onSelected(t.$1),
               ),
               const SizedBox(height: 3),
+              for (final label in _matchingLabels(l10n, t.$1, q))
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(
+                    start: 36,
+                    bottom: 3,
+                  ),
+                  child: PressFeedback(
+                    pressScale: kRowPressScale,
+                    hoverScale: 1,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => widget.onSelected(t.$1),
+                      child: Padding(
+                        padding: const EdgeInsetsDirectional.symmetric(
+                          vertical: 4,
+                        ),
+                        child: InkText(
+                          label,
+                          role: InkTextRole.captionMeta,
+                          color: theme.inkSecondary,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
             if (visible.isEmpty)
               Padding(
