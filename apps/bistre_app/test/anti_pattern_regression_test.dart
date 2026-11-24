@@ -948,6 +948,35 @@ void main() {
     ctrl.dispose();
     await gw.shutdown();
   });
+
+  testWidgets('settings search names the setting that matched', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1320, 820);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final (ctrl, gw, l10n) = await boot();
+    await tester.pumpWidget(
+      BistreApp(l10nController: l10n, folioController: ctrl),
+    );
+    await tester.pumpAndSettle();
+    ctrl.openSettings(SettingsTab.providers);
+    await tester.pumpAndSettle();
+    final search = find.ancestor(
+      of: find.text(l10n.t(L10nKey.settingsSearchPlaceholder)),
+      matching: find.byType(QuillInput),
+    );
+    await tester.enterText(
+      find.descendant(of: search, matching: find.byType(EditableText)),
+      'your name',
+    );
+    await tester.pumpAndSettle();
+    // The Appearance page is listed, with the matching setting under it.
+    expect(find.text(l10n.t(L10nKey.settingsProfileName)), findsWidgets);
+    ctrl.dispose();
+    await gw.shutdown();
+  });
 }
 
 bool _endsWithLoneHighSurrogate(String s) {
