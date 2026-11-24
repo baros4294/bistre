@@ -1,51 +1,96 @@
-# Bistre
+<p align="center">
+  <img src="assets/brand/bistre-icon.svg" width="96" height="96" alt="Bistre icon" />
+</p>
 
-Cross-platform, local-first, zero-telemetry, MIT-licensed all-in-one (AIO) AI client with a custom Sepia Book UI (`package:flutter/widgets.dart` only) and an IDE-grade pure-Rust native agentic harness.
+<h1 align="center">Bistre</h1>
 
-## Architecture Highlights
-- **Pure Rust Core (`crates/bistre-core`, `bistre-storage`, `bistre-crypto`, `bistre-protocol`)**: Canonical SQLite WAL Schema v8 + FTS5 conversation DAG, sleep-immune durable agent runs (`PowerCoordinator`, Win32 `PowerCreateRequest` / Linux `systemd-inhibit` / Android `BistreAgentService` `specialUse` FGS + optional Termux bridge), mid-stream steering queue, active-scoped `bistre-daemon`, in-process capability-scoped tools (`cap-std` + `blake3` + `imara-diff` + 1-click Rewind), Streamable HTTP MCP with dual negotiation (`2026-07-28` → `2025-11-25`, no SDK; `ADR-0018`), git worktree subagents, progressive `SKILL.md` & lifecycle hooks, scheduled cron/timer automations, cross-chat SQLite memory, and a full **Writing & Roleplay Studio** (CCv3/V2 PNG/JSON/`.charx` cards, Lorebook V3 + Chronological Progressions, Prompt-Cache Boundary Assembler, and linear-time safe regex pipeline).
-- **Thin FRB v2 Native Assets Bridge (`crates/bistre-ffi`)**: DTO mapping and 16ms coalescing stream batching via `flutter_rust_bridge 2.13` + Dart build hooks (`hook/build.dart`).
-- **Zero-UI-Lib Sepia Book UI (`apps/bistre_app`)**: Pure `package:flutter/widgets.dart` (mechanically linted by `tools/bistre_lints` inside `flutter analyze`), native Windows 11 DWM Sepia frame, Day Parchment & Night Candlelight WCAG AA/AAA themes with custom accent & local `.ttf`/`.otf` font support, exact 10 Ink Primitives, **56 bespoke `.vec` UI icons** + **42 offline full-color AI lab `.vec` marks**, pure-Dart GFM Tables, `NotoSansMath` LaTeX renderer, Mermaid `CustomPainter`, collapsible Thinking & Tool diff timelines, visual DAG Session Tree, 4-tab Studio Pane (`[Runs] [Files] [Story] [Prompt]`), Manuscript Beats→Prose canvas + Inline Rewrite Laser Tools, full-window 9-tab Settings, and runtime hot-loadable ICU localization (`en`, `vi`, `ar` RTL).
-- **Targets**: Android (`arm64-v8a`, 16KB ELF aligned, direct GitHub APK), Windows x64, and Linux x64/arm64.
+<p align="center">
+  A fast, local-first, zero-telemetry AI client for Windows, Linux, and Android.<br/>
+  One pure-Rust core paired with a lightweight Flutter UI.
+</p>
 
-## Prerequisites
-- Rust `1.100.0` (auto-pinned by `rust-toolchain.toml`, targets `x86_64-pc-windows-msvc`, `x86_64-unknown-linux-gnu`, `aarch64-linux-android`)
-- Flutter `3.50.1` / Dart `3.14.0`
-- Android SDK API 36 + NDK r30 (`30.0.16248370`) + Java 25 (for Android builds)
-- Optional CLI runners: `cargo install --locked cargo-nextest cargo-deny flutter_rust_bridge_codegen@2.13.0 just`
+<p align="center">
+  <a href="https://github.com/baros4294/bistre/actions/workflows/ci.yml"><img src="https://github.com/baros4294/bistre/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-8B5014" alt="MIT License" /></a>
+  <a href="SECURITY.md"><img src="https://img.shields.io/badge/telemetry-none-2B5E3F" alt="Zero Telemetry" /></a>
+</p>
 
-## Quick Verification
-```bash
-just check-all        # full gate; records the verification ledger on success
-just status           # storage warnings + files changed since the last green run
-just affected --run   # run only the recipes your changes touch
-just disk             # build-cache usage vs Spec 11 budgets (target/ <= 5.0 GiB)
-just prune            # non-destructive cache pruning (never cargo clean)
-just install-hooks    # pre-commit: MSVC link.exe PATH fix + fmt-check + guard
-just verify-16kb <apk-or-so>
-just perf             # streaming frame probe + 300-chat cold start / idle RSS (`--android` for adb)
+---
+
+## Why Bistre
+
+Bistre is built for people who want one calm, responsive AI workspace across desktop and mobile without cloud lock-in, analytics, or bloated browser shells.
+
+- **Local-first & zero telemetry**: Conversations, search indexes, attachments, and settings live on your device in an ACID SQLite WAL database. Requests default to stateless mode (`store: false`) with zero tracking or analytics.
+- **Multi-provider by design**: Connect OpenAI, Google Gemini, Anthropic, or any Custom OpenAI-compatible server—fetching live models dynamically instead of hardcoding stale lists.
+- **Pure-Rust engine (`crates/`)**: Streaming SSE framing, multi-key rotation and self-healing retries, exact integer spending limits (`MoneyMicros`), offline BPE tokenization, reversible context compaction, sandboxed workspace tools, MCP support, and Ed25519-signed updates all run in Rust.
+- **Lightweight Flutter UI (`apps/bistre_app`)**: Built strictly on `package:flutter/widgets.dart` with zero Material/Cupertino kits or webviews. Supports warm light/dark and curated color presets, Bubbles and Document layouts, GFM tables, offline LaTeX math, Mermaid diagrams, inline SVG preview, `200%` text scaling, and full RTL support (`en`, `vi`, `ar`).
+- **Writing & Coding workflows**: Branching conversation trees, pinned replies, chat notes, cross-chat memory, `SKILL.md` skills, workspace diff & 1-tap rewind, Story Bible & Lorebook V3 with chronological progressions, and a long-form manuscript canvas.
+
+## Platforms
+
+| Platform | Distribution | Highlights |
+|---|---|---|
+| **Windows** | Direct GitHub Release | Native Win11 DWM frame, system file dialogs, `bistre-updater` side-by-side updates |
+| **Linux** | Direct GitHub Release | Native Wayland/X11 desktop build, active-scoped background daemon |
+| **Android** | Direct GitHub APK (`arm64-v8a`) | Edge-to-edge layout, 16 KB page alignment, Keystore-backed vault, run-scoped foreground service |
+
+## Architecture
+
+```text
+apps/bistre_app        Thin pure-Widgets Flutter UI (zero HTTP, SQL, or domain logic)
+crates/bistre-ffi      flutter_rust_bridge v2 DTO bridge & 16 ms delta coalescing
+crates/bistre-core     Providers, SSE, tokenizer, compaction, tools, MCP, Story Studio, Wallet Shield
+crates/bistre-storage  Single-writer SQLite WAL actor, Expand-Contract migrations, FTS5 search
+crates/bistre-crypto   Offline Ed25519 signature verification & OS secret vault traits
+crates/bistre-protocol Shared domain types, MoneyMicros, and typed DiagnosticKey codes
+crates/bistre-daemon   Active-scoped desktop daemon (IPC, housekeeping, OS sleep guard)
+crates/bistre-updater  Signed side-by-side updater with crash-loop rollback
 ```
-Or run individual gates directly:
+
+- Architecture & live implementation status: [`docs/specs/00-architecture.md`](docs/specs/00-architecture.md)
+- Detailed specifications: [`docs/specs/`](docs/specs/) · Architecture Decision Records: [`docs/adr/`](docs/adr/)
+- Design system & tokens: [`docs/design/DESIGN.md`](docs/design/DESIGN.md)
+
+## Quick Start (Development)
+
+### Prerequisites
+
+- **Rust `1.100.0`** (pinned in `rust-toolchain.toml`) + `cargo-nextest` + `cargo-deny`
+- **Flutter `3.50.1`** (pinned in `.github/workflows/ci.yml`)
+- **Android NDK `30.0.16248370`** (for Android builds; pinned in `apps/bistre_app/android/app/build.gradle.kts`)
+- **just** command runner (`cargo install just` or OS package manager)
+
+### Run & Verify
+
 ```bash
-cargo fmt --all -- --check
-cargo clippy --locked --workspace --all-targets -- -D warnings
-cargo deny --locked check
-cargo nextest run --locked --workspace
-dart run tools/bistre_guard/bin/bistre_guard.dart
-dart run tools/bistre_i18n/bin/bistre_i18n.dart check
-flutter analyze apps/bistre_app
-dart analyze tools/bistre_lints tools/bistre_i18n tools/bistre_guard
-dart test tools/bistre_lints tools/bistre_i18n tools/bistre_guard
-cd apps/bistre_app && flutter test
+# Run the desktop app in debug mode (uses isolated .bistre-dev/ storage)
+cd apps/bistre_app && flutter run -d windows   # or -d linux
+
+# Run all formatting, architecture guard, lint, i18n, Rust, and Flutter gates
+just check-all
+
+# Render UI gallery screenshots (desktop, phone, 200% text, RTL)
+just ui-gallery
+
+# Check local build cache budgets / prune superseded artifacts
+just disk
+just prune
 ```
 
-## Documentation
-- Agent contract: [`AGENTS.md`](AGENTS.md)
-- Research report & edge-case matrix: [`docs/RESEARCH-AND-EDGE-CASES.md`](docs/RESEARCH-AND-EDGE-CASES.md)
-- Slice 0 handoff & verification receipt: [`docs/SLICE-0-HANDOFF.md`](docs/SLICE-0-HANDOFF.md)
-- Design system: [`docs/design/DESIGN.md`](docs/design/DESIGN.md)
-- Modular specs: [`docs/specs/`](docs/specs/)
-- Architecture Decision Records: [`docs/adr/`](docs/adr/)
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full developer workflow, translation guide, and CI overview.
 
-## License
-MIT — see [`LICENSE`](LICENSE).
+## Localization
+
+Bistre ships with hot-loadable ICU message catalogs under [`l10n/catalog/`](l10n/catalog/) (`en`, `vi`, and RTL `ar`) with zero hardcoded UI strings. To add a language:
+
+1. Copy [`l10n/catalog/en.bistre-l10n.json`](l10n/catalog/en.bistre-l10n.json) to `l10n/catalog/<bcp47>.bistre-l10n.json`.
+2. Set `"locale"` and `"direction"` (`ltr` or `rtl`) and translate each `entries.<key>.message` following its `context`, `tone`, and `max_chars`.
+3. Run `just i18n-gen` and `just i18n-check`.
+
+## Security, Community & License
+
+- **Security**: See [`SECURITY.md`](SECURITY.md) for vulnerability reporting and our cryptographic release verification model.
+- **Contributing**: See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`AGENTS.md`](AGENTS.md) for engineering invariants.
+- **Code of Conduct**: Participation is governed by our [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
+- **License**: Released under the [MIT License](LICENSE). Third-party attributions live in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

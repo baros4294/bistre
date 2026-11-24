@@ -12,7 +12,7 @@ class GuardResult {
 
 /// Canonical 10 Ink Primitives budget locked by `docs/design/DESIGN.md` & `ADR-0011`.
 const Set<String> canonicalInkPrimitives = <String>{
-  'ParchmentScaffold',
+  'BistreScaffold',
   'FolioSurface',
   'InkText',
   'EngravedButton',
@@ -43,10 +43,13 @@ const Set<String> _forbiddenFlutterDeps = <String>{
   'drift',
 };
 
-/// Workspace files (tracked + untracked-not-ignored), falling back to a filtered walk outside git.
+/// Workspace files (tracked + untracked-not-ignored) currently present on disk, falling back
+/// to a filtered walk outside git.
 List<String> workspaceFiles(Directory repoRoot) {
   try {
-    return listWorkspaceFiles(repoRoot);
+    return listWorkspaceFiles(repoRoot)
+        .where((rel) => File('${repoRoot.path}/$rel').existsSync())
+        .toList();
   } on Object {
     return <String>[
       for (final e in repoRoot.listSync(recursive: true))
@@ -193,7 +196,6 @@ void checkDocPathsAndIndexes(Directory repoRoot, List<String> errors) {
     'README.md',
     'CONTRIBUTING.md',
     'docs/design/DESIGN.md',
-    'docs/SLICE-0-HANDOFF.md',
   ];
   final pathSpanPattern = RegExp(
     r'`((?:docs|crates|apps|tools|l10n|\.github|\.agents|assets)/[A-Za-z0-9_./\-]+)`',

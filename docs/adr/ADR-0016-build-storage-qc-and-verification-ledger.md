@@ -5,8 +5,8 @@
 - **Deciders**: Bistre Principal Architecture
 
 ## Context
-- Bistre's local `target/` reached `11.9 GiB` on the 7.7 GB reference laptop with only Slice 0 code: full DWARF/PDB debuginfo for every transitive dependency plus accumulated incremental sessions and superseded nested `build/<crate>/<16hex>/` units. The predecessor project (`parchment`) passed `20 GB` the same way before adopting profile containment and a non-destructive pruner.
-- `cargo clean` fixes disk but forces cold rebuilds that cost far more laptop time and RAM than the bloat itself.
+- Unbounded Cargo dev builds easily accumulate `10+ GiB` in `target/` from full DWARF/PDB debuginfo across transitive dependencies, accumulated incremental sessions, and superseded nested `build/<crate>/<16hex>/` units.
+- `cargo clean` fixes disk usage but forces expensive cold rebuilds and peak linker RAM on every cycle.
 - Concurrent heavy runs (two `cargo nextest` / `flutter test` invocations) thrash the pagefile and corrupt timing measurements.
 - `just check-all` re-runs every stack even for docs-only edits.
 - Verified against the installed Rust `1.100.0` Cargo Book (`share/doc/rust/html/cargo/reference/lints.html`, `config.html`): `[lints.cargo]` names `unused_dependencies`, `unused_workspace_dependencies`, `unused_workspace_package_fields`, `missing_lints_inheritance`, `redundant_homepage`, and `registry.global-min-publish-age`.
@@ -27,5 +27,5 @@
 
 ## Consequences & Verification
 - Native debuggers cannot step into third-party dependency locals in dev builds; Bistre crates keep `file:line` backtraces.
-- First prune on the reference laptop reclaimed `6.2 GiB` (`11.92 GiB -> 5.72 GiB`) before any rebuild.
+- Surgical pruning keeps `target/` within the `5.0 GiB` budget without cold rebuilds.
 - Verified by `tools/bistre_guard/test/` (pruner unit-kind grouping and shared-library skip, FNV-1a vectors, ledger classification, lock contention, ELF `PT_LOAD` parsing of synthetic 4 KiB vs 16 KiB images), `just disk`, and `just check-all`.

@@ -4,7 +4,7 @@
 - `tools/bistre_lints` (`bistre_forbid_hardcoded_ui_strings`) fails `flutter analyze` whenever a raw string literal (including inside ternaries or `+`/`??` expressions) is passed to `Text`, `InkText`, `TextSpan`, `Semantics`, `RawTooltip`, `Tooltip`, `WidgetsApp`, `EngravedButton`, `WaxSealBadge`, `InkChip`, `QuillInput`, or `EngravedIcon`.
 - Text the app sends to a model on the user's behalf and shows as the user's message (Writing Studio `story.request_*`: prose from beats, rewrite / expand / shorten / polish, continue, impersonate) is localized like any UI string; the UI resolves it and passes the finished text to `FolioController`.
 - Pure Rust crates NEVER format English UI messages; they emit stable `DiagnosticKey` dot-keys (`diag.*`) resolved in Flutter against the active locale catalog, with Rust↔catalog parity verified by `tools/bistre_i18n check`.
-- **Plain Everyday Language Rule**: Every catalog message across `en`, `vi`, `ar`, and future locale packs MUST use plain, clear everyday words (`Send`, `New chat`, `You`, `Light`, `Dark`, `Document`, `Bubbles`, `Providers & Keys`, `Daily spending limit`) rather than thematic/literary jargon (`Inscribe`, `Folio`, `Passage`, `Author`, `Parchment`, `Candlelight`, `Wax Seal`).
+- **Plain Everyday Language Rule**: Every catalog message across `en`, `vi`, `ar`, and future locale packs MUST use plain, clear everyday words (`Send`, `New chat`, `You`, `Light`, `Dark`, `Document`, `Bubbles`, `Providers & Keys`, `Daily spending limit`) rather than thematic or internal jargon (`just i18n-check` enforces the banned-word list across every locale).
 
 ## 2. Single-Source Metadata Catalog Schema (`l10n/catalog/*.bistre-l10n.json`)
 Master catalog `l10n/catalog/en.bistre-l10n.json` conforms to `l10n/schema.json`:

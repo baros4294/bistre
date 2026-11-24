@@ -7,11 +7,6 @@ const Set<String> processSpawnAllowlist = <String>{
   'crates/bistre-daemon/src/power_linux.rs',
 };
 
-/// Provider registry preset files: the only runtime code allowed to name concrete model IDs.
-const Set<String> modelPresetAllowlist = <String>{
-  'apps/bistre_app/lib/features/settings/provider_presets.dart',
-};
-
 /// Hard cap on lines per non-generated `.rs` / `.dart` file.
 const int maxSourceLines = 1500;
 
@@ -278,8 +273,7 @@ void checkHardcodedModelsAndBrands(
     final isAndroid = rel.startsWith('apps/bistre_app/android/app/src/');
     final isReadme = rel == 'README.md';
     if (!(isRuntimeRust || isRuntimeDart || isAndroid || isReadme) ||
-        _isGenerated(rel) ||
-        modelPresetAllowlist.contains(rel)) {
+        _isGenerated(rel)) {
       continue;
     }
     if (_isBinaryAsset(_ext(rel))) continue;
@@ -583,7 +577,7 @@ bool _isBinaryAsset(String ext) => const <String>{
   '.woff2', '.vec', '.zip', '.gz', '.wav', '.mp3', '.mp4',
 }.contains(ext);
 
-/// 7c. Never retry flaky tests (Parchment `3247bf0d`: a retry hid a real crash). Rejects Dart
+/// 7c. Never retry flaky tests (retries hide real crashes and nondeterminism). Rejects Dart
 /// `retry:` test arguments and nextest `retries` settings.
 void checkNoTestRetries(
   Directory root,

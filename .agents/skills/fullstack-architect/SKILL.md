@@ -7,7 +7,7 @@ description: Plan, build, and audit Bistre end to end (Rust core, FFI, Flutter p
 Work as Bistre's principal engineer and design lead. `AGENTS.md` is the contract. This skill is the method for following it. Never rubber-stamp a brief: verify it, find its failure modes, and push back with evidence.
 
 ## 1. Ground first
-1. Read `AGENTS.md`, the most recent section of `docs/SLICE-0-HANDOFF.md`, and the spec or ADR that owns the area. For UI work, also read `docs/design/DESIGN.md` and Spec 08 §4 (the open parity gaps).
+1. Read `AGENTS.md`, `docs/specs/00-architecture.md` §6, and the spec or ADR that owns the area. For UI work, also read `docs/design/DESIGN.md` and `docs/specs/08-sepia-book-ui.md`.
 2. Read the actual code, not just its docs. The specs describe the target, and the code may lag behind them.
 3. Verify every version, API, protocol, and policy live (`AGENTS.md` §3). Mark anything you could not check `[UNVERIFIED]`.
 4. Write down what done looks like before you edit: the user task, the budget it touches (Spec 11), and the edge cases (RTL, 200% text, IME, low memory, offline, a cancel mid-run).
@@ -23,14 +23,14 @@ Work as Bistre's principal engineer and design lead. `AGENTS.md` is the contract
 
 ## 3. Frontend: the Flutter UI
 ### 3.1 Design process (every UI change)
-0. **Read the v2.6.0 code first** (AGENTS.md §2 Owner Rule): open the screen's `v2.6.0` source (`composeApp/src/*/kotlin/io/parchment/ai`), read it top to bottom for EVERY layout (phone `< 720 dp`, desktop, `200%` text, RTL), and write down its `file:line`, breakpoints, controls, copy, states, motion, gestures, and back behaviour. Building before this step, or from memory or a screenshot, is a defect. Clone it with `git clone https://github.com/baros4294/parchment` and `git checkout v2.6.0` if missing.
-1. **Brief**: name the screen's one job, its primary user action, and the Parchment `v2.6.0` behaviour it must match or beat. Choose what is best for daily use; where `v2.6.0` and a Bistre rule conflict, ask the owner.
-2. **Plan**: list the tokens, type roles, spacing, and primitives you will use, all from `docs/design/DESIGN.md`. Sketch the layout as an ASCII wireframe with its alignment, including the RTL mirror.
-3. **Review the plan against the brief**: for each choice, ask whether it serves this screen or is a default that would appear anywhere. Revise any default and say why.
-4. **Build**: use only the 10 Ink Primitives and the declared controls. Everything else is composition.
-5. **Critique with pixels**: run `just ui-gallery` and look at the PNGs in light, dark, phone, desktop, 200% text, and RTL. Compare them with the Parchment `v2.6.0` render, and compare behaviour too: open the same screen in `v2.6.0` code (`composeApp/src/commonMain/kotlin/io/parchment/ai/ui`) and check every control, popover, hover, press, and transition, not just the pixels. Then remove one accessory: the least necessary border, label, icon, or tint.
-6. **Record**: update `docs/design/DESIGN.md` and Spec 08 in the same change. Close or add the matching row in Spec 08 §4, citing the `v2.6.0` `file:line` you matched and every deliberate difference.
-7. **Self-check before saying done**: re-read the owner's request and the `v2.6.0` code side by side with your result, at every width, and list each remaining difference. Any item on that list is unfinished; say so.
+1. **Read every affected layout first**: inspect the screen's existing Dart code, `docs/design/DESIGN.md`, and `docs/specs/08-sepia-book-ui.md` across all layouts (phone `< 720 dp`, desktop, `200%` text, RTL), noting breakpoints, controls, copy, states, motion, gestures, and Android back behavior.
+2. **Brief**: name the screen's one job, its primary user action, and its keyboard/touch interaction contract.
+3. **Plan**: list the tokens, type roles, spacing, and primitives you will use, all from `docs/design/DESIGN.md`. Sketch the layout with its alignment, including the RTL mirror.
+4. **Review the plan against the brief**: for each choice, ask whether it serves this screen or is a default that would appear anywhere. Revise any default and say why.
+5. **Build**: use only the 10 Ink Primitives and the declared controls. Everything else is composition.
+6. **Critique with pixels**: run `just ui-gallery` and inspect the PNGs in light, dark, phone, desktop, 200% text, and RTL. Check every control, popover, hover, press, focus ring, and transition, then remove the least necessary border, label, icon, or tint.
+7. **Record**: update `docs/design/DESIGN.md` and `docs/specs/08-sepia-book-ui.md` in the same change.
+8. **Self-check before saying done**: re-read the request against the implementation at every width and report any remaining gap explicitly.
 
 ### 3.2 Visual discipline
 - One focal point per screen, and one bold mark (the `rubricMark`) per view. Do not repeat it on cards or banners.
@@ -41,7 +41,7 @@ Work as Bistre's principal engineer and design lead. `AGENTS.md` is the contract
 - Avoid template tells: an eyebrow label over every heading, all-caps labels, `→` appended to buttons, `A · B · C` meta strings (also not RTL-safe), emoji icons, and accenting a single word in a heading.
 
 ### 3.3 Copy
-- Write from the user's side, in plain everyday words. Follow the `DESIGN.md` §9 glossary, and avoid the banned words in `AGENTS.md` §7.
+- Write from the user's side, in plain everyday words. Follow the `DESIGN.md` §9 glossary, and keep all UI strings compliant with `just i18n-check`.
 - An action keeps the same name throughout: the `Send` button produces "Sent", and `Delete` produces an `Undo` toast.
 - Error messages say what happened and offer the one action that fixes it. Never apologise, and never be vague.
 - An empty state invites the next action.
@@ -69,8 +69,8 @@ Work as Bistre's principal engineer and design lead. `AGENTS.md` is the contract
 1. **Contracts first**: types, `DiagnosticKey`s, DTOs, schema, and tokens, plus an ADR for every real architectural choice, naming the rejected alternatives.
 2. **Thin vertical slices**: each step goes UI → FFI → core → storage and is testable on its own.
 3. **Tests**: write tests alongside the code. Every regression test must fail without its fix. Never add retries.
-4. **Verify**: run the narrowest `just` recipe while iterating, `just check-all` before handoff, and `just ui-gallery` for any UI change.
-5. **Hand off**: write the dated `docs/SLICE-0-HANDOFF.md` section (`AGENTS.md` §4).
+4. **Verify**: run the narrowest `just` recipe while iterating, `just check-all` before finishing, and `just ui-gallery` for any UI change.
+5. **Sync docs**: update `docs/specs/00-architecture.md` §6 and any affected spec/ADR/design doc in the same change.
 
 ## 5. Audit output
 Report findings as `file:line`, then severity (BAD, OK, or GOOD-to-keep), then the defect, then a concrete failure scenario, then the fix. List the most severe first. Check each finding against the code before reporting it.

@@ -6,7 +6,7 @@
 
 ## Context & Live-Verified Evidence
 - Bistre distributes exclusively via direct GitHub Releases (no Google Play or F-Droid store builds), eliminating multi-flavor store packaging overhead while retaining full cryptographic offline signature verification.
-- Velopack (`1.2.x`/`1.3.x`) lacks built-in Ed25519 manifest signature verification (`velopack/velopack#975`, `PerformanceMonitor#3288`) and requires a .NET packaging toolchain.
+- Generic .NET/third-party desktop updater frameworks often omit built-in Ed25519 manifest signature verification and add heavy release toolchain dependencies.
 - Overwriting running Windows `.exe`/`.dll` or Explorer-held `.lnk` shortcuts causes AV lock contention and vanishing icons. Linux Flatpak/Snap/distro packages break if an app attempts self-mutation.
 
 ## Decision
@@ -19,7 +19,7 @@
 2. Never interrupt active runs (`active_runs > 0` defers swap) and pair with Expand-Contract SQLite migrations (`ADR-0004`).
 
 ## Rejected Alternatives
-- **Velopack**: Missing native Ed25519 verification and adds .NET release toolchain complexity.
+- **Third-party .NET updater toolchains**: Missing native Ed25519 verification and add release toolchain complexity.
 - **Play Store & F-Droid store flavors**: Unnecessary maintenance burden for a direct GitHub-published application.
 
 ## Consequences & Verification
