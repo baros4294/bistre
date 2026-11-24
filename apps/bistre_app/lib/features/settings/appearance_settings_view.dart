@@ -31,6 +31,8 @@ class AppearanceSettingsView extends StatefulWidget {
 
 class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
   final TextEditingController _hexCtrl = TextEditingController();
+  final TextEditingController _nameCtrl = TextEditingController();
+  final FocusNode _nameFocus = FocusNode();
   final TextEditingController _fontSizeCtrl = TextEditingController();
   final TextEditingController _proseFilterCtrl = TextEditingController();
   final TextEditingController _monoFilterCtrl = TextEditingController();
@@ -52,11 +54,28 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
         ? widget.controller.settings.customAccentHex
         : '#A83625';
     _fontSizeCtrl.text = widget.controller.settings.fontSizePx.toString();
+    _nameCtrl.text = widget.controller.settings.userDisplayName;
+    // The name saves when the field loses focus, like the other text settings.
+    _nameFocus.addListener(() {
+      if (!_nameFocus.hasFocus) _commitName();
+    });
+  }
+
+  void _commitName() {
+    final name = _nameCtrl.text.trim();
+    if (name == widget.controller.settings.userDisplayName) return;
+    unawaited(
+      widget.controller.updateSettings(
+        widget.controller.settings.copyWith(userDisplayName: name),
+      ),
+    );
   }
 
   @override
   void dispose() {
     _hexCtrl.dispose();
+    _nameCtrl.dispose();
+    _nameFocus.dispose();
     _fontSizeCtrl.dispose();
     _proseFilterCtrl.dispose();
     _monoFilterCtrl.dispose();
@@ -135,6 +154,27 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            BistreSettingsSection(
+              title: l10n.t(L10nKey.settingsProfileSection),
+              children: [
+                BistreSettingRow(
+                  label: l10n.t(L10nKey.settingsProfileName),
+                  description: l10n.t(L10nKey.settingsProfileNameHint),
+                  trailing: SizedBox(
+                    width: 240,
+                    child: QuillInput(
+                      controller: _nameCtrl,
+                      focusNode: _nameFocus,
+                      placeholder: l10n.t(L10nKey.settingsProfileName),
+                      maxLines: 1,
+                      compact: true,
+                      onSubmitted: _commitName,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: BistreSpacing.s16),
             // Live Typography & Theme Preview Card
             _buildPreviewCard(theme, l10n),
             const SizedBox(height: BistreSpacing.s16),

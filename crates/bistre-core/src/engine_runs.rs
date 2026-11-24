@@ -746,6 +746,30 @@ fn project_turn_history(
     ))
 }
 
+/// Longest user name told to the model, in characters.
+const MAX_USER_NAME_CHARS: usize = 64;
+
+/// Tells the model the user's name (Settings > Profile) in chats without their own persona:
+/// Write mode brings a persona, so it is left alone. Control characters are dropped and the
+/// name is capped, so a pasted name cannot inject prompt structure.
+pub(crate) fn with_user_name(system_prompt: String, name: &str, mode: ThreadMode) -> String {
+    let clean: String = name
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(MAX_USER_NAME_CHARS)
+        .collect();
+    let clean = clean.trim();
+    if clean.is_empty() || mode == ThreadMode::Write {
+        return system_prompt;
+    }
+    let line = format!("The user's name is {clean}.");
+    if system_prompt.trim().is_empty() {
+        line
+    } else {
+        format!("{system_prompt}\n\n{line}")
+    }
+}
+
 /// What the next request sends for this branch, by category (the composer's context gauge
 /// and breakdown). Uses the same system prompt, Write-mode story prompt, and history projection
 /// as a run, so a compaction or a context pin lowers it exactly as it lowers the real request.
@@ -766,6 +790,11 @@ pub(crate) fn branch_context_usage(
             .find(|a| a.id == thread.assistant_id)
             .map_or_default(|a| a.system_prompt),
     };
+    let base_prompt = with_user_name(
+        base_prompt,
+        &storage.load_settings()?.user_display_name,
+        thread.mode,
+    );
     let history = project_turn_history(storage, thread_id, leaf_id)?;
     let system_tokens = compaction::estimate_tokens_for_text(&base_prompt);
     let story_tokens = if thread.mode == ThreadMode::Write {

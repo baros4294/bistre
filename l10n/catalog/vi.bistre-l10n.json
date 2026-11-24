@@ -3864,6 +3864,27 @@
       "tone": "calm_editorial",
       "max_chars": 90,
       "placeholders": {}
+    },
+    "settings.profile_section": {
+      "message": "Hồ sơ",
+      "context": "Settings section heading for the user name",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.profile_name": {
+      "message": "Tên của bạn",
+      "context": "Label and placeholder of the user name field",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.profile_name_hint": {
+      "message": "Hiển thị trên tin nhắn của bạn. Mô hình sẽ thấy tên này trong các cuộc trò chuyện không có nhân vật riêng.",
+      "context": "Help text under the user name field",
+      "tone": "calm_editorial",
+      "max_chars": 140,
+      "placeholders": {}
     }
   }
 }

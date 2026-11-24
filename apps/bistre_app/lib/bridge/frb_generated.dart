@@ -3907,8 +3907,8 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   FfiAppSettings dco_decode_ffi_app_settings(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 37)
-      throw Exception('unexpected arr length: expect 37 but see ${arr.length}');
+    if (arr.length != 38)
+      throw Exception('unexpected arr length: expect 38 but see ${arr.length}');
     return FfiAppSettings(
       theme: dco_decode_String(arr[0]),
       layoutMode: dco_decode_String(arr[1]),
@@ -3947,6 +3947,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       termuxBridgeEnabled: dco_decode_bool(arr[34]),
       codeWrapMode: dco_decode_String(arr[35]),
       pricingAutoRefresh: dco_decode_bool(arr[36]),
+      userDisplayName: dco_decode_String(arr[37]),
     );
   }
 
@@ -4589,6 +4590,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     var var_termuxBridgeEnabled = sse_decode_bool(deserializer);
     var var_codeWrapMode = sse_decode_String(deserializer);
     var var_pricingAutoRefresh = sse_decode_bool(deserializer);
+    var var_userDisplayName = sse_decode_String(deserializer);
     return FfiAppSettings(
       theme: var_theme,
       layoutMode: var_layoutMode,
@@ -4627,6 +4629,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       termuxBridgeEnabled: var_termuxBridgeEnabled,
       codeWrapMode: var_codeWrapMode,
       pricingAutoRefresh: var_pricingAutoRefresh,
+      userDisplayName: var_userDisplayName,
     );
   }
 
@@ -5509,6 +5512,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     sse_encode_bool(self.termuxBridgeEnabled, serializer);
     sse_encode_String(self.codeWrapMode, serializer);
     sse_encode_bool(self.pricingAutoRefresh, serializer);
+    sse_encode_String(self.userDisplayName, serializer);
   }
 
   @protected

@@ -258,6 +258,7 @@ class EngineSettings {
     this.termuxBridgeEnabled = false,
     this.codeWrapMode = 'auto',
     this.pricingAutoRefresh = true,
+    this.userDisplayName = '',
   });
 
   final String theme;
@@ -304,6 +305,9 @@ class EngineSettings {
   /// Refresh public model prices automatically (at most once a day).
   final bool pricingAutoRefresh;
 
+  /// Your name: shown on your messages and told to the model in chats without a persona.
+  final String userDisplayName;
+
   bool get isWalletUnlimited => walletDailyCeilingMicros == null;
 
   EngineSettings copyWith({
@@ -345,6 +349,7 @@ class EngineSettings {
     bool? termuxBridgeEnabled,
     String? codeWrapMode,
     bool? pricingAutoRefresh,
+    String? userDisplayName,
   }) {
     return EngineSettings(
       theme: theme ?? this.theme,
@@ -391,6 +396,7 @@ class EngineSettings {
       termuxBridgeEnabled: termuxBridgeEnabled ?? this.termuxBridgeEnabled,
       codeWrapMode: codeWrapMode ?? this.codeWrapMode,
       pricingAutoRefresh: pricingAutoRefresh ?? this.pricingAutoRefresh,
+      userDisplayName: userDisplayName ?? this.userDisplayName,
     );
   }
 }

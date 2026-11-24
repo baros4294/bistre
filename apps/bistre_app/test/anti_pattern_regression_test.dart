@@ -906,6 +906,27 @@ void main() {
     ctrl.dispose();
     await gw.shutdown();
   });
+
+  testWidgets('your name labels your messages', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1320, 820);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final (ctrl, gw, l10n) = await boot();
+    await tester.pumpWidget(
+      BistreApp(l10nController: l10n, folioController: ctrl),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Ana Lima', skipOffstage: false), findsNothing);
+    await ctrl.updateSettings(
+      ctrl.settings.copyWith(userDisplayName: 'Ana Lima'),
+    );
+    await tester.pumpAndSettle();
+    // The chat opens at its newest reply, so the user's turn may sit above the fold.
+    expect(find.text('Ana Lima', skipOffstage: false), findsWidgets);
+    ctrl.dispose();
+    await gw.shutdown();
+  });
 }
 
 bool _endsWithLoneHighSurrogate(String s) {

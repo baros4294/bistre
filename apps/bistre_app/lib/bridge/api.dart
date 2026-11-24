@@ -581,6 +581,7 @@ class FfiAppSettings {
   final bool termuxBridgeEnabled;
   final String codeWrapMode;
   final bool pricingAutoRefresh;
+  final String userDisplayName;
 
   const FfiAppSettings({
     required this.theme,
@@ -620,6 +621,7 @@ class FfiAppSettings {
     required this.termuxBridgeEnabled,
     required this.codeWrapMode,
     required this.pricingAutoRefresh,
+    required this.userDisplayName,
   });
 
   @override
@@ -660,7 +662,8 @@ class FfiAppSettings {
       reasoningEffort.hashCode ^
       termuxBridgeEnabled.hashCode ^
       codeWrapMode.hashCode ^
-      pricingAutoRefresh.hashCode;
+      pricingAutoRefresh.hashCode ^
+      userDisplayName.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -703,7 +706,8 @@ class FfiAppSettings {
           reasoningEffort == other.reasoningEffort &&
           termuxBridgeEnabled == other.termuxBridgeEnabled &&
           codeWrapMode == other.codeWrapMode &&
-          pricingAutoRefresh == other.pricingAutoRefresh;
+          pricingAutoRefresh == other.pricingAutoRefresh &&
+          userDisplayName == other.userDisplayName;
 }
 
 /// Thin FFI DTO mirror of `AssistantRecord`.

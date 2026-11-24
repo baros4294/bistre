@@ -112,6 +112,7 @@ EngineSettings _mapSettings(frb.FfiAppSettings s) => EngineSettings(
   termuxBridgeEnabled: s.termuxBridgeEnabled,
   codeWrapMode: s.codeWrapMode,
   pricingAutoRefresh: s.pricingAutoRefresh,
+  userDisplayName: s.userDisplayName,
 );
 
 EngineAgentRun _mapAgentRun(frb.FfiAgentRunRecord r) => EngineAgentRun(

@@ -3907,6 +3907,7 @@ impl SseDecode for crate::api::FfiAppSettings {
         let mut var_termuxBridgeEnabled = <bool>::sse_decode(deserializer);
         let mut var_codeWrapMode = <String>::sse_decode(deserializer);
         let mut var_pricingAutoRefresh = <bool>::sse_decode(deserializer);
+        let mut var_userDisplayName = <String>::sse_decode(deserializer);
         return crate::api::FfiAppSettings {
             theme: var_theme,
             layout_mode: var_layoutMode,
@@ -3945,6 +3946,7 @@ impl SseDecode for crate::api::FfiAppSettings {
             termux_bridge_enabled: var_termuxBridgeEnabled,
             code_wrap_mode: var_codeWrapMode,
             pricing_auto_refresh: var_pricingAutoRefresh,
+            user_display_name: var_userDisplayName,
         };
     }
 }
@@ -4968,6 +4970,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::FfiAppSettings {
             self.termux_bridge_enabled.into_into_dart().into_dart(),
             self.code_wrap_mode.into_into_dart().into_dart(),
             self.pricing_auto_refresh.into_into_dart().into_dart(),
+            self.user_display_name.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -5512,6 +5515,7 @@ impl SseEncode for crate::api::FfiAppSettings {
         <bool>::sse_encode(self.termux_bridge_enabled, serializer);
         <String>::sse_encode(self.code_wrap_mode, serializer);
         <bool>::sse_encode(self.pricing_auto_refresh, serializer);
+        <String>::sse_encode(self.user_display_name, serializer);
     }
 }
 
