@@ -961,7 +961,7 @@ void main() {
       BistreApp(l10nController: l10n, folioController: ctrl),
     );
     await tester.pumpAndSettle();
-    ctrl.openSettings(SettingsTab.providers);
+    ctrl.openSettings(); // Providers: the matching setting is on another page.
     await tester.pumpAndSettle();
     final search = find.ancestor(
       of: find.text(l10n.t(L10nKey.settingsSearchPlaceholder)),
