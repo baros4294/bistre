@@ -11,11 +11,15 @@ class FolioFadeSlide extends StatefulWidget {
     super.key,
     required this.child,
     this.beginOffset = const Offset(0, 0.035),
+    this.beginScale = 1.0,
     this.reduceMotionOverride = false,
   });
 
   final Widget child;
   final Offset beginOffset;
+
+  /// Pop-in pills (toasts, Jump to latest) also grow from this scale (DESIGN §6: 0.90).
+  final double beginScale;
   final bool reduceMotionOverride;
 
   @override
@@ -27,6 +31,7 @@ class _FolioFadeSlideState extends State<FolioFadeSlide>
   late final AnimationController _controller;
   late final Animation<double> _opacity;
   late final Animation<Offset> _slide;
+  late final Animation<double> _scale;
   bool _started = false;
 
   @override
@@ -45,6 +50,7 @@ class _FolioFadeSlideState extends State<FolioFadeSlide>
       begin: widget.beginOffset,
       end: Offset.zero,
     ).animate(curved);
+    _scale = Tween<double>(begin: widget.beginScale, end: 1).animate(curved);
   }
 
   @override
@@ -75,7 +81,12 @@ class _FolioFadeSlideState extends State<FolioFadeSlide>
   Widget build(BuildContext context) {
     return FadeTransition(
       opacity: _opacity,
-      child: SlideTransition(position: _slide, child: widget.child),
+      child: SlideTransition(
+        position: _slide,
+        child: widget.beginScale == 1.0
+            ? widget.child
+            : ScaleTransition(scale: _scale, child: widget.child),
+      ),
     );
   }
 }
@@ -362,7 +373,8 @@ class FolioToastBanner extends StatelessWidget {
             end: BistreSpacing.s16,
           ),
           child: FolioFadeSlide(
-            beginOffset: const Offset(0, -0.18),
+            beginOffset: const Offset(0, -0.5),
+            beginScale: 0.9,
             reduceMotionOverride: reduceMotionOverride,
             child: FolioSurface(
               tone: FolioTone.elevated,
