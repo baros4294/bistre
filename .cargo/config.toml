@@ -1,4 +1,4 @@
-# Cap parallel rustc/LLVM jobs so 7.7 GB reference laptops never thrash the pagefile (Spec 11 §4).
+# Cap parallel rustc/LLVM jobs so modest developer machines stay responsive without pagefile thrashing (Spec 11 §4).
 [build]
 jobs = 4
 

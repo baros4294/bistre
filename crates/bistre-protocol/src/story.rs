@@ -1,4 +1,4 @@
-//! Canonical Writing & Roleplay Studio domain types (Wave E: CCv3/V2 Cards,
+//! Canonical Writing & Roleplay Studio domain types (CCv3/V2 Cards,
 //! Personas, Unified Codex & Lorebook V3, Chronological Progressions, Chapters/Scenes,
 //! Safe Linear-Time Regex Rules, Creative Samplers, and Time Machine Snapshots).
 
@@ -176,7 +176,7 @@ impl Default for StoryEntryRecord {
     }
 }
 
-/// Novelcrafter-inspired chronological character/world update gated by `chapter_order` (zero spoilers).
+/// Chronological character/world update gated by `chapter_order` (zero spoilers).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoryProgressionRecord {
     #[serde(default)]

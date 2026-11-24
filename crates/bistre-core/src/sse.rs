@@ -111,24 +111,44 @@ impl SseFramer {
     }
 
     fn process_lines(&mut self, at_eof: bool, out: &mut Vec<String>) {
-        while let Some(idx) = self.pending.find(['\n', '\r']) {
-            let is_cr = self.pending.as_bytes()[idx] == b'\r';
-            if is_cr && idx + 1 == self.pending.len() && !at_eof {
+        // Scan `pending` with a single read cursor so multi-line chunks never allocate a
+        // temporary `String` per line or memmove the tail buffer via `drain` on every line.
+        let mut cursor = 0_usize;
+        let pending = core::mem::take(&mut self.pending);
+        let bytes = pending.as_bytes();
+        while cursor < bytes.len() {
+            let Some(rel_idx) = pending[cursor..].find(['\n', '\r']) else {
+                break;
+            };
+            let idx = cursor + rel_idx;
+            let is_cr = bytes[idx] == b'\r';
+            if is_cr && idx + 1 == bytes.len() && !at_eof {
                 // Hold back a trailing `\r`: the matching `\n` may arrive in the next chunk.
                 break;
             }
-            let terminator_len = if is_cr && self.pending.as_bytes().get(idx + 1) == Some(&b'\n') {
+            let terminator_len = if is_cr && bytes.get(idx + 1) == Some(&b'\n') {
                 2
             } else {
                 1
             };
-            let line: String = self.pending[..idx].to_owned();
-            self.pending.drain(..idx + terminator_len);
-            self.handle_line(&line, out);
+            let line = &pending[cursor..idx];
+            self.handle_line(line, out);
+            cursor = idx + terminator_len;
         }
-        if at_eof && !self.pending.is_empty() {
-            let line = core::mem::take(&mut self.pending);
-            self.handle_line(&line, out);
+        if at_eof && cursor < bytes.len() {
+            self.handle_line(&pending[cursor..], out);
+            cursor = bytes.len();
+        }
+        if cursor == 0 {
+            self.pending = pending;
+        } else if cursor >= bytes.len() {
+            let mut reused = pending;
+            reused.clear();
+            self.pending = reused;
+        } else {
+            let mut reused = pending;
+            reused.drain(..cursor);
+            self.pending = reused;
         }
     }
 

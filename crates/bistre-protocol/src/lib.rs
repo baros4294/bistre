@@ -419,7 +419,9 @@ pub struct WorkspaceSummary {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TrustPreset {
-    Parchment,
+    Off,
+    #[serde(alias = "parchment", alias = "parchment_safe")]
+    Strict,
     GuidedCraft,
     UnchainedSandbox,
 }
@@ -427,16 +429,18 @@ pub enum TrustPreset {
 impl TrustPreset {
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Parchment => "parchment",
+            Self::Off => "off",
+            Self::Strict => "strict",
             Self::GuidedCraft => "guided_craft",
             Self::UnchainedSandbox => "unchained_sandbox",
         }
     }
 
     pub fn parse(raw: &str) -> Self {
-        match raw {
-            "parchment" => Self::Parchment,
-            "unchained_sandbox" => Self::UnchainedSandbox,
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "off" => Self::Off,
+            "strict" | "parchment" | "parchment_safe" => Self::Strict,
+            "unchained_sandbox" | "sandbox" => Self::UnchainedSandbox,
             _ => Self::GuidedCraft,
         }
     }
@@ -445,7 +449,7 @@ impl TrustPreset {
 fn default_theme() -> String {
     "system".to_owned()
 }
-/// Messenger bubbles by default (Parchment v2.6.0); the page view stays one tap away.
+/// Messenger bubbles by default; the document/page view stays one tap away.
 fn default_layout_mode() -> String {
     "bubbles".to_owned()
 }
@@ -453,7 +457,7 @@ fn default_locale() -> String {
     "en".to_owned()
 }
 fn default_accent_preset() -> String {
-    "wax".to_owned()
+    "brass".to_owned()
 }
 fn default_font_size_px() -> u32 {
     15
@@ -794,6 +798,12 @@ pub struct UsageMetrics {
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub cached_input_tokens: u64,
+    #[serde(default)]
+    pub cache_creation_input_tokens: u64,
+    #[serde(default)]
+    pub reasoning_tokens: u64,
+    #[serde(default)]
+    pub first_token_ms: u64,
     pub estimated_cost_micros: MoneyMicros,
 }
 

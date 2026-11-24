@@ -167,7 +167,12 @@ impl InProcessEngine {
         let pricing = Arc::new(registry::PricingRegistry::with_cache(
             dir.join("pricing_cache.json"),
         ));
-        if settings.as_ref().is_some_and(|s| s.pricing_auto_refresh) {
+        // Only trigger automatic pricing network sync at startup when at least one provider
+        // actually has a key configured; unconfigured cold starts stay 0-network / low-RAM.
+        let has_configured_provider = storage
+            .list_providers()
+            .is_ok_and(|list| list.iter().any(|p| p.has_api_key));
+        if has_configured_provider && settings.as_ref().is_some_and(|s| s.pricing_auto_refresh) {
             pricing.ensure_fresh(&web);
         }
         let (events_tx, _) = broadcast::channel(EVENT_BUS_CAPACITY);

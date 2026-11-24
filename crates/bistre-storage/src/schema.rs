@@ -32,6 +32,12 @@ pub(crate) fn configure_connection(conn: &Connection, is_writer: bool) -> Bistre
             .map_err(map_sqlite_err)?;
         conn.pragma_update(None, "wal_autocheckpoint", 1000_i64)
             .map_err(map_sqlite_err)?;
+    } else {
+        conn.pragma_update(None, "query_only", "ON")
+            .map_err(map_sqlite_err)?;
+        // Cap per-reader page cache at 2 MiB; zero mmap (AGENTS.md §7).
+        conn.pragma_update(None, "cache_size", -2000_i64)
+            .map_err(map_sqlite_err)?;
     }
     Ok(())
 }
@@ -99,6 +105,14 @@ pub(crate) fn run_migrations(conn: &mut Connection, db_path: &Path) -> BistreRes
             backup_before_migration(conn, db_path, 7)?;
         }
         apply_sql_migration(conn, harness::SCHEMA_V8_EXPAND_SQL, 8, "v7_to_v8")?;
+        verify_db_integrity(conn)?;
+    }
+
+    if version < 9 {
+        if version == 8 {
+            backup_before_migration(conn, db_path, 8)?;
+        }
+        apply_sql_migration(conn, SCHEMA_V9_PERF_INDEXES_SQL, 9, "v8_to_v9")?;
         verify_db_integrity(conn)?;
     }
 
@@ -572,4 +586,20 @@ UPDATE threads
 SET title = 'New chat'
 WHERE title = 'First Folio'
   AND NOT EXISTS (SELECT 1 FROM nodes WHERE nodes.thread_id = threads.id);
+";
+
+/// Additive performance indexes (v8 -> v9, N-1 readable): eliminates temp B-tree sorts on
+/// `list_nodes` / `list_threads` and full table scans on `wallet_ledger` job dedupe and startup cleanup.
+pub(crate) const SCHEMA_V9_PERF_INDEXES_SQL: &str = r"
+CREATE INDEX IF NOT EXISTS idx_nodes_thread_rowid
+    ON nodes (thread_id, rowid);
+
+CREATE INDEX IF NOT EXISTS idx_threads_ws_pinned_updated
+    ON threads (workspace_id, is_pinned DESC, updated_at_ms DESC);
+
+CREATE INDEX IF NOT EXISTS idx_wallet_ledger_job
+    ON wallet_ledger (job_id) WHERE job_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_wallet_ledger_reserved
+    ON wallet_ledger (status) WHERE status = 'reserved';
 ";

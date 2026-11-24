@@ -248,6 +248,7 @@ pub(crate) async fn execute_durable_stream_loop(
                         ),
                     );
                 }
+                let request_id = format!("{run_id}:llm:{step_index}");
                 if !res.full_text.trim().is_empty() || !res.thinking_text.trim().is_empty() {
                     let mut meta_obj = serde_json::json!({
                         "provider_id": provider.id,
@@ -257,8 +258,13 @@ pub(crate) async fn execute_durable_stream_loop(
                         "input_tokens": res.usage.input_tokens,
                         "output_tokens": res.usage.output_tokens,
                         "cached_input_tokens": res.usage.cached_input_tokens,
+                        "cache_creation_input_tokens": res.usage.cache_creation_input_tokens,
+                        "reasoning_tokens": res.usage.reasoning_tokens,
+                        "first_token_ms": res.usage.first_token_ms,
                         "cost_micros": res.usage.estimated_cost_micros.as_micros(),
                         "cost_known": cost.is_some(),
+                        "elapsed_ms": elapsed_ms,
+                        "request_id": request_id,
                         "cancelled": res.cancelled,
                         "interrupted": res.interrupted,
                         "run_id": run_id,
@@ -325,7 +331,8 @@ pub(crate) async fn execute_durable_stream_loop(
                                 "settled".to_owned()
                             };
                             let recorded = match reservation.take() {
-                                Some(r) => r.settle(
+                                Some(r) => r.settle_for_request(
+                                    Some(request_id.clone()),
                                     res.usage.estimated_cost_micros,
                                     res.usage.input_tokens,
                                     res.usage.output_tokens,
@@ -741,9 +748,9 @@ fn project_turn_history(
     let all_nodes = storage.list_nodes(thread_id)?;
     let raw_history = collect_branch_ancestry(&all_nodes, leaf_id);
     let pinned_start = storage.get_kv_meta(&format!("thread_context_start:{thread_id}"))?;
-    Ok(compaction::enforce_role_alternation(
-        compaction::project_effective_history(&raw_history, pinned_start.as_deref()),
-    ))
+    let effective = compaction::project_effective_history(&raw_history, pinned_start.as_deref());
+    let quantized = compaction::compact_tool_outputs_quantized(&effective, 2_000);
+    Ok(compaction::enforce_role_alternation(quantized))
 }
 
 /// Longest user name told to the model, in characters.

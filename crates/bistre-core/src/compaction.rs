@@ -1,12 +1,13 @@
 //! Reversible branch-safe context compaction, Fixed Context Start Pin, and prompt-cache prefix guard.
 //!
-//! Inspired by Pi/Oh My Pi (`CompactionEntry`), Kelivo (undoable compaction + fixed context start pin),
-//! and Hermes Agent (prompt-cache stability):
+//! Invariants:
 //! - Original DAG nodes are NEVER deleted or overwritten.
 //! - Compaction inserts a readable `NodeRole::CompactionSummary` node carrying `first_kept_node_id`
 //!   and `compacted_count` in `provider_meta_json`.
 //! - Undoing compaction deletes ONLY the `CompactionSummary` marker node, instantly restoring 100%
 //!   of prior verbatim history.
+//! - Stale tool outputs compact in 16-step batches so prompt-cache prefixes remain stable between
+//!   compaction boundaries, and cross-provider reasoning handoffs preserve up to 8,000 chars.
 
 use bistre_protocol::{BistreError, BistreResult, DiagnosticKey, NodeRecord, NodeRole};
 use bistre_storage::StorageHandle;
@@ -122,6 +123,70 @@ const fn replay_role(role: NodeRole) -> Option<bool> {
         NodeRole::Assistant => Some(false),
         NodeRole::System | NodeRole::Tool => None,
     }
+}
+
+/// Batch size for quantized tool-output compaction (keeps prompt-cache prefixes stable).
+pub const TOOL_COMPACTION_STEP_QUANTUM: usize = 16;
+
+/// Character budget for cross-provider reasoning handoff (head + tail, never opaque signatures).
+pub const MAX_CROSS_PROVIDER_REASONING_CHARS: usize = 8_000;
+
+/// Compacts stale `NodeRole::Tool` outputs in discrete 16-step batches so the shared prompt-cache
+/// prefix stays byte-identical across 15 consecutive tool turns before rolling forward.
+pub fn compact_tool_outputs_quantized(
+    history: &[NodeRecord],
+    max_tool_chars: usize,
+) -> Vec<NodeRecord> {
+    let tool_positions: Vec<usize> = history
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, node)| (node.role == NodeRole::Tool).then_some(idx))
+        .collect();
+    let compact_batches = tool_positions.len() / TOOL_COMPACTION_STEP_QUANTUM;
+    let compact_count = compact_batches * TOOL_COMPACTION_STEP_QUANTUM;
+    if compact_count == 0 {
+        return history.to_vec();
+    }
+    let compact_upto_idx = tool_positions[compact_count - 1];
+    let cap = max_tool_chars.max(64);
+    history
+        .iter()
+        .enumerate()
+        .map(|(idx, node)| {
+            if idx <= compact_upto_idx
+                && node.role == NodeRole::Tool
+                && node.content.chars().count() > cap
+            {
+                let mut cloned = node.clone();
+                let preview: String = node.content.chars().take(cap).collect();
+                cloned.content = format!(
+                    "{preview}\n[tool output compacted ({} chars original)]",
+                    node.content.chars().count()
+                );
+                cloned
+            } else {
+                node.clone()
+            }
+        })
+        .collect()
+}
+
+/// Formats reasoning text for replay when switching providers or wire dialects: preserves up to
+/// [`MAX_CROSS_PROVIDER_REASONING_CHARS`] (head + tail) and never forwards opaque signatures.
+#[must_use]
+pub fn format_cross_provider_reasoning_handoff(reasoning: &str) -> String {
+    let trimmed = reasoning.trim();
+    let char_count = trimmed.chars().count();
+    if char_count <= MAX_CROSS_PROVIDER_REASONING_CHARS {
+        return trimmed.to_owned();
+    }
+    let half = MAX_CROSS_PROVIDER_REASONING_CHARS / 2;
+    let head: String = trimmed.chars().take(half).collect();
+    let tail: String = trimmed.chars().skip(char_count - half).collect();
+    format!(
+        "{head}\n[... {} chars omitted ...]\n{tail}",
+        char_count - (half * 2)
+    )
 }
 
 /// Post-compaction role-alternation validator: merges consecutive same-side turns (joined by a
@@ -442,5 +507,49 @@ mod tests {
                 ("u3", "third")
             ]
         );
+    }
+
+    #[test]
+    fn quantized_tool_compaction_rolls_in_16_step_batches() {
+        let make_tool = |i: usize| NodeRecord {
+            id: format!("t{i}"),
+            thread_id: "th".to_owned(),
+            parent_id: None,
+            role: NodeRole::Tool,
+            content: "x".repeat(500),
+            provider_meta_json: None,
+            created_at_ms: 0,
+        };
+        // 15 tool nodes: below the 16-step quantum, nothing compacts (stable prefix).
+        let fifteen: Vec<NodeRecord> = (0..15).map(make_tool).collect();
+        let after_15 = compact_tool_outputs_quantized(&fifteen, 100);
+        assert!(after_15.iter().all(|n| n.content.len() == 500));
+
+        // 18 tool nodes: oldest 16 compact, newest 2 remain verbatim.
+        let eighteen: Vec<NodeRecord> = (0..18).map(make_tool).collect();
+        let after_18 = compact_tool_outputs_quantized(&eighteen, 100);
+        assert!(
+            after_18[..16]
+                .iter()
+                .all(|n| n.content.contains("[tool output compacted"))
+        );
+        assert!(after_18[16..].iter().all(|n| n.content.len() == 500));
+    }
+
+    #[test]
+    fn cross_provider_reasoning_handoff_preserves_head_and_tail_within_8000_chars() {
+        let short = "step one -> step two";
+        assert_eq!(format_cross_provider_reasoning_handoff(short), short);
+
+        let long = format!(
+            "{}{}{}",
+            "A".repeat(5000),
+            "M".repeat(2000),
+            "Z".repeat(5000)
+        );
+        let handoff = format_cross_provider_reasoning_handoff(&long);
+        assert!(handoff.starts_with(&"A".repeat(4000)));
+        assert!(handoff.ends_with(&"Z".repeat(4000)));
+        assert!(handoff.contains("4000 chars omitted"));
     }
 }

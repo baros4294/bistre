@@ -39,7 +39,7 @@ use uuid::Uuid;
 pub use harness::{AgentRunUpdate, CreateAgentRunParams};
 
 /// Current canonical SQLite schema version (`PRAGMA user_version`).
-pub const CURRENT_SCHEMA_VERSION: u32 = 8;
+pub const CURRENT_SCHEMA_VERSION: u32 = 9;
 
 /// Default assistant identifier seeded strictly when a fresh install has zero assistants.
 pub const DEFAULT_ASSISTANT_ID: &str = "default_assistant";
@@ -810,17 +810,68 @@ impl StorageHandle {
         output_tokens: u64,
         status: String,
     ) -> BistreResult<()> {
+        self.settle_wallet_reservation_for_request(
+            reservation_id,
+            None,
+            cost,
+            input_tokens,
+            output_tokens,
+            status,
+        )
+    }
+
+    /// Replaces a reservation with the exact settled cost and deduplicates by `request_id`
+    /// (`wallet_ledger.job_id`) so retried usage webhooks/callbacks never double-charge.
+    pub fn settle_wallet_reservation_for_request(
+        &self,
+        reservation_id: String,
+        request_id: Option<String>,
+        cost: MoneyMicros,
+        input_tokens: u64,
+        output_tokens: u64,
+        status: String,
+    ) -> BistreResult<()> {
         let in_tok = i64::try_from(input_tokens).unwrap_or(i64::MAX);
         let out_tok = i64::try_from(output_tokens).unwrap_or(i64::MAX);
+        let clean_req = request_id
+            .map(|r| r.trim().to_owned())
+            .filter(|r| !r.is_empty());
         self.write(move |conn| {
-            let changed = conn
+            let tx = conn.transaction().map_err(map_sqlite_err)?;
+            if let Some(ref req_id) = clean_req {
+                let already_settled: i64 = tx
+                    .query_row(
+                        "SELECT COUNT(*) FROM wallet_ledger WHERE job_id = ?1 AND status != 'reserved'",
+                        [req_id],
+                        |row| row.get(0),
+                    )
+                    .map_err(map_sqlite_err)?;
+                if already_settled > 0 {
+                    tx.execute(
+                        "DELETE FROM wallet_ledger WHERE id = ?1 AND status = 'reserved'",
+                        [&reservation_id],
+                    )
+                    .map_err(map_sqlite_err)?;
+                    tx.commit().map_err(map_sqlite_err)?;
+                    return Ok(());
+                }
+            }
+            let changed = tx
                 .execute(
-                    "UPDATE wallet_ledger SET cost_micros = ?2, input_tokens = ?3, output_tokens = ?4,
-                                              status = ?5
+                    "UPDATE wallet_ledger SET job_id = COALESCE(?2, job_id), cost_micros = ?3,
+                                              input_tokens = ?4, output_tokens = ?5, status = ?6
                      WHERE id = ?1 AND status = 'reserved'",
-                    params![reservation_id, cost.as_micros(), in_tok, out_tok, status],
+                    params![
+                        reservation_id,
+                        clean_req,
+                        cost.as_micros(),
+                        in_tok,
+                        out_tok,
+                        status
+                    ],
                 )
                 .map_err(map_sqlite_err)?;
+            tx.commit().map_err(map_sqlite_err)?;
             if changed == 1 {
                 Ok(())
             } else {

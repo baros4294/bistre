@@ -1,6 +1,6 @@
 //! Zero-fork in-process Rust workspace tools, capability-scoped edits with `blake3` hash anchors,
 //! `imara-diff` unified diffs, pre-image SQLite checkpoints for 1-click Rewind, guarded shell
-//! execution, web fetch/search, and Unsloth-style malformed tool-call self-healing (Spec 04 & 06).
+//! execution, web fetch/search, and malformed tool-call self-healing (Spec 04 & 06).
 
 use bistre_protocol::lock_or_recover;
 use std::collections::{HashSet, VecDeque};
@@ -29,6 +29,9 @@ const MAX_READ_FILE_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_TOOL_OUTPUT_BYTES: usize = 256 * 1024;
 const MAX_GREP_MATCHES: usize = 100;
 const MAX_GLOB_RESULTS: usize = 250;
+/// Maximum wall-clock duration and directory entries visited per `grep`/`glob` walk.
+const MAX_WALK_DURATION: Duration = Duration::from_secs(10);
+const MAX_WALK_ENTRIES: usize = 50_000;
 /// Maximum `(scope, path)` read fingerprints kept by [`ReadLedger`].
 const MAX_READ_LEDGER_ENTRIES: usize = 512;
 
@@ -613,12 +616,19 @@ pub fn tool_grep(
     let mut searcher = Searcher::new();
     let mut hits = Vec::new();
     let mut total_bytes: usize = 0;
+    let mut visited_entries: usize = 0;
+    let mut timed_out = false;
 
     for entry in WalkBuilder::new(&search_root)
         .hidden(true)
         .build()
         .flatten()
     {
+        visited_entries = visited_entries.saturating_add(1);
+        if visited_entries > MAX_WALK_ENTRIES || started.elapsed() >= MAX_WALK_DURATION {
+            timed_out = true;
+            break;
+        }
         if hits.len() >= MAX_GREP_MATCHES || total_bytes >= MAX_TOOL_OUTPUT_BYTES {
             break;
         }
@@ -651,16 +661,21 @@ pub fn tool_grep(
     }
 
     let count = hits.len();
+    let mut output_text = if hits.is_empty() {
+        "No matches found.".to_owned()
+    } else {
+        hits.join("\n")
+    };
+    if timed_out {
+        output_text
+            .push_str("\n[search bounded by workspace walk limit; narrow the path or pattern]");
+    }
     Ok(ToolExecutionOutput {
         tool_name: "grep".to_owned(),
         risk_tier: ToolRiskTier::Tier0ReadOnly,
         ok: true,
         summary: format!("grep `{pattern}` ({count} matches)"),
-        output_text: if hits.is_empty() {
-            "No matches found.".to_owned()
-        } else {
-            hits.join("\n")
-        },
+        output_text,
         diff_text: None,
         checkpoint_id: None,
         duration_ms: i64::try_from(started.elapsed().as_millis()).unwrap_or(0),
@@ -675,11 +690,18 @@ pub fn tool_glob(workspace_root: &Path, pattern: &str) -> BistreResult<ToolExecu
         .compile_matcher();
 
     let mut files = Vec::new();
+    let mut visited_entries: usize = 0;
+    let mut bounded = false;
     for entry in WalkBuilder::new(workspace_root)
         .hidden(true)
         .build()
         .flatten()
     {
+        visited_entries = visited_entries.saturating_add(1);
+        if visited_entries > MAX_WALK_ENTRIES || started.elapsed() >= MAX_WALK_DURATION {
+            bounded = true;
+            break;
+        }
         if !entry.file_type().is_some_and(|ft| ft.is_file()) {
             continue;
         }
@@ -702,12 +724,19 @@ pub fn tool_glob(workspace_root: &Path, pattern: &str) -> BistreResult<ToolExecu
     files.sort();
 
     let count = files.len();
+    let mut output_text = files.join("\n");
+    if bounded {
+        if !output_text.is_empty() {
+            output_text.push('\n');
+        }
+        output_text.push_str("[glob bounded by workspace walk limit; narrow the pattern]");
+    }
     Ok(ToolExecutionOutput {
         tool_name: "glob".to_owned(),
         risk_tier: ToolRiskTier::Tier0ReadOnly,
         ok: true,
         summary: format!("glob `{pattern}` ({count} files)"),
-        output_text: files.join("\n"),
+        output_text,
         diff_text: None,
         checkpoint_id: None,
         duration_ms: i64::try_from(started.elapsed().as_millis()).unwrap_or(0),

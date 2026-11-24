@@ -44,7 +44,19 @@ impl SpendReservation {
 
     /// Replaces the reservation with the exact cost of the finished request.
     pub fn settle(
+        self,
+        cost: MoneyMicros,
+        input_tokens: u64,
+        output_tokens: u64,
+        status: String,
+    ) -> BistreResult<()> {
+        self.settle_for_request(None, cost, input_tokens, output_tokens, status)
+    }
+
+    /// Replaces the reservation with the exact cost and deduplicates by provider `request_id`.
+    pub fn settle_for_request(
         mut self,
+        request_id: Option<String>,
         cost: MoneyMicros,
         input_tokens: u64,
         output_tokens: u64,
@@ -53,8 +65,14 @@ impl SpendReservation {
         let Some(id) = self.id.take() else {
             return Ok(());
         };
-        self.storage
-            .settle_wallet_reservation(id, cost, input_tokens, output_tokens, status)
+        self.storage.settle_wallet_reservation_for_request(
+            id,
+            request_id,
+            cost,
+            input_tokens,
+            output_tokens,
+            status,
+        )
     }
 }
 
@@ -147,6 +165,48 @@ mod tests {
         );
         assert_eq!(storage.release_all_wallet_reservations()?, 1);
         assert_eq!(storage.sum_wallet_spend_since_micros(0)?, MoneyMicros::ZERO);
+        Ok(())
+    }
+
+    #[test]
+    fn duplicate_request_id_settles_spend_once() -> Result<(), Box<dyn std::error::Error>> {
+        let (_dir, storage) = open()?;
+        let first = SpendReservation::reserve(
+            &storage,
+            None,
+            "p".into(),
+            "m".into(),
+            MoneyMicros::from_micros(50),
+            None,
+            0,
+        )?;
+        first.settle_for_request(
+            Some("req_abc123".into()),
+            MoneyMicros::from_micros(42),
+            100,
+            20,
+            "settled".into(),
+        )?;
+        let dup = SpendReservation::reserve(
+            &storage,
+            None,
+            "p".into(),
+            "m".into(),
+            MoneyMicros::from_micros(50),
+            None,
+            0,
+        )?;
+        dup.settle_for_request(
+            Some("req_abc123".into()),
+            MoneyMicros::from_micros(42),
+            100,
+            20,
+            "settled".into(),
+        )?;
+        assert_eq!(
+            storage.sum_wallet_spend_since_micros(0)?,
+            MoneyMicros::from_micros(42)
+        );
         Ok(())
     }
 }

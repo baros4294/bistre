@@ -138,15 +138,38 @@ pub fn find_on_path(exe: &str) -> Option<PathBuf> {
         .find(|candidate| candidate.is_file())
 }
 
-fn pwsh_available() -> bool {
-    static PWSH: OnceLock<bool> = OnceLock::new();
-    *PWSH.get_or_init(|| find_on_path("pwsh.exe").is_some())
+/// Returns `true` when `path` points into Windows's Microsoft Store `WindowsApps` `AppExecAlias`
+/// folder. Packaged MSIX `AppExecAlias` shims (such as Store-installed `pwsh.exe`) launch through
+/// the Desktop Bridge outside the caller's Win32 Job Object, allowing grandchildren to outlive
+/// `TerminateJobObject` and `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`.
+pub fn is_windows_app_exec_alias(path: &Path) -> bool {
+    let mut prev_microsoft = false;
+    for comp in path.components() {
+        let name = comp.as_os_str().to_string_lossy();
+        if prev_microsoft && name.eq_ignore_ascii_case("windowsapps") {
+            return true;
+        }
+        prev_microsoft = name.eq_ignore_ascii_case("microsoft");
+    }
+    false
+}
+
+/// Returns the first non-AppExecAlias `pwsh.exe` on `PATH` so Win32 Job Object containment holds.
+fn containable_pwsh_path() -> Option<&'static Path> {
+    static PWSH: OnceLock<Option<PathBuf>> = OnceLock::new();
+    PWSH.get_or_init(|| {
+        let path = std::env::var_os("PATH")?;
+        std::env::split_paths(&path)
+            .map(|dir| dir.join("pwsh.exe"))
+            .find(|candidate| candidate.is_file() && !is_windows_app_exec_alias(candidate))
+    })
+    .as_deref()
 }
 
 /// Picks the platform shell for a command line.
 pub fn preferred_shell() -> ShellKind {
     if cfg!(windows) {
-        if pwsh_available() {
+        if containable_pwsh_path().is_some() {
             ShellKind::Pwsh
         } else {
             ShellKind::Cmd
@@ -160,7 +183,10 @@ pub fn preferred_shell() -> ShellKind {
 pub fn shell_command(kind: ShellKind, script: &str, cwd: &Path) -> Command {
     let mut cmd = match kind {
         ShellKind::Pwsh => {
-            let mut c = no_window_command("pwsh");
+            let mut c = match containable_pwsh_path() {
+                Some(path) => no_window_command(path),
+                None => no_window_command("pwsh"),
+            };
             c.args([
                 "-NoLogo",
                 "-NoProfile",
@@ -272,13 +298,14 @@ pub async fn run_bounded(mut cmd: Command, timeout: Duration) -> BistreResult<Ou
             stderr: stderr.map_err(wait_err)?,
         });
     }
-    // Walk the live tree first, then terminate the job for anything that left the tree, and only
-    // then kill and reap the root.
-    if let Some(pid) = pid {
-        kill_process_tree(pid).await;
-    }
+    // Terminate the kernel Job Object first (instant, atomic whole-tree kill on Windows) so
+    // descendants cannot outlive a slow `taskkill` spawn under heavy CPU load; fall back to
+    // walking/killing the process group on Unix or if no job object was attached.
     if !containment.kill_tree() {
-        tracing::debug!("no job object to terminate for the timed-out child");
+        tracing::debug!("no job object to terminate for the timed-out child; killing process tree");
+        if let Some(pid) = pid {
+            kill_process_tree(pid).await;
+        }
     }
     if child.kill().await.is_err() {
         tracing::debug!("timed-out child already exited before the final kill");
@@ -410,22 +437,36 @@ mod tests {
         assert!(started.elapsed() < Duration::from_secs(15));
     }
 
+    #[test]
+    fn windows_app_exec_alias_detection_rejects_store_shims() {
+        assert!(is_windows_app_exec_alias(Path::new(
+            r"C:\Users\alice\AppData\Local\Microsoft\WindowsApps\pwsh.exe"
+        )));
+        assert!(!is_windows_app_exec_alias(Path::new(
+            r"C:\Program Files\PowerShell\7\pwsh.exe"
+        )));
+    }
+
     #[tokio::test]
     async fn timeout_kills_grandchildren_before_they_outlive_the_shell()
     -> Result<(), Box<dyn std::error::Error>> {
         let scratch = tempfile::tempdir()?;
         let marker = scratch.path().join("leaked.txt");
+        let shell = preferred_shell();
         // The shell starts a grandchild that writes the marker ~3 s later unless the tree dies.
-        let script = if cfg!(windows) {
-            format!(
+        let script = match shell {
+            ShellKind::Pwsh => format!(
                 "cmd /C \"ping -n 4 127.0.0.1 >NUL & echo leaked> {}\"",
                 marker.display()
-            )
-        } else {
-            format!("sh -c 'sleep 3; echo leaked > {}'", marker.display())
+            ),
+            ShellKind::Cmd => format!(
+                "cmd /C ping -n 4 127.0.0.1 ^>NUL ^& echo leaked^> {}",
+                marker.display()
+            ),
+            ShellKind::Sh => format!("sh -c 'sleep 3; echo leaked > {}'", marker.display()),
         };
         let timed_out = run_bounded(
-            shell_command(preferred_shell(), &script, scratch.path()),
+            shell_command(shell, &script, scratch.path()),
             Duration::from_millis(1500),
         )
         .await;

@@ -2653,8 +2653,6 @@ dependencies = [
  "rustc-hash",
  "ruzstd",
  "tiktoken-vocab-openai",
- "tiktoken-vocab-qwen",
- "tiktoken-vocab-zhipu",
 ]
 
 [[package]]
@@ -2662,18 +2660,6 @@ name = "tiktoken-vocab-openai"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85976400a4532e23985f1107744c683cd02352bbb1e99d95eabef86706800953"
-
-[[package]]
-name = "tiktoken-vocab-qwen"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "894944f512da3ce1216ea227537f0d0f9e772e2962e4a0cf28415359da162ccd"
-
-[[package]]
-name = "tiktoken-vocab-zhipu"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "abd4e387cdf2cd130c1ba1e0db4e967f58dddafb2e367c4124d6a2ab4a4c0f68"
 
 [[package]]
 name = "tinystr"

@@ -1,4 +1,4 @@
-//! Unified Story Bible (Codex) + Lorebook V3 Activation Engine (Wave E).
+//! Unified Story Bible (Codex) + Lorebook V3 Activation Engine.
 //!
 //! Features:
 //! - Primary keywords, secondary keys (`and_any` / `and_all` / `not_any` / `not_all`), linear-time `regex`
@@ -6,7 +6,7 @@
 //! - Hard token budget cap (`<= 25%` of context window) with `@@ignore_on_max_context`
 //! - `CCv3` `@@` / `@@@` fallback decorators (`@@depth`, `@@position`, `@@activate_only_after`, `@@every`)
 //! - Sticky / Cooldown / Delay turn state tracking
-//! - Novelcrafter-style Chronological Progressions strictly gated by `chapter_order <= current_chapter`
+//! - Chronological progressions strictly gated by `chapter_order <= current_chapter`
 //! - Full transparent `LorebookActivationTrace` (fired vs skipped reasons) for Live Prompt Inspector.
 
 use std::collections::{HashMap, HashSet};

@@ -89,8 +89,12 @@ impl EngineClient for InProcessEngine {
                 },
             )?;
 
-            // Auto-select this provider if none is currently active.
+            // Auto-select this provider if none is currently active, and trigger pricing
+            // refresh now that a real provider is configured.
             let mut settings = self.storage.load_settings()?;
+            if settings.pricing_auto_refresh {
+                self.pricing.ensure_fresh(&self.web);
+            }
             if settings.active_provider_id.trim().is_empty() {
                 settings.active_provider_id = provider_id;
                 self.storage.save_settings(settings)?;
@@ -794,6 +798,13 @@ impl EngineClient for InProcessEngine {
         arguments_json: String,
     ) -> BoxFuture<'_, BistreResult<String>> {
         Box::pin(async move {
+            let settings = self.storage.load_settings()?;
+            if settings.trust_preset == bistre_protocol::TrustPreset::Off {
+                return Err(BistreError::with_detail(
+                    DiagnosticKey::ToolTierBlocked,
+                    "tools_disabled",
+                ));
+            }
             let args = parse_tool_args(&arguments_json)?;
             if tools::classify_tool_risk(&tool_name, &args) == ToolRiskTier::Tier3Blocked {
                 return Err(BistreError::with_detail(
@@ -814,6 +825,13 @@ impl EngineClient for InProcessEngine {
         permit_id: Option<String>,
     ) -> BoxFuture<'_, BistreResult<tools::ToolExecutionOutput>> {
         Box::pin(async move {
+            let settings = self.storage.load_settings()?;
+            if settings.trust_preset == bistre_protocol::TrustPreset::Off {
+                return Err(BistreError::with_detail(
+                    DiagnosticKey::ToolTierBlocked,
+                    "tools_disabled",
+                ));
+            }
             let args = parse_tool_args(&arguments_json)?;
             let risk = tools::classify_tool_risk(&tool_name, &args);
             if risk == ToolRiskTier::Tier3Blocked {
@@ -822,9 +840,11 @@ impl EngineClient for InProcessEngine {
                     "tier3_blocked",
                 ));
             }
-            // Tier 0 is auto-approved by core policy; anything else must present the permit the
-            // user's approval produced, for exactly these arguments and this policy revision.
-            let permit = if risk == ToolRiskTier::Tier0ReadOnly {
+            // In `Strict` preset every tool call needs an explicit permit; in `GuidedCraft` /
+            // `UnchainedSandbox`, Tier 0 read-only tools are auto-approved by core policy.
+            let auto_approve = risk == ToolRiskTier::Tier0ReadOnly
+                && settings.trust_preset != bistre_protocol::TrustPreset::Strict;
+            let permit = if auto_approve {
                 self.broker.issue(&thread_id, &tool_name, &args)
             } else {
                 let id = permit_id.ok_or_else(|| {
@@ -1013,12 +1033,6 @@ impl EngineClient for InProcessEngine {
             let key = format!("thread_context_start:{thread_id}");
             self.storage.get_kv_meta(&key)
         })
-    }
-
-    fn discover_local_servers(
-        &self,
-    ) -> BoxFuture<'_, BistreResult<Vec<providers::LocalServerDiscovery>>> {
-        Box::pin(async move { Ok(providers::discover_local_servers().await) })
     }
 
     fn discover_mcp_server(
