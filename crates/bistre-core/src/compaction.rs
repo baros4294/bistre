@@ -12,17 +12,32 @@ use bistre_protocol::{BistreError, BistreResult, DiagnosticKey, NodeRecord, Node
 use bistre_storage::StorageHandle;
 use serde_json::{Value, json};
 
-/// Rough token estimate (~4 chars/token) suitable for proactive compaction threshold checks.
+/// Exact offline BPE token count (`o200k_base` default) for compaction and prompt budgets.
 pub fn estimate_tokens_for_text(text: &str) -> u64 {
-    let chars = text.chars().count();
-    u64::try_from(chars.div_ceil(4)).unwrap_or(0)
+    crate::tokenizer::count_tokens(text)
 }
 
-/// Estimates total context tokens across system prompt and active branch history.
+/// Exact offline BPE token count matched to `model_id` (`o200k_base` / `cl100k_base` / Qwen / GLM).
+pub fn estimate_tokens_for_model(text: &str, model_id: Option<&str>) -> u64 {
+    crate::tokenizer::count_tokens_for_model(text, model_id)
+}
+
+/// Counts total context tokens across system prompt and active branch history.
 pub fn estimate_branch_tokens(system_prompt: &str, history: &[NodeRecord]) -> u64 {
-    let mut total = estimate_tokens_for_text(system_prompt);
+    estimate_branch_tokens_for_model(system_prompt, history, None)
+}
+
+/// Counts total context tokens across system prompt and active branch history using the best
+/// embedded BPE tokenizer for `model_id`.
+pub fn estimate_branch_tokens_for_model(
+    system_prompt: &str,
+    history: &[NodeRecord],
+    model_id: Option<&str>,
+) -> u64 {
+    let encoding = crate::tokenizer::encoding_for_model(model_id);
+    let mut total = crate::tokenizer::count_tokens_with(system_prompt, encoding);
     for node in history {
-        total = total.saturating_add(estimate_tokens_for_text(&node.content));
+        total = total.saturating_add(crate::tokenizer::count_tokens_with(&node.content, encoding));
         total = total.saturating_add(6); // role/frame overhead
     }
     total
@@ -272,8 +287,8 @@ mod tests {
                 .map(|u| u.history_tokens)
         };
         let full = usage(&leaf)?;
-        // Five ~2,400-char turns: the trailing assistant turn is not resent.
-        assert!(full >= 5 * 600, "five ~2,400-char turns: {full}");
+        // Five 400-word turns (exact BPE ~400 tokens/turn); trailing assistant turn is not resent.
+        assert!(full >= 5 * 400, "five 400-word turns: {full}");
 
         // A compaction keeping two turns lowers the gauge the way it lowers the real request.
         let summary = create_reversible_compaction(&storage, &thread.id, &created, 2, None)?;
@@ -292,10 +307,13 @@ mod tests {
         let dir = tempdir()?;
         let storage = StorageHandle::open(dir.path().join("split.sqlite"))?;
         let thread = storage.create_thread(None, "Split", ThreadMode::Chat, None, None)?;
+        let system_text = "x".repeat(400);
+        let user_text = "y".repeat(800);
+        let draft_text = "z".repeat(40);
         storage.update_thread(
             thread.id.clone(),
             bistre_protocol::ThreadPatch {
-                system_prompt_override: Some(Some("x".repeat(400))),
+                system_prompt_override: Some(Some(system_text.clone())),
                 ..bistre_protocol::ThreadPatch::default()
             },
         )?;
@@ -303,21 +321,21 @@ mod tests {
             thread.id.clone(),
             None,
             NodeRole::User,
-            "y".repeat(800),
+            user_text.clone(),
             None,
         )?;
-        let usage = crate::engine_runs::branch_context_usage(
-            &storage,
-            &thread.id,
-            &user.id,
-            &"z".repeat(40),
-        )?;
-        assert_eq!(usage.system_tokens, 100);
+        let usage =
+            crate::engine_runs::branch_context_usage(&storage, &thread.id, &user.id, &draft_text)?;
+        let exp_sys = estimate_tokens_for_text(&system_text);
+        let exp_hist = estimate_tokens_for_text(&user_text) + 6;
+        let exp_draft = estimate_tokens_for_text(&draft_text);
+        assert!(exp_sys > 0);
+        assert_eq!(usage.system_tokens, exp_sys);
         assert_eq!(usage.story_tokens, 0, "chat mode adds no story prompt");
         assert_eq!(usage.history_turns, 1);
-        assert_eq!(usage.history_tokens, 200 + 6, "one turn plus its frame");
-        assert_eq!(usage.draft_tokens, 10);
-        assert_eq!(usage.total(), 100 + 206 + 10);
+        assert_eq!(usage.history_tokens, exp_hist, "one turn plus its frame");
+        assert_eq!(usage.draft_tokens, exp_draft);
+        assert_eq!(usage.total(), exp_sys + exp_hist + exp_draft);
         Ok(())
     }
 

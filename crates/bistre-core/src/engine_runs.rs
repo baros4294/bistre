@@ -782,39 +782,52 @@ pub(crate) fn branch_context_usage(
     let thread = storage
         .get_thread(thread_id)?
         .ok_or_else(|| BistreError::new(DiagnosticKey::StorageNotFound))?;
+    let settings = storage.load_settings()?;
+    let assistant = storage
+        .list_assistants()?
+        .into_iter()
+        .find(|a| a.id == thread.assistant_id);
     let base_prompt = match thread.system_prompt_override.clone() {
         Some(prompt) => prompt,
-        None => storage
-            .list_assistants()?
-            .into_iter()
-            .find(|a| a.id == thread.assistant_id)
-            .map_or_default(|a| a.system_prompt),
+        None => assistant
+            .as_ref()
+            .map_or_default(|a| a.system_prompt.clone()),
     };
-    let base_prompt = with_user_name(
-        base_prompt,
-        &storage.load_settings()?.user_display_name,
-        thread.mode,
-    );
+    let active_model = thread
+        .model_id_override
+        .as_deref()
+        .filter(|m| !m.trim().is_empty())
+        .or_else(|| {
+            assistant
+                .as_ref()
+                .map(|a| a.default_model_id.as_str())
+                .filter(|m| !m.trim().is_empty())
+        })
+        .or_else(|| {
+            let m = settings.active_model_id.as_str();
+            (!m.trim().is_empty()).then_some(m)
+        });
+    let base_prompt = with_user_name(base_prompt, &settings.user_display_name, thread.mode);
     let history = project_turn_history(storage, thread_id, leaf_id)?;
-    let system_tokens = compaction::estimate_tokens_for_text(&base_prompt);
+    let system_tokens = compaction::estimate_tokens_for_model(&base_prompt, active_model);
     let story_tokens = if thread.mode == ThreadMode::Write {
         let compiled =
             compile_write_mode_system_prompt(storage, thread_id, &base_prompt, &history)?;
-        compaction::estimate_tokens_for_text(&compiled).saturating_sub(system_tokens)
+        compaction::estimate_tokens_for_model(&compiled, active_model).saturating_sub(system_tokens)
     } else {
         0
     };
     Ok(crate::ContextUsage {
         system_tokens,
         story_tokens,
-        history_tokens: compaction::estimate_branch_tokens("", &history),
+        history_tokens: compaction::estimate_branch_tokens_for_model("", &history, active_model),
         history_turns: u32::try_from(history.len()).unwrap_or(u32::MAX),
-        draft_tokens: compaction::estimate_tokens_for_text(draft.trim()),
+        draft_tokens: compaction::estimate_tokens_for_model(draft.trim(), active_model),
     })
 }
 
-/// Reserves Wallet Shield spend for one paid request. The estimate prices the prompt's input
-/// tokens (about 4 characters each) when live rates are known; output is settled afterwards.
+/// Reserves Wallet Shield spend for one paid request. Prices the prompt's model-matched BPE
+/// input tokens when live rates are known; output is settled afterwards.
 async fn reserve_paid_request(
     storage: &Arc<StorageHandle>,
     services: &StreamServices,
@@ -827,12 +840,12 @@ async fn reserve_paid_request(
     let settings = storage.load_settings().map_err(|err| {
         BistreError::with_detail(DiagnosticKey::WalletCheckUnavailable, err.key.as_key())
     })?;
-    let prompt_chars = history
-        .iter()
-        .map(|n| n.content.len())
-        .fold(system_prompt.len(), usize::saturating_add);
     let estimate_usage = UsageMetrics {
-        input_tokens: u64::try_from(prompt_chars / 4).unwrap_or(u64::MAX),
+        input_tokens: compaction::estimate_branch_tokens_for_model(
+            system_prompt,
+            history,
+            Some(model),
+        ),
         ..UsageMetrics::default()
     };
     let rates = services.pricing.rates_for(model).await;

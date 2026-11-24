@@ -48,7 +48,8 @@ The specs describe the target. This table records what the code does today; upda
 | Native model tool calls (`builtin_tool_schemas`, `heal_and_dedup_tool_calls`) | Built, not wired | requests send no tools; tools run only through FFI |
 | MCP over Streamable HTTP, `2026-07-28` → `2025-11-25` | Partial | no stdio transport, restart budget, bearer tokens, or deferred `mcp_schema`; new session per call (`ADR-0018`) |
 | `PublicWebTransport` (public-IP pinning, validated redirects) | Implemented | `ssrf.rs` |
-| OTA: streamed SHA-256, mandatory minisign, `VerifiedManifest` | Implemented | disabled until a release key is embedded (`OFFICIAL_RELEASE_PUBKEY_B64`) |
+| OTA: streamed SHA-256, mandatory minisign, `VerifiedManifest` | Implemented | official Ed25519 key (`84A60109283936B3`) embedded in `OFFICIAL_RELEASE_PUBKEY_B64`; `MINISIGN_SECRET_KEY`/`MINISIGN_PASSWORD` provisioned in GitHub `release` environment |
+| Offline BPE tokenizer (`o200k_base`, `o200k_harmony`, `cl100k_base`, `qwen2`, `qwen3_5`, `glm4`, `glm5`) | Implemented | `crates/bistre-core/src/tokenizer.rs` (`tiktoken 5.1.1` + `ruzstd`, single-threaded, zero network, MIT/Apache-2.0 vocabs) |
 | Updater crash-loop rollback | Built, not wired | `bistre-updater` only runs `--verify-manifest`; `plan_next_boot` is test-only |
 | Pricing registry: daily cached refresh, Settings toggle | Implemented | `registry.rs` |
 | Usage dedupe by `request_id` | Planned | |

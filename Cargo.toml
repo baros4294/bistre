@@ -38,6 +38,7 @@ grep-searcher = "0.1"
 grep-regex = "0.1"
 imara-diff = "0.2"
 regex = "1.11"
+tiktoken = { version = "5.1.1", default-features = false, features = ["vocab-o200k_base", "vocab-cl100k_base", "vocab-qwen2", "vocab-qwen3_5", "vocab-glm4", "vocab-glm5"] }
 base64 = "0.23"
 zip = { version = "9.8", default-features = false, features = ["deflate"] }
 uuid = { version = "1.18", features = ["v7", "serde"] }
