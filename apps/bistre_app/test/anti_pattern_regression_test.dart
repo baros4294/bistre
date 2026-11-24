@@ -13,6 +13,7 @@ import 'package:bistre_app/features/chat/folio_message_feed.dart';
 import 'package:bistre_app/features/chat/markdown_folio_view.dart';
 import 'package:bistre_app/features/chat/tool_timeline_view.dart';
 import 'package:bistre_app/features/shell/folio_controller.dart';
+import 'package:bistre_app/features/shell/live_turn_notifier.dart';
 import 'package:bistre_app/features/sidebar/folio_sidebar.dart';
 import 'package:bistre_app/l10n/bistre_localizations.dart';
 import 'package:bistre_app/l10n/l10n_keys.g.dart';
@@ -86,6 +87,8 @@ void main() {
       BistreApp(l10nController: l10n, folioController: ctrl),
     );
     await tester.pumpAndSettle();
+    // This test counts bridge batches; the reading pacer has its own test below.
+    ctrl.liveTurn.shouldPace = () => false;
     final threadId = ctrl.activeThread!.id;
     gw.emit(RunStartedEvent(threadId: threadId, nodeId: 'live'));
     await tester.pump();
@@ -634,4 +637,48 @@ void main() {
       expect(controller.offset, 368);
     },
   );
+
+  testWidgets(
+    'streamed text reveals at a reading pace and catches up elastically',
+    (WidgetTester tester) async {
+      final live = LiveTurnNotifier()..shouldPace = () => true;
+      addTearDown(live.dispose);
+      live.start('t', 'n');
+      live.appendText('t', 'a' * 20);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      final early = live.value!.text.length;
+      expect(early, greaterThan(0));
+      expect(
+        early,
+        lessThan(20),
+        reason: 'a small backlog reveals at ~92 chars/s',
+      );
+
+      live.appendText(
+        't',
+        '\u{1F600}' * 600,
+      ); // a big burst: 1,200 UTF-16 units
+      // ~0.6 s to shed the burst, then the last 28 characters at reading pace (~0.3 s).
+      for (var i = 0; i < 70; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        final shown = live.value!.text;
+        expect(
+          shown.isEmpty || !_endsWithLoneHighSurrogate(shown),
+          isTrue,
+          reason: 'never splits a surrogate pair',
+        );
+      }
+      expect(live.value!.text.length, 20 + 1200, reason: 'elastic catch-up');
+
+      live.shouldPace = () => false; // Reduce motion: each batch shows at once
+      live.appendText('t', 'z');
+      expect(live.value!.text.endsWith('z'), isTrue);
+    },
+  );
+}
+
+bool _endsWithLoneHighSurrogate(String s) {
+  final last = s.codeUnitAt(s.length - 1);
+  return last >= 0xD800 && last <= 0xDBFF;
 }

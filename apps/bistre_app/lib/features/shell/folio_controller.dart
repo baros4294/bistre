@@ -256,7 +256,18 @@ class FolioController extends ChangeNotifier {
   String? _streamingNodeId;
 
   /// Leaf notifier read only by the streaming message widget.
-  final LiveTurnNotifier liveTurn = LiveTurnNotifier();
+  late final LiveTurnNotifier liveTurn = LiveTurnNotifier()
+    ..shouldPace = _paceStreaming;
+
+  /// Streaming text reveals at a reading pace unless motion is reduced or memory is low.
+  bool _paceStreaming() =>
+      !_lowMemoryMode &&
+      !_settings.reduceMotionOverride &&
+      !WidgetsBinding
+          .instance
+          .platformDispatcher
+          .accessibilityFeatures
+          .disableAnimations;
 
   // Low-memory hardware mode (< 4 GB RAM or Android isLowRamDevice).
   bool _lowMemoryMode = false;

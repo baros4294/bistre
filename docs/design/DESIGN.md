@@ -108,8 +108,9 @@ Owner decisions (2026-11-24): Bistre should feel at least as alive as Parchment 
   - programmatic scrolls (Jump to latest, search hits, branch switches) glide over `travelling`.
 - **Streaming text is paced**: replies and thinking reveal in step with the display frame clock:
   - ~92 characters per second, carrying fractional characters between frames;
-  - elastic catch-up when more than 28 characters are waiting;
-  - a fast drain when the stream ends.
+  - elastic catch-up when more than 28 characters are waiting (the excess shrinks on an 80 ms time constant);
+  - the rest appears at once when the reply is committed.
+  Implemented in `LiveTurnNotifier` (frame callbacks only while text is waiting, so zero idle frames); Reduce motion and low-memory mode publish each batch as it arrives.
   The text never lags the stream by more than a fraction of a second.
 - **Reduced motion**: if `MediaQuery.maybeReduceMotionOf(context)`, `maybeDisableAnimationsOf`, `maybeAccessibleNavigationOf`, or the user's `reduceMotionOverride` is true, every duration and spring above resolves to an instant change, including ones already running, and streamed text appears as it arrives.
 - **Lint**: the `bistre_lints` layout-animation rule allows height animation for disclosures; it is narrowed in the same change that implements them.
