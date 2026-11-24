@@ -277,6 +277,91 @@ class _FolioDrawerFrameState extends State<FolioDrawerFrame>
   }
 }
 
+/// Calm pulsing activity dot (Parchment v2.6.0 `KissStreamingPulseDot`, 750 ms loop).
+/// Static under Reduce motion; uses only GPU opacity + scale transforms.
+class StreamingPulseDot extends StatefulWidget {
+  const StreamingPulseDot({
+    super.key,
+    this.color,
+    this.size = 7,
+    this.reduceMotionOverride = false,
+  });
+
+  final Color? color;
+  final double size;
+  final bool reduceMotionOverride;
+
+  @override
+  State<StreamingPulseDot> createState() => _StreamingPulseDotState();
+}
+
+class _StreamingPulseDotState extends State<StreamingPulseDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+  late final Animation<double> _scale;
+  bool _running = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 750),
+    );
+    final curved = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOut,
+    );
+    _opacity = Tween<double>(begin: 0.35, end: 1.0).animate(curved);
+    _scale = Tween<double>(begin: 0.82, end: 1.0).animate(curved);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduce = BistreMotion.shouldReduceMotion(
+      context,
+      reduceMotionOverride: widget.reduceMotionOverride,
+    );
+    if (reduce) {
+      if (_running) {
+        _controller.stop();
+        _running = false;
+      }
+      _controller.value = 1.0;
+    } else if (!_running) {
+      _running = true;
+      _controller.repeat(reverse: true).ignore();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = widget.color ?? BistreTheme.of(context).accentBrass;
+    return RepaintBoundary(
+      child: FadeTransition(
+        opacity: _opacity,
+        child: ScaleTransition(
+          scale: _scale,
+          child: SizedBox.square(
+            dimension: widget.size,
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Calm breathing ink-nib cursor animated strictly via `FadeTransition` while streaming.
 class FolioStreamingCursor extends StatefulWidget {
   const FolioStreamingCursor({super.key, this.reduceMotionOverride = false});

@@ -60,7 +60,7 @@ class _ContextMenuRegionState extends State<ContextMenuRegion> {
       controller: _menu,
       overlayBuilder: _buildMenu,
       child: GestureDetector(
-        behavior: HitTestBehavior.deferToChild,
+        behavior: HitTestBehavior.opaque,
         onSecondaryTapUp: (d) => _open(d.globalPosition),
         child: widget.child,
       ),

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/widgets.dart';
 
 import '../../design/bistre_controls.dart';
+import '../../design/bistre_decorations.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
@@ -443,7 +444,9 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
                 BistreSettingRow(
                   label: l10n.t(L10nKey.settingsAppearanceTheme),
                   trailing: BistreSegmentedControl<String>(
-                    selected: s.theme,
+                    selected: s.theme == 'system'
+                        ? 'system'
+                        : (ctrl.isDark ? 'night' : 'day'),
                     onSelected: (v) => unawaited(
                       ctrl.updateSettings(s.copyWith(theme: v), quiet: true),
                     ),
@@ -467,6 +470,22 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
                         leading: const BistreIcon(BistreUiIcon.moon, size: 13),
                       ),
                     ],
+                  ),
+                ),
+                BistreSettingRow(
+                  label: l10n.t(L10nKey.settingsAppearanceThemePresets),
+                  bottom: _ThemePresetChoices(
+                    activePresetId: BistreThemePreset.activePresetId(
+                      s.theme,
+                      isDark: ctrl.isDark,
+                    ),
+                    l10n: l10n,
+                    onSelectPreset: (presetId) => unawaited(
+                      ctrl.updateSettings(
+                        s.copyWith(theme: presetId, accentPreset: 'preset'),
+                        quiet: true,
+                      ),
+                    ),
                   ),
                 ),
                 BistreSettingRow(
@@ -844,12 +863,16 @@ class _AccentSwatchPillState extends State<_AccentSwatchPill> {
                     ),
                   ),
                   const SizedBox(width: 7),
-                  InkText(
-                    widget.label,
-                    role: InkTextRole.captionMeta,
-                    color: widget.selected
-                        ? theme.inkPrimary
-                        : theme.inkSecondary,
+                  Flexible(
+                    child: InkText(
+                      widget.label,
+                      role: InkTextRole.captionMeta,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      color: widget.selected
+                          ? theme.inkPrimary
+                          : theme.inkSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -920,6 +943,224 @@ class _FontListRowState extends State<_FontListRow> {
                       color: theme.accentBrass,
                     ),
                 ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Visual gallery of the 9 color theme presets (`ParchmentProfileSettings.kt:144-192`).
+class _ThemePresetChoices extends StatelessWidget {
+  const _ThemePresetChoices({
+    required this.activePresetId,
+    required this.l10n,
+    required this.onSelectPreset,
+  });
+
+  final String activePresetId;
+  final BistreLocalizationController l10n;
+  final ValueChanged<String> onSelectPreset;
+
+  static String _presetLabel(BistreLocalizationController l10n, String id) =>
+      switch (id) {
+        'day' => l10n.t(L10nKey.settingsAppearancePresetWarmSepia),
+        'blue_cream' => l10n.t(L10nKey.settingsAppearancePresetBlueCream),
+        'night_blue' => l10n.t(L10nKey.settingsAppearancePresetNightBlue),
+        'warm_ivory' => l10n.t(L10nKey.settingsAppearancePresetWarmIvory),
+        'deep_sepia' => l10n.t(L10nKey.settingsAppearancePresetDeepSepia),
+        'night' => l10n.t(L10nKey.settingsAppearancePresetWarmDark),
+        'pure_black' => l10n.t(L10nKey.settingsAppearancePresetPureBlack),
+        'clean_paper' => l10n.t(L10nKey.settingsAppearancePresetCleanPaper),
+        'dark_slate' => l10n.t(L10nKey.settingsAppearancePresetDarkSlate),
+        _ => l10n.t(L10nKey.settingsAppearancePresetWarmSepia),
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = textScaleOf(context);
+    final sampleAa = l10n.t(L10nKey.settingsAppearanceThemeSampleAa);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final desired = (132.0 * scale).clamp(132.0, 210.0);
+        final cardWidth =
+            constraints.hasBoundedWidth && constraints.maxWidth < desired
+            ? constraints.maxWidth
+            : desired;
+        return Wrap(
+          spacing: BistreSpacing.s8,
+          runSpacing: BistreSpacing.s8,
+          children: [
+            for (final preset in BistreThemePreset.presets)
+              _ThemePreviewCard(
+                preset: preset,
+                label: _presetLabel(l10n, preset.id),
+                sampleAa: sampleAa,
+                width: cardWidth,
+                selected: activePresetId == preset.id,
+                onTap: () => onSelectPreset(preset.id),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Miniature preview of the app in [preset]: sidebar strip, page, sample letters, and accent rule
+/// (`ParchmentProfileSettings.kt:164-192`).
+class _ThemePreviewCard extends StatefulWidget {
+  const _ThemePreviewCard({
+    required this.preset,
+    required this.label,
+    required this.sampleAa,
+    required this.width,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final BistreThemePreset preset;
+  final String label;
+  final String sampleAa;
+  final double width;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  State<_ThemePreviewCard> createState() => _ThemePreviewCardState();
+}
+
+class _ThemePreviewCardState extends State<_ThemePreviewCard> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = BistreTheme.of(context);
+    final preview = widget.preset.theme;
+    return Semantics(
+      button: true,
+      selected: widget.selected,
+      label: widget.label,
+      excludeSemantics: true,
+      onTap: widget.onTap,
+      child: FocusableActionDetector(
+        mouseCursor: SystemMouseCursors.click,
+        onShowFocusHighlight: (f) {
+          if (_focused != f) setState(() => _focused = f);
+        },
+        actions: <Type, Action<Intent>>{
+          ActivateIntent: CallbackAction<ActivateIntent>(
+            onInvoke: (_) {
+              widget.onTap();
+              return null;
+            },
+          ),
+          ButtonActivateIntent: CallbackAction<ButtonActivateIntent>(
+            onInvoke: (_) {
+              widget.onTap();
+              return null;
+            },
+          ),
+        },
+        child: PressFeedback(
+          pressScale: 0.97,
+          hoverScale: 1.01,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onTap,
+            child: SizedBox(
+              width: widget.width,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: theme.bgElevated,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: widget.selected || _focused
+                        ? theme.accentWax
+                        : theme.borderHairline,
+                    width: widget.selected || _focused ? 1.5 : 1,
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.all(6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: ColoredBox(
+                          color: preview.bgCanvas,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(minHeight: 56),
+                            child: IntrinsicHeight(
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  SizedBox(
+                                    width: 24,
+                                    child: ColoredBox(color: preview.bgSurface),
+                                  ),
+                                  Expanded(
+                                    child: Padding(
+                                      padding: const EdgeInsetsDirectional.all(
+                                        8,
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          InkText(
+                                            widget.sampleAa,
+                                            role: InkTextRole.labelStrong,
+                                            color: preview.inkPrimary,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 5),
+                                          SizedBox(
+                                            width: 40,
+                                            height: 4,
+                                            child: DecoratedBox(
+                                              decoration: BoxDecoration(
+                                                color: preview.accentWax,
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Padding(
+                        padding: const EdgeInsetsDirectional.symmetric(
+                          horizontal: 2,
+                        ),
+                        child: InkText(
+                          widget.label,
+                          role: InkTextRole.captionMeta,
+                          color: widget.selected
+                              ? theme.accentWax
+                              : theme.inkPrimary,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),

@@ -584,6 +584,8 @@ class _FolioComposerState extends State<FolioComposer> {
                           builder: (context, usage, _) => ContextGaugeRing(
                             usage: usage,
                             limitTokens: ctrl.activeContextLimitOrFetch,
+                            sessionSpendMicros: ctrl.activeThreadSpendMicros,
+                            uploadedFilesCount: ctrl.attachments.length,
                             showLabel:
                                 MediaQuery.sizeOf(context).width / scale >= 600,
                             loadWithDraft: () => ctrl.contextUsageWithDraft(

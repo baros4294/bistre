@@ -135,9 +135,23 @@ extension FolioThreadActions on FolioController {
     final tid = _activeThread?.id;
     final parentUserId = assistantNode.parentId;
     if (tid == null || parentUserId == null) return;
+    final previousNodeId = assistantNode.id;
     try {
       _lastDiagnosticKey = null;
       await _gateway.regenerateReply(threadId: tid, userNodeId: parentUserId);
+      if (_disposed) return;
+      showToast(
+        L10nKey.toastRegenerated,
+        actionKey: L10nKey.toastRegeneratedPrevious,
+        duration: const Duration(seconds: 8),
+        onAction: () {
+          dismissToast();
+          if (_streamingThreadId == tid) {
+            unawaited(cancelStreaming());
+          }
+          selectSiblingNodeById(parentUserId, previousNodeId);
+        },
+      );
     } catch (e) {
       _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
       _notify();

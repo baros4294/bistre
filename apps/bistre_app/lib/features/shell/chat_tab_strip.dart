@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import '../../bridge/bistre_engine.dart';
 import '../../design/bistre_decorations.dart';
 import '../../design/bistre_icons.dart';
+import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
 import '../../design/press_feedback.dart';
@@ -12,9 +13,10 @@ import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import 'folio_controller.dart';
 
-/// Open chats as tabs under the header (Parchment v2.6.0). Shown once two or more chats are
-/// open; the current tab carries the one `rubricMark`. Switching tabs is a 100+/day action, so
-/// nothing animates.
+/// Open chats as tabs under the header (Parchment v2.6.0 `DesktopBrowserTabBar`,
+/// `ParchmentModalsAndNavigation.kt:85-196`). Shown once two or more chats are open; the current
+/// tab carries the one `rubricMark`, streaming tabs pulse, and trailing `+` / `N tabs` buttons
+/// create a new tab or open the tab overview modal.
 class ChatTabStrip extends StatelessWidget {
   const ChatTabStrip({super.key, required this.controller});
 
@@ -24,19 +26,44 @@ class ChatTabStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final tabs = controller.openTabs;
     if (tabs.length < 2) return const SizedBox.shrink();
+    final l10n = BistreLocalizations.of(context);
     final activeId = controller.activeThread?.id;
     return SizedBox(
       height: 36,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
+      child: Row(
         children: [
-          for (final thread in tabs)
-            _ChatTab(
-              thread: thread,
-              selected: thread.id == activeId,
-              onSelect: () => unawaited(controller.selectThread(thread.id)),
-              onClose: () => unawaited(controller.closeTab(thread.id)),
+          Expanded(
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                for (final thread in tabs)
+                  _ChatTab(
+                    thread: thread,
+                    selected: thread.id == activeId,
+                    streaming: controller.isThreadStreaming(thread.id),
+                    reduceMotionOverride: controller.reduceMotionOverride,
+                    onSelect: () =>
+                        unawaited(controller.selectThread(thread.id)),
+                    onClose: () => unawaited(controller.closeTab(thread.id)),
+                  ),
+                BistreIconButton(
+                  icon: BistreUiIcon.plus,
+                  size: 13,
+                  dimension: 30,
+                  semanticsLabel: l10n.t(L10nKey.shellTabsNewTab),
+                  onPressed: () => unawaited(controller.createNewFolio()),
+                ),
+              ],
             ),
+          ),
+          const SizedBox(width: BistreSpacing.s8),
+          EngravedButton(
+            label: l10n.t(L10nKey.shellTabsCount, <String, Object?>{
+              'count': tabs.length,
+            }),
+            compact: true,
+            onPressed: controller.openTabSwitcher,
+          ),
         ],
       ),
     );
@@ -47,12 +74,16 @@ class _ChatTab extends StatefulWidget {
   const _ChatTab({
     required this.thread,
     required this.selected,
+    required this.streaming,
+    required this.reduceMotionOverride,
     required this.onSelect,
     required this.onClose,
   });
 
   final EngineThread thread;
   final bool selected;
+  final bool streaming;
+  final bool reduceMotionOverride;
   final VoidCallback onSelect;
   final VoidCallback onClose;
 
@@ -104,6 +135,13 @@ class _ChatTabState extends State<_ChatTab> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (widget.streaming) ...[
+                        StreamingPulseDot(
+                          color: theme.accentBrass,
+                          reduceMotionOverride: widget.reduceMotionOverride,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 200),
                         child: InkText(

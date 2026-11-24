@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
+import '../../design/context_menu.dart';
 import '../../design/disclosure_reveal.dart';
 import '../../design/ink_primitives.dart';
 import '../../design/math_font_gate.dart';
@@ -658,6 +659,7 @@ class _FencedCodeCard extends StatefulWidget {
 class _FencedCodeCardState extends State<_FencedCodeCard> {
   bool _copied = false;
   bool _folded = false;
+  Timer? _copiedTimer;
 
   /// Completed chunk texts and the widgets built for them. While a fence streams, only the
   /// growing tail chunk is re-highlighted; identical widget instances let Flutter skip rebuild,
@@ -665,6 +667,12 @@ class _FencedCodeCardState extends State<_FencedCodeCard> {
   final List<String> _chunkTexts = <String>[];
   final List<Widget> _chunkWidgets = <Widget>[];
   Object? _chunkStyleKey;
+
+  @override
+  void dispose() {
+    _copiedTimer?.cancel();
+    super.dispose();
+  }
 
   List<Widget> _codeChunks(String code, BistreThemeData theme, bool wrap) {
     final styleKey = Object.hash(theme, wrap);
@@ -720,7 +728,8 @@ class _FencedCodeCardState extends State<_FencedCodeCard> {
   void _handleCopy() {
     widget.onCopy();
     setState(() => _copied = true);
-    Future<void>.delayed(const Duration(milliseconds: 1400), () {
+    _copiedTimer?.cancel();
+    _copiedTimer = Timer(const Duration(milliseconds: 1400), () {
       if (mounted) setState(() => _copied = false);
     });
   }
@@ -753,117 +762,165 @@ class _FencedCodeCardState extends State<_FencedCodeCard> {
     );
 
     // Source code is always left-to-right even inside RTL Arabic conversations.
-    return Directionality(
-      textDirection: TextDirection.ltr,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: codeSurface,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: theme.borderHairline),
+    // Right-click menu exposes the same actions as the code card header (v2.6.0 parity).
+    return ContextMenuRegion(
+      entries: <ContextMenuEntry>[
+        ContextMenuEntry(
+          label: l10n.t(L10nKey.chatCodeCopy),
+          icon: BistreUiIcon.copy,
+          onSelected: _handleCopy,
+        ),
+        if (overrides != null)
+          ContextMenuEntry(
+            label: wrap
+                ? l10n.t(L10nKey.chatCodeNoWrap)
+                : l10n.t(L10nKey.chatCodeWrap),
+            icon: BistreUiIcon.wrap,
+            onSelected: () => overrides.set(fenceKey, !wrap),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ColoredBox(
-                color: headerSurface,
-                child: Padding(
-                  padding: const EdgeInsetsDirectional.fromSTEB(12, 5, 8, 5),
-                  child: Row(
+        ContextMenuEntry(
+          label: _folded
+              ? l10n.t(L10nKey.chatCodeUnfold)
+              : l10n.t(L10nKey.chatCodeFold),
+          icon: _folded ? BistreUiIcon.chevronDown : BistreUiIcon.chevronUp,
+          onSelected: () => setState(() => _folded = !_folded),
+        ),
+        if (widget.onSave != null)
+          ContextMenuEntry(
+            label: l10n.t(L10nKey.chatCodeSave),
+            icon: BistreUiIcon.download,
+            onSelected: () => widget.onSave!(widget.code, widget.language),
+          ),
+      ],
+      child: Directionality(
+        textDirection: TextDirection.ltr,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: codeSurface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: theme.borderHairline),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ColoredBox(
+                  color: headerSurface,
+                  child: Padding(
+                    padding: const EdgeInsetsDirectional.fromSTEB(12, 5, 8, 5),
+                    child: Row(
+                      children: [
+                        BistreIcon(
+                          BistreUiIcon.code,
+                          size: 13,
+                          color: theme.accentBrass,
+                        ),
+                        const SizedBox(width: 7),
+                        Expanded(
+                          child: InkText(
+                            langLabel,
+                            role: InkTextRole.captionMeta,
+                            color: theme.inkSecondary,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        // Parchment v2.6.0: wrap, fold, download, and copy as equal icon buttons.
+                        // A RepaintBoundary keeps streaming line-count updates from repainting
+                        // the action buttons on every delta frame (Spec 11).
+                        RepaintBoundary(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (overrides != null)
+                                BistreIconButton(
+                                  icon: BistreUiIcon.wrap,
+                                  size: 13,
+                                  dimension: 26,
+                                  active: wrap,
+                                  semanticsLabel: wrap
+                                      ? l10n.t(L10nKey.chatCodeNoWrap)
+                                      : l10n.t(L10nKey.chatCodeWrap),
+                                  onPressed: () =>
+                                      overrides.set(fenceKey, !wrap),
+                                ),
+                              BistreIconButton(
+                                icon: _folded
+                                    ? BistreUiIcon.chevronDown
+                                    : BistreUiIcon.chevronUp,
+                                size: 13,
+                                dimension: 26,
+                                semanticsLabel: _folded
+                                    ? l10n.t(L10nKey.chatCodeUnfold)
+                                    : l10n.t(L10nKey.chatCodeFold),
+                                onPressed: () =>
+                                    setState(() => _folded = !_folded),
+                              ),
+                              if (widget.onSave != null)
+                                BistreIconButton(
+                                  icon: BistreUiIcon.download,
+                                  size: 13,
+                                  dimension: 26,
+                                  semanticsLabel: l10n.t(L10nKey.chatCodeSave),
+                                  onPressed: () => widget.onSave!(
+                                    widget.code,
+                                    widget.language,
+                                  ),
+                                ),
+                              BistreIconButton(
+                                icon: _copied
+                                    ? BistreUiIcon.check
+                                    : BistreUiIcon.copy,
+                                size: 13,
+                                dimension: 26,
+                                color: _copied
+                                    ? theme.statusOk
+                                    : theme.inkSecondary,
+                                semanticsLabel: _copied
+                                    ? l10n.t(L10nKey.chatActionCopied)
+                                    : l10n.t(L10nKey.chatCodeCopy),
+                                onPressed: _handleCopy,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                DisclosureReveal(
+                  open: !_folded,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      BistreIcon(
-                        BistreUiIcon.code,
-                        size: 13,
-                        color: theme.accentBrass,
-                      ),
-                      const SizedBox(width: 7),
-                      Expanded(
-                        child: InkText(
-                          langLabel,
-                          role: InkTextRole.captionMeta,
-                          color: theme.inkSecondary,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                      const FolioDivider(),
+                      if (wrap)
+                        Padding(
+                          padding: const EdgeInsetsDirectional.fromSTEB(
+                            14,
+                            12,
+                            18,
+                            12,
+                          ),
+                          child: codeText,
+                        )
+                      else
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsetsDirectional.fromSTEB(
+                            14,
+                            12,
+                            18,
+                            12,
+                          ),
+                          child: codeText,
                         ),
-                      ),
-                      // Parchment v2.6.0: wrap, fold, download, and copy as equal icon buttons.
-                      if (overrides != null)
-                        BistreIconButton(
-                          icon: BistreUiIcon.wrap,
-                          size: 13,
-                          dimension: 26,
-                          active: wrap,
-                          semanticsLabel: wrap
-                              ? l10n.t(L10nKey.chatCodeNoWrap)
-                              : l10n.t(L10nKey.chatCodeWrap),
-                          onPressed: () => overrides.set(fenceKey, !wrap),
-                        ),
-                      BistreIconButton(
-                        icon: _folded
-                            ? BistreUiIcon.chevronDown
-                            : BistreUiIcon.chevronUp,
-                        size: 13,
-                        dimension: 26,
-                        semanticsLabel: _folded
-                            ? l10n.t(L10nKey.chatCodeUnfold)
-                            : l10n.t(L10nKey.chatCodeFold),
-                        onPressed: () => setState(() => _folded = !_folded),
-                      ),
-                      if (widget.onSave != null)
-                        BistreIconButton(
-                          icon: BistreUiIcon.download,
-                          size: 13,
-                          dimension: 26,
-                          semanticsLabel: l10n.t(L10nKey.chatCodeSave),
-                          onPressed: () =>
-                              widget.onSave!(widget.code, widget.language),
-                        ),
-                      BistreIconButton(
-                        icon: _copied ? BistreUiIcon.check : BistreUiIcon.copy,
-                        size: 13,
-                        dimension: 26,
-                        color: _copied ? theme.statusOk : theme.inkSecondary,
-                        semanticsLabel: _copied
-                            ? l10n.t(L10nKey.chatActionCopied)
-                            : l10n.t(L10nKey.chatCodeCopy),
-                        onPressed: _handleCopy,
-                      ),
                     ],
                   ),
                 ),
-              ),
-              DisclosureReveal(
-                open: !_folded,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const FolioDivider(),
-                    if (wrap)
-                      Padding(
-                        padding: const EdgeInsetsDirectional.fromSTEB(
-                          14,
-                          12,
-                          18,
-                          12,
-                        ),
-                        child: codeText,
-                      )
-                    else
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsetsDirectional.fromSTEB(
-                          14,
-                          12,
-                          18,
-                          12,
-                        ),
-                        child: codeText,
-                      ),
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

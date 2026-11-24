@@ -9,9 +9,9 @@ import '../../design/bistre_decorations.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
+import '../../design/hover_hint.dart';
 import '../../design/ink_primitives.dart';
 import '../../design/press_feedback.dart';
-import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../chat/folio_composer.dart';
@@ -28,9 +28,8 @@ import '../story/story_bible_panel.dart';
 import '../studio/runs_dock_panel.dart';
 import 'chat_tab_strip.dart';
 import 'folio_controller.dart';
-
-/// The model picker shows a filter once a provider lists more models than this.
-const int _kModelFilterThreshold = 6;
+import 'model_picker_popover.dart';
+import 'tab_switcher_modal.dart';
 
 class _TogglePaletteIntent extends Intent {
   const _TogglePaletteIntent();
@@ -72,6 +71,14 @@ class _JumpPromptIntent extends Intent {
   const _JumpPromptIntent();
 }
 
+class _NextTabIntent extends Intent {
+  const _NextTabIntent();
+}
+
+class _PrevTabIntent extends Intent {
+  const _PrevTabIntent();
+}
+
 /// Studio Atelier native desktop & mobile workspace:
 /// - Workspace Mode: Left `FolioSidebar` (`268px`) + Minimal `44px` Header +
 ///   `FolioMessageFeed` + `FolioComposer` + collapsible right `ChatInspectorDrawer` (`312px`)
@@ -95,8 +102,6 @@ class _FolioShellScreenState extends State<FolioShellScreen>
   final TextEditingController _titleRenameCtrl = TextEditingController();
   final FocusNode _titleRenameFocus = FocusNode();
   final FolioOverlayController _providerPopoverCtrl = FolioOverlayController();
-  final TextEditingController _modelQuery = TextEditingController();
-  final FocusNode _modelQueryFocus = FocusNode();
   final LayerLink _providerPillLink = LayerLink();
   bool _narrowDrawerOpen = false;
   bool _isWideViewport = true;
@@ -117,6 +122,8 @@ class _FolioShellScreenState extends State<FolioShellScreen>
     if (!mounted || ctrl.settingsOpen) return false;
     if (ctrl.commandPaletteOpen) {
       ctrl.closeCommandPalette();
+    } else if (ctrl.tabSwitcherOpen) {
+      ctrl.closeTabSwitcher();
     } else if (ctrl.sessionTreeOpen) {
       ctrl.closeSessionTree();
     } else if (_providerPopoverCtrl.isShowing) {
@@ -138,8 +145,6 @@ class _FolioShellScreenState extends State<FolioShellScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _modelQuery.dispose();
-    _modelQueryFocus.dispose();
     _composerFocus.dispose();
     _searchController.dispose();
     _searchFocus.dispose();
@@ -214,6 +219,10 @@ class _FolioShellScreenState extends State<FolioShellScreen>
   ) {
     final map = <ShortcutActivator, Intent>{
       const SingleActivator(LogicalKeyboardKey.escape): const _EscapeIntent(),
+      const SingleActivator(LogicalKeyboardKey.tab, control: true):
+          const _NextTabIntent(),
+      const SingleActivator(LogicalKeyboardKey.tab, control: true, shift: true):
+          const _PrevTabIntent(),
     };
     void bind(String actionId, Intent intent) {
       final activator = _parseCombo(ctrl.shortcutFor(actionId));
@@ -392,6 +401,18 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                   return null;
                 },
               ),
+              _NextTabIntent: CallbackAction<_NextTabIntent>(
+                onInvoke: (_) {
+                  unawaited(ctrl.cycleTab(1));
+                  return null;
+                },
+              ),
+              _PrevTabIntent: CallbackAction<_PrevTabIntent>(
+                onInvoke: (_) {
+                  unawaited(ctrl.cycleTab(-1));
+                  return null;
+                },
+              ),
             },
             child: FocusScope(
               autofocus: true,
@@ -482,6 +503,7 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                           (!canDockInspector &&
                               (ctrl.inspectorOpen || ctrl.studioPaneOpen)) ||
                           ctrl.commandPaletteOpen ||
+                          ctrl.tabSwitcherOpen ||
                           ctrl.sessionTreeOpen);
                   return Stack(
                     fit: StackFit.expand,
@@ -528,6 +550,12 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                         CommandPalette(
                           controller: ctrl,
                           onTriggerSearch: _openSearchAndFocus,
+                        ),
+                      if (ctrl.tabSwitcherOpen)
+                        TabSwitcherModal(
+                          controller: ctrl,
+                          isWide: isWide,
+                          onClose: ctrl.closeTabSwitcher,
                         ),
                       if (ctrl.sessionTreeOpen)
                         SessionTreeOverlay(
@@ -670,11 +698,10 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                       if (hasProvider && activeProv != null)
                         FolioOverlay(
                           controller: _providerPopoverCtrl,
-                          overlayBuilder: (ctx) => _buildProviderQuickSwitcher(
-                            ctx,
-                            theme,
-                            l10n,
-                            ctrl,
+                          overlayBuilder: (_) => ModelPickerPopover(
+                            controller: ctrl,
+                            link: _providerPillLink,
+                            onDismiss: _providerPopoverCtrl.hide,
                           ),
                           child: CompositedTransformTarget(
                             link: _providerPillLink,
@@ -720,7 +747,24 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                   ),
                 ),
               ];
+              final openTabCount = ctrl.openTabs.length;
+              final bgStreaming = ctrl.backgroundStreamingCount;
               final trailing = <Widget>[
+                // Compact tab badge (`TopEditorialBar` `ParchmentModalsAndNavigation.kt:667-703`):
+                // shown on narrow screens once >1 tab is open or any background chat is streaming.
+                if (!isWide && (openTabCount > 1 || bgStreaming > 0)) ...[
+                  _CompactTabBadge(
+                    count: openTabCount,
+                    backgroundStreaming: bgStreaming > 0,
+                    reduceMotionOverride: ctrl.reduceMotionOverride,
+                    semanticsLabel: l10n.t(
+                      L10nKey.shellTabsCount,
+                      <String, Object?>{'count': openTabCount},
+                    ),
+                    onPressed: ctrl.openTabSwitcher,
+                  ),
+                  const SizedBox(width: 4),
+                ],
                 BistreIconButton(
                   icon: BistreUiIcon.newChat,
                   semanticsLabel: l10n.t(L10nKey.sidebarNewFolio),
@@ -842,415 +886,112 @@ class _FolioShellScreenState extends State<FolioShellScreen>
       ),
     );
   }
+}
 
-  /// Models whose id contains every word of the filter, case-insensitively.
-  List<EngineProviderModel> _filterModels(List<EngineProviderModel> models) {
-    final words = _modelQuery.text.toLowerCase().split(' ')
-      ..removeWhere((w) => w.isEmpty);
-    if (words.isEmpty) return models;
-    return [
-      for (final m in models)
-        if (words.every(m.id.toLowerCase().contains)) m,
-    ];
-  }
+/// Compact header tab counter badge shown on narrow screens (`TopEditorialBar`,
+/// `ParchmentModalsAndNavigation.kt:667-703`) when `> 1` tab is open or any
+/// background chat is streaming.
+class _CompactTabBadge extends StatefulWidget {
+  const _CompactTabBadge({
+    required this.count,
+    required this.backgroundStreaming,
+    required this.reduceMotionOverride,
+    required this.semanticsLabel,
+    required this.onPressed,
+  });
 
-  Widget _buildProviderQuickSwitcher(
-    BuildContext context,
-    BistreThemeData theme,
-    BistreLocalizationController l10n,
-    FolioController ctrl,
-  ) {
-    final dir = Directionality.of(context);
-    final activeProvider = ctrl.activeProvider;
-    final loadedModels = activeProvider != null
-        ? ctrl.modelsForProvider(activeProvider.id)
-        : const <EngineProviderModel>[];
+  final int count;
+  final bool backgroundStreaming;
+  final bool reduceMotionOverride;
+  final String semanticsLabel;
+  final VoidCallback onPressed;
 
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: _providerPopoverCtrl.hide,
-            child: const SizedBox.expand(),
-          ),
-        ),
-        CompositedTransformFollower(
-          link: _providerPillLink,
-          showWhenUnlinked: false,
-          targetAnchor: AlignmentDirectional.bottomEnd.resolve(dir),
-          followerAnchor: AlignmentDirectional.topEnd.resolve(dir),
-          offset: const Offset(0, 8),
-          child: FolioFadeSlide(
-            beginOffset: const Offset(0, -0.04),
-            reduceMotionOverride: ctrl.reduceMotionOverride,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 280),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: FolioSurface(
-                  tone: FolioTone.elevated,
-                  padding: EdgeInsetsDirectional.zero,
-                  borderRadius: 14,
-                  boxShadow: theme.floatingShadow,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const SizedBox(height: 4),
-                      for (final p in ctrl.providers)
-                        _QuickProviderOption(
-                          provider: p,
-                          subtitle: p.defaultModel.isNotEmpty
-                              ? p.defaultModel
-                              : (p.isReady
-                                    ? l10n.t(L10nKey.providerStatusConnected)
-                                    : l10n.t(
-                                        L10nKey.providerStatusNotConnected,
-                                      )),
-                          selected: activeProvider?.id == p.id,
-                          onTap: () {
-                            _providerPopoverCtrl.hide();
-                            if (p.isReady) {
-                              unawaited(
-                                ctrl.setActiveProviderAndModel(
-                                  p.id,
-                                  p.defaultModel,
-                                ),
-                              );
-                            } else {
-                              ctrl.openSettings();
-                            }
-                          },
-                        ),
-                      const SizedBox(height: 4),
-                      if (activeProvider != null &&
-                          loadedModels.isNotEmpty) ...[
-                        const FolioDivider(),
-                        Padding(
-                          padding: const EdgeInsetsDirectional.fromSTEB(
-                            14,
-                            8,
-                            14,
-                            4,
-                          ),
-                          child: InkText(
-                            l10n.t(L10nKey.providerFieldModel),
-                            role: InkTextRole.captionMeta,
-                            color: theme.inkMuted,
-                          ),
-                        ),
-                        // Long lists get a filter (v2.6.0 searchable model picker).
-                        if (loadedModels.length > _kModelFilterThreshold)
-                          Padding(
-                            padding: const EdgeInsetsDirectional.fromSTEB(
-                              10,
-                              2,
-                              10,
-                              6,
-                            ),
-                            child: QuillInput(
-                              controller: _modelQuery,
-                              focusNode: _modelQueryFocus,
-                              placeholder: l10n.t(L10nKey.chatModelSearch),
-                              maxLines: 1,
-                              compact: true,
-                              submitOnEnter: false,
-                              onSubmitted: () {},
-                              onChanged: (_) => setState(() {}),
-                            ),
-                          ),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxHeight: 260),
-                          child: SmoothScrollable(
-                            builder: (_, scroll) => ListView(
-                              controller: scroll,
-                              shrinkWrap: true,
-                              padding: EdgeInsetsDirectional.zero,
-                              children: [
-                                for (final m in _filterModels(loadedModels))
-                                  _QuickModelOption(
-                                    modelId: m.id,
-                                    selected: ctrl.activeModelId == m.id,
-                                    onTap: () {
-                                      _providerPopoverCtrl.hide();
-                                      unawaited(
-                                        ctrl.setActiveProviderAndModel(
-                                          activeProvider.id,
-                                          m.id,
-                                        ),
-                                      );
-                                    },
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                      const FolioDivider(),
-                      _QuickActionFooterRow(
-                        label: l10n.t(L10nKey.settingsTabProviders),
-                        onTap: () {
-                          _providerPopoverCtrl.hide();
-                          ctrl.openSettings();
-                        },
+  @override
+  State<_CompactTabBadge> createState() => _CompactTabBadgeState();
+}
+
+class _CompactTabBadgeState extends State<_CompactTabBadge> {
+  bool _focused = false;
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = BistreTheme.of(context);
+    final active = widget.backgroundStreaming;
+    return TapTargetExpander(
+      minSize: minTapTarget,
+      child: HoverHint(
+        message: widget.semanticsLabel,
+        child: PressFeedback(
+          child: Semantics(
+            button: true,
+            label: widget.semanticsLabel,
+            excludeSemantics: true,
+            child: FocusableActionDetector(
+              mouseCursor: SystemMouseCursors.click,
+              onShowHoverHighlight: (v) => setState(() => _hovered = v),
+              onShowFocusHighlight: (v) => setState(() => _focused = v),
+              shortcuts: const <ShortcutActivator, Intent>{
+                SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+                SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+              },
+              actions: <Type, Action<Intent>>{
+                ActivateIntent: CallbackAction<ActivateIntent>(
+                  onInvoke: (_) {
+                    widget.onPressed();
+                    return null;
+                  },
+                ),
+              },
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.onPressed,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    minWidth: 32,
+                    minHeight: 32,
+                  ),
+                  child: EaseDecoration(
+                    decoration: BoxDecoration(
+                      color: active
+                          ? theme.accentBrass.withValues(alpha: 0.16)
+                          : (_hovered ? theme.hoverTint : theme.bgSurface),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: _focused || active
+                            ? theme.accentBrass
+                            : theme.borderHairline,
+                        width: _focused ? 1.8 : 1,
                       ),
-                    ],
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsetsDirectional.symmetric(
+                        horizontal: 6,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (active) ...[
+                            StreamingPulseDot(
+                              color: theme.accentBrass,
+                              size: 6,
+                              reduceMotionOverride: widget.reduceMotionOverride,
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          InkText(
+                            widget.count.toString(),
+                            role: InkTextRole.labelStrong,
+                            color: active
+                                ? theme.accentBrass
+                                : theme.inkPrimary,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _QuickProviderOption extends StatefulWidget {
-  const _QuickProviderOption({
-    required this.provider,
-    required this.subtitle,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final EngineProvider provider;
-  final String subtitle;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  State<_QuickProviderOption> createState() => _QuickProviderOptionState();
-}
-
-class _QuickProviderOptionState extends State<_QuickProviderOption> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    final p = widget.provider;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: PressFeedback(
-        pressScale: kRowPressScale,
-        hoverScale: 1,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: _hovered || widget.selected ? theme.hoverTint : null,
-            ),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.symmetric(
-                horizontal: 12,
-                vertical: 8,
-              ),
-              child: Row(
-                children: [
-                  LabIcon(
-                    iconSlug: p.iconSlug,
-                    customIconPath: p.customIconPath,
-                    dialect: p.dialect,
-                    providerName: p.name,
-                    size: 17,
-                    framed: true,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Flexible(
-                              child: InkText(
-                                p.name,
-                                role: InkTextRole.labelStrong,
-                                color: theme.inkPrimary,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            _PrivacyBadge(isLocal: p.isLocal),
-                          ],
-                        ),
-                        InkText(
-                          widget.subtitle,
-                          role: InkTextRole.captionMeta,
-                          color: theme.inkMuted,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (widget.selected)
-                    BistreIcon(
-                      BistreUiIcon.check,
-                      size: 13,
-                      color: theme.accentBrass,
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Where the model runs (v2.6.0 `ModelPrivacyBadgeChip`): on this device, or in the cloud.
-class _PrivacyBadge extends StatelessWidget {
-  const _PrivacyBadge({required this.isLocal});
-
-  final bool isLocal;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    final l10n = BistreLocalizations.of(context);
-    final color = isLocal ? theme.statusOk : theme.inkMuted;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color),
-      ),
-      child: Padding(
-        padding: const EdgeInsetsDirectional.symmetric(horizontal: 6),
-        child: InkText(
-          l10n.t(isLocal ? L10nKey.chatModelLocal : L10nKey.chatModelCloud),
-          role: InkTextRole.captionMeta,
-          color: color,
-          maxLines: 1,
-        ),
-      ),
-    );
-  }
-}
-
-class _QuickModelOption extends StatefulWidget {
-  const _QuickModelOption({
-    required this.modelId,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String modelId;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  State<_QuickModelOption> createState() => _QuickModelOptionState();
-}
-
-class _QuickModelOptionState extends State<_QuickModelOption> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: PressFeedback(
-        pressScale: kRowPressScale,
-        hoverScale: 1,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: _hovered || widget.selected ? theme.hoverTint : null,
-            ),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.symmetric(
-                horizontal: 14,
-                vertical: 6,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: InkText(
-                      widget.modelId,
-                      role: InkTextRole.captionMeta,
-                      color: widget.selected
-                          ? theme.inkPrimary
-                          : theme.inkSecondary,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (widget.selected)
-                    BistreIcon(
-                      BistreUiIcon.check,
-                      size: 12,
-                      color: theme.accentBrass,
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _QuickActionFooterRow extends StatefulWidget {
-  const _QuickActionFooterRow({required this.label, required this.onTap});
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  State<_QuickActionFooterRow> createState() => _QuickActionFooterRowState();
-}
-
-class _QuickActionFooterRowState extends State<_QuickActionFooterRow> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: PressFeedback(
-        pressScale: kRowPressScale,
-        hoverScale: 1,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: DecoratedBox(
-            decoration: BoxDecoration(color: _hovered ? theme.hoverTint : null),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.symmetric(
-                horizontal: 14,
-                vertical: 10,
-              ),
-              child: Row(
-                children: [
-                  BistreIcon(
-                    BistreUiIcon.settings,
-                    size: 14,
-                    color: theme.accentBrass,
-                  ),
-                  const SizedBox(width: 8),
-                  InkText(
-                    widget.label,
-                    role: InkTextRole.labelStrong,
-                    color: theme.accentBrass,
-                  ),
-                ],
               ),
             ),
           ),
@@ -1325,41 +1066,44 @@ class _HeaderPressableState extends State<_HeaderPressable> {
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
     final onPressed = widget.onPressed;
-    return Semantics(
-      button: onPressed != null,
-      label: widget.semanticsLabel,
-      child: FocusableActionDetector(
-        enabled: onPressed != null,
-        mouseCursor: onPressed != null ? widget.cursor : MouseCursor.defer,
-        onShowFocusHighlight: (v) => setState(() => _focused = v),
-        actions: <Type, Action<Intent>>{
-          ActivateIntent: CallbackAction<ActivateIntent>(
-            onInvoke: (_) {
-              onPressed?.call();
-              return null;
-            },
-          ),
-        },
-        child: PressFeedback(
-          pressScale: kRowPressScale,
-          hoverScale: 1,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onPressed,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(6),
-                border: _focused
-                    ? Border.all(color: theme.accentBrass, width: 2)
-                    : null,
-              ),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 24),
-                child: Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  widthFactor: 1,
-                  heightFactor: 1,
-                  child: widget.child,
+    return HoverHint(
+      message: onPressed != null ? widget.semanticsLabel : '',
+      child: Semantics(
+        button: onPressed != null,
+        label: widget.semanticsLabel,
+        child: FocusableActionDetector(
+          enabled: onPressed != null,
+          mouseCursor: onPressed != null ? widget.cursor : MouseCursor.defer,
+          onShowFocusHighlight: (v) => setState(() => _focused = v),
+          actions: <Type, Action<Intent>>{
+            ActivateIntent: CallbackAction<ActivateIntent>(
+              onInvoke: (_) {
+                onPressed?.call();
+                return null;
+              },
+            ),
+          },
+          child: PressFeedback(
+            pressScale: kRowPressScale,
+            hoverScale: 1,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onPressed,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(6),
+                  border: _focused
+                      ? Border.all(color: theme.accentBrass, width: 2)
+                      : null,
+                ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 24),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    widthFactor: 1,
+                    heightFactor: 1,
+                    child: widget.child,
+                  ),
                 ),
               ),
             ),

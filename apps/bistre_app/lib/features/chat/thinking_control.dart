@@ -4,6 +4,7 @@ import '../../design/bistre_controls.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
+import '../../design/hover_hint.dart';
 import '../../design/ink_primitives.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
@@ -66,23 +67,30 @@ class _ThinkingControlState extends State<ThinkingControl> {
       overlayBuilder: _buildPopover,
       child: CompositedTransformTarget(
         link: _link,
-        child: _chip(theme, level, full),
+        child: _chip(theme, l10n, level, full),
       ),
     );
   }
 
-  Widget _chip(BistreThemeData theme, String level, String full) =>
-      EngravedButton(
-        label: widget.compact ? level : full,
-        semanticsLabel: widget.compact ? full : null,
-        compact: true,
-        leading: BistreIcon(
-          BistreUiIcon.think,
-          size: 13,
-          color: theme.inkSecondary,
-        ),
-        onPressed: _popover.toggle,
-      );
+  Widget _chip(
+    BistreThemeData theme,
+    BistreLocalizationController l10n,
+    String level,
+    String full,
+  ) => HoverHint(
+    message: l10n.t(L10nKey.chatThinkingHint),
+    child: EngravedButton(
+      label: widget.compact ? level : full,
+      semanticsLabel: widget.compact ? full : null,
+      compact: true,
+      leading: BistreIcon(
+        BistreUiIcon.think,
+        size: 13,
+        color: theme.inkSecondary,
+      ),
+      onPressed: _popover.toggle,
+    ),
+  );
   Widget _buildPopover(BuildContext context) {
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);
@@ -147,13 +155,13 @@ class _ThinkingControlState extends State<ThinkingControl> {
                     Row(
                       children: [
                         InkText(
-                          l10n.t(kThinkingStops.first.$2),
+                          l10n.t(L10nKey.chatThinkingFaster),
                           role: InkTextRole.captionMeta,
                           color: theme.inkMuted,
                         ),
                         const Spacer(),
                         InkText(
-                          l10n.t(kThinkingStops.last.$2),
+                          l10n.t(L10nKey.chatThinkingThorough),
                           role: InkTextRole.captionMeta,
                           color: theme.inkMuted,
                         ),

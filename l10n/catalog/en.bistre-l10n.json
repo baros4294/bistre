@@ -3763,7 +3763,7 @@
       }
     },
     "chat.context_estimate_hint": {
-      "message": "Estimated at about 4 characters per token, after any shortening.",
+      "message": "Counted locally with model-matched BPE tokenizers, after any shortening.",
       "context": "Footnote of the context breakdown popover",
       "tone": "calm_editorial",
       "max_chars": 96,
@@ -3996,6 +3996,295 @@
       "context": "Phone settings: clears the settings search",
       "tone": "concise_action",
       "max_chars": 24,
+      "placeholders": {}
+    },
+    "shell.tabs.count": {
+      "message": "{count, plural, =1{1 tab} other{{count} tabs}}",
+      "context": "Button opening the tab overview modal",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "3"
+        }
+      }
+    },
+    "shell.tabs.open_heading": {
+      "message": "Open tabs ({count})",
+      "context": "Heading of the open tabs overview modal",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "3"
+        }
+      }
+    },
+    "shell.tabs.active_count": {
+      "message": "{count} active",
+      "context": "Number of chats currently replying shown in tab overview heading",
+      "tone": "diagnostic",
+      "max_chars": 24,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "1"
+        }
+      }
+    },
+    "shell.tabs.new_tab": {
+      "message": "New tab",
+      "context": "Button in tab bar or tab overview to open a new chat tab",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "shell.tabs.filter_placeholder": {
+      "message": "Filter open tabs...",
+      "context": "Search input placeholder in the tab overview modal",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "shell.tabs.close_overview": {
+      "message": "Close tab overview",
+      "context": "Close button label for the tab overview modal",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "shell.tabs.replying_background": {
+      "message": "Replying in background",
+      "context": "Status label on a tab card while a reply is streaming",
+      "tone": "diagnostic",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "shell.tabs.no_matches": {
+      "message": "No open tabs match",
+      "context": "Empty state when tab overview filter has no matches",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.model.all_providers": {
+      "message": "All providers ({count})",
+      "context": "Filter chip showing models across all providers",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "12"
+        }
+      }
+    },
+    "chat.model.all_families": {
+      "message": "All families",
+      "context": "Filter chip showing all model vendor families",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.model.filter_count": {
+      "message": "{name} ({count})",
+      "context": "Provider or model-family filter chip with model count",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "OpenAI"
+        },
+        "count": {
+          "type": "int",
+          "example": "8"
+        }
+      }
+    },
+    "chat.model.no_matches": {
+      "message": "No models match \"{query}\"",
+      "context": "Empty state when model picker filter has no matching models",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {
+        "query": {
+          "type": "string",
+          "example": "gpt"
+        }
+      }
+    },
+    "chat.model.stored": {
+      "message": "Stored",
+      "context": "Privacy badge when provider stores responses server-side",
+      "tone": "diagnostic",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.model.no_store": {
+      "message": "No store",
+      "context": "Privacy badge when provider does not store responses server-side",
+      "tone": "diagnostic",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.context.session_cost": {
+      "message": "Session {cost}",
+      "context": "Session spend suffix in context breakdown header",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {
+        "cost": {
+          "type": "string",
+          "example": "$0.02"
+        }
+      }
+    },
+    "chat.context.files": {
+      "message": "Attached files ({count})",
+      "context": "Row label for attached files in context breakdown popover",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "2"
+        }
+      }
+    },
+    "chat.thinking.faster": {
+      "message": "Faster",
+      "context": "Start label under the thinking effort slider",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.thinking.thorough": {
+      "message": "More thorough",
+      "context": "End label under the thinking effort slider",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.usage.details_hint": {
+      "message": "Show token and cost breakdown",
+      "context": "Hover hint and accessibility label on a reply's token/cost pill",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "chat.usage.input_tokens": {
+      "message": "Input",
+      "context": "Input token count row label in turn usage popover",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.usage.output_tokens": {
+      "message": "Output",
+      "context": "Output token count row label in turn usage popover",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.usage.cost_label": {
+      "message": "Cost",
+      "context": "Estimated cost row label in turn usage popover",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "settings.appearance.theme_presets": {
+      "message": "Color presets",
+      "context": "Row heading above the 9 visual theme preview cards in Appearance settings",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.appearance.theme_sample_aa": {
+      "message": "Aa",
+      "context": "Sample typography letters rendered inside each miniature theme preview card",
+      "tone": "calm_editorial",
+      "max_chars": 6,
+      "placeholders": {}
+    },
+    "settings.appearance.preset_warm_sepia": {
+      "message": "Warm Sepia",
+      "context": "Theme preset card label for default warm sepia light palette",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.preset_blue_cream": {
+      "message": "Blue Cream",
+      "context": "Theme preset card label for cool blue ink on warm cream light palette",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.preset_night_blue": {
+      "message": "Night Blue",
+      "context": "Theme preset card label for deep navy dark palette",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.preset_warm_ivory": {
+      "message": "Warm Ivory",
+      "context": "Theme preset card label for bright warm ivory light palette",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.preset_deep_sepia": {
+      "message": "Deep Sepia",
+      "context": "Theme preset card label for deeper warm sand sepia palette",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.preset_warm_dark": {
+      "message": "Warm Dark",
+      "context": "Theme preset card label for default warm dark palette",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.preset_pure_black": {
+      "message": "Pure Black",
+      "context": "Theme preset card label for true AMOLED black dark palette",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.preset_clean_paper": {
+      "message": "Clean Paper",
+      "context": "Theme preset card label for crisp neutral light palette",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.preset_dark_slate": {
+      "message": "Dark Slate",
+      "context": "Theme preset card label for modern dark slate palette",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "toast.regenerated": {
+      "message": "Regenerating reply — previous version kept",
+      "context": "Non-blocking toast shown after clicking Regenerate on an assistant reply",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "toast.regenerated_previous": {
+      "message": "Previous",
+      "context": "One-click toast action button to switch back to the prior reply branch",
+      "tone": "concise_action",
+      "max_chars": 16,
       "placeholders": {}
     }
   }
