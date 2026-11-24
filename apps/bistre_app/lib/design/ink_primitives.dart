@@ -251,6 +251,9 @@ class _EngravedButtonState extends State<EngravedButton> {
             label: widget.semanticsLabel ?? widget.label,
             child: FocusableActionDetector(
               enabled: enabled,
+              mouseCursor: enabled
+                  ? SystemMouseCursors.click
+                  : SystemMouseCursors.basic,
               // Focus highlight fires only in keyboard (traditional) highlight mode, so the brass ring
               // never appears after a pointer click.
               onShowFocusHighlight: (v) => setState(() => _focused = v),
@@ -267,72 +270,64 @@ class _EngravedButtonState extends State<EngravedButton> {
                   },
                 ),
               },
-              child: MouseRegion(
-                cursor: enabled
-                    ? SystemMouseCursors.click
-                    : SystemMouseCursors.basic,
-                child: GestureDetector(
-                  onTapDown: enabled
-                      ? (_) => setState(() => _pressed = true)
-                      : null,
-                  onTapUp: enabled
-                      ? (_) {
-                          setState(() => _pressed = false);
-                          _invoke();
-                        }
-                      : null,
-                  onTapCancel: () => setState(() => _pressed = false),
-                  child: Opacity(
-                    opacity: !enabled
-                        ? 1.0
-                        : _pressed
-                        ? 0.84
-                        : _hovered
-                        ? 0.93
-                        : 1.0,
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: minH,
-                        minWidth: 40,
-                      ),
-                      child: EaseDecoration(
-                        decoration: BoxDecoration(
-                          color: bg,
-                          borderRadius: BorderRadius.circular(9),
-                          border: Border.all(
-                            color: _focused ? theme.accentBrass : outline,
-                            width: _focused ? 2 : 1,
-                          ),
-                          boxShadow: enabled && widget.primary
-                              ? theme.cardShadow
-                              : null,
+              child: GestureDetector(
+                onTapDown: enabled
+                    ? (_) => setState(() => _pressed = true)
+                    : null,
+                onTapUp: enabled
+                    ? (_) {
+                        setState(() => _pressed = false);
+                        _invoke();
+                      }
+                    : null,
+                onTapCancel: () => setState(() => _pressed = false),
+                child: Opacity(
+                  opacity: !enabled
+                      ? 1.0
+                      : _pressed
+                      ? 0.84
+                      : _hovered
+                      ? 0.93
+                      : 1.0,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: minH, minWidth: 40),
+                    child: EaseDecoration(
+                      decoration: BoxDecoration(
+                        color: bg,
+                        borderRadius: BorderRadius.circular(9),
+                        border: Border.all(
+                          color: _focused ? theme.accentBrass : outline,
+                          width: _focused ? 2 : 1,
                         ),
-                        child: Padding(
-                          padding: EdgeInsetsDirectional.symmetric(
-                            horizontal: widget.compact ? 12 : 14,
-                            vertical: widget.compact ? 6 : 8,
-                          ),
-                          child: Center(
-                            widthFactor: 1,
-                            heightFactor: 1,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (widget.leading != null) ...[
-                                  widget.leading!,
-                                  const SizedBox(width: 7),
-                                ],
-                                Flexible(
-                                  child: InkText(
-                                    widget.label,
-                                    role: InkTextRole.labelStrong,
-                                    color: fg,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
+                        boxShadow: enabled && widget.primary
+                            ? theme.cardShadow
+                            : null,
+                      ),
+                      child: Padding(
+                        padding: EdgeInsetsDirectional.symmetric(
+                          horizontal: widget.compact ? 12 : 14,
+                          vertical: widget.compact ? 6 : 8,
+                        ),
+                        child: Center(
+                          widthFactor: 1,
+                          heightFactor: 1,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (widget.leading != null) ...[
+                                widget.leading!,
+                                const SizedBox(width: 7),
                               ],
-                            ),
+                              Flexible(
+                                child: InkText(
+                                  widget.label,
+                                  role: InkTextRole.labelStrong,
+                                  color: fg,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -675,6 +670,7 @@ class _InkChipState extends State<InkChip> {
           selected: widget.selected,
           label: widget.semanticsLabel ?? widget.label,
           child: FocusableActionDetector(
+            mouseCursor: SystemMouseCursors.click,
             onShowFocusHighlight: (v) => setState(() => _focused = v),
             shortcuts: const <ShortcutActivator, Intent>{
               SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
@@ -688,43 +684,35 @@ class _InkChipState extends State<InkChip> {
                 },
               ),
             },
-            child: MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: GestureDetector(
-                onTap: widget.onSelected,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    minHeight: 36,
-                    minWidth: 36,
-                  ),
-                  child: EaseDecoration(
-                    decoration: BoxDecoration(
-                      color: widget.selected
-                          ? theme.bgElevated
-                          : theme.bgSurface,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: _focused || widget.selected
-                            ? theme.accentBrass
-                            : theme.borderHairline,
-                        width: _focused ? 2 : 1,
-                      ),
+            child: GestureDetector(
+              onTap: widget.onSelected,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                child: EaseDecoration(
+                  decoration: BoxDecoration(
+                    color: widget.selected ? theme.bgElevated : theme.bgSurface,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: _focused || widget.selected
+                          ? theme.accentBrass
+                          : theme.borderHairline,
+                      width: _focused ? 2 : 1,
                     ),
-                    child: Padding(
-                      padding: const EdgeInsetsDirectional.symmetric(
-                        horizontal: BistreSpacing.s12,
-                        vertical: 6,
-                      ),
-                      child: Center(
-                        widthFactor: 1,
-                        heightFactor: 1,
-                        child: InkText(
-                          widget.label,
-                          role: InkTextRole.captionMeta,
-                          color: widget.selected
-                              ? theme.inkPrimary
-                              : theme.inkSecondary,
-                        ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsetsDirectional.symmetric(
+                      horizontal: BistreSpacing.s12,
+                      vertical: 6,
+                    ),
+                    child: Center(
+                      widthFactor: 1,
+                      heightFactor: 1,
+                      child: InkText(
+                        widget.label,
+                        role: InkTextRole.captionMeta,
+                        color: widget.selected
+                            ? theme.inkPrimary
+                            : theme.inkSecondary,
                       ),
                     ),
                   ),

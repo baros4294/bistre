@@ -1074,6 +1074,82 @@ void main() {
     ctrl.dispose();
     await gw.shutdown();
   });
+
+  testWidgets(
+    'streaming deltas never repaint sidebar, header, or composer (C1)',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1320, 820);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final (ctrl, gw, l10n) = await boot();
+      await tester.pumpWidget(
+        BistreApp(l10nController: l10n, folioController: ctrl),
+      );
+      await tester.pumpAndSettle();
+      ctrl.liveTurn.shouldPace = () => false;
+      final threadId = ctrl.activeThread!.id;
+      gw.emit(RunStartedEvent(threadId: threadId, nodeId: 'c1-live'));
+      await tester.pump();
+      gw.emit(
+        DeltaBatchEvent(
+          threadId: threadId,
+          nodeId: 'c1-live',
+          textDelta: '```rust\nfn probe() {\n',
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+      for (var i = 0; i < 30; i++) {
+        gw.emit(
+          DeltaBatchEvent(
+            threadId: threadId,
+            nodeId: 'c1-live',
+            textDelta: '    let v_$i = compute_checkpoint(frames, budget);\n',
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+
+      FlutterTimeline.debugCollectionEnabled = true;
+      debugProfilePaintsEnabled = true;
+      FlutterTimeline.debugReset();
+      for (var i = 0; i < 10; i++) {
+        gw.emit(
+          DeltaBatchEvent(
+            threadId: threadId,
+            nodeId: 'c1-live',
+            textDelta: '    let m_$i = compute_checkpoint(frames, budget);\n',
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      final blocks = FlutterTimeline.debugCollect().aggregatedBlocks;
+      debugProfilePaintsEnabled = false;
+      FlutterTimeline.debugCollectionEnabled = false;
+
+      final mouseRegionPaints = blocks
+          .where((b) => b.name == 'RenderMouseRegion')
+          .fold<int>(0, (sum, b) => sum + b.count);
+      // Without the RepaintBoundary around FolioMessageFeed and code-card header actions,
+      // streaming painted ~78 RenderMouseRegion/frame (~780 over 10 frames).
+      expect(
+        mouseRegionPaints / 10.0,
+        lessThan(20.0),
+        reason: 'streaming repainted widgets outside the feed (C1 regression)',
+      );
+
+      gw.emit(
+        RunFinishedEvent(
+          threadId: threadId,
+          nodeId: 'c1-live',
+          cancelled: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+      ctrl.dispose();
+      await gw.shutdown();
+    },
+  );
 }
 
 bool _endsWithLoneHighSurrogate(String s) {

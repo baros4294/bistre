@@ -148,36 +148,39 @@ class _BistreIconButtonState extends State<BistreIconButton> {
 
     // Taps up to the minimum target land on this button without changing layout (DESIGN §7).
     // Every icon button names itself on hover (v2.6.0 `HoverHint`).
+    // Keeping `SizedBox.square` outside the hover/press wrappers makes the fixed button a
+    // relayout boundary so sibling layout changes never re-lay out its subtree.
     return TapTargetExpander(
       minSize: minTapTarget,
-      child: HoverHint(
-        message: widget.semanticsLabel,
-        child: PressFeedback(
-          enabled: enabled,
-          child: Semantics(
-            button: true,
+      child: SizedBox.square(
+        dimension: widget.dimension,
+        child: HoverHint(
+          message: widget.semanticsLabel,
+          child: PressFeedback(
             enabled: enabled,
-            label: widget.semanticsLabel,
-            child: FocusableActionDetector(
+            child: Semantics(
+              button: true,
               enabled: enabled,
-              onShowHoverHighlight: (v) => setState(() => _hovered = v),
-              onShowFocusHighlight: (v) => setState(() => _focused = v),
-              shortcuts: const <ShortcutActivator, Intent>{
-                SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
-                SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
-              },
-              actions: <Type, Action<Intent>>{
-                ActivateIntent: CallbackAction<ActivateIntent>(
-                  onInvoke: (_) {
-                    widget.onPressed?.call();
-                    return null;
-                  },
-                ),
-              },
-              child: MouseRegion(
-                cursor: enabled
+              label: widget.semanticsLabel,
+              child: FocusableActionDetector(
+                enabled: enabled,
+                mouseCursor: enabled
                     ? SystemMouseCursors.click
                     : SystemMouseCursors.basic,
+                onShowHoverHighlight: (v) => setState(() => _hovered = v),
+                onShowFocusHighlight: (v) => setState(() => _focused = v),
+                shortcuts: const <ShortcutActivator, Intent>{
+                  SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+                  SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+                },
+                actions: <Type, Action<Intent>>{
+                  ActivateIntent: CallbackAction<ActivateIntent>(
+                    onInvoke: (_) {
+                      widget.onPressed?.call();
+                      return null;
+                    },
+                  ),
+                },
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTapDown: enabled
@@ -196,24 +199,21 @@ class _BistreIconButtonState extends State<BistreIconButton> {
                         : _pressed
                         ? 0.72
                         : 1.0,
-                    child: SizedBox.square(
-                      dimension: widget.dimension,
-                      child: EaseDecoration(
-                        decoration: BoxDecoration(
-                          color: widget.active
-                              ? theme.hoverTint
-                              : (_hovered ? theme.hoverTint : null),
-                          borderRadius: BorderRadius.circular(8),
-                          border: _focused
-                              ? Border.all(color: theme.accentBrass, width: 1.6)
-                              : null,
-                        ),
-                        child: Center(
-                          child: BistreIcon(
-                            widget.icon,
-                            size: widget.size,
-                            color: fg,
-                          ),
+                    child: EaseDecoration(
+                      decoration: BoxDecoration(
+                        color: widget.active
+                            ? theme.hoverTint
+                            : (_hovered ? theme.hoverTint : null),
+                        borderRadius: BorderRadius.circular(8),
+                        border: _focused
+                            ? Border.all(color: theme.accentBrass, width: 1.6)
+                            : null,
+                      ),
+                      child: Center(
+                        child: BistreIcon(
+                          widget.icon,
+                          size: widget.size,
+                          color: fg,
                         ),
                       ),
                     ),
