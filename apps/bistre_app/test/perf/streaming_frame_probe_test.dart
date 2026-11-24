@@ -85,6 +85,14 @@ Future<void> _probe(WidgetTester tester, {required bool screenReader}) async {
     '[BISTRE_PERF] ${prefix}_frames=${frameMicros.length} ${prefix}_frame_p50_ms=${p50.toStringAsFixed(2)} ${prefix}_frame_p95_ms=${p95.toStringAsFixed(2)}',
   );
   expect(frameMicros, isNotEmpty);
+  // The reading pacer trails a fast stream by a fraction of a second; let it catch up.
+  for (
+    var k = 0;
+    k < 60 && ctrl.liveTurn.value!.text.length < text.length;
+    k++
+  ) {
+    await tester.pump(const Duration(milliseconds: 16));
+  }
   expect(ctrl.liveTurn.value?.text.length, text.length);
 
   gw.emit(
