@@ -124,7 +124,7 @@ jobs:
             version="${RELEASE_TAG#v}"
             stage_win="$(cygpath -w "$(pwd)/stage")"
             dist_win="$(cygpath -w "$(pwd)/dist")"
-            "$iscc_bin" \
+            MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" "$iscc_bin" \
               "/DMyAppVersion=${version}" \
               "/DStageDir=${stage_win}" \
               "/DOutputDir=${dist_win}" \
