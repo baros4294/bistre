@@ -273,3 +273,19 @@ Recorded **2026-11-21** after completing Commit-1 Repo Fortress, Spec Pack, Day-
   - The full commit-by-commit v2.6.0 audit.
   - `folio_controller.dart` is at 1,497 of 1,500 lines; split it before adding to it.
   - Linux goldens for this PR are regenerated from the CI `ui-gallery-linux` artifact.
+
+## 24. UX Wave 2: Context Menus, Profile Name, Model Picker, Settings Search (2026-11-24)
+- **What changed (PR #28)**:
+  - Right-click menus (`ContextMenuRegion`):
+    - messages: Reply or Edit, Copy, Regenerate, Start context here, Delete;
+    - sidebar chats: Pin, Rename, Delete.
+    The menus work from the keyboard and fade out. Touch keeps the visible action bar, because long-press selects text.
+  - **Your name** (`AppSettings.user_display_name`, an additive serde default) labels your messages. In non-Write chats, core adds it to the system prompt (`engine_runs::with_user_name`: control characters dropped, 64-character cap).
+  - **Model picker**: a per-provider `On device` / `Cloud` badge, from core's parsed-host decision (`FfiProviderProfile.is_local`). It now lists every loaded model (it showed the first 4) and adds a word filter above 6 models.
+  - **Settings search**: each matching page lists up to 3 matching setting labels.
+- **Commands**: `just guard`, `just fmt-check`, `just i18n-check`, `flutter analyze`, `flutter test` (52 passed), `just test-rust` (110 passed, including `the_user_name_reaches_chat_prompts_but_not_write_mode`), clippy for core and ffi, `just codegen-frb`. Linux goldens 09 and 30 were updated from CI run 45308315477 after review.
+- **Open**:
+  - the profile picture;
+  - scrolling to and highlighting the matched setting in search results;
+  - context menus on code blocks and attachments;
+  - per-model capabilities and prices in the picker.
