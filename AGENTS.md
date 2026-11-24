@@ -4,15 +4,15 @@
 - **Product**: Bistre is a public, MIT, local-first, zero-telemetry AI client for Android (`arm64-v8a`, 16 KB aligned), Windows, and Linux.
 - **Architecture**: ONE pure-Rust core (`crates/bistre-*`) + ONE thin Flutter UI built on `package:flutter/widgets.dart` only (`apps/bistre_app`). Protocol, storage, and harness logic live only in Rust. Never duplicate it in Dart or platform code.
 - **UX bar**: Parchment `v2.6.0` (Kotlin/Compose), 1:1 or better (Owner Rule, §2). v3+ (abandoned GPUI port) informs only core/protocol/CI (`docs/RESEARCH-AND-EDGE-CASES.md` §4).
-- **Status**: specs describe the target; `docs/SLICE-0-HANDOFF.md` records what is real and open. Read both.
+- **Status**: specs are the target; `docs/SLICE-0-HANDOFF.md` is what is real and open. Read both.
 
 ## 2. Working Rules
 - **Subtraction first**: choose the smallest direct change; add no layers, toggles, or libraries nobody asked for.
 - **Parse at the boundary**: parse untrusted input once into types that cannot hold invalid states. Bound every loop, recursion, queue, buffer, retry, cache, and I/O.
 - **Fail closed**: safety checks (spending limit, OTA signature, tool approval, path policy) deny when their own inputs fail to load. Encode the guarantee in a type that only the check can construct.
-- **Never silence errors**: this covers `let _ =` and empty `catch`, and also `.ok()`, `unwrap_or_default()`, `unwrap_or(..)`, and `if let Ok(..)` on a `Result` whose error matters. Propagate it, or log a `DiagnosticKey` with a reason.
+- **Never silence errors**: includes `let _ =`, empty `catch`, `.ok()`, `unwrap_or_default()`, `unwrap_or(..)`, and `if let Ok(..)` on a `Result` whose error matters. Propagate it, or log a `DiagnosticKey` with a reason.
 - **Never weaken verification**: never drop features, skip work, weaken tests, shrink stress sizes, or loosen budgets. Never add test retries; find the root cause. Prove that each regression test fails without its fix.
-- **Two strikes**: after two related failed attempts, find the root cause first.
+- **Two strikes**: after two related failures, find the root cause.
 - **No volatile facts in code**: never hardcode model IDs, capabilities, prices, or device brands in code, comments, or `README.md` (registry presets and tests excepted); benchmarks live in `docs/`.
 - **Cache versions**: every derived cache or sidecar carries a format version; a mismatch rebuilds it.
 
@@ -21,7 +21,7 @@
 - **1:1 or better, never less**: layout, controls, copy, states, motion, gestures (Android back, swipe, hover, keys). Deviate only to improve, note why in Spec 08 §4; ask the owner before dropping or simplifying anything.
 - **Never guess**: what was not read, run, or measured this session is `[UNVERIFIED]`. On conflicting sources, or a rule that worsens UX, ask the owner.
 - **Nothing partial sold as done**: no "simplified" or one-width versions, no skipped platforms, locales, or states. Ship tests that fail without the change, gallery review (phone, desktop, `200%`), and docs; log anything unfinished in the handoff.
-- **Before "done"**: re-read the request and the `v2.6.0` code, run the gates, inspect the PNGs, list every remaining difference.
+- **Before "done"**: re-read the request and `v2.6.0` code, run gates, inspect PNGs, list every difference.
 
 ## 3. Verify Live, Never From Memory
 Verify crate/package versions, Flutter/Rust/Android APIs, LLM wire protocols, MCP specs, Action SHAs, and OS/store policies against official live docs or repo files before relying on them; mark the rest `[UNVERIFIED]`.
@@ -29,16 +29,16 @@ Verify crate/package versions, Flutter/Rust/Android APIs, LLM wire protocols, MC
 ## 4. Documentation Is Part of the Change
 - **Same change**: update every affected document in the same change as the code, architecture, schema, FFI, UI token, lint, CI, or dependency change it describes. Stale documentation breaks the build (`just guard`).
 - **Owners**: architecture/crates/deps → ADR + Spec 00 + README + AGENTS; domain → its Spec 01–11 (+ research doc); tokens/motion/screens → `docs/design/DESIGN.md` + Spec 08; i18n and `DiagnosticKey` → `l10n/catalog/` + `just i18n-gen` + Spec 09; commands/CI → `justfile`, README, CONTRIBUTING, AGENTS; security/OTA → `SECURITY.md` + Specs 06/07/10.
-- **Handoff**: before stopping, add a dated section to `docs/SLICE-0-HANDOFF.md` with what changed and why, the commands run and their results, open items with blockers, and environment caveats. Repo docs are the only memory, never harness-private memory.
+- **Handoff**: before stopping, add a dated section to `docs/SLICE-0-HANDOFF.md`: what changed and why, commands and results, open items, environment caveats. Repo docs are the only memory, never harness-private memory.
 - **Hygiene**: no `TODO`/`FIXME`/`HACK`/`XXX`, dead code, generator boilerplate, BOM, or CRLF (except `.bat`/`.cmd`/`.iss`/`.rc`); `.ps1` stays ASCII. Non-generated `.rs`/`.dart` files `<= 1,500` lines, split by responsibility (Spec 00 §5). `AGENTS.md` `<= 14,000` characters.
 - **Lint exceptions**: Rust uses `#[expect(..., reason = "...")]` only when unavoidable and never bypasses `unsafe_code`/`unwrap_used`/`expect_used`/`panic`/`todo`/`unimplemented`. Dart never suppresses `bistre_*` rules and documents every ignore.
 
 ## 5. Build & Storage Restraint (7.7 GB Laptop)
 - **Build cadence**: batch edits, iterate with `cargo check -p <crate>`, never chain or overlap heavy builds; release builds at most once, at task end.
 - **Disk**: `target/ <= 5.0 GiB`, `apps/bistre_app/build/ <= 1.0 GiB` (`just disk`); `just prune` is non-destructive; never `cargo clean` blindly.
-- **Run lock**: heavy recipes hold `bistre_guard locked`; use `just status` / `just affected --run` (ADR-0016).
+- **Run lock**: heavy recipes hold `bistre_guard locked`; see `just status` (ADR-0016).
 - **User data**: never touch `%LOCALAPPDATA%\Bistre` or an installed build; debug uses `<repo>/.bistre-dev/`, tests temp dirs.
-- **Git**: Conventional Commits in reviewable layers; merge PRs with `gh pr merge --rebase`.
+- **Git (owner rule)**: never commit, push, open or merge a PR, tag, or release unless the owner explicitly asks for that step; otherwise leave work uncommitted in the tree. When asked: Conventional Commits in reviewable layers, `gh pr merge --rebase`.
 
 ## 6. Layer Boundaries (Mechanically Enforced)
 - **Core crates** (`bistre-protocol`, `bistre-crypto`, `bistre-storage`, `bistre-core`):
