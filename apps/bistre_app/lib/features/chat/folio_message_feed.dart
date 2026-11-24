@@ -23,6 +23,7 @@ import 'cost_unavailable_button.dart';
 import 'markdown_folio_view.dart';
 import 'reasoning_block.dart';
 import 'tool_timeline_view.dart';
+import 'usage_details_pill.dart';
 
 /// Calm Studio Atelier reading canvas:
 /// - Unconfigured Welcome Desk: ONE calm setup card with authentic color LabIcon strip
@@ -193,52 +194,56 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
     // relayout boundary: a streaming delta then re-lays out only the feed, not the whole shell
     // and composer (Spec 11 §5).
     // Search keystrokes and results rebuild the feed (results replace the chat), not the shell.
-    return ListenableBuilder(
-      listenable: ctrl.search,
-      builder: (context, _) => Stack(
-        fit: StackFit.expand,
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) => CodeWrapScope(
-              wrapByDefault: ctrl.codeWrapFor(constraints.maxWidth),
-              overrides: _codeWrapOverrides,
-              child: SelectableRegion(
-                selectionControls: _selectionControls,
-                child: NotificationListener<UserScrollNotification>(
-                  onNotification: _handleUserScroll,
-                  child: RawScrollbar(
-                    controller: _scrollController,
-                    thumbColor: theme.inkMuted.withValues(alpha: 0.22),
-                    radius: const Radius.circular(999),
-                    thickness: 4,
-                    child: _buildFeedContent(context, theme, l10n, ctrl),
+    // A `RepaintBoundary` around the feed keeps scrollbar/viewport repaints during streaming
+    // from repainting the sidebar, header, and composer on every 16 ms frame (Spec 11).
+    return RepaintBoundary(
+      child: ListenableBuilder(
+        listenable: ctrl.search,
+        builder: (context, _) => Stack(
+          fit: StackFit.expand,
+          children: [
+            LayoutBuilder(
+              builder: (context, constraints) => CodeWrapScope(
+                wrapByDefault: ctrl.codeWrapFor(constraints.maxWidth),
+                overrides: _codeWrapOverrides,
+                child: SelectableRegion(
+                  selectionControls: _selectionControls,
+                  child: NotificationListener<UserScrollNotification>(
+                    onNotification: _handleUserScroll,
+                    child: RawScrollbar(
+                      controller: _scrollController,
+                      thumbColor: theme.inkMuted.withValues(alpha: 0.22),
+                      radius: const Radius.circular(999),
+                      thickness: 4,
+                      child: _buildFeedContent(context, theme, l10n, ctrl),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          if (_showJumpToLatest &&
-              ctrl.searchQuery.isEmpty &&
-              ctrl.visibleBranchNodes.isNotEmpty)
-            Align(
-              alignment: AlignmentDirectional.bottomCenter,
-              child: Padding(
-                padding: const EdgeInsetsDirectional.only(
-                  bottom: BistreSpacing.s12,
-                ),
-                child: FolioFadeSlide(
-                  beginOffset: const Offset(0, 0.5),
-                  beginScale: 0.9,
-                  reduceMotionOverride: ctrl.reduceMotionOverride,
-                  child: EngravedButton(
-                    label: l10n.t(L10nKey.chatActionJumpLatest),
-                    compact: true,
-                    onPressed: _jumpToLatest,
+            if (_showJumpToLatest &&
+                ctrl.searchQuery.isEmpty &&
+                ctrl.visibleBranchNodes.isNotEmpty)
+              Align(
+                alignment: AlignmentDirectional.bottomCenter,
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.only(
+                    bottom: BistreSpacing.s12,
+                  ),
+                  child: FolioFadeSlide(
+                    beginOffset: const Offset(0, 0.5),
+                    beginScale: 0.9,
+                    reduceMotionOverride: ctrl.reduceMotionOverride,
+                    child: EngravedButton(
+                      label: l10n.t(L10nKey.chatActionJumpLatest),
+                      compact: true,
+                      onPressed: _jumpToLatest,
+                    ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -366,10 +371,22 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                           ? () => unawaited(ctrl.deleteMessageNode(node.id))
                           : null,
                       onBranchDelta: branchInfo != null
-                          ? (delta) => ctrl.selectSiblingBranch(
-                              branchInfo.parentKey,
-                              delta,
-                            )
+                          ? (delta) {
+                              ctrl.selectSiblingBranch(
+                                branchInfo.parentKey,
+                                delta,
+                              );
+                              // Smooth programmatic glide when switching sibling branch (DESIGN §6).
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (!mounted || !_scrollController.hasClients) {
+                                  return;
+                                }
+                                final pos = _scrollController.position;
+                                if (pos.pixels > pos.maxScrollExtent) {
+                                  _jumpToLatest();
+                                }
+                              });
+                            }
                           : null,
                     ),
                   ],
@@ -981,12 +998,13 @@ class _PassageItemState extends State<_PassageItem> {
           const SizedBox(width: 6),
         ],
         Expanded(
-          child: InkText(
-            l10n.joinMeta(parts),
-            role: InkTextRole.captionMeta,
-            color: theme.inkMuted,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: UsageDetailsPill(
+              usage: usage,
+              summaryText: l10n.joinMeta(parts),
+              reduceMotionOverride: widget.reduceMotionOverride,
+            ),
           ),
         ),
         if (!usage.costKnown && usage.hasTokens)

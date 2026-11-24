@@ -14,6 +14,7 @@ import 'features/shell/folio_shell_screen.dart';
 import 'l10n/bistre_localizations.dart';
 import 'l10n/l10n_keys.g.dart';
 import 'platform/desktop_host.dart';
+import 'platform/host_memory.dart';
 
 /// Resolves the isolated local data directory for SQLite + encrypted `SecretVault`:
 /// 1. Explicit `BISTRE_DATA_DIR` environment variable override (when set)
@@ -81,6 +82,7 @@ Directory? _findRepoRoot(Directory start) {
 Future<void> main() async {
   final bootClock = Stopwatch()..start();
   WidgetsFlutterBinding.ensureInitialized();
+  unawaited(configureGpuResourceCacheCap(lowMemory: false));
 
   final l10nController = await BistreLocalizationController.loadBundled();
   final (dataDir, isDevEnv) = await resolveBistreDataDir();
@@ -213,6 +215,7 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
     _themeKey = look;
     return _theme = BistreThemeData.resolve(
       isDark: look.isDark,
+      themeId: look.themeId,
       accentPreset: look.accentPreset,
       customAccentHex: look.customAccentHex,
       typography: look.typography,

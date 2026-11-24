@@ -211,19 +211,25 @@ class BistreThemeData {
   /// Low-memory mode: overlay drop shadows are skipped (`docs/design/DESIGN.md` §8).
   final bool reducedEffects;
 
-  /// Resolves a complete theme combining Light/Dark base, user accent preset or custom hex,
-  /// and user typography preferences.
+  /// Resolves a complete theme combining the chosen color preset (or Light/Dark default),
+  /// user accent preset or custom hex, and user typography preferences.
   static BistreThemeData resolve({
     required bool isDark,
+    String themeId = '',
     String accentPreset = 'wax',
     String customAccentHex = '',
     BistreTypographyConfig typography = BistreTypographyConfig.defaults,
     bool reducedEffects = false,
   }) {
-    final base = isDark ? nightCandlelight : dayParchment;
+    final preset = BistreThemePreset.tryById(themeId);
+    final base = preset?.theme ?? (isDark ? nightCandlelight : dayParchment);
+    final effectiveDark = base.isDark;
     Color primaryAccent;
     Color brassAccent;
-    if (accentPreset == 'custom') {
+    if (accentPreset == 'preset') {
+      primaryAccent = base.accentWax;
+      brassAccent = base.accentBrass;
+    } else if (accentPreset == 'custom') {
       final custom = BistreAccentOption.tryParseHex(customAccentHex);
       if (custom != null) {
         primaryAccent = custom;
@@ -233,9 +239,9 @@ class BistreThemeData {
         brassAccent = base.accentBrass;
       }
     } else {
-      final preset = BistreAccentOption.byId(accentPreset);
-      primaryAccent = isDark ? preset.nightPrimary : preset.dayPrimary;
-      brassAccent = isDark ? preset.nightBrass : preset.dayBrass;
+      final opt = BistreAccentOption.byId(accentPreset);
+      primaryAccent = effectiveDark ? opt.nightPrimary : opt.dayPrimary;
+      brassAccent = effectiveDark ? opt.nightBrass : opt.dayBrass;
     }
 
     // The four reading surfaces every ink must stay legible on (incl. the hover composite).
@@ -250,7 +256,7 @@ class BistreThemeData {
     final wax = readable(primaryAccent);
 
     return BistreThemeData(
-      isDark: base.isDark,
+      isDark: effectiveDark,
       bgCanvas: base.bgCanvas,
       bgSurface: base.bgSurface,
       bgElevated: base.bgElevated,
@@ -264,7 +270,7 @@ class BistreThemeData {
       statusWarn: readable(base.statusWarn),
       statusErr: readable(base.statusErr),
       borderHairline: base.borderHairline,
-      selectionFill: brassAccent.withValues(alpha: isDark ? 0.28 : 0.22),
+      selectionFill: brassAccent.withValues(alpha: effectiveDark ? 0.28 : 0.22),
       hoverTint: base.hoverTint,
       scrim: base.scrim,
       windowBorder: base.windowBorder,
@@ -375,6 +381,7 @@ class BistreThemeData {
       other.bgCanvas == bgCanvas &&
       other.bgSurface == bgSurface &&
       other.bgElevated == bgElevated &&
+      other.inkPrimary == inkPrimary &&
       other.accentWax == accentWax &&
       other.accentBrass == accentBrass &&
       other.typography == typography &&
@@ -386,11 +393,207 @@ class BistreThemeData {
     bgCanvas,
     bgSurface,
     bgElevated,
+    inkPrimary,
     accentWax,
     accentBrass,
     typography,
     reducedEffects,
   );
+}
+
+/// The 9 curated color themes matching Parchment v2.6.0 (`Models.kt:660-784`) with plain
+/// everyday names and automatic 4-surface WCAG AA contrast via [BistreThemeData.resolve].
+@immutable
+class BistreThemePreset {
+  const BistreThemePreset({required this.id, required this.theme});
+
+  final String id;
+  final BistreThemeData theme;
+
+  static const List<BistreThemePreset> presets = <BistreThemePreset>[
+    BistreThemePreset(id: 'day', theme: BistreThemeData.dayParchment),
+    BistreThemePreset(
+      id: 'blue_cream',
+      theme: BistreThemeData(
+        isDark: false,
+        bgCanvas: Color(0xFFEFEEE3),
+        bgSurface: Color(0xFFE6E5D8),
+        bgElevated: Color(0xFFF8F7EF),
+        inkPrimary: Color(0xFF1D2230),
+        inkSecondary: Color(0xFF4A4F5C),
+        inkMuted: Color(0xFF666A72),
+        accentWax: Color(0xFF2A4A9E),
+        onAccentWax: Color(0xFFFFFDF8),
+        accentBrass: Color(0xFF8F6A12),
+        statusOk: Color(0xFF245C42),
+        statusWarn: Color(0xFF8F6A12),
+        statusErr: Color(0xFFB3261E),
+        borderHairline: Color(0x2E4A4F5C),
+        selectionFill: Color(0x382A4A9E),
+        hoverTint: Color(0x141D2230),
+        scrim: Color(0x521D2230),
+        windowBorder: Color(0xFFD4D3C2),
+      ),
+    ),
+    BistreThemePreset(
+      id: 'night_blue',
+      theme: BistreThemeData(
+        isDark: true,
+        bgCanvas: Color(0xFF12151C),
+        bgSurface: Color(0xFF0E1117),
+        bgElevated: Color(0xFF191D26),
+        inkPrimary: Color(0xFFE6E4D8),
+        inkSecondary: Color(0xFFA9ACB3),
+        inkMuted: Color(0xFF8A8F99),
+        accentWax: Color(0xFF8FA6E8),
+        onAccentWax: Color(0xFF12151C),
+        accentBrass: Color(0xFFD4B25A),
+        statusOk: Color(0xFF74C29A),
+        statusWarn: Color(0xFFD4B25A),
+        statusErr: Color(0xFFF0857A),
+        borderHairline: Color(0x38A9ACB3),
+        selectionFill: Color(0x428FA6E8),
+        hoverTint: Color(0x14E6E4D8),
+        scrim: Color(0x8F090B10),
+        windowBorder: Color(0xFF2C3240),
+      ),
+    ),
+    BistreThemePreset(
+      id: 'warm_ivory',
+      theme: BistreThemeData(
+        isDark: false,
+        bgCanvas: Color(0xFFF8F7F4),
+        bgSurface: Color(0xFFEFECE6),
+        bgElevated: Color(0xFFFFFFFF),
+        inkPrimary: Color(0xFF1E1B18),
+        inkSecondary: Color(0xFF5A524C),
+        inkMuted: Color(0xFF6F6760),
+        accentWax: Color(0xFF7A5216),
+        onAccentWax: Color(0xFFFFFDF8),
+        accentBrass: Color(0xFF9E6B24),
+        statusOk: Color(0xFF2B5E3F),
+        statusWarn: Color(0xFF8A520F),
+        statusErr: Color(0xFFA62B2B),
+        borderHairline: Color(0x2E5A524C),
+        selectionFill: Color(0x389E6B24),
+        hoverTint: Color(0x121E1B18),
+        scrim: Color(0x521E1B18),
+        windowBorder: Color(0xFFE2DDD5),
+      ),
+    ),
+    BistreThemePreset(
+      id: 'deep_sepia',
+      theme: BistreThemeData(
+        isDark: false,
+        bgCanvas: Color(0xFFEADBC0),
+        bgSurface: Color(0xFFDECBA8),
+        bgElevated: Color(0xFFF3E7D0),
+        inkPrimary: Color(0xFF1F160F),
+        inkSecondary: Color(0xFF523F2E),
+        inkMuted: Color(0xFF6B5744),
+        accentWax: Color(0xFF8C3823),
+        onAccentWax: Color(0xFFFFFDF8),
+        accentBrass: Color(0xFF9E6B24),
+        statusOk: Color(0xFF26573A),
+        statusWarn: Color(0xFF7E4A10),
+        statusErr: Color(0xFF9E2A1C),
+        borderHairline: Color(0x33523F2E),
+        selectionFill: Color(0x3D9E6B24),
+        hoverTint: Color(0x141F160F),
+        scrim: Color(0x521F160F),
+        windowBorder: Color(0xFFC4AE88),
+      ),
+    ),
+    BistreThemePreset(id: 'night', theme: BistreThemeData.nightCandlelight),
+    BistreThemePreset(
+      id: 'pure_black',
+      theme: BistreThemeData(
+        isDark: true,
+        bgCanvas: Color(0xFF0A0908),
+        bgSurface: Color(0xFF12100E),
+        bgElevated: Color(0xFF181512),
+        inkPrimary: Color(0xFFE5DDD0),
+        inkSecondary: Color(0xFFB3A48E),
+        inkMuted: Color(0xFF8C7E6A),
+        accentWax: Color(0xFFC97A3E),
+        onAccentWax: Color(0xFF0A0908),
+        accentBrass: Color(0xFFC49142),
+        statusOk: Color(0xFF74B88E),
+        statusWarn: Color(0xFFE0A450),
+        statusErr: Color(0xFFEB6B59),
+        borderHairline: Color(0x2EE5DDD0),
+        selectionFill: Color(0x47C97A3E),
+        hoverTint: Color(0x14E5DDD0),
+        scrim: Color(0xA6000000),
+        windowBorder: Color(0xFF2E2822),
+      ),
+    ),
+    BistreThemePreset(
+      id: 'clean_paper',
+      theme: BistreThemeData(
+        isDark: false,
+        bgCanvas: Color(0xFFF7F7F5),
+        bgSurface: Color(0xFFEFEFED),
+        bgElevated: Color(0xFFFFFFFF),
+        inkPrimary: Color(0xFF18181B),
+        inkSecondary: Color(0xFF52525B),
+        inkMuted: Color(0xFF686870),
+        accentWax: Color(0xFF4F46E5),
+        onAccentWax: Color(0xFFFFFFFF),
+        accentBrass: Color(0xFF0D9488),
+        statusOk: Color(0xFF1E6B47),
+        statusWarn: Color(0xFF9A5B13),
+        statusErr: Color(0xFFB42318),
+        borderHairline: Color(0x2618181B),
+        selectionFill: Color(0x334F46E5),
+        hoverTint: Color(0x1018181B),
+        scrim: Color(0x5218181B),
+        windowBorder: Color(0xFFE4E4E0),
+      ),
+    ),
+    BistreThemePreset(
+      id: 'dark_slate',
+      theme: BistreThemeData(
+        isDark: true,
+        bgCanvas: Color(0xFF0E0F12),
+        bgSurface: Color(0xFF131519),
+        bgElevated: Color(0xFF17191E),
+        inkPrimary: Color(0xFFECECEE),
+        inkSecondary: Color(0xFFA0A6B2),
+        inkMuted: Color(0xFF838996),
+        accentWax: Color(0xFF5E6AD2),
+        onAccentWax: Color(0xFFFFFFFF),
+        accentBrass: Color(0xFF38BDF8),
+        statusOk: Color(0xFF6EE7B7),
+        statusWarn: Color(0xFFFBBF24),
+        statusErr: Color(0xFFF87171),
+        borderHairline: Color(0x2EECECEE),
+        selectionFill: Color(0x425E6AD2),
+        hoverTint: Color(0x14ECECEE),
+        scrim: Color(0x99060709),
+        windowBorder: Color(0xFF2A2E37),
+      ),
+    ),
+  ];
+
+  static BistreThemePreset? tryById(String id) {
+    for (final preset in presets) {
+      if (preset.id == id) return preset;
+    }
+    return null;
+  }
+
+  static bool isDarkFor(String themeId, {required bool systemIsDark}) {
+    if (themeId == 'system') return systemIsDark;
+    if (themeId == 'night') return true;
+    if (themeId == 'day') return false;
+    return tryById(themeId)?.theme.isDark ?? systemIsDark;
+  }
+
+  static String activePresetId(String themeId, {required bool isDark}) {
+    if (themeId == 'system') return isDark ? 'night' : 'day';
+    return tryById(themeId)?.id ?? (isDark ? 'night' : 'day');
+  }
 }
 
 /// Dynamic typography role factory honoring user-chosen local fonts & exact px size.

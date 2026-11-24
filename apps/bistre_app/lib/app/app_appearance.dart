@@ -8,6 +8,7 @@ import '../design/bistre_theme.dart';
 class AppAppearance {
   const AppAppearance({
     required this.isDark,
+    this.themeId = '',
     required this.accentPreset,
     required this.customAccentHex,
     required this.typography,
@@ -16,6 +17,7 @@ class AppAppearance {
   });
 
   final bool isDark;
+  final String themeId;
   final String accentPreset;
   final String customAccentHex;
   final BistreTypographyConfig typography;
@@ -29,6 +31,7 @@ class AppAppearance {
   bool operator ==(Object other) =>
       other is AppAppearance &&
       other.isDark == isDark &&
+      other.themeId == themeId &&
       other.accentPreset == accentPreset &&
       other.customAccentHex == customAccentHex &&
       other.typography == typography &&
@@ -38,6 +41,7 @@ class AppAppearance {
   @override
   int get hashCode => Object.hash(
     isDark,
+    themeId,
     accentPreset,
     customAccentHex,
     typography,

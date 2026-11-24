@@ -3763,7 +3763,7 @@
       }
     },
     "chat.context_estimate_hint": {
-      "message": "Ước tính khoảng 4 ký tự cho mỗi token, sau khi đã rút gọn.",
+      "message": "Đếm cục bộ bằng bộ tách token BPE theo mô hình, sau khi đã rút gọn.",
       "context": "Footnote of the context breakdown popover",
       "tone": "calm_editorial",
       "max_chars": 96,
@@ -3996,6 +3996,295 @@
       "context": "Phone settings: clears the settings search",
       "tone": "concise_action",
       "max_chars": 24,
+      "placeholders": {}
+    },
+    "shell.tabs.count": {
+      "message": "{count, plural, =1{1 thẻ} other{{count} thẻ}}",
+      "context": "Button opening the tab overview modal",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "3"
+        }
+      }
+    },
+    "shell.tabs.open_heading": {
+      "message": "Thẻ đang mở ({count})",
+      "context": "Heading of the open tabs overview modal",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "3"
+        }
+      }
+    },
+    "shell.tabs.active_count": {
+      "message": "{count} đang chạy",
+      "context": "Number of chats currently replying shown in tab overview heading",
+      "tone": "diagnostic",
+      "max_chars": 24,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "1"
+        }
+      }
+    },
+    "shell.tabs.new_tab": {
+      "message": "Thẻ mới",
+      "context": "Button in tab bar or tab overview to open a new chat tab",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "shell.tabs.filter_placeholder": {
+      "message": "Lọc thẻ đang mở...",
+      "context": "Search input placeholder in the tab overview modal",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "shell.tabs.close_overview": {
+      "message": "Đóng tổng quan thẻ",
+      "context": "Close button label for the tab overview modal",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "shell.tabs.replying_background": {
+      "message": "Đang trả lời trong nền",
+      "context": "Status label on a tab card while a reply is streaming",
+      "tone": "diagnostic",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "shell.tabs.no_matches": {
+      "message": "Không có thẻ nào khớp",
+      "context": "Empty state when tab overview filter has no matches",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.model.all_providers": {
+      "message": "Tất cả nhà cung cấp ({count})",
+      "context": "Filter chip showing models across all providers",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "12"
+        }
+      }
+    },
+    "chat.model.all_families": {
+      "message": "Tất cả họ mô hình",
+      "context": "Filter chip showing all model vendor families",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.model.filter_count": {
+      "message": "{name} ({count})",
+      "context": "Provider or model-family filter chip with model count",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "OpenAI"
+        },
+        "count": {
+          "type": "int",
+          "example": "8"
+        }
+      }
+    },
+    "chat.model.no_matches": {
+      "message": "Không có mô hình nào khớp \"{query}\"",
+      "context": "Empty state when model picker filter has no matching models",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {
+        "query": {
+          "type": "string",
+          "example": "gpt"
+        }
+      }
+    },
+    "chat.model.stored": {
+      "message": "Có lưu",
+      "context": "Privacy badge when provider stores responses server-side",
+      "tone": "diagnostic",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.model.no_store": {
+      "message": "Không lưu",
+      "context": "Privacy badge when provider does not store responses server-side",
+      "tone": "diagnostic",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.context.session_cost": {
+      "message": "Phiên {cost}",
+      "context": "Session spend suffix in context breakdown header",
+      "tone": "diagnostic",
+      "max_chars": 32,
+      "placeholders": {
+        "cost": {
+          "type": "string",
+          "example": "$0.02"
+        }
+      }
+    },
+    "chat.context.files": {
+      "message": "Tệp đính kèm ({count})",
+      "context": "Row label for attached files in context breakdown popover",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "2"
+        }
+      }
+    },
+    "chat.thinking.faster": {
+      "message": "Nhanh hơn",
+      "context": "Start label under the thinking effort slider",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.thinking.thorough": {
+      "message": "Kỹ lưỡng hơn",
+      "context": "End label under the thinking effort slider",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.usage.details_hint": {
+      "message": "Xem chi tiết token và chi phí",
+      "context": "Hover hint and accessibility label on a reply's token/cost pill",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "chat.usage.input_tokens": {
+      "message": "Đầu vào",
+      "context": "Input token count row label in turn usage popover",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.usage.output_tokens": {
+      "message": "Đầu ra",
+      "context": "Output token count row label in turn usage popover",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.usage.cost_label": {
+      "message": "Chi phí",
+      "context": "Estimated cost row label in turn usage popover",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "settings.appearance.theme_presets": {
+      "message": "Bảng màu có sẵn",
+      "context": "Row heading above the 9 visual theme preview cards in Appearance settings",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.appearance.theme_sample_aa": {
+      "message": "Aa",
+      "context": "Sample typography letters rendered inside each miniature theme preview card",
+      "tone": "calm_editorial",
+      "max_chars": 6,
+      "placeholders": {}
+    },
+    "settings.appearance.preset_warm_sepia": {
+      "message": "Nâu ấm",
+      "context": "Theme preset card label for default warm sepia light palette",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.preset_blue_cream": {
+      "message": "Kem lam",
+      "context": "Theme preset card label for cool blue ink on warm cream light palette",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.preset_night_blue": {
+      "message": "Xanh đêm",
+      "context": "Theme preset card label for deep navy dark palette",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.preset_warm_ivory": {
+      "message": "Trắng ngà",
+      "context": "Theme preset card label for bright warm ivory light palette",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.preset_deep_sepia": {
+      "message": "Nâu trầm",
+      "context": "Theme preset card label for deeper warm sand sepia palette",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.preset_warm_dark": {
+      "message": "Tối ấm",
+      "context": "Theme preset card label for default warm dark palette",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.preset_pure_black": {
+      "message": "Đen tuyền",
+      "context": "Theme preset card label for true AMOLED black dark palette",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.preset_clean_paper": {
+      "message": "Giấy sáng",
+      "context": "Theme preset card label for crisp neutral light palette",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.appearance.preset_dark_slate": {
+      "message": "Xám tối",
+      "context": "Theme preset card label for modern dark slate palette",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "toast.regenerated": {
+      "message": "Đang tạo lại câu trả lời — bản trước vẫn được giữ",
+      "context": "Non-blocking toast shown after clicking Regenerate on an assistant reply",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "toast.regenerated_previous": {
+      "message": "Bản trước",
+      "context": "One-click toast action button to switch back to the prior reply branch",
+      "tone": "concise_action",
+      "max_chars": 16,
       "placeholders": {}
     }
   }

@@ -99,9 +99,13 @@ mixin _MobileSettings on State<SettingsWorkspace> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                if (pageEntry != null) ...[
+            if (pageEntry != null && stackTitle)
+              Wrap(
+                spacing: BistreSpacing.s8,
+                runSpacing: BistreSpacing.s8,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
                   EngravedButton(
                     label: l10n.t(L10nKey.settingsTitle),
                     compact: true,
@@ -112,36 +116,53 @@ mixin _MobileSettings on State<SettingsWorkspace> {
                     ),
                     onPressed: () => setState(() => _mobilePage = null),
                   ),
-                  if (stackTitle)
-                    const Spacer()
-                  else ...[
-                    const SizedBox(width: BistreSpacing.s8),
-                    Expanded(child: _pageTitle(theme, l10n, pageEntry)),
-                  ],
-                ] else ...[
-                  BistreIcon(
-                    BistreUiIcon.settings,
-                    size: 17,
-                    color: theme.accentBrass,
-                  ),
-                  const SizedBox(width: BistreSpacing.s8),
-                  Expanded(
-                    child: InkText(
-                      l10n.t(L10nKey.settingsTitle),
-                      role: InkTextRole.titleMedium,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  EngravedButton(
+                    label: l10n.t(L10nKey.settingsChat),
+                    compact: true,
+                    onPressed: ctrl.closeSettings,
                   ),
                 ],
-                const SizedBox(width: BistreSpacing.s8),
-                EngravedButton(
-                  label: l10n.t(L10nKey.settingsChat),
-                  compact: true,
-                  onPressed: ctrl.closeSettings,
-                ),
-              ],
-            ),
+              )
+            else
+              Row(
+                children: [
+                  if (pageEntry != null) ...[
+                    EngravedButton(
+                      label: l10n.t(L10nKey.settingsTitle),
+                      compact: true,
+                      leading: BistreIcon(
+                        BistreUiIcon.chevronStart,
+                        size: 13,
+                        color: theme.inkSecondary,
+                      ),
+                      onPressed: () => setState(() => _mobilePage = null),
+                    ),
+                    const SizedBox(width: BistreSpacing.s8),
+                    Expanded(child: _pageTitle(theme, l10n, pageEntry)),
+                  ] else ...[
+                    BistreIcon(
+                      BistreUiIcon.settings,
+                      size: 17,
+                      color: theme.accentBrass,
+                    ),
+                    const SizedBox(width: BistreSpacing.s8),
+                    Expanded(
+                      child: InkText(
+                        l10n.t(L10nKey.settingsTitle),
+                        role: InkTextRole.titleMedium,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: BistreSpacing.s8),
+                  EngravedButton(
+                    label: l10n.t(L10nKey.settingsChat),
+                    compact: true,
+                    onPressed: ctrl.closeSettings,
+                  ),
+                ],
+              ),
             if (pageEntry != null && stackTitle) ...[
               const SizedBox(height: BistreSpacing.s8),
               _pageTitle(theme, l10n, pageEntry),

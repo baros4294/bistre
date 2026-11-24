@@ -19,6 +19,7 @@ import 'live_turn_notifier.dart';
 
 part 'folio_controller_boot.dart';
 part 'folio_controller_catalog.dart';
+part 'folio_controller_navigation.dart';
 part 'folio_controller_threads.dart';
 part 'folio_controller_studio.dart';
 
@@ -200,6 +201,7 @@ class FolioController extends ChangeNotifier {
 
   AppAppearance _currentAppearance() => AppAppearance(
     isDark: isDark,
+    themeId: _settings.theme,
     accentPreset: _settings.accentPreset,
     customAccentHex: _settings.customAccentHex,
     typography: resolvedTypography,
@@ -340,6 +342,7 @@ class FolioController extends ChangeNotifier {
   SettingsTab _settingsTab = SettingsTab.providers;
   String? _editingAssistantId;
   bool _commandPaletteOpen = false;
+  bool _tabSwitcherOpen = false;
 
   /// The current toast; listened to only by the toast overlay.
   final ToastNotifier toast = ToastNotifier();
@@ -356,11 +359,8 @@ class FolioController extends ChangeNotifier {
 
   EngineSettings get settings => _settings;
 
-  bool get isDark {
-    if (_settings.theme == 'night') return true;
-    if (_settings.theme == 'day') return false;
-    return _systemIsDark;
-  }
+  bool get isDark =>
+      BistreThemePreset.isDarkFor(_settings.theme, systemIsDark: _systemIsDark);
 
   FolioLayoutMode get layoutMode => _settings.layoutMode == 'bubbles'
       ? FolioLayoutMode.bubbles
@@ -462,6 +462,30 @@ class FolioController extends ChangeNotifier {
 
   bool get isStreaming =>
       _streamingThreadId != null && _streamingThreadId == _activeThread?.id;
+
+  /// Whether [threadId] currently has a live streaming reply (`activeStreamsBySession`).
+  bool isThreadStreaming(String threadId) => _streamingThreadId == threadId;
+
+  /// Count of background chats currently streaming other than the active chat.
+  int get backgroundStreamingCount =>
+      _streamingThreadId != null && _streamingThreadId != _activeThread?.id
+      ? 1
+      : 0;
+
+  /// Total recorded cost in micro-USD for the active conversation (`SessionSpend.kt`).
+  int get activeThreadSpendMicros =>
+      _nodes.fold<int>(0, (sum, n) => sum + (n.usageMeta?.costMicros ?? 0));
+
+  /// Whether any assistant reply in the active conversation had unknown pricing.
+  bool get activeThreadHasUnknownCost => _nodes.any(
+    (n) =>
+        n.role == 'assistant' &&
+        (n.usageMeta?.hasTokens ?? false) &&
+        !(n.usageMeta?.costKnown ?? true),
+  );
+
+  bool get tabSwitcherOpen => _tabSwitcherOpen;
+
   bool get hasAnyActiveRun =>
       _streamingThreadId != null || _agentRuns.any((r) => r.isActive);
   int get activeRunCount => _agentRuns.where((r) => r.isActive).length;
@@ -586,57 +610,6 @@ class FolioController extends ChangeNotifier {
     return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
   }
 
-  Map<String, String> get shortcutBindings {
-    final result = <String, String>{
-      for (final spec in ShortcutActionSpec.defaults)
-        spec.id: spec.defaultCombo,
-    };
-    final raw = _settings.customShortcutsJson.trim();
-    if (raw.isNotEmpty) {
-      try {
-        final decoded = jsonDecode(raw);
-        if (decoded is Map<String, Object?>) {
-          for (final kv in decoded.entries) {
-            if (kv.value is String && (kv.value! as String).trim().isNotEmpty) {
-              result[kv.key] = (kv.value! as String).trim();
-            }
-          }
-        }
-      } on FormatException {
-        // Fallback safely to defaults.
-      }
-    }
-    return result;
-  }
-
-  String shortcutFor(String actionId) =>
-      shortcutBindings[actionId] ??
-      ShortcutActionSpec.defaults
-          .where((s) => s.id == actionId)
-          .firstOrNull
-          ?.defaultCombo ??
-      '';
-
-  Future<void> setShortcutBinding(String actionId, String combo) async {
-    final next = Map<String, String>.from(shortcutBindings);
-    next[actionId] = combo;
-    await updateSettings(
-      _settings.copyWith(customShortcutsJson: jsonEncode(next)),
-    );
-  }
-
-  Future<void> resetShortcuts() async {
-    await updateSettings(_settings.copyWith(customShortcutsJson: ''));
-  }
-
-  void setSystemBrightness(bool isDark) {
-    if (_systemIsDark == isDark) return;
-    _systemIsDark = isDark;
-    if (_settings.theme == 'system') {
-      notifyListeners();
-    }
-  }
-
   void clearDiagnostic() {
     if (_lastDiagnosticKey == null) return;
     _lastDiagnosticKey = null;
@@ -702,6 +675,17 @@ class FolioController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Selects a specific sibling node under [parentKey] by its [nodeId] (e.g., 1-click undo after
+  /// regenerating a reply while keeping the previous branch intact).
+  void selectSiblingNodeById(String parentKey, String nodeId) {
+    final siblings = _groupChildrenByParent(_nodes)[parentKey];
+    if (siblings == null) return;
+    final idx = siblings.indexWhere((n) => n.id == nodeId);
+    if (idx < 0) return;
+    _selectedChildIndex[parentKey] = idx;
+    notifyListeners();
+  }
+
   static Map<String, List<EngineNode>> _groupChildrenByParent(
     List<EngineNode> allNodes,
   ) {
@@ -719,15 +703,6 @@ class FolioController extends ChangeNotifier {
   /// Event-stream re-subscriptions left before the failure is shown to the user.
   int _eventResubscribesLeft = _kMaxEventResubscribes;
   static const int _kMaxEventResubscribes = 3;
-
-  Future<void> ensureSystemFontsLoaded() async {
-    if (_systemFonts.isNotEmpty || _loadingSystemFonts) return;
-    _loadingSystemFonts = true;
-    notifyListeners();
-    _systemFonts = await BistreFontManager.discoverSystemFonts();
-    _loadingSystemFonts = false;
-    notifyListeners();
-  }
 
   /// Conversation limit of the active model (tokens), when a public model list reports it.
   /// [activeContextLimit], starting the lookup for a newly selected model.
@@ -757,84 +732,6 @@ class FolioController extends ChangeNotifier {
           })
           .catchError((Object e) => _noteNonFatal('context_limit', e)),
     );
-  }
-
-  /// Starts a public price-list refresh now (Settings → Safety & Budget).
-  Future<void> refreshPrices() async {
-    try {
-      await _gateway.refreshPrices();
-    } catch (e) {
-      _lastDiagnosticKey = extractDiagnosticKey(e);
-      notifyListeners();
-    }
-  }
-
-  Future<bool> applyLocalProseFont({
-    required String familyLabel,
-    required String filePath,
-  }) async {
-    final loaded = await BistreFontManager.loadFontFromFile(
-      filePath,
-      preferredFamily: familyLabel,
-    );
-    if (loaded == null) return false;
-    _loadedProseFontFamily = loaded;
-    await updateSettings(
-      _settings.copyWith(proseFontFamily: familyLabel, proseFontPath: filePath),
-      quiet: true,
-    );
-    showToast(L10nKey.toastFontLoaded);
-    return true;
-  }
-
-  Future<bool> applyLocalMonoFont({
-    required String familyLabel,
-    required String filePath,
-  }) async {
-    final loaded = await BistreFontManager.loadFontFromFile(
-      filePath,
-      preferredFamily: familyLabel,
-    );
-    if (loaded == null) return false;
-    _loadedMonoFontFamily = loaded;
-    await updateSettings(
-      _settings.copyWith(monoFontFamily: familyLabel, monoFontPath: filePath),
-      quiet: true,
-    );
-    showToast(L10nKey.toastFontLoaded);
-    return true;
-  }
-
-  Future<void> resetProseFont() async {
-    _loadedProseFontFamily = BistreTypography.fontProse;
-    await updateSettings(
-      _settings.copyWith(proseFontFamily: '', proseFontPath: ''),
-      quiet: true,
-    );
-    showToast(L10nKey.toastSettingsSaved);
-  }
-
-  Future<void> resetMonoFont() async {
-    _loadedMonoFontFamily = BistreTypography.fontMono;
-    await updateSettings(
-      _settings.copyWith(monoFontFamily: '', monoFontPath: ''),
-      quiet: true,
-    );
-    showToast(L10nKey.toastSettingsSaved);
-  }
-
-  Future<void> persistCurrentWindowBounds() async {
-    final bounds = await BistreDesktopHost.readWindowBounds();
-    if (bounds == null) return;
-    final encoded = bounds.toJsonString();
-    if (encoded == _settings.windowBoundsJson) return;
-    try {
-      _settings = await _gateway.saveSettings(
-        _settings.copyWith(windowBoundsJson: encoded),
-      );
-    } catch (e) {
-      _noteNonFatal('window_bounds_save', e);
-    }
   }
 
   // --- Engine Event Bus ---
@@ -1096,24 +993,6 @@ class FolioController extends ChangeNotifier {
     if (hits != null && search.query == query) search.update(hits: hits);
   }
 
-  /// Open chats as tabs (Parchment v2.6.0), skipping deleted ones.
-  List<EngineThread> get openTabs => <EngineThread>[
-    for (final id in _openTabIds)
-      if (_threads.where((t) => t.id == id).firstOrNull case final t?) t,
-  ];
-
-  /// Closes a tab; closing the current one switches to its neighbour.
-  Future<void> closeTab(String threadId) async {
-    final index = _openTabIds.indexOf(threadId);
-    if (index < 0) return;
-    _openTabIds.removeAt(index);
-    if (_activeThread?.id == threadId && _openTabIds.isNotEmpty) {
-      await selectThread(_openTabIds[index.clamp(0, _openTabIds.length - 1)]);
-      return;
-    }
-    notifyListeners();
-  }
-
   Future<void> selectThread(String threadId) async {
     final target = _threads.where((t) => t.id == threadId).firstOrNull;
     if (target == null) return;
@@ -1239,167 +1118,6 @@ class FolioController extends ChangeNotifier {
     clearTopP: true,
   );
 
-  // --- Navigation & Layout Controls ---
-
-  void toggleSidebar() {
-    _sidebarOpen = !_sidebarOpen;
-    unawaited(
-      updateSettings(
-        _settings.copyWith(sidebarOpen: _sidebarOpen),
-        quiet: true,
-      ),
-    );
-    notifyListeners();
-  }
-
-  void toggleInspector() {
-    _inspectorOpen = !_inspectorOpen;
-    if (_inspectorOpen) {
-      _studioPaneOpen = false;
-    }
-    notifyListeners();
-  }
-
-  void toggleStudioPane() {
-    _studioPaneOpen = !_studioPaneOpen;
-    if (_studioPaneOpen) {
-      _inspectorOpen = false;
-      unawaited(_refreshRunsAndPower());
-    }
-    notifyListeners();
-  }
-
-  void setSidebarTab(SidebarTab tab) {
-    if (_sidebarTab == tab) return;
-    _sidebarTab = tab;
-    notifyListeners();
-  }
-
-  void setSidebarFilter(String query) {
-    sidebarFilterQuery.value = query;
-  }
-
-  void toggleSearchPanel() {
-    _searchPanelOpen = !_searchPanelOpen;
-    if (!_searchPanelOpen) search.clear();
-    notifyListeners();
-  }
-
-  void setSearchAllThreads(bool allThreads) {
-    search.update(allThreads: allThreads);
-    if (search.query.isNotEmpty) unawaited(updateSearch(search.query));
-  }
-
-  void openSettings([SettingsTab tab = SettingsTab.providers]) {
-    _commandPaletteOpen = false;
-    _settingsTab = tab;
-    _settingsOpen = true;
-    if (tab == SettingsTab.appearance) {
-      unawaited(ensureSystemFontsLoaded());
-    }
-    notifyListeners();
-  }
-
-  void openAssistantEditor([String? assistantId]) {
-    _editingAssistantId = assistantId;
-    openSettings(SettingsTab.assistants);
-  }
-
-  void closeSettings() {
-    if (!_settingsOpen) return;
-    _settingsOpen = false;
-    notifyListeners();
-  }
-
-  void setSettingsTab(SettingsTab tab) {
-    _settingsTab = tab;
-    if (tab == SettingsTab.appearance) {
-      unawaited(ensureSystemFontsLoaded());
-    }
-    notifyListeners();
-  }
-
-  void toggleCommandPalette() {
-    _commandPaletteOpen = !_commandPaletteOpen;
-    notifyListeners();
-  }
-
-  void closeCommandPalette() {
-    if (!_commandPaletteOpen) return;
-    _commandPaletteOpen = false;
-    notifyListeners();
-  }
-
-  void handleEscape() {
-    if (_sessionTreeOpen) {
-      closeSessionTree();
-      return;
-    }
-    if (_commandPaletteOpen) {
-      closeCommandPalette();
-      return;
-    }
-    if (_settingsOpen) {
-      closeSettings();
-      return;
-    }
-    if (isStreaming) {
-      unawaited(cancelStreaming());
-      return;
-    }
-    if (_quotedExcerpt != null) {
-      clearQuote();
-      return;
-    }
-    if (_searchPanelOpen) {
-      toggleSearchPanel();
-      return;
-    }
-    if (_inspectorOpen) {
-      toggleInspector();
-      return;
-    }
-    if (_studioPaneOpen) {
-      toggleStudioPane();
-    }
-  }
-
-  void replyToPassage(String content) {
-    final compact = content.replaceAll(RegExp(r'\s+'), ' ').trim();
-    _quotedExcerpt = compact.length > 96
-        ? '${compact.substring(0, 96)}...'
-        : compact;
-    notifyListeners();
-  }
-
-  void clearQuote() {
-    _quotedExcerpt = null;
-    notifyListeners();
-  }
-
-  Future<void> copyText(String text) async {
-    await Clipboard.setData(ClipboardData(text: text));
-    showToast(L10nKey.toastCopied);
-  }
-
-  void showToast(
-    L10nKey key, {
-    L10nKey? actionKey,
-    VoidCallback? onAction,
-    Duration duration = const Duration(milliseconds: 2200),
-  }) {
-    if (_disposed) return;
-    toast.show(
-      ToastMessage(key, actionKey: actionKey, onAction: onAction),
-      duration,
-    );
-  }
-
-  void dismissToast() {
-    if (_disposed) return;
-    toast.dismiss();
-  }
-
   /// Latest settings change; an older save's response never overwrites a newer value.
   int _settingsSeq = 0;
 
@@ -1409,71 +1127,6 @@ class FolioController extends ChangeNotifier {
 
   Timer? _settingsSaveTimer;
   EngineSettings? _pendingQuietSettings;
-
-  /// Applies [next] at once. Quiet changes (sliders, toggles) are saved after
-  /// [settingsSaveDebounce] so a drag writes once; other changes save immediately.
-  Future<void> updateSettings(EngineSettings next, {bool quiet = false}) async {
-    final seq = ++_settingsSeq;
-    _settings = next;
-    _sidebarOpen = next.sidebarOpen;
-    _onLocaleSynced?.call(next.locale);
-    notifyListeners();
-    _settingsSaveTimer?.cancel();
-    if (quiet) {
-      _pendingQuietSettings = next;
-      _settingsSaveTimer = Timer(settingsSaveDebounce, () {
-        _pendingQuietSettings = null;
-        unawaited(_persistSettings(seq, next, quiet: true));
-      });
-      return;
-    }
-    _pendingQuietSettings = null;
-    await _persistSettings(seq, next, quiet: false);
-  }
-
-  Future<void> _persistSettings(
-    int seq,
-    EngineSettings next, {
-    required bool quiet,
-  }) async {
-    try {
-      final saved = await _gateway.saveSettings(next);
-      // An older save's response never overwrites a newer value.
-      if (seq != _settingsSeq) return;
-      _settings = saved;
-      if (!quiet) {
-        showToast(L10nKey.toastSettingsSaved);
-      }
-      notifyListeners();
-    } catch (e) {
-      _lastDiagnosticKey = extractDiagnosticKey(e);
-      notifyListeners();
-    }
-  }
-
-  void toggleTheme() {
-    final nextTheme = isDark ? 'day' : 'night';
-    unawaited(
-      updateSettings(_settings.copyWith(theme: nextTheme), quiet: true),
-    );
-  }
-
-  void toggleLayoutMode() {
-    unawaited(
-      updateSettings(
-        _settings.copyWith(
-          layoutMode: layoutMode == FolioLayoutMode.openFolio
-              ? 'bubbles'
-              : 'open_folio',
-        ),
-        quiet: true,
-      ),
-    );
-  }
-
-  void syncLocale(String locale) {
-    unawaited(updateSettings(_settings.copyWith(locale: locale), quiet: true));
-  }
 
   @override
   void dispose() {

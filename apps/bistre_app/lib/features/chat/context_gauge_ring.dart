@@ -8,10 +8,12 @@ import '../../bridge/engine_models.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
+import '../../design/hover_hint.dart';
 import '../../design/ink_primitives.dart';
 import '../../design/press_feedback.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
+import '../shell/folio_controller.dart';
 
 /// Compact radial conversation-limit gauge (`docs/design/DESIGN.md` §8) that opens a breakdown
 /// of what fills the conversation (Parchment v2.6.0 `ContextWindowBreakdownPopover`).
@@ -25,6 +27,8 @@ class ContextGaugeRing extends StatefulWidget {
     required this.usage,
     this.limitTokens,
     this.size = 18,
+    this.sessionSpendMicros = 0,
+    this.uploadedFilesCount = 0,
     this.loadWithDraft,
     this.onShorten,
     this.onOpenPrices,
@@ -38,6 +42,12 @@ class ContextGaugeRing extends StatefulWidget {
   final EngineContextUsage usage;
   final int? limitTokens;
   final double size;
+
+  /// Total recorded session spend for the active chat in micro-USD (`SessionSpend.kt`).
+  final int sessionSpendMicros;
+
+  /// Number of files currently attached to the composer (`ContextWindowBreakdownPopover` L1314).
+  final int uploadedFilesCount;
   final Future<EngineContextUsage> Function()? loadWithDraft;
   final VoidCallback? onShorten;
   final VoidCallback? onOpenPrices;
@@ -157,40 +167,43 @@ class _ContextGaugeRingState extends State<ContextGaugeRing> {
         link: _link,
         child: TapTargetExpander(
           minSize: minTapTarget,
-          child: PressFeedback(
-            child: Semantics(
-              button: true,
-              label: label,
-              hint: l10n.t(L10nKey.chatContextOpen),
-              excludeSemantics: true,
-              child: FocusableActionDetector(
-                onShowHoverHighlight: (v) => setState(() => _hovered = v),
-                onShowFocusHighlight: (v) => setState(() => _focused = v),
-                shortcuts: const <ShortcutActivator, Intent>{
-                  SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
-                  SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
-                },
-                actions: <Type, Action<Intent>>{
-                  ActivateIntent: CallbackAction<ActivateIntent>(
-                    onInvoke: (_) {
-                      _toggle();
-                      return null;
-                    },
-                  ),
-                },
-                mouseCursor: SystemMouseCursors.click,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _toggle,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: _hovered ? theme.hoverTint : null,
-                      borderRadius: BorderRadius.circular(8),
-                      border: _focused
-                          ? Border.all(color: theme.accentBrass, width: 1.6)
-                          : null,
+          child: HoverHint(
+            message: l10n.t(L10nKey.chatContextOpen),
+            child: PressFeedback(
+              child: Semantics(
+                button: true,
+                label: label,
+                hint: l10n.t(L10nKey.chatContextOpen),
+                excludeSemantics: true,
+                child: FocusableActionDetector(
+                  onShowHoverHighlight: (v) => setState(() => _hovered = v),
+                  onShowFocusHighlight: (v) => setState(() => _focused = v),
+                  shortcuts: const <ShortcutActivator, Intent>{
+                    SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+                    SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+                  },
+                  actions: <Type, Action<Intent>>{
+                    ActivateIntent: CallbackAction<ActivateIntent>(
+                      onInvoke: (_) {
+                        _toggle();
+                        return null;
+                      },
                     ),
-                    child: gauge,
+                  },
+                  mouseCursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _toggle,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: _hovered ? theme.hoverTint : null,
+                        borderRadius: BorderRadius.circular(8),
+                        border: _focused
+                            ? Border.all(color: theme.accentBrass, width: 1.6)
+                            : null,
+                      ),
+                      child: gauge,
+                    ),
                   ),
                 ),
               ),
@@ -274,26 +287,40 @@ class _ContextGaugeRingState extends State<ContextGaugeRing> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
+                    // Stacked title + usage/cost subtitle (`ContextWindowBreakdownPopover` L1365-L1377).
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Expanded(
-                          child: InkText(
-                            l10n.t(L10nKey.chatContextTitle),
-                            role: InkTextRole.labelStrong,
-                          ),
-                        ),
                         InkText(
-                          limit == null
-                              ? compact(used)
-                              : l10n.t(
-                                  L10nKey.chatContextGaugeShort,
-                                  <String, Object?>{
-                                    'used': compact(used),
-                                    'limit': compact(limit),
-                                    'percent': (_fraction(used, limit) * 100)
-                                        .round(),
-                                  },
-                                ),
+                          l10n.t(L10nKey.chatContextTitle),
+                          role: InkTextRole.labelStrong,
+                        ),
+                        const SizedBox(height: 2),
+                        InkText(
+                          l10n.joinMeta(<String>[
+                            limit == null
+                                ? compact(used)
+                                : l10n.t(
+                                    L10nKey.chatContextGaugeShort,
+                                    <String, Object?>{
+                                      'used': compact(used),
+                                      'limit': compact(limit),
+                                      'percent': (_fraction(used, limit) * 100)
+                                          .round(),
+                                    },
+                                  ),
+                            if (widget.sessionSpendMicros > 0)
+                              l10n.t(
+                                L10nKey.chatContextSessionCost,
+                                <String, Object?>{
+                                  'cost': FolioController.formatMicrosUsd(
+                                    widget.sessionSpendMicros,
+                                    showSubCent: true,
+                                  ),
+                                },
+                              ),
+                          ]),
                           role: InkTextRole.captionMeta,
                           color: theme.inkMuted,
                         ),
@@ -347,6 +374,33 @@ class _ContextGaugeRingState extends State<ContextGaugeRing> {
                               ),
                               role: InkTextRole.captionMeta,
                               color: theme.inkMuted,
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (widget.uploadedFilesCount > 0)
+                      Padding(
+                        padding: const EdgeInsetsDirectional.symmetric(
+                          vertical: 3,
+                        ),
+                        child: Row(
+                          children: [
+                            BistreIcon(
+                              BistreUiIcon.paperclip,
+                              size: 11,
+                              color: theme.accentBrass,
+                            ),
+                            const SizedBox(width: 7),
+                            Expanded(
+                              child: InkText(
+                                l10n.t(
+                                  L10nKey.chatContextFiles,
+                                  <String, Object?>{
+                                    'count': widget.uploadedFilesCount,
+                                  },
+                                ),
+                                role: InkTextRole.bodyCompact,
+                              ),
                             ),
                           ],
                         ),
