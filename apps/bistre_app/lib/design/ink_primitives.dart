@@ -726,7 +726,95 @@ class _InkChipState extends State<InkChip> {
   }
 }
 
-/// 9. `FolioOverlay`: `OverlayPortal`-backed modal/popover with Escape dismissal.
+/// Overlay controller whose [hide] fades the overlay out over `BistreMotion.leaving` before
+/// removing it (DESIGN §6: overlays never snap shut). [toggle] and Escape go through [hide];
+/// [hideNow] removes it at once. Reduce motion removes it at once too.
+class FolioOverlayController extends OverlayPortalController {
+  _FolioOverlayFadeState? _fade;
+
+  @override
+  void show() {
+    _fade?._resetVisible();
+    super.show();
+  }
+
+  @override
+  void hide() {
+    final fade = _fade;
+    if (fade == null || !isShowing) {
+      super.hide();
+      return;
+    }
+    fade._fadeOut(() {
+      if (isShowing) super.hide();
+    });
+  }
+
+  /// Removes the overlay without the exit fade.
+  void hideNow() => super.hide();
+}
+
+class _FolioOverlayFade extends StatefulWidget {
+  const _FolioOverlayFade({required this.controller, required this.child});
+
+  final FolioOverlayController controller;
+  final Widget child;
+
+  @override
+  State<_FolioOverlayFade> createState() => _FolioOverlayFadeState();
+}
+
+class _FolioOverlayFadeState extends State<_FolioOverlayFade>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _opacity = AnimationController(
+    vsync: this,
+    value: 1,
+    duration: BistreMotion.leaving,
+  );
+  bool _closing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller._fade = this;
+  }
+
+  @override
+  void dispose() {
+    if (identical(widget.controller._fade, this))
+      widget.controller._fade = null;
+    _opacity.dispose();
+    super.dispose();
+  }
+
+  void _resetVisible() {
+    _opacity.value = 1;
+    if (_closing && mounted) setState(() => _closing = false);
+  }
+
+  void _fadeOut(VoidCallback done) {
+    if (_closing) return;
+    if (BistreMotion.shouldReduceMotion(context)) {
+      done();
+      return;
+    }
+    setState(() => _closing = true);
+    _opacity.reverse().then((_) {
+      if (_closing) done();
+    }).ignore();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      ignoring: _closing,
+      child: FadeTransition(opacity: _opacity, child: widget.child),
+    );
+  }
+}
+
+/// 9. `FolioOverlay`: `OverlayPortal`-backed modal/popover with Escape dismissal. With a
+/// [FolioOverlayController] it fades out on close.
 class FolioOverlay extends StatelessWidget {
   const FolioOverlay({
     super.key,
@@ -753,7 +841,13 @@ class FolioOverlay extends StatelessWidget {
           }
           return KeyEventResult.ignored;
         },
-        child: overlayBuilder(ctx),
+        child: switch (controller) {
+          final FolioOverlayController c => _FolioOverlayFade(
+            controller: c,
+            child: overlayBuilder(ctx),
+          ),
+          _ => overlayBuilder(ctx),
+        },
       ),
       child: child,
     );

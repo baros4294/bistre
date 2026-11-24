@@ -88,8 +88,7 @@ class _FolioShellScreenState extends State<FolioShellScreen> {
   final FocusNode _searchFocus = FocusNode();
   final TextEditingController _titleRenameCtrl = TextEditingController();
   final FocusNode _titleRenameFocus = FocusNode();
-  final OverlayPortalController _providerPopoverCtrl =
-      OverlayPortalController();
+  final FolioOverlayController _providerPopoverCtrl = FolioOverlayController();
   final LayerLink _providerPillLink = LayerLink();
   bool _narrowDrawerOpen = false;
   bool _isWideViewport = true;
