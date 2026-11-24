@@ -84,7 +84,12 @@ class LiveTurnNotifier extends ValueNotifier<LiveTurn?> {
   }
 
   void _schedule() {
-    if (shouldPace()) {
+    if (shouldPace() &&
+        !SchedulerBinding
+            .instance
+            .platformDispatcher
+            .accessibilityFeatures
+            .disableAnimations) {
       _frameCallbackId ??= SchedulerBinding.instance.scheduleFrameCallback(
         _revealFrame,
       );
