@@ -6,6 +6,7 @@ import 'package:vector_graphics/vector_graphics.dart';
 
 import 'bistre_icons.dart' show TapTargetExpander, minTapTarget;
 import 'bistre_theme.dart';
+import 'hover_hint.dart';
 import 'press_feedback.dart';
 
 /// 1. `ParchmentScaffold`: Edge-to-edge inset-safe page shell (Android 15/16 compliant).
@@ -188,9 +189,14 @@ class EngravedButton extends StatefulWidget {
     this.primary = false,
     this.leading,
     this.compact = false,
+    this.semanticsLabel,
   });
 
   final String label;
+
+  /// A fuller name when [label] is shortened (e.g. `Auto` for `Thinking: Auto`): screen
+  /// readers announce it and a hover hint shows it.
+  final String? semanticsLabel;
   final VoidCallback? onPressed;
   final bool primary;
   final Widget? leading;
@@ -235,92 +241,98 @@ class _EngravedButtonState extends State<EngravedButton> {
     // Compact controls still take taps across the minimum target (DESIGN.md §7).
     return TapTargetExpander(
       minSize: minTapTarget,
-      child: PressFeedback(
-        enabled: enabled,
-        child: Semantics(
-          button: true,
+      child: HoverHint(
+        message: widget.semanticsLabel ?? '',
+        child: PressFeedback(
           enabled: enabled,
-          label: widget.label,
-          child: FocusableActionDetector(
+          child: Semantics(
+            button: true,
             enabled: enabled,
-            // Focus highlight fires only in keyboard (traditional) highlight mode, so the brass ring
-            // never appears after a pointer click.
-            onShowFocusHighlight: (v) => setState(() => _focused = v),
-            onShowHoverHighlight: (v) => setState(() => _hovered = v),
-            shortcuts: const <ShortcutActivator, Intent>{
-              SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
-              SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
-            },
-            actions: <Type, Action<Intent>>{
-              ActivateIntent: CallbackAction<ActivateIntent>(
-                onInvoke: (_) {
-                  _invoke();
-                  return null;
-                },
-              ),
-            },
-            child: MouseRegion(
-              cursor: enabled
-                  ? SystemMouseCursors.click
-                  : SystemMouseCursors.basic,
-              child: GestureDetector(
-                onTapDown: enabled
-                    ? (_) => setState(() => _pressed = true)
-                    : null,
-                onTapUp: enabled
-                    ? (_) {
-                        setState(() => _pressed = false);
-                        _invoke();
-                      }
-                    : null,
-                onTapCancel: () => setState(() => _pressed = false),
-                child: Opacity(
-                  opacity: !enabled
-                      ? 1.0
-                      : _pressed
-                      ? 0.84
-                      : _hovered
-                      ? 0.93
-                      : 1.0,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: minH, minWidth: 40),
-                    child: EaseDecoration(
-                      decoration: BoxDecoration(
-                        color: bg,
-                        borderRadius: BorderRadius.circular(9),
-                        border: Border.all(
-                          color: _focused ? theme.accentBrass : outline,
-                          width: _focused ? 2 : 1,
-                        ),
-                        boxShadow: enabled && widget.primary
-                            ? theme.cardShadow
-                            : null,
+            label: widget.semanticsLabel ?? widget.label,
+            child: FocusableActionDetector(
+              enabled: enabled,
+              // Focus highlight fires only in keyboard (traditional) highlight mode, so the brass ring
+              // never appears after a pointer click.
+              onShowFocusHighlight: (v) => setState(() => _focused = v),
+              onShowHoverHighlight: (v) => setState(() => _hovered = v),
+              shortcuts: const <ShortcutActivator, Intent>{
+                SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+                SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+              },
+              actions: <Type, Action<Intent>>{
+                ActivateIntent: CallbackAction<ActivateIntent>(
+                  onInvoke: (_) {
+                    _invoke();
+                    return null;
+                  },
+                ),
+              },
+              child: MouseRegion(
+                cursor: enabled
+                    ? SystemMouseCursors.click
+                    : SystemMouseCursors.basic,
+                child: GestureDetector(
+                  onTapDown: enabled
+                      ? (_) => setState(() => _pressed = true)
+                      : null,
+                  onTapUp: enabled
+                      ? (_) {
+                          setState(() => _pressed = false);
+                          _invoke();
+                        }
+                      : null,
+                  onTapCancel: () => setState(() => _pressed = false),
+                  child: Opacity(
+                    opacity: !enabled
+                        ? 1.0
+                        : _pressed
+                        ? 0.84
+                        : _hovered
+                        ? 0.93
+                        : 1.0,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: minH,
+                        minWidth: 40,
                       ),
-                      child: Padding(
-                        padding: EdgeInsetsDirectional.symmetric(
-                          horizontal: widget.compact ? 12 : 14,
-                          vertical: widget.compact ? 6 : 8,
+                      child: EaseDecoration(
+                        decoration: BoxDecoration(
+                          color: bg,
+                          borderRadius: BorderRadius.circular(9),
+                          border: Border.all(
+                            color: _focused ? theme.accentBrass : outline,
+                            width: _focused ? 2 : 1,
+                          ),
+                          boxShadow: enabled && widget.primary
+                              ? theme.cardShadow
+                              : null,
                         ),
-                        child: Center(
-                          widthFactor: 1,
-                          heightFactor: 1,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (widget.leading != null) ...[
-                                widget.leading!,
-                                const SizedBox(width: 7),
-                              ],
-                              Flexible(
-                                child: InkText(
-                                  widget.label,
-                                  role: InkTextRole.labelStrong,
-                                  color: fg,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                        child: Padding(
+                          padding: EdgeInsetsDirectional.symmetric(
+                            horizontal: widget.compact ? 12 : 14,
+                            vertical: widget.compact ? 6 : 8,
+                          ),
+                          child: Center(
+                            widthFactor: 1,
+                            heightFactor: 1,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (widget.leading != null) ...[
+                                  widget.leading!,
+                                  const SizedBox(width: 7),
+                                ],
+                                Flexible(
+                                  child: InkText(
+                                    widget.label,
+                                    role: InkTextRole.labelStrong,
+                                    color: fg,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),

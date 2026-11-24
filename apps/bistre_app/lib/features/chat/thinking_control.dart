@@ -35,8 +35,12 @@ class ThinkingControl extends StatefulWidget {
     required this.value,
     required this.onChanged,
     this.reduceMotionOverride = false,
+    this.compact = false,
   });
 
+  /// Narrow windows and large text show only the icon and the level (`Auto`); screen readers
+  /// and the hover hint still get the full `Thinking: Auto`.
+  final bool compact;
   final String value;
   final ValueChanged<String> onChanged;
   final bool reduceMotionOverride;
@@ -54,27 +58,31 @@ class _ThinkingControlState extends State<ThinkingControl> {
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);
     final level = l10n.t(kThinkingStops[thinkingStopIndex(widget.value)].$2);
+    final full = l10n.t(L10nKey.chatThinkingChip, <String, Object?>{
+      'level': level,
+    });
     return FolioOverlay(
       controller: _popover,
       overlayBuilder: _buildPopover,
       child: CompositedTransformTarget(
         link: _link,
-        child: EngravedButton(
-          label: l10n.t(L10nKey.chatThinkingChip, <String, Object?>{
-            'level': level,
-          }),
-          compact: true,
-          leading: BistreIcon(
-            BistreUiIcon.think,
-            size: 13,
-            color: theme.inkSecondary,
-          ),
-          onPressed: _popover.toggle,
-        ),
+        child: _chip(theme, level, full),
       ),
     );
   }
 
+  Widget _chip(BistreThemeData theme, String level, String full) =>
+      EngravedButton(
+        label: widget.compact ? level : full,
+        semanticsLabel: widget.compact ? full : null,
+        compact: true,
+        leading: BistreIcon(
+          BistreUiIcon.think,
+          size: 13,
+          color: theme.inkSecondary,
+        ),
+        onPressed: _popover.toggle,
+      );
   Widget _buildPopover(BuildContext context) {
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);

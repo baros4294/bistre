@@ -584,6 +584,8 @@ class _FolioComposerState extends State<FolioComposer> {
                           builder: (context, usage, _) => ContextGaugeRing(
                             usage: usage,
                             limitTokens: ctrl.activeContextLimitOrFetch,
+                            showLabel:
+                                MediaQuery.sizeOf(context).width / scale >= 600,
                             loadWithDraft: () => ctrl.contextUsageWithDraft(
                               _textController.text,
                             ),
@@ -616,6 +618,8 @@ class _FolioComposerState extends State<FolioComposer> {
                             const SizedBox(width: 4),
                           ],
                           ThinkingControl(
+                            compact:
+                                MediaQuery.sizeOf(context).width / scale < 600,
                             value: ctrl.settings.reasoningEffort,
                             reduceMotionOverride: ctrl.reduceMotionOverride,
                             onChanged: (v) =>
