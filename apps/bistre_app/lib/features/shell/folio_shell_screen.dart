@@ -87,7 +87,8 @@ class FolioShellScreen extends StatefulWidget {
   State<FolioShellScreen> createState() => _FolioShellScreenState();
 }
 
-class _FolioShellScreenState extends State<FolioShellScreen> {
+class _FolioShellScreenState extends State<FolioShellScreen>
+    with WidgetsBindingObserver {
   final FocusNode _composerFocus = FocusNode();
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
@@ -102,7 +103,41 @@ class _FolioShellScreenState extends State<FolioShellScreen> {
   bool _renamingTitle = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  /// Android back, in Parchment v2.6.0's order (`ParchmentApp.kt` L478-L531): the innermost
+  /// open layer closes first; with nothing open, the app exits as usual. Settings runs its own
+  /// back steps (`settings_workspace.dart`), so it is left to them.
+  @override
+  Future<bool> didPopRoute() async {
+    final ctrl = widget.controller;
+    if (!mounted || ctrl.settingsOpen) return false;
+    if (ctrl.commandPaletteOpen) {
+      ctrl.closeCommandPalette();
+    } else if (ctrl.sessionTreeOpen) {
+      ctrl.closeSessionTree();
+    } else if (_providerPopoverCtrl.isShowing) {
+      _providerPopoverCtrl.hide();
+    } else if (ctrl.studioPaneOpen) {
+      ctrl.toggleStudioPane();
+    } else if (ctrl.inspectorOpen) {
+      ctrl.toggleInspector();
+    } else if (ctrl.searchPanelOpen) {
+      ctrl.toggleSearchPanel();
+    } else if (!_isWideViewport && _narrowDrawerOpen) {
+      setState(() => _narrowDrawerOpen = false);
+    } else {
+      return false;
+    }
+    return true;
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _modelQuery.dispose();
     _modelQueryFocus.dispose();
     _composerFocus.dispose();

@@ -1043,6 +1043,37 @@ void main() {
       await gw.shutdown();
     },
   );
+
+  testWidgets('Android back closes the innermost layer first (v2.6.0 order)', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1320, 820);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final (ctrl, gw, l10n) = await boot();
+    await tester.pumpWidget(
+      BistreApp(l10nController: l10n, folioController: ctrl),
+    );
+    await tester.pumpAndSettle();
+    ctrl
+      ..toggleInspector()
+      ..toggleCommandPalette();
+    await tester.pumpAndSettle();
+    expect(ctrl.commandPaletteOpen, isTrue);
+    expect(ctrl.inspectorOpen, isTrue);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(ctrl.commandPaletteOpen, isFalse, reason: 'palette closes first');
+    expect(ctrl.inspectorOpen, isTrue);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(ctrl.inspectorOpen, isFalse);
+    ctrl.dispose();
+    await gw.shutdown();
+  });
 }
 
 bool _endsWithLoneHighSurrogate(String s) {
