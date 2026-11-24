@@ -112,3 +112,60 @@ class _PressFeedbackState extends State<PressFeedback>
     );
   }
 }
+
+/// A [DecoratedBox] whose colour and border cross-fade over `BistreMotion.travelling` when the
+/// decoration changes (DESIGN §6: selection, toggle, chip, and hover colours never snap).
+/// Instant under Reduce motion.
+class EaseDecoration extends StatelessWidget {
+  const EaseDecoration({
+    super.key,
+    required this.decoration,
+    required this.child,
+  });
+
+  final Decoration decoration;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => _EaseDecoration(
+    decoration: decoration,
+    duration: BistreMotion.shouldReduceMotion(context)
+        ? Duration.zero
+        : BistreMotion.travelling,
+    child: child,
+  );
+}
+
+class _EaseDecoration extends ImplicitlyAnimatedWidget {
+  const _EaseDecoration({
+    required this.decoration,
+    required this.child,
+    required super.duration,
+  }) : super(curve: Curves.easeOut);
+
+  final Decoration decoration;
+  final Widget child;
+
+  @override
+  AnimatedWidgetBaseState<_EaseDecoration> createState() =>
+      _EaseDecorationState();
+}
+
+class _EaseDecorationState extends AnimatedWidgetBaseState<_EaseDecoration> {
+  DecorationTween? _decoration;
+
+  @override
+  void forEachTween(TweenVisitor<dynamic> visitor) {
+    _decoration = visitor(
+      _decoration,
+      widget.decoration,
+      (dynamic value) => DecorationTween(begin: value as Decoration),
+    ) as DecorationTween?;
+  }
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: _decoration?.evaluate(animation) ?? widget.decoration,
+    child: widget.child,
+  );
+}

@@ -194,7 +194,7 @@ class _BistreIconButtonState extends State<BistreIconButton> {
                       : 1.0,
                   child: SizedBox.square(
                     dimension: widget.dimension,
-                    child: DecoratedBox(
+                    child: EaseDecoration(
                       decoration: BoxDecoration(
                         color: widget.active
                             ? theme.hoverTint

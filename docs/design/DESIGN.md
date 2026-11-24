@@ -102,7 +102,7 @@ Owner decisions (2026-11-24): Bistre should feel at least as alive as Parchment 
   - modals, menus, and popovers fade and rise in over `arriving`, and leave over `leaving`. That is quicker than `v2.6.0`'s 250 ms, but never an abrupt snap.
   - Floating pills (toasts, Jump to latest) pop in from half their height, scale 0.90 to 1 and fade, on a brisk spring (stiffness 580).
   - Side drawers slide over `travelling`.
-- **State changes**: selection, toggle, chip, and accent colours cross-fade over `travelling`; progress and token counters ease to their new value.
+- **State changes**: selection, toggle, chip, and accent colours cross-fade over `travelling` (`EaseDecoration` in the button, chip, icon-button, and switch primitives); progress and token counters ease to their new value.
 - **Scrolling**:
   - on desktop, mouse-wheel scrolling is smooth: notches accumulate into a target that the view eases toward (170 ms ease-out, `SmoothScrollController` in `lib/design/smooth_scroll.dart`; scroll views without their own state use `SmoothScrollable`);
   - trackpad and touch scrolling stay 1:1 (pan-zoom gestures and wheel deltas of 16 px or less pass straight through), and Reduce motion keeps the plain jump;
