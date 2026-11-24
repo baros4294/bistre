@@ -128,9 +128,10 @@ abstract class BistreRustLibApi extends BaseApi {
     String? customSummary,
   });
 
-  Future<int> crateApiContextUsage({
+  Future<FfiContextUsage> crateApiContextUsage({
     required String threadId,
     required String leafNodeId,
+    required String draft,
   });
 
   Future<FfiAssistantRecord> crateApiCreateAssistant({
@@ -801,9 +802,10 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
-  Future<int> crateApiContextUsage({
+  Future<FfiContextUsage> crateApiContextUsage({
     required String threadId,
     required String leafNodeId,
+    required String draft,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -811,6 +813,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(threadId, serializer);
           sse_encode_String(leafNodeId, serializer);
+          sse_encode_String(draft, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -819,11 +822,11 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_u_32,
+          decodeSuccessData: sse_decode_ffi_context_usage,
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiContextUsageConstMeta,
-        argValues: [threadId, leafNodeId],
+        argValues: [threadId, leafNodeId, draft],
         apiImpl: this,
       ),
     );
@@ -831,7 +834,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
 
   TaskConstMeta get kCrateApiContextUsageConstMeta => const TaskConstMeta(
     debugName: "context_usage",
-    argNames: ["threadId", "leafNodeId"],
+    argNames: ["threadId", "leafNodeId", "draft"],
   );
 
   @override
@@ -3988,6 +3991,22 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  FfiContextUsage dco_decode_ffi_context_usage(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return FfiContextUsage(
+      systemTokens: dco_decode_u_32(arr[0]),
+      storyTokens: dco_decode_u_32(arr[1]),
+      historyTokens: dco_decode_u_32(arr[2]),
+      historyTurns: dco_decode_u_32(arr[3]),
+      draftTokens: dco_decode_u_32(arr[4]),
+      totalTokens: dco_decode_u_32(arr[5]),
+    );
+  }
+
+  @protected
   FfiCronJob dco_decode_ffi_cron_job(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -4664,6 +4683,25 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       beforeBlake3: var_beforeBlake3,
       afterBlake3: var_afterBlake3,
       createdAtMs: var_createdAtMs,
+    );
+  }
+
+  @protected
+  FfiContextUsage sse_decode_ffi_context_usage(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_systemTokens = sse_decode_u_32(deserializer);
+    var var_storyTokens = sse_decode_u_32(deserializer);
+    var var_historyTokens = sse_decode_u_32(deserializer);
+    var var_historyTurns = sse_decode_u_32(deserializer);
+    var var_draftTokens = sse_decode_u_32(deserializer);
+    var var_totalTokens = sse_decode_u_32(deserializer);
+    return FfiContextUsage(
+      systemTokens: var_systemTokens,
+      storyTokens: var_storyTokens,
+      historyTokens: var_historyTokens,
+      historyTurns: var_historyTurns,
+      draftTokens: var_draftTokens,
+      totalTokens: var_totalTokens,
     );
   }
 
@@ -5504,6 +5542,20 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     sse_encode_String(self.beforeBlake3, serializer);
     sse_encode_String(self.afterBlake3, serializer);
     sse_encode_i_64(self.createdAtMs, serializer);
+  }
+
+  @protected
+  void sse_encode_ffi_context_usage(
+    FfiContextUsage self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self.systemTokens, serializer);
+    sse_encode_u_32(self.storyTokens, serializer);
+    sse_encode_u_32(self.historyTokens, serializer);
+    sse_encode_u_32(self.historyTurns, serializer);
+    sse_encode_u_32(self.draftTokens, serializer);
+    sse_encode_u_32(self.totalTokens, serializer);
   }
 
   @protected

@@ -321,6 +321,15 @@ extension FolioThreadActions on FolioController {
     }
   }
 
+  /// The context breakdown with [draft] counted as the next message (the ring's popover).
+  /// Falls back to the last known usage without a draft when there is no visible branch.
+  Future<EngineContextUsage> contextUsageWithDraft(String draft) async {
+    final thread = _activeThread?.id;
+    final leaf = visibleBranchNodes.lastOrNull?.id;
+    if (thread == null || leaf == null) return contextUsage.value;
+    return _gateway.contextUsage(thread, leaf, draft: draft);
+  }
+
   Future<void> compactActiveThread({int keepRecentTurns = 4}) async {
     final active = _activeThread;
     if (active == null) return;

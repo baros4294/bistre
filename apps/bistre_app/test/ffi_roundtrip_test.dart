@@ -197,9 +197,19 @@ void main() {
     );
 
     // Core's conversation-limit estimate for the branch (the gauge's number).
+    final usage = await gateway.contextUsage(
+      thread.id,
+      nodesAfterStream.last.id,
+      draft: 'a draft of about forty characters long..',
+    );
+    expect(usage.historyTokens, greaterThan(0));
+    expect(usage.draftTokens, 10);
     expect(
-      await gateway.contextUsage(thread.id, nodesAfterStream.last.id),
-      greaterThan(0),
+      usage.totalTokens,
+      usage.systemTokens +
+          usage.storyTokens +
+          usage.historyTokens +
+          usage.draftTokens,
     );
 
     // Export conversation as Markdown and JSON, and run WAL-safe VACUUM INTO backup.

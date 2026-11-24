@@ -753,9 +753,10 @@ impl EngineClient for InProcessEngine {
         &self,
         thread_id: String,
         leaf_node_id: String,
-    ) -> BoxFuture<'_, BistreResult<u64>> {
+        draft: String,
+    ) -> BoxFuture<'_, BistreResult<crate::ContextUsage>> {
         Box::pin(off_worker(&self.storage, move |s| {
-            crate::engine_runs::branch_context_tokens(s, &thread_id, &leaf_node_id)
+            crate::engine_runs::branch_context_usage(s, &thread_id, &leaf_node_id, &draft)
         }))
     }
 

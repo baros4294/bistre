@@ -79,6 +79,9 @@ abstract class BistreRustLibApiImplPlatform
   FfiCheckpoint dco_decode_ffi_checkpoint(dynamic raw);
 
   @protected
+  FfiContextUsage dco_decode_ffi_context_usage(dynamic raw);
+
+  @protected
   FfiCronJob dco_decode_ffi_cron_job(dynamic raw);
 
   @protected
@@ -258,6 +261,9 @@ abstract class BistreRustLibApiImplPlatform
 
   @protected
   FfiCheckpoint sse_decode_ffi_checkpoint(SseDeserializer deserializer);
+
+  @protected
+  FfiContextUsage sse_decode_ffi_context_usage(SseDeserializer deserializer);
 
   @protected
   FfiCronJob sse_decode_ffi_cron_job(SseDeserializer deserializer);
@@ -495,6 +501,12 @@ abstract class BistreRustLibApiImplPlatform
 
   @protected
   void sse_encode_ffi_checkpoint(FfiCheckpoint self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ffi_context_usage(
+    FfiContextUsage self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_ffi_cron_job(FfiCronJob self, SseSerializer serializer);

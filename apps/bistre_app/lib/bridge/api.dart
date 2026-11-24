@@ -8,7 +8,7 @@ import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `blank`, `current_engine`, `delta`, `diagnostic`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 /// Initializes the in-process Rust core engine pointing at `data_dir`. `vault_key` is the
 /// 32-byte Android Keystore-unwrapped vault data key (Android only); pass `None` elsewhere.
@@ -440,14 +440,16 @@ Future<FfiAgentRunRecord> resolveIndeterminateRun({
 Future<int?> modelContextTokens({required String model}) =>
     BistreRustLib.instance.api.crateApiModelContextTokens(model: model);
 
-/// Estimated tokens the next request sends for the branch ending at `leaf_node_id`
-/// (saturates at `u32::MAX`).
-Future<int> contextUsage({
+/// What the next request sends for the branch ending at `leaf_node_id`, with `draft` as the
+/// message about to be sent.
+Future<FfiContextUsage> contextUsage({
   required String threadId,
   required String leafNodeId,
+  required String draft,
 }) => BistreRustLib.instance.api.crateApiContextUsage(
   threadId: threadId,
   leafNodeId: leafNodeId,
+  draft: draft,
 );
 
 /// Starts a public price-list refresh now.
@@ -774,6 +776,47 @@ class FfiAssistantRecord {
           topPMilli == other.topPMilli &&
           isBuiltin == other.isBuiltin &&
           createdAtMs == other.createdAtMs;
+}
+
+/// What the next request sends for one branch, by category (each count saturates at
+/// `u32::MAX`).
+class FfiContextUsage {
+  final int systemTokens;
+  final int storyTokens;
+  final int historyTokens;
+  final int historyTurns;
+  final int draftTokens;
+  final int totalTokens;
+
+  const FfiContextUsage({
+    required this.systemTokens,
+    required this.storyTokens,
+    required this.historyTokens,
+    required this.historyTurns,
+    required this.draftTokens,
+    required this.totalTokens,
+  });
+
+  @override
+  int get hashCode =>
+      systemTokens.hashCode ^
+      storyTokens.hashCode ^
+      historyTokens.hashCode ^
+      historyTurns.hashCode ^
+      draftTokens.hashCode ^
+      totalTokens.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FfiContextUsage &&
+          runtimeType == other.runtimeType &&
+          systemTokens == other.systemTokens &&
+          storyTokens == other.storyTokens &&
+          historyTokens == other.historyTokens &&
+          historyTurns == other.historyTurns &&
+          draftTokens == other.draftTokens &&
+          totalTokens == other.totalTokens;
 }
 
 /// Thin FFI DTO mirror of `DraftRecord`.

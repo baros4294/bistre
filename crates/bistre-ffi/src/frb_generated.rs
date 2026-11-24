@@ -427,12 +427,14 @@ fn wire__crate__api__context_usage_impl(
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             let api_thread_id = <String>::sse_decode(&mut deserializer);
             let api_leaf_node_id = <String>::sse_decode(&mut deserializer);
+            let api_draft = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
                 transform_result_sse::<_, String>(
                     (move || async move {
                         let output_ok =
-                            crate::api::context_usage(api_thread_id, api_leaf_node_id).await?;
+                            crate::api::context_usage(api_thread_id, api_leaf_node_id, api_draft)
+                                .await?;
                         std::result::Result::Ok(output_ok)
                     })()
                     .await,
@@ -4003,6 +4005,26 @@ impl SseDecode for crate::api::harness::FfiCheckpoint {
     }
 }
 
+impl SseDecode for crate::api::FfiContextUsage {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_systemTokens = <u32>::sse_decode(deserializer);
+        let mut var_storyTokens = <u32>::sse_decode(deserializer);
+        let mut var_historyTokens = <u32>::sse_decode(deserializer);
+        let mut var_historyTurns = <u32>::sse_decode(deserializer);
+        let mut var_draftTokens = <u32>::sse_decode(deserializer);
+        let mut var_totalTokens = <u32>::sse_decode(deserializer);
+        return crate::api::FfiContextUsage {
+            system_tokens: var_systemTokens,
+            story_tokens: var_storyTokens,
+            history_tokens: var_historyTokens,
+            history_turns: var_historyTurns,
+            draft_tokens: var_draftTokens,
+            total_tokens: var_totalTokens,
+        };
+    }
+}
+
 impl SseDecode for crate::api::harness::FfiCronJob {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -5015,6 +5037,28 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::harness::FfiCheckpoint>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::FfiContextUsage {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.system_tokens.into_into_dart().into_dart(),
+            self.story_tokens.into_into_dart().into_dart(),
+            self.history_tokens.into_into_dart().into_dart(),
+            self.history_turns.into_into_dart().into_dart(),
+            self.draft_tokens.into_into_dart().into_dart(),
+            self.total_tokens.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::FfiContextUsage {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::FfiContextUsage>
+    for crate::api::FfiContextUsage
+{
+    fn into_into_dart(self) -> crate::api::FfiContextUsage {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::harness::FfiCronJob {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -5500,6 +5544,18 @@ impl SseEncode for crate::api::harness::FfiCheckpoint {
         <String>::sse_encode(self.before_blake3, serializer);
         <String>::sse_encode(self.after_blake3, serializer);
         <i64>::sse_encode(self.created_at_ms, serializer);
+    }
+}
+
+impl SseEncode for crate::api::FfiContextUsage {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u32>::sse_encode(self.system_tokens, serializer);
+        <u32>::sse_encode(self.story_tokens, serializer);
+        <u32>::sse_encode(self.history_tokens, serializer);
+        <u32>::sse_encode(self.history_turns, serializer);
+        <u32>::sse_encode(self.draft_tokens, serializer);
+        <u32>::sse_encode(self.total_tokens, serializer);
     }
 }
 

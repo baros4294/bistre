@@ -578,11 +578,18 @@ class _FolioComposerState extends State<FolioComposer> {
                       ),
                       child: _ComposerToolbar(
                         twoRows: twoRowToolbar,
-                        gauge: ValueListenableBuilder<int>(
-                          valueListenable: ctrl.contextUsedTokens,
-                          builder: (context, used, _) => ContextGaugeRing(
-                            usedTokens: used,
+                        gauge: ValueListenableBuilder<EngineContextUsage>(
+                          valueListenable: ctrl.contextUsage,
+                          builder: (context, usage, _) => ContextGaugeRing(
+                            usage: usage,
                             limitTokens: ctrl.activeContextLimitOrFetch,
+                            loadWithDraft: () => ctrl.contextUsageWithDraft(
+                              _textController.text,
+                            ),
+                            onShorten: () =>
+                                unawaited(ctrl.compactActiveThread()),
+                            onOpenPrices: () =>
+                                ctrl.openSettings(SettingsTab.trust),
                           ),
                         ),
                         leading: <Widget>[

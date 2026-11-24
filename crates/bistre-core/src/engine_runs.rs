@@ -612,7 +612,7 @@ pub(crate) async fn execute_durable_stream_loop(
 }
 
 pub(crate) fn compile_write_mode_system_prompt(
-    storage: &Arc<StorageHandle>,
+    storage: &StorageHandle,
     thread_id: &str,
     base_system_prompt: &str,
     history: &[NodeRecord],
@@ -746,16 +746,42 @@ fn project_turn_history(
     ))
 }
 
-/// Estimated tokens of the history the next request sends for this branch (the composer's
-/// conversation-limit gauge). Uses the same projection as a run, so a compaction or a context
-/// pin lowers it exactly as it lowers the real request.
-pub(crate) fn branch_context_tokens(
+/// What the next request sends for this branch, by category (the composer's context gauge
+/// and breakdown). Uses the same system prompt, Write-mode story prompt, and history projection
+/// as a run, so a compaction or a context pin lowers it exactly as it lowers the real request.
+pub(crate) fn branch_context_usage(
     storage: &StorageHandle,
     thread_id: &str,
     leaf_id: &str,
-) -> BistreResult<u64> {
+    draft: &str,
+) -> BistreResult<crate::ContextUsage> {
+    let thread = storage
+        .get_thread(thread_id)?
+        .ok_or_else(|| BistreError::new(DiagnosticKey::StorageNotFound))?;
+    let base_prompt = match thread.system_prompt_override.clone() {
+        Some(prompt) => prompt,
+        None => storage
+            .list_assistants()?
+            .into_iter()
+            .find(|a| a.id == thread.assistant_id)
+            .map_or_default(|a| a.system_prompt),
+    };
     let history = project_turn_history(storage, thread_id, leaf_id)?;
-    Ok(compaction::estimate_branch_tokens("", &history))
+    let system_tokens = compaction::estimate_tokens_for_text(&base_prompt);
+    let story_tokens = if thread.mode == ThreadMode::Write {
+        let compiled =
+            compile_write_mode_system_prompt(storage, thread_id, &base_prompt, &history)?;
+        compaction::estimate_tokens_for_text(&compiled).saturating_sub(system_tokens)
+    } else {
+        0
+    };
+    Ok(crate::ContextUsage {
+        system_tokens,
+        story_tokens,
+        history_tokens: compaction::estimate_branch_tokens("", &history),
+        history_turns: u32::try_from(history.len()).unwrap_or(u32::MAX),
+        draft_tokens: compaction::estimate_tokens_for_text(draft.trim()),
+    })
 }
 
 /// Reserves Wallet Shield spend for one paid request. The estimate prices the prompt's input

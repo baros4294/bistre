@@ -1196,15 +1196,40 @@ pub async fn model_context_tokens(model: String) -> Result<Option<u32>, String> 
         .map_err(crate::dto_mapping::ffi_err)
 }
 
-/// Estimated tokens the next request sends for the branch ending at `leaf_node_id`
-/// (saturates at `u32::MAX`).
+/// What the next request sends for one branch, by category (each count saturates at
+/// `u32::MAX`).
 #[frb]
-pub async fn context_usage(thread_id: String, leaf_node_id: String) -> Result<u32, String> {
-    let tokens = current_engine()?
-        .context_usage(thread_id, leaf_node_id)
+#[derive(Debug, Clone)]
+pub struct FfiContextUsage {
+    pub system_tokens: u32,
+    pub story_tokens: u32,
+    pub history_tokens: u32,
+    pub history_turns: u32,
+    pub draft_tokens: u32,
+    pub total_tokens: u32,
+}
+
+/// What the next request sends for the branch ending at `leaf_node_id`, with `draft` as the
+/// message about to be sent.
+#[frb]
+pub async fn context_usage(
+    thread_id: String,
+    leaf_node_id: String,
+    draft: String,
+) -> Result<FfiContextUsage, String> {
+    let usage = current_engine()?
+        .context_usage(thread_id, leaf_node_id, draft)
         .await
         .map_err(crate::dto_mapping::ffi_err)?;
-    Ok(u32::try_from(tokens).unwrap_or(u32::MAX))
+    let clamp = |n: u64| u32::try_from(n).unwrap_or(u32::MAX);
+    Ok(FfiContextUsage {
+        system_tokens: clamp(usage.system_tokens),
+        story_tokens: clamp(usage.story_tokens),
+        history_tokens: clamp(usage.history_tokens),
+        history_turns: usage.history_turns,
+        draft_tokens: clamp(usage.draft_tokens),
+        total_tokens: clamp(usage.total()),
+    })
 }
 
 /// Starts a public price-list refresh now.

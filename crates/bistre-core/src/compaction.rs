@@ -267,20 +267,57 @@ mod tests {
             created.push(n);
         }
         let leaf = created.last().map(|n| n.id.clone()).ok_or("no turns")?;
-        let full = crate::engine_runs::branch_context_tokens(&storage, &thread.id, &leaf)?;
+        let usage = |leaf: &str| {
+            crate::engine_runs::branch_context_usage(&storage, &thread.id, leaf, "")
+                .map(|u| u.history_tokens)
+        };
+        let full = usage(&leaf)?;
         // Five ~2,400-char turns: the trailing assistant turn is not resent.
         assert!(full >= 5 * 600, "five ~2,400-char turns: {full}");
 
         // A compaction keeping two turns lowers the gauge the way it lowers the real request.
         let summary = create_reversible_compaction(&storage, &thread.id, &created, 2, None)?;
         // The summary becomes the branch's newest node.
-        let compacted =
-            crate::engine_runs::branch_context_tokens(&storage, &thread.id, &summary.id)?;
+        let compacted = usage(&summary.id)?;
         assert!(compacted < full / 2, "compacted {compacted} vs full {full}");
 
         undo_compaction(&storage, &thread.id, &summary.id)?;
-        let restored = crate::engine_runs::branch_context_tokens(&storage, &thread.id, &leaf)?;
+        let restored = usage(&leaf)?;
         assert_eq!(restored, full);
+        Ok(())
+    }
+
+    #[test]
+    fn context_usage_splits_instructions_history_and_draft() -> TestResult {
+        let dir = tempdir()?;
+        let storage = StorageHandle::open(dir.path().join("split.sqlite"))?;
+        let thread = storage.create_thread(None, "Split", ThreadMode::Chat, None, None)?;
+        storage.update_thread(
+            thread.id.clone(),
+            bistre_protocol::ThreadPatch {
+                system_prompt_override: Some(Some("x".repeat(400))),
+                ..bistre_protocol::ThreadPatch::default()
+            },
+        )?;
+        let user = storage.append_node(
+            thread.id.clone(),
+            None,
+            NodeRole::User,
+            "y".repeat(800),
+            None,
+        )?;
+        let usage = crate::engine_runs::branch_context_usage(
+            &storage,
+            &thread.id,
+            &user.id,
+            &"z".repeat(40),
+        )?;
+        assert_eq!(usage.system_tokens, 100);
+        assert_eq!(usage.story_tokens, 0, "chat mode adds no story prompt");
+        assert_eq!(usage.history_turns, 1);
+        assert_eq!(usage.history_tokens, 200 + 6, "one turn plus its frame");
+        assert_eq!(usage.draft_tokens, 10);
+        assert_eq!(usage.total(), 100 + 206 + 10);
         Ok(())
     }
 
