@@ -869,7 +869,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final message = find.byType(ContextMenuRegion).first;
+    final message = find
+        .descendant(
+          of: find.byType(FolioMessageFeed),
+          matching: find.byType(ContextMenuRegion),
+        )
+        .first;
     await tester.tap(message, buttons: kSecondaryButton);
     await tester.pumpAndSettle();
     final copy = find.text(l10n.t(L10nKey.chatActionCopy));
@@ -881,6 +886,22 @@ void main() {
     expect(copied, isNotNull);
     expect(copied, isNotEmpty);
     expect(copy, findsNothing, reason: 'choosing an entry closes the menu');
+
+    // Sidebar chats have their own menu.
+    await tester.tap(
+      find
+          .descendant(
+            of: find.byType(FolioSidebar),
+            matching: find.byType(ContextMenuRegion),
+          )
+          .first,
+      buttons: kSecondaryButton,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text(l10n.t(L10nKey.threadRename)), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.text(l10n.t(L10nKey.threadRename)), findsNothing);
 
     ctrl.dispose();
     await gw.shutdown();
