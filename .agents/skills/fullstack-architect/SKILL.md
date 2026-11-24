@@ -23,12 +23,14 @@ Work as Bistre's principal engineer and design lead. `AGENTS.md` is the contract
 
 ## 3. Frontend: the Flutter UI
 ### 3.1 Design process (every UI change)
+0. **Read the v2.6.0 code first** (AGENTS.md §2 Owner Rule): open the screen's `v2.6.0` source (`composeApp/src/*/kotlin/io/parchment/ai`), read it top to bottom for EVERY layout (phone `< 720 dp`, desktop, `200%` text, RTL), and write down its `file:line`, breakpoints, controls, copy, states, motion, gestures, and back behaviour. Building before this step, or from memory or a screenshot, is a defect. Clone it with `git clone https://github.com/baros4294/parchment` and `git checkout v2.6.0` if missing.
 1. **Brief**: name the screen's one job, its primary user action, and the Parchment `v2.6.0` behaviour it must match or beat. Choose what is best for daily use; where `v2.6.0` and a Bistre rule conflict, ask the owner.
 2. **Plan**: list the tokens, type roles, spacing, and primitives you will use, all from `docs/design/DESIGN.md`. Sketch the layout as an ASCII wireframe with its alignment, including the RTL mirror.
 3. **Review the plan against the brief**: for each choice, ask whether it serves this screen or is a default that would appear anywhere. Revise any default and say why.
 4. **Build**: use only the 10 Ink Primitives and the declared controls. Everything else is composition.
 5. **Critique with pixels**: run `just ui-gallery` and look at the PNGs in light, dark, phone, desktop, 200% text, and RTL. Compare them with the Parchment `v2.6.0` render, and compare behaviour too: open the same screen in `v2.6.0` code (`composeApp/src/commonMain/kotlin/io/parchment/ai/ui`) and check every control, popover, hover, press, and transition, not just the pixels. Then remove one accessory: the least necessary border, label, icon, or tint.
-6. **Record**: update `docs/design/DESIGN.md` and Spec 08 in the same change. Close or add the matching row in Spec 08 §4.
+6. **Record**: update `docs/design/DESIGN.md` and Spec 08 in the same change. Close or add the matching row in Spec 08 §4, citing the `v2.6.0` `file:line` you matched and every deliberate difference.
+7. **Self-check before saying done**: re-read the owner's request and the `v2.6.0` code side by side with your result, at every width, and list each remaining difference. Any item on that list is unfinished; say so.
 
 ### 3.2 Visual discipline
 - One focal point per screen, and one bold mark (the `rubricMark`) per view. Do not repeat it on cards or banners.
