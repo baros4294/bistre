@@ -95,26 +95,30 @@ void main() {
     expect(joined, isNot(contains('Big.ttf')));
   });
 
-  test('model & brand gate scans runtime code but skips tests and presets', () {
-    final brand = <String>['Sam', 'sung'].join();
-    final errors = _run(checkHardcodedModelsAndBrands, <String, Object>{
-      'crates/bistre-core/src/providers.rs': 'const M: &str = "gpt-4.1";\n#[cfg(test)]\nmod tests { const T: &str = "gpt-4.1"; }\n',
-      'apps/bistre_app/lib/features/chat/view.dart':
-          "const workaround = '$brand';\n",
-      'apps/bistre_app/lib/features/settings/provider_presets.dart':
-          "const m = 'gpt-4o-mini';\n",
-      'crates/bistre-core/src/lib.rs': '#[cfg(test)]\nmod tests;\n',
-      'crates/bistre-core/src/tests.rs': 'const T: &str = "gpt-4.1";\n',
-      'crates/bistre-storage/src/tests.rs': 'const T: &str = "gpt-4.1";\n',
-      'README.md': 'Works with any model your provider lists.\n',
-      'docs/specs/notes.md': 'Benchmarked with "gpt-4.1".\n',
-    });
-    final joined = errors.join('\n');
-    expect(joined, contains('providers.rs:1 hardcodes a model ID'));
-    expect(joined, contains('view.dart:1 names OEM brand'));
-    expect(joined, contains('bistre-storage/src/tests.rs:1 hardcodes'));
-    expect(errors, hasLength(3));
-  });
+  test(
+    'model & brand gate scans runtime code including presets and skips tests',
+    () {
+      final brand = <String>['Sam', 'sung'].join();
+      final errors = _run(checkHardcodedModelsAndBrands, <String, Object>{
+        'crates/bistre-core/src/providers.rs': 'const M: &str = "gpt-4.1";\n#[cfg(test)]\nmod tests { const T: &str = "gpt-4.1"; }\n',
+        'apps/bistre_app/lib/features/chat/view.dart':
+            "const workaround = '$brand';\n",
+        'apps/bistre_app/lib/features/settings/provider_presets.dart':
+            "const m = 'gpt-4o-mini';\n",
+        'crates/bistre-core/src/lib.rs': '#[cfg(test)]\nmod tests;\n',
+        'crates/bistre-core/src/tests.rs': 'const T: &str = "gpt-4.1";\n',
+        'crates/bistre-storage/src/tests.rs': 'const T: &str = "gpt-4.1";\n',
+        'README.md': 'Works with any model your provider lists.\n',
+        'docs/specs/notes.md': 'Benchmarked with "gpt-4.1".\n',
+      });
+      final joined = errors.join('\n');
+      expect(joined, contains('providers.rs:1 hardcodes a model ID'));
+      expect(joined, contains('view.dart:1 names OEM brand'));
+      expect(joined, contains('provider_presets.dart:1 hardcodes a model ID'));
+      expect(joined, contains('bistre-storage/src/tests.rs:1 hardcodes'));
+      expect(errors, hasLength(4));
+    },
+  );
 
   test('line cap rejects oversized files and skips generated bindings', () {
     final (root, rels) = _repo(<String, Object>{

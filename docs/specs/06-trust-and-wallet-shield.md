@@ -8,9 +8,9 @@ Every tool invocation and side-effecting action is classified statically + dynam
 - **Tier 3 (Hard Secret / Exfiltration Block)**: Attempts to read or transmit OS secret vault files, `.env` credentials, private keys, or symlink escapes outside workspace root are unconditionally blocked with `DiagnosticKey::ToolEditHashMismatch` / security audit log.
 
 ## 2. Mode Presets
-- **Parchment (Strict)**: Tier 0 auto; Tiers 1–2 require Wax Seal confirmation; Tier 3 hard-blocked.
-- **Guided Craft (Default)**: Tiers 0–1 auto (with 1-tap rewind); Tier 2 requires Wax Seal confirmation; Tier 3 hard-blocked.
-- **Unchained / Sandbox**: Tiers 0–2 auto inside isolated worktree/container boundary ONLY; Tier 3 and Wallet Shield hard ceilings remain active.
+- **Strict (Default-Safe)**: Tier 0 auto; Tiers 1–2 require explicit approval; Tier 3 hard-blocked.
+- **Guided**: Tiers 0–1 auto (with 1-tap rewind); Tier 2 requires explicit approval; Tier 3 hard-blocked.
+- **Sandbox**: Tiers 0–2 auto inside isolated worktree/container boundary ONLY; Tier 3 and Wallet Shield hard ceilings remain active.
 
 ## 3. Wallet Shield (Unconditionally Overrides Self-Healing)
 - All costs, reserves, and spend limits use exact `MoneyMicros(i64)` (`1 USD = 1_000_000`) persisted in `wallet_ledger` alongside real input/output token counts.

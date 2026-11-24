@@ -42,4 +42,10 @@ Bistre owns the master conversation graph locally in `<data_dir>/bistre.sqlite`.
 - `run_steps.result_overflow BLOB` — step output above `64 KiB` is spilled here; `output_json` keeps a `{ "overflow": true, "bytes", "preview" }` stub (first 4 KiB) so run lists never load large tool results; `load_run_step_output(step_id)` hydrates lazily.
 - Pre-migration backup `<db>.pre-v8.bak`; `N-1` (v7) binaries ignore the new column and index.
 - Spend accounting is fork-safe by construction: each streamed reply writes exactly one `wallet_ledger` row, so branching never re-sums earlier usage; unpriced replies record `cost_known: false` in `provider_meta_json` (a conservative lower bound for the spending limit, never a guess).
-- Context usage, compaction thresholds, story prompt budgets, and Wallet Shield pre-request estimates count tokens offline via `crates/bistre-core/src/tokenizer.rs` (`tiktoken 5.1.1`, pure-Rust `ruzstd`, model-matched `o200k_base`/`o200k_harmony`/`cl100k_base`/`qwen2`/`qwen3_5`/`glm4`/`glm5` with zero runtime network and zero background threads).
+- Context usage, compaction thresholds, story prompt budgets, and Wallet Shield pre-request estimates count tokens offline via `crates/bistre-core/src/tokenizer.rs` (`tiktoken 5.1.1`, universal `o200k_base` with zero hardcoded model/vendor families, zero runtime network, and zero background threads).
+
+## 6. Schema v9 Performance Indexes (`SCHEMA_V9_PERF_INDEXES_SQL`)
+- `idx_nodes_thread_rowid ON nodes (thread_id, id)` — covering thread/id lookup.
+- `idx_threads_ws_pinned_updated ON threads (workspace_id, is_pinned DESC, updated_at_ms DESC)` — eliminates `USE TEMP B-TREE FOR ORDER BY` on `list_threads`.
+- `idx_wallet_ledger_job ON wallet_ledger (job_id)` and partial `idx_wallet_ledger_reserved ON wallet_ledger (status, created_at_ms) WHERE status = 'reserved'` — eliminates full table scans during request-ID dedupe and active-reservation recovery.
+- Read-only connections set `PRAGMA query_only = ON; PRAGMA cache_size = -2000;` so short-lived readers never allocate unbounded page caches. Pre-migration backup `<db>.pre-v9.bak`; `N-1` (v8) binaries read v9 cleanly.

@@ -285,7 +285,8 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           # fonts-noto-core: the Arabic fallback the gallery harness loads (no tofu in RTL goldens).
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev fonts-noto-core
+          # xvfb: headless display server for the release launch and profile streaming checks.
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev fonts-noto-core xvfb
       - name: Resolve Dart Pub Workspace (enforcing pubspec.lock)
         shell: bash
         run: bash .github/scripts/with-download-retry.sh flutter pub get --enforce-lockfile
@@ -320,11 +321,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Parchment 042627b7: a release build that never launched in CI shipped broken.
-          # --strict fails when the app does not start; budgets fail on Spec 11 hard limits.
-          sudo apt-get install -y xvfb
+          # Launch-verify the release binary in CI so broken bundles never ship.
+          # --skip-streaming avoids re-running streaming_frame_probe_test.dart (already run in `flutter test`).
           cargo build --locked --release -p bistre-daemon
-          xvfb-run -a dart run tools/bistre_guard/bin/bistre_guard.dart perf --strict --rss-report-only
+          xvfb-run -a dart run tools/bistre_guard/bin/bistre_guard.dart perf --strict --skip-streaming --rss-report-only
       - name: Profile-mode streaming benchmark (Spec 11 frame timings, xvfb)
         if: runner.os == 'Linux'
         working-directory: apps/bistre_app
@@ -349,10 +349,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Idle RSS outside xvfb's software GL (handoff 18): measured here, reported only until
-          # the number is known; launch, first paint, and the streaming probe still fail the job.
+          # Idle RSS outside xvfb's software GL is reported; launch, first paint, and idle frames still fail the job.
+          # --skip-streaming avoids re-running streaming_frame_probe_test.dart (already run in `flutter test`).
           cargo build --locked --release -p bistre-daemon
-          dart run tools/bistre_guard/bin/bistre_guard.dart perf --strict --rss-report-only
+          dart run tools/bistre_guard/bin/bistre_guard.dart perf --strict --skip-streaming --rss-report-only
       - name: Upload the Windows release bundle (GPU measurements on a developer machine)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -438,7 +438,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash ../../.github/scripts/with-download-retry.sh flutter build apk --release --target-platform android-arm64
+          bash ../../.github/scripts/with-download-retry.sh flutter build apk --release --target-platform android-arm64 --split-debug-info=build/debug-info
       - name: Verify 16KB ELF alignment (pure-Dart verifier), binary budgets, zipalign, and manifest permissions
         shell: bash
         run: |

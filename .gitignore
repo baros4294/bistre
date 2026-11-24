@@ -48,3 +48,7 @@ desktop.ini
 
 # Local verification ledger, run lock, and logs
 .bistre-local/
+
+# Local AI tool scratchpads
+.claude/
+

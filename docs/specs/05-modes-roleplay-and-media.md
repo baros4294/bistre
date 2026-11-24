@@ -3,7 +3,7 @@
 ## 1. Core Modes
 Every thread declares a `ThreadMode` (`chat`, `plan`, `code`/`build`, `write`, `translate`) controlling default prompt framing, active tools, and UI affordances:
 - **Chat**: Multi-provider conversation, attachments (4-image recall cap), inline branching, visual DAG Session Tree, FTS5 search, GFM tables, `NotoSansMath` LaTeX, and Mermaid diagrams.
-- **Plan / Build (Code)**: Workspace binding, in-process Rust tools, hash-anchored edits with `imara-diff` & 1-tap rewind, `rmcp` MCP tools, worktree sub-agents, lifecycle hooks, and Studio `[Runs]`/`[Files]` panes.
+- **Plan / Build (Code)**: Workspace binding, in-process Rust tools, hash-anchored edits with `imara-diff` & 1-tap rewind, Streamable HTTP MCP tools (`ADR-0018`), worktree sub-agents, lifecycle hooks, and Studio `[Runs]`/`[Files]` panes.
 - **Write (Unified Roleplay & Long-Form Fiction Studio — `ADR-0015`)**:
   - **Character Cards & Personas**: Native pure-Rust **CCv3 / V2 PNG (`ccv3`/`chara` `tEXt` + CRC-32), JSON, and `.charx` ZIP** importer/exporter (Zip Slip & 16 MiB cap hardened), User Personas, Turn-0 Alternate Greeting `< Opening 1 / N >` switcher, Group Scenes (`natural` / `round_robin` / `manual` turn router), `Continue`, `Draft my reply` (`Impersonate`), and Time Machine revision rollback (`story_snapshots`).
   - **Long-Form Manuscript Canvas**: Toggleable `Chat | Manuscript` view with Chapter & Scene tree, **Scene Outline & Beats → Write prose from beats**, inline word count, **Inline Rewrite Laser Tools** (`Rewrite` / `Expand` / `Shorten` / `Polish`), Two-Phase Prewriter, and Background Continuity Librarian editable Era Summaries.

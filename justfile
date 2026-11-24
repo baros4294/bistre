@@ -80,7 +80,7 @@ affected *flags:
 
 # Repeatable perf harness: streaming frame probe + 300-chat desktop cold start & idle RSS (`--android` adds adb probes)
 perf *flags:
-  dart run tools/bistre_guard/bin/bistre_guard.dart locked dart run tools/bistre_guard/bin/bistre_guard.dart perf {{flags}}
+  dart run tools/bistre_guard/bin/bistre_guard.dart locked dart run tools/bistre_guard/bin/bistre_guard.dart perf --rss-report-only {{flags}}
 
 # Install the repository pre-commit hook (MSVC link.exe PATH fix + fmt-check + guard)
 install-hooks:

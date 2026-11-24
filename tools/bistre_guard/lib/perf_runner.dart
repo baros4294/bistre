@@ -162,6 +162,7 @@ Future<List<PerfMetric>> runDesktopColdStart(
     final firstFrames = <num>[];
     final chatReady = <num>[];
     num? idleRss;
+    int? idleFrames;
     for (var run = 0; run < 3; run++) {
       final probeFile = File('${scratch.path}/probe_$run.txt');
       final proc = await Process.start(
@@ -179,7 +180,14 @@ Future<List<PerfMetric>> runDesktopColdStart(
         await Future<void>.delayed(const Duration(milliseconds: 200));
         if (probeFile.existsSync()) {
           probe = parseProbe(probeFile.readAsStringSync());
-          if (probe.containsKey(waitFor)) break;
+          if (probe.containsKey(waitFor)) {
+            if (run == 0) {
+              // Give trailing frame-timing lines written right after idle_rss_bytes a beat to flush.
+              await Future<void>.delayed(const Duration(milliseconds: 100));
+              probe = parseProbe(probeFile.readAsStringSync());
+            }
+            break;
+          }
         }
       }
       if (run == 0) {
@@ -187,6 +195,15 @@ Future<List<PerfMetric>> runDesktopColdStart(
           'rss at first frame: ${probe['first_frame_rss_bytes']} bytes; after 10 s idle: ${probe['idle_rss_bytes']} bytes',
         );
         stdout.writeln('frames while idle: ${probe['idle_frames']}');
+        if (probe.containsKey('vsync_overhead_p95_ms') ||
+            probe.containsKey('build_p95_ms') ||
+            probe.containsKey('raster_p95_ms')) {
+          stdout.writeln(
+            'startup frame timings: build_p95=${probe['build_p95_ms']}ms '
+            'raster_p95=${probe['raster_p95_ms']}ms '
+            'vsync_overhead_p95=${probe['vsync_overhead_p95_ms']}ms',
+          );
+        }
         if (Platform.isLinux) printRssByMapping(proc.pid);
         stdout.writeln(
           'data dir: ${dataDir.listSync().map((e) => '${e.uri.pathSegments.where((s) => s.isNotEmpty).last}=${e.statSync().size}').join(', ')}',
@@ -204,7 +221,10 @@ Future<List<PerfMetric>> runDesktopColdStart(
       }
       firstFrames.add(ff);
       chatReady.add(cr);
-      if (run == 0) idleRss = int.tryParse(probe['idle_rss_bytes'] ?? '');
+      if (run == 0) {
+        idleRss = int.tryParse(probe['idle_rss_bytes'] ?? '');
+        idleFrames = int.tryParse(probe['idle_frames'] ?? '');
+      }
     }
     return <PerfMetric>[
       PerfMetric(
@@ -219,6 +239,15 @@ Future<List<PerfMetric>> runDesktopColdStart(
         median(chatReady),
         'ms',
       ),
+      if (idleFrames != null)
+        PerfMetric(
+          'desktop_idle_frames_10s',
+          idleFrames,
+          ' frames',
+          // Focused composer caret blinks at 2 Hz (~20 frames / 10 s); > 60 flags runaway tickers.
+          budget: 24,
+          hardFail: 60,
+        ),
       if (idleRss != null)
         PerfMetric(
           'desktop_idle_rss_after_10s',

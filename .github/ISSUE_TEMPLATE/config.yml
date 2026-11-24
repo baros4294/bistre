@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability Disclosure
+    url: https://github.com/baros4294/bistre/security/advisories/new
+    about: Privately report security issues, credential leaks, or signature verification bugs.

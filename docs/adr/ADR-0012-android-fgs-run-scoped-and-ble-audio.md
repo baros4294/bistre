@@ -1,6 +1,6 @@
 # ADR-0012: Run-Scoped Android 15+ Foreground Services & Modern BLE Audio Routing
 
-- **Status**: Accepted (Updated for Wave A Sleep Immunity & Direct GitHub Distribution)
+- **Status**: Accepted (Sleep Immunity & Direct GitHub Distribution)
 - **Date**: 2026-11-22
 - **Deciders**: Bistre Principal Architecture
 

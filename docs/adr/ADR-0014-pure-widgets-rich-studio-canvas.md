@@ -20,12 +20,12 @@ Modern AI workbenches must render rich structured outputs—GFM pipe tables, inl
    - `SessionTreeOverlay` (`Ctrl+Alt+G` Jump to Earlier Prompt) visualizes the full branching DAG and switches branches in 1 click.
    - Collapsible `328px` Studio Pane (`RunsDockPanel`) unifies `[Runs] [Files] [Story] [Prompt]` with 1-click `"Comment in chat"` (`@file:L1-L20`).
    - Composer supports native OS file attachments (enforcing a 4-image recall window cap), `@` mention popovers, and `/` slash commands.
-4. **Strict 10 Ink Primitives Budget Preserved**: All new renderers compose strictly from `ink_primitives.dart` (exact 10 primitives) and 56 offline `.vec` UI icons (`bistre_icons.dart`).
+4. **Strict 10 Ink Primitives Budget Preserved**: All new renderers compose strictly from `ink_primitives.dart` (exact 10 primitives) and offline-compiled `.vec` UI icons (`bistre_icons.dart`).
 
 ## Rejected Alternatives
 - **Embedding a WebView (`webview_flutter`) for KaTeX/Mermaid**: Adds 50–120 MB RSS per webview process, breaks offline determinism, and introduces XSS attack surfaces.
 - **Adding Material/third-party markdown packages**: Violates `ADR-0001` and `bistre_forbid_ui_kits`.
 
 ## Consequences & Verification
-- Delivers zero-WebView, 60/120Hz rich rendering inside the ≤120 MB active RSS budget while maintaining 100% pure-Widgets lint compliance.
-- Verified by `just lint-dart` (0 warnings across all 5 `bistre_lints` rules), `bistre_app_test.dart` (Wave B/C rich rendering & tool approval tests), and high-DPI PNG visual inspection via `just ui-gallery`.
+- Delivers zero-WebView, 60/120Hz rich rendering within Bistre's memory budgets while maintaining 100% pure-Widgets lint compliance.
+- Verified by `just lint-dart` (0 warnings across all 5 `bistre_lints` rules), `bistre_app_test.dart` (rich rendering & tool approval tests), and high-DPI PNG visual inspection via `just ui-gallery`.
