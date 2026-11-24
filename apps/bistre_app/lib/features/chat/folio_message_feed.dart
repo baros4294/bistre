@@ -225,7 +225,8 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                   bottom: BistreSpacing.s12,
                 ),
                 child: FolioFadeSlide(
-                  beginOffset: const Offset(0, 0.25),
+                  beginOffset: const Offset(0, 0.5),
+                  beginScale: 0.9,
                   reduceMotionOverride: ctrl.reduceMotionOverride,
                   child: EngravedButton(
                     label: l10n.t(L10nKey.chatActionJumpLatest),
