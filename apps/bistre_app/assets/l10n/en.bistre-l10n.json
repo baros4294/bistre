@@ -3907,9 +3907,93 @@
       "max_chars": 14,
       "placeholders": {}
     },
-    "settings.all_settings": {
-      "message": "All settings",
-      "context": "Phone settings: back from one settings page to the list of pages",
+    "settings.sub.providers": {
+      "message": "{provider} · {count, plural, =0{no providers} one{1 provider} other{{count} providers}}",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {
+        "provider": {
+          "type": "string",
+          "example": "OpenAI"
+        },
+        "count": {
+          "type": "int",
+          "example": "3"
+        }
+      }
+    },
+    "settings.sub.assistants": {
+      "message": "{count, plural, =0{No assistants yet} one{1 assistant and its instructions} other{{count} assistants and their instructions}}",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "2"
+        }
+      }
+    },
+    "settings.sub.appearance": {
+      "message": "Your name, theme, fonts, and reading width",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.sub.trust": {
+      "message": "Spending limit, prices, and tool permissions",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.sub.agent": {
+      "message": "Agent tools, thinking, and staying awake",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.sub.memory": {
+      "message": "Memories, skills, and scheduled tasks",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.sub.updates": {
+      "message": "Storage, backups, and app updates",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.sub.language": {
+      "message": "App language and reading direction",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.sub.shortcuts": {
+      "message": "Keyboard shortcuts",
+      "context": "Phone settings: one-line summary under a page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.chat": {
+      "message": "Chat",
+      "context": "Phone settings header: returns to the chat",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.clear_search": {
+      "message": "Clear search",
+      "context": "Phone settings: clears the settings search",
       "tone": "concise_action",
       "max_chars": 24,
       "placeholders": {}

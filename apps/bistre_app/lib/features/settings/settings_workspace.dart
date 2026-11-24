@@ -21,13 +21,33 @@ import 'providers_settings_view.dart';
 import 'shortcuts_settings_view.dart';
 import 'updates_storage_settings_view.dart';
 
+part 'settings_mobile.dart';
+
+/// Settings pages in list order (wide nav and phone list).
+const List<(SettingsTab, L10nKey, BistreUiIcon)>
+_kSettingsTabs = <(SettingsTab, L10nKey, BistreUiIcon)>[
+  (SettingsTab.providers, L10nKey.settingsTabProviders, BistreUiIcon.key),
+  (
+    SettingsTab.assistants,
+    L10nKey.settingsTabAssistants,
+    BistreUiIcon.assistant,
+  ),
+  (SettingsTab.appearance, L10nKey.settingsTabAppearance, BistreUiIcon.palette),
+  (SettingsTab.trust, L10nKey.settingsTabTrust, BistreUiIcon.shield),
+  (SettingsTab.agent, L10nKey.settingsTabAgent, BistreUiIcon.code),
+  (SettingsTab.memory, L10nKey.settingsTabMemory, BistreUiIcon.memory),
+  (SettingsTab.updates, L10nKey.settingsTabUpdates, BistreUiIcon.download),
+  (SettingsTab.language, L10nKey.settingsTabLanguage, BistreUiIcon.globe),
+  (SettingsTab.shortcuts, L10nKey.settingsTabShortcuts, BistreUiIcon.keyboard),
+];
+
 /// Full-window Studio Atelier Settings Workspace replacing the cramped modal popup.
 /// Provides generous breathing room for Providers & Keys, Assistants, Appearance/Fonts,
 /// Safety & Unlimited Budget, Updates & Local Storage, Language, and Custom Shortcuts.
 ///
-/// Wide windows show the page list beside the page. Narrow windows (phones, large text) show
-/// the vertical, searchable page list first and open a page over it with an `All settings`
-/// back row, like a phone's own settings app (DESIGN "Vertical-First Restraint").
+/// At 720 px and wider the page list sits beside the page. Narrower windows (phones, large
+/// text) use the Parchment v2.6.0 phone layout (`settings_mobile.dart`): a card list of pages,
+/// one page at a time, Android back and a start-edge swipe stepping back.
 class SettingsWorkspace extends StatefulWidget {
   const SettingsWorkspace({super.key, required this.controller});
 
@@ -37,47 +57,31 @@ class SettingsWorkspace extends StatefulWidget {
   State<SettingsWorkspace> createState() => _SettingsWorkspaceState();
 }
 
-class _SettingsWorkspaceState extends State<SettingsWorkspace> {
-  /// Narrow layout only: the page list is showing. Opening Settings in general lands on the
-  /// list; a link to a specific page (Prices, Shortcuts, Updates) opens that page directly.
-  late bool _narrowList =
-      widget.controller.settingsTab == SettingsTab.providers;
-
+class _SettingsWorkspaceState extends State<SettingsWorkspace>
+    with WidgetsBindingObserver, _MobileSettings {
   FolioController get controller => widget.controller;
 
-  void _openPage(SettingsTab tab) {
-    controller.setSettingsTab(tab);
-    setState(() => _narrowList = false);
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
   }
 
-  static const List<(SettingsTab, L10nKey, BistreUiIcon)> _tabs =
-      <(SettingsTab, L10nKey, BistreUiIcon)>[
-        (SettingsTab.providers, L10nKey.settingsTabProviders, BistreUiIcon.key),
-        (
-          SettingsTab.assistants,
-          L10nKey.settingsTabAssistants,
-          BistreUiIcon.assistant,
-        ),
-        (
-          SettingsTab.appearance,
-          L10nKey.settingsTabAppearance,
-          BistreUiIcon.palette,
-        ),
-        (SettingsTab.trust, L10nKey.settingsTabTrust, BistreUiIcon.shield),
-        (SettingsTab.agent, L10nKey.settingsTabAgent, BistreUiIcon.code),
-        (SettingsTab.memory, L10nKey.settingsTabMemory, BistreUiIcon.memory),
-        (
-          SettingsTab.updates,
-          L10nKey.settingsTabUpdates,
-          BistreUiIcon.download,
-        ),
-        (SettingsTab.language, L10nKey.settingsTabLanguage, BistreUiIcon.globe),
-        (
-          SettingsTab.shortcuts,
-          L10nKey.settingsTabShortcuts,
-          BistreUiIcon.keyboard,
-        ),
-      ];
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    disposeMobile();
+    super.dispose();
+  }
+
+  /// Android back (v2.6.0 order): clear the search, then leave the page, then close Settings.
+  @override
+  Future<bool> didPopRoute() async {
+    if (!mounted) return false;
+    if (stepBack()) return true;
+    controller.closeSettings();
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -92,7 +96,9 @@ class _SettingsWorkspaceState extends State<SettingsWorkspace> {
         reduceMotionOverride: ctrl.reduceMotionOverride,
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final isWide = constraints.maxWidth >= 780;
+            final isWide = constraints.maxWidth >= 720;
+            wideLayout = isWide;
+            if (!isWide) return buildMobile(context);
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -102,48 +108,30 @@ class _SettingsWorkspaceState extends State<SettingsWorkspace> {
                   onBack: ctrl.closeSettings,
                 ),
                 const FolioDivider(),
-                if (!isWide && !_narrowList) ...[
-                  _NarrowPageBar(
-                    title: l10n.t(
-                      _tabs.firstWhere((t) => t.$1 == ctrl.settingsTab).$2,
-                    ),
-                    onAllSettings: () => setState(() => _narrowList = true),
-                  ),
-                  const FolioDivider(),
-                ],
-                if (!isWide && _narrowList)
-                  Expanded(
-                    child: _SearchableSettingsNav(
-                      tabs: _tabs,
-                      selected: ctrl.settingsTab,
-                      onSelected: _openPage,
-                    ),
-                  )
-                else
-                  Expanded(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (isWide) ...[
-                          SizedBox(
-                            width: textScaledWidth(context, 232),
-                            child: ColoredBox(
-                              color: theme.bgSurface.withValues(
-                                alpha: theme.isDark ? 0.55 : 0.65,
-                              ),
-                              child: _SearchableSettingsNav(
-                                tabs: _tabs,
-                                selected: ctrl.settingsTab,
-                                onSelected: ctrl.setSettingsTab,
-                              ),
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      ...[
+                        SizedBox(
+                          width: textScaledWidth(context, 232),
+                          child: ColoredBox(
+                            color: theme.bgSurface.withValues(
+                              alpha: theme.isDark ? 0.55 : 0.65,
+                            ),
+                            child: _SearchableSettingsNav(
+                              tabs: _kSettingsTabs,
+                              selected: ctrl.settingsTab,
+                              onSelected: ctrl.setSettingsTab,
                             ),
                           ),
-                          const FolioDivider(vertical: true),
-                        ],
-                        Expanded(child: _buildActiveView(ctrl)),
+                        ),
+                        const FolioDivider(vertical: true),
                       ],
-                    ),
+                      Expanded(child: _buildActiveView(ctrl)),
+                    ],
                   ),
+                ),
               ],
             );
           },
@@ -346,46 +334,6 @@ class _SettingsNavTileState extends State<_SettingsNavTile> {
   }
 }
 
-/// Narrow layout: the open page's name with a way back to the page list.
-class _NarrowPageBar extends StatelessWidget {
-  const _NarrowPageBar({required this.title, required this.onAllSettings});
-
-  final String title;
-  final VoidCallback onAllSettings;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    final l10n = BistreLocalizations.of(context);
-    return Padding(
-      padding: const EdgeInsetsDirectional.fromSTEB(12, 6, 16, 6),
-      child: Row(
-        children: [
-          EngravedButton(
-            label: l10n.t(L10nKey.settingsAllSettings),
-            compact: true,
-            leading: BistreIcon(
-              BistreUiIcon.chevronStart,
-              size: 13,
-              color: theme.inkSecondary,
-            ),
-            onPressed: onAllSettings,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: InkText(
-              title,
-              role: InkTextRole.labelStrong,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// Catalog key prefixes whose text belongs to each settings page; searching matches the page
 /// name and every label on it ("Search all settings", Parchment v2.6.0).
 const Map<SettingsTab, List<String>> _searchPrefixes =
@@ -411,6 +359,40 @@ const Map<SettingsTab, List<String>> _searchPrefixes =
       SettingsTab.language: <String>['settings.language'],
       SettingsTab.shortcuts: <String>['shortcut.'],
     };
+
+/// Whether [tab] matches the lower-cased query by its name or any label on it.
+bool _tabMatches(
+  BistreLocalizationController l10n,
+  (SettingsTab, L10nKey, BistreUiIcon) tab,
+  String q,
+) {
+  if (q.isEmpty || l10n.t(tab.$2).toLowerCase().contains(q)) return true;
+  final prefixes = _searchPrefixes[tab.$1] ?? const <String>[];
+  return L10nKey.values.any(
+    (k) =>
+        prefixes.any(k.key.startsWith) && l10n.t(k).toLowerCase().contains(q),
+  );
+}
+
+/// The settings on [tab] whose label matches [q] (short labels only, not hints), so the
+/// results say which setting matched (v2.6.0 per-setting search results).
+List<String> _matchingLabels(
+  BistreLocalizationController l10n,
+  SettingsTab tab,
+  String q,
+) {
+  if (q.isEmpty) return const <String>[];
+  final prefixes = _searchPrefixes[tab] ?? const <String>[];
+  final out = <String>{};
+  for (final k in L10nKey.values) {
+    if (!prefixes.any(k.key.startsWith)) continue;
+    final text = l10n.t(k);
+    if (text.length > 48 || text.contains('{')) continue;
+    if (text.toLowerCase().contains(q)) out.add(text);
+    if (out.length == 3) break;
+  }
+  return out.toList();
+}
 
 class _SearchableSettingsNav extends StatefulWidget {
   const _SearchableSettingsNav({
@@ -438,45 +420,12 @@ class _SearchableSettingsNavState extends State<_SearchableSettingsNav> {
     super.dispose();
   }
 
-  bool _matches(
-    BistreLocalizationController l10n,
-    (SettingsTab, L10nKey, BistreUiIcon) tab,
-    String q,
-  ) {
-    if (q.isEmpty || l10n.t(tab.$2).toLowerCase().contains(q)) return true;
-    final prefixes = _searchPrefixes[tab.$1] ?? const <String>[];
-    return L10nKey.values.any(
-      (k) =>
-          prefixes.any(k.key.startsWith) && l10n.t(k).toLowerCase().contains(q),
-    );
-  }
-
-  /// The settings on [tab] whose label matches [q] (short labels only, not hints), so the
-  /// results say which setting matched (v2.6.0 per-setting search results).
-  List<String> _matchingLabels(
-    BistreLocalizationController l10n,
-    SettingsTab tab,
-    String q,
-  ) {
-    if (q.isEmpty) return const <String>[];
-    final prefixes = _searchPrefixes[tab] ?? const <String>[];
-    final out = <String>{};
-    for (final k in L10nKey.values) {
-      if (!prefixes.any(k.key.startsWith)) continue;
-      final text = l10n.t(k);
-      if (text.length > 48 || text.contains('{')) continue;
-      if (text.toLowerCase().contains(q)) out.add(text);
-      if (out.length == 3) break;
-    }
-    return out.toList();
-  }
-
   @override
   Widget build(BuildContext context) {
     final l10n = BistreLocalizations.of(context);
     final theme = BistreTheme.of(context);
     final q = _query.text.trim().toLowerCase();
-    final visible = widget.tabs.where((t) => _matches(l10n, t, q)).toList();
+    final visible = widget.tabs.where((t) => _tabMatches(l10n, t, q)).toList();
     return SmoothScrollable(
       builder: (_, scroll) => SingleChildScrollView(
         controller: scroll,

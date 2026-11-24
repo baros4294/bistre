@@ -289,3 +289,5 @@ Recorded **2026-11-21** after completing Commit-1 Repo Fortress, Spec Pack, Day-
   - scrolling to and highlighting the matched setting in search results;
   - context menus on code blocks and attachments;
   - per-model capabilities and prices in the picker.
+- **Phone Settings rebuilt to v2.6.0 (owner review, 2026-11-24)**: the narrow layout was a sideways tab strip, a guess that went against both DESIGN and `v2.6.0`. It now follows `ParchmentSettingsPages.kt` L310-L575 (breakpoint 720, card list, page view, Android back and swipe; `settings_mobile.dart`), with gallery capture `36_phone_settings_list.png`. AGENTS.md §2 gained the **Owner Rule**: read and cite the `v2.6.0` code for every layout before any UI change, never guess, and never present partial work as done.
+- **App-wide gap found**: before this, no screen handled Android back (a `WidgetsApp` without a `Navigator` exits the app). Settings handles it now (`didPopRoute`). The chat shell still needs the `v2.6.0` back order: close overlays, then the drawer, then exit. Read `PlatformRuntime.registerBackHandler` usages in `v2.6.0` first.
