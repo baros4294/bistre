@@ -51,16 +51,11 @@ jobs:
       - name: Install pinned Rust toolchain
         shell: bash
         run: bash .github/scripts/install-rust.sh
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          shared-key: flutter-desktop-${{ matrix.os }}
-          save-if: false
-          cache-bin: false
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
-          cache: true
+          cache: false
       - name: Install Linux release dependencies
         if: runner.os == 'Linux'
         shell: bash
@@ -135,6 +130,7 @@ jobs:
     name: build-android-and-attest
     needs: [ci]
     runs-on: ubuntu-24.04
+    environment: release
     timeout-minutes: 40
     permissions:
       contents: read
@@ -148,24 +144,14 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
-          cache: gradle
-          cache-dependency-path: |
-            apps/bistre_app/android/*.gradle.kts
-            apps/bistre_app/android/app/*.gradle.kts
-            apps/bistre_app/android/gradle/wrapper/gradle-wrapper.properties
       - name: Install pinned Rust toolchain
         shell: bash
         run: bash .github/scripts/install-rust.sh --target aarch64-linux-android
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          shared-key: android-arm64
-          save-if: false
-          cache-bin: false
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
-          cache: true
+          cache: false
       - name: Provision Android SDK API 36 and pinned NDK r30
         shell: bash
         run: bash .github/scripts/provision-android-sdk.sh
