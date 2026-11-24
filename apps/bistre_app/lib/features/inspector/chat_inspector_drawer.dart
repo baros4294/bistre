@@ -128,6 +128,40 @@ class _ChatInspectorDrawerState extends State<ChatInspectorDrawer> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        Wrap(
+                          spacing: BistreSpacing.s8,
+                          runSpacing: BistreSpacing.s8,
+                          children: [
+                            EngravedButton(
+                              label: l10n.t(
+                                L10nKey.chatPinnedTitle,
+                                <String, Object?>{
+                                  'count': ctrl.pinnedNodes.length,
+                                },
+                              ),
+                              compact: true,
+                              leading: BistreIcon(
+                                BistreUiIcon.pin,
+                                size: 12,
+                                color: theme.accentBrass,
+                              ),
+                              onPressed: ctrl.togglePinnedPanel,
+                            ),
+                            EngravedButton(
+                              label: l10n.t(L10nKey.chatNotesTitle),
+                              compact: true,
+                              leading: BistreIcon(
+                                BistreUiIcon.document,
+                                size: 12,
+                                color: theme.accentBrass,
+                              ),
+                              onPressed: ctrl.toggleChatNotes,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        const FolioDivider(),
+                        const SizedBox(height: 14),
                         // Provider override
                         InkText(
                           l10n.t(L10nKey.settingsAssistantsDefaultProvider),

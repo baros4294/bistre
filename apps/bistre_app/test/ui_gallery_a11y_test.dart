@@ -77,7 +77,7 @@ void main() {
       2.0,
       (ctrl, _) async => ctrl.openSettings(SettingsTab.appearance),
     );
-    // Phone Settings root at normal text: the v2.6.0 card list.
+    // Phone Settings root at normal text: the vertical card list.
     await shoot(
       '36_phone_settings_list.png',
       const Size(390, 844),
@@ -113,9 +113,9 @@ void main() {
         child: Directionality(
           textDirection: TextDirection.ltr,
           child: BistreTheme(
-            data: BistreThemeData.dayParchment,
+            data: BistreThemeData.warmSepia,
             child: ColoredBox(
-              color: BistreThemeData.dayParchment.bgCanvas,
+              color: BistreThemeData.warmSepia.bgCanvas,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -132,7 +132,7 @@ void main() {
                               BistreIcon(
                                 icon,
                                 size: size,
-                                color: BistreThemeData.dayParchment.inkPrimary,
+                                color: BistreThemeData.warmSepia.inkPrimary,
                               ),
                           ],
                         ),

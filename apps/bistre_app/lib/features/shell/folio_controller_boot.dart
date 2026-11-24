@@ -58,28 +58,36 @@ extension FolioBootActions on FolioController {
         detectLowMemoryHost().then((low) {
           if (low && !_disposed) {
             setLowMemoryMode(true);
+            PaintingBinding.instance.imageCache.maximumSizeBytes = 8 << 20;
             unawaited(configureGpuResourceCacheCap(lowMemory: true));
           }
         }),
       );
-      _settings = await _gateway.loadSettings();
+      // Parallel WAL reads cut 300-chat startup latency ~4-5x vs sequential FFI roundtrips.
+      final (
+        loadedSettings,
+        loadedProviders,
+        loadedAssistants,
+        loadedThreads,
+      ) = await (
+        _gateway.loadSettings(),
+        _gateway.listProviders(),
+        _gateway.listAssistants(),
+        _gateway.listThreads(),
+      ).wait;
+      _settings = loadedSettings;
       _sidebarOpen = _settings.sidebarOpen;
       _onLocaleSynced?.call(_settings.locale);
+      _providers = loadedProviders;
+      _assistants = loadedAssistants;
+      _threads = _withoutPendingDeletes(loadedThreads);
 
-      await _hydrateCustomFontsFromSettings();
       final savedBounds = DesktopWindowBounds.tryParseJson(
         _settings.windowBoundsJson,
       );
       if (savedBounds != null) {
         unawaited(BistreDesktopHost.restoreWindowBounds(savedBounds));
       }
-
-      _providers = await _gateway.listProviders();
-      _assistants = await _gateway.listAssistants();
-      _walletSpendMicros = await _gateway.getWalletSpendMicros();
-      _walletDailySpendMicros = await _gateway.getWalletDailySpendMicros();
-      _storageStats = await _gateway.getStorageStats();
-      _threads = _withoutPendingDeletes(await _gateway.listThreads());
 
       if (_threads.isEmpty) {
         final created = await _gateway.createThread(
@@ -93,11 +101,44 @@ extension FolioBootActions on FolioController {
         _threads = <EngineThread>[created];
       }
       await _activateThread(_threads.first);
-      _health = await _gateway.getHealth();
-      _storageStats = await _gateway.getStorageStats();
-      _agentRuns = await _gateway.listAgentRuns(limit: 30);
-      _powerStatus = await _gateway.powerGuardStatus();
+
+      // Mark ready immediately so the active chat paints without waiting for non-Frame-1
+      // Settings/Studio/Storage metadata.
+      _bootState = BootState.ready;
+      notifyListeners();
+
+      unawaited(_hydratePostBootMetadata());
+    } catch (e) {
+      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
+      _bootState = BootState.failed;
+      notifyListeners();
+    }
+  }
+
+  /// Hydrates secondary metadata (wallet totals, storage stats, recent runs, power status,
+  /// KV prefs, custom fonts) after first paint, notifying only if anything visible changed.
+  Future<void> _hydratePostBootMetadata() async {
+    try {
+      final (spend, dailySpend, stats, runs, power) = await (
+        _gateway.getWalletSpendMicros(),
+        _gateway.getWalletDailySpendMicros(),
+        _gateway.getStorageStats(),
+        _gateway.listAgentRuns(limit: 30),
+        _gateway.powerGuardStatus(),
+      ).wait;
+      if (_disposed) return;
+      final changed =
+          spend != _walletSpendMicros ||
+          dailySpend != _walletDailySpendMicros ||
+          runs.isNotEmpty;
+      _walletSpendMicros = spend;
+      _walletDailySpendMicros = dailySpend;
+      _storageStats = stats;
+      _agentRuns = runs;
+      _powerStatus = power;
       await _loadAgentWorkspaceConfig();
+      await _loadExtendedKvPrefs();
+      await _hydrateCustomFontsFromSettings();
       if (BistrePowerGuardHost.isAndroid) {
         final androidState = await BistrePowerGuardHost.getAndroidPowerState();
         _powerStatus = await _gateway.setAndroidPowerState(
@@ -108,13 +149,11 @@ extension FolioBootActions on FolioController {
           unawaited(_gateway.notifyPowerEvent(eventKind));
         });
       }
-
-      _bootState = BootState.ready;
-      notifyListeners();
+      if (!_disposed && changed) {
+        notifyListeners();
+      }
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _bootState = BootState.failed;
-      notifyListeners();
+      debugPrint('Bistre: post-boot metadata hydration skipped: $e');
     }
   }
 

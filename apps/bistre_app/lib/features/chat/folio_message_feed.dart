@@ -21,12 +21,15 @@ import '../shell/live_turn_notifier.dart';
 import 'code_wrap_scope.dart';
 import 'cost_unavailable_button.dart';
 import 'markdown_folio_view.dart';
+import 'message_nav_rail.dart';
 import 'reasoning_block.dart';
 import 'tool_timeline_view.dart';
 import 'usage_details_pill.dart';
 
+part 'folio_message_cards.dart';
+
 /// Calm Studio Atelier reading canvas:
-/// - Unconfigured Welcome Desk: ONE calm setup card with authentic color LabIcon strip
+/// - Unconfigured Welcome Desk: ONE calm setup card without promotional brand-icon clutter
 ///   and a SINGLE primary CTA (zero duplicate Add API Key buttons anywhere else in the app).
 /// - Ready Welcome Desk: Active assistant & color lab badge + clean vertical starter list.
 /// - Conversation Feed: respects user-configured reading width & fonts, supports inline user
@@ -183,19 +186,43 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
     }
   }
 
+  void _scrollToOffset(double target) {
+    if (!_scrollController.hasClients) return;
+    final clamped = target.clamp(
+      0.0,
+      _scrollController.position.maxScrollExtent,
+    );
+    final dur = BistreMotion.panelDuration(
+      context,
+      reduceMotionOverride: widget.controller.reduceMotionOverride,
+    );
+    if (dur == Duration.zero) {
+      _scrollController.jumpTo(clamped);
+    } else {
+      unawaited(
+        _scrollController.animateTo(
+          clamped,
+          duration: dur,
+          curve: BistreMotion.easeOut,
+        ),
+      );
+    }
+  }
+
+  void _jumpToTurnIndex(int index) {
+    final total = widget.controller.visibleBranchNodes.length;
+    if (total <= 1 || !_scrollController.hasClients) return;
+    _autoFollow = index >= total - 1;
+    final frac = (index / (total - 1)).clamp(0.0, 1.0);
+    _scrollToOffset(frac * _scrollController.position.maxScrollExtent);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);
     final ctrl = widget.controller;
-    // Full-width scroll surface (wheel scrolling works from the empty page margins); each item
-    // centers itself inside the reading measure (`docs/design/DESIGN.md` §8).
-    // `StackFit.expand` gives the feed tight constraints, which makes its `LayoutBuilder` a
-    // relayout boundary: a streaming delta then re-lays out only the feed, not the whole shell
-    // and composer (Spec 11 §5).
-    // Search keystrokes and results rebuild the feed (results replace the chat), not the shell.
-    // A `RepaintBoundary` around the feed keeps scrollbar/viewport repaints during streaming
-    // from repainting the sidebar, header, and composer on every 16 ms frame (Spec 11).
+    final visibleNodes = ctrl.visibleBranchNodes;
     return RepaintBoundary(
       child: ListenableBuilder(
         listenable: ctrl.search,
@@ -221,9 +248,45 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                 ),
               ),
             ),
+            if (ctrl.searchQuery.isEmpty && visibleNodes.length >= 2)
+              Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 10),
+                  child: MessageNavRail(
+                    nodes: visibleNodes,
+                    visible:
+                        ctrl.messageNavVisibility == 'always' ||
+                        (ctrl.messageNavVisibility == 'while_scrolling' &&
+                            _showJumpToLatest),
+                    reduceMotionOverride: ctrl.reduceMotionOverride,
+                    onJumpTop: () {
+                      _autoFollow = false;
+                      _scrollToOffset(0);
+                    },
+                    onJumpPrev: () {
+                      if (!_scrollController.hasClients) return;
+                      _autoFollow = false;
+                      _scrollToOffset(
+                        _scrollController.position.pixels -
+                            _scrollController.position.viewportDimension * 0.75,
+                      );
+                    },
+                    onJumpNext: () {
+                      if (!_scrollController.hasClients) return;
+                      _scrollToOffset(
+                        _scrollController.position.pixels +
+                            _scrollController.position.viewportDimension * 0.75,
+                      );
+                    },
+                    onJumpLatest: _jumpToLatest,
+                    onJumpToIndex: _jumpToTurnIndex,
+                  ),
+                ),
+              ),
             if (_showJumpToLatest &&
                 ctrl.searchQuery.isEmpty &&
-                ctrl.visibleBranchNodes.isNotEmpty)
+                visibleNodes.isNotEmpty)
               Align(
                 alignment: AlignmentDirectional.bottomCenter,
                 child: Padding(
@@ -357,6 +420,10 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                       onToggleContextPin: !ctrl.isStreaming
                           ? () => unawaited(ctrl.toggleContextStartPin(node.id))
                           : null,
+                      isPinnedReply: ctrl.isNodePinned(node.id),
+                      onTogglePinReply: () =>
+                          unawaited(ctrl.togglePinNode(node.id)),
+                      onInspectTurnDetails: () => ctrl.openTurnDetails(node),
                       onEditResend: node.role == 'user' && !ctrl.isStreaming
                           ? (edited) =>
                                 ctrl.editUserMessageAndResend(node.id, edited)
@@ -472,7 +539,7 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
   ) {
     final activeProv = ctrl.activeProvider;
     final activeModel = ctrl.activeModelId;
-    // Parchment v2.6.0 empty chat: one rubric-marked line with the model beneath it at the top
+    // Quiet empty chat: one rubric-marked line with the model beneath it at the top
     // of the reading column; without a key, one setup card. Opening a new chat is a 100+/day
     // action, so nothing animates in.
     return SingleChildScrollView(
@@ -535,15 +602,6 @@ class _ProviderSetupBanner extends StatelessWidget {
 
   final VoidCallback onOpenProviders;
 
-  static const List<String> _featuredLabs = <String>[
-    'openai',
-    'gemini',
-    'claude',
-    'deepseek',
-    'ollama',
-    'openrouter',
-  ];
-
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
@@ -558,63 +616,46 @@ class _ProviderSetupBanner extends StatelessWidget {
           border: Border.all(color: theme.borderHairline),
           boxShadow: theme.cardShadow,
         ),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            // One bold mark per view: the intro line carries it, not this card.
-            border: BorderDirectional(
-              start: BorderSide(color: theme.borderHairline, width: 0),
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(20, 18, 20, 18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    BistreIcon(
-                      BistreUiIcon.key,
-                      size: 16,
-                      color: theme.accentBrass,
+        child: Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(20, 18, 20, 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  BistreIcon(
+                    BistreUiIcon.key,
+                    size: 16,
+                    color: theme.accentBrass,
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: InkText(
+                      l10n.t(L10nKey.providerSetupTitle),
+                      role: InkTextRole.titleMedium,
                     ),
-                    const SizedBox(width: 9),
-                    Expanded(
-                      child: InkText(
-                        l10n.t(L10nKey.providerSetupTitle),
-                        role: InkTextRole.titleMedium,
-                      ),
-                    ),
-                  ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              InkText(
+                l10n.t(L10nKey.providerSetupBody),
+                role: InkTextRole.bodyCompact,
+                color: theme.inkSecondary,
+              ),
+              const SizedBox(height: 14),
+              EngravedButton(
+                label: l10n.t(L10nKey.providerSetupCta),
+                primary: true,
+                compact: true,
+                leading: BistreIcon(
+                  BistreUiIcon.key,
+                  size: 13,
+                  color: theme.onAccentWax,
                 ),
-                const SizedBox(height: 8),
-                InkText(
-                  l10n.t(L10nKey.providerSetupBody),
-                  role: InkTextRole.bodyCompact,
-                  color: theme.inkSecondary,
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    EngravedButton(
-                      label: l10n.t(L10nKey.providerSetupCta),
-                      primary: true,
-                      compact: true,
-                      leading: BistreIcon(
-                        BistreUiIcon.key,
-                        size: 13,
-                        color: theme.onAccentWax,
-                      ),
-                      onPressed: onOpenProviders,
-                    ),
-                    const Spacer(),
-                    for (var i = 0; i < _featuredLabs.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 8),
-                      LabIcon(iconSlug: _featuredLabs[i], size: 17),
-                    ],
-                  ],
-                ),
-              ],
-            ),
+                onPressed: onOpenProviders,
+              ),
+            ],
           ),
         ),
       ),
@@ -651,6 +692,9 @@ class _PassageItem extends StatefulWidget {
     required this.onRegenerate,
     required this.onDelete,
     required this.onBranchDelta,
+    this.isPinnedReply = false,
+    this.onTogglePinReply,
+    this.onInspectTurnDetails,
   });
 
   final EngineNode node;
@@ -663,6 +707,7 @@ class _PassageItem extends StatefulWidget {
   final bool showTokenMetrics;
   final bool editorialDialogueStyling;
   final bool isPinnedContextStart;
+  final bool isPinnedReply;
   final BranchSlotInfo? branchInfo;
   final bool showBottomDivider;
   final bool reduceMotionOverride;
@@ -675,6 +720,8 @@ class _PassageItem extends StatefulWidget {
   final VoidCallback onReply;
   final ValueChanged<String> onQuoteThinking;
   final VoidCallback? onToggleContextPin;
+  final VoidCallback? onTogglePinReply;
+  final VoidCallback? onInspectTurnDetails;
   final Future<bool> Function(String edited)? onEditResend;
   final VoidCallback? onRegenerate;
   final VoidCallback? onDelete;
@@ -688,6 +735,7 @@ class _PassageItemState extends State<_PassageItem> {
   bool _hovered = false;
   bool _focused = false;
   bool _editing = false;
+  bool _moreActionsOpen = false;
   final TextEditingController _editCtrl = TextEditingController();
   final FocusNode _editFocus = FocusNode();
 
@@ -867,7 +915,7 @@ class _PassageItemState extends State<_PassageItem> {
     );
   }
 
-  /// Right-click menu: the same actions as the hover bar (v2.6.0 `PlatformContextMenu`).
+  /// Right-click menu mirroring the message action bar plus pin & turn details.
   List<ContextMenuEntry> _menuEntries(
     BistreLocalizationController l10n,
     bool isAssistant,
@@ -876,6 +924,8 @@ class _PassageItemState extends State<_PassageItem> {
     final edit = w.onEditResend;
     final regenerate = w.onRegenerate;
     final pin = w.onToggleContextPin;
+    final pinReply = w.onTogglePinReply;
+    final inspectTurn = w.onInspectTurnDetails;
     final delete = w.onDelete;
     return <ContextMenuEntry>[
       if (isAssistant)
@@ -900,6 +950,20 @@ class _PassageItemState extends State<_PassageItem> {
           label: l10n.t(L10nKey.chatActionRegenerate),
           icon: BistreUiIcon.refresh,
           onSelected: regenerate,
+        ),
+      if (pinReply != null)
+        ContextMenuEntry(
+          label: w.isPinnedReply
+              ? l10n.t(L10nKey.chatUnpinReply)
+              : l10n.t(L10nKey.chatPinReply),
+          icon: w.isPinnedReply ? BistreUiIcon.pinFilled : BistreUiIcon.pin,
+          onSelected: pinReply,
+        ),
+      if (inspectTurn != null)
+        ContextMenuEntry(
+          label: l10n.t(L10nKey.chatTurnDetails),
+          icon: BistreUiIcon.info,
+          onSelected: inspectTurn,
         ),
       if (pin != null)
         ContextMenuEntry(
@@ -1058,7 +1122,7 @@ class _PassageItemState extends State<_PassageItem> {
     bool isAssistant,
   ) {
     final branch = widget.branchInfo;
-    // Controls appear when needed (DESIGN §1.1, Parchment v2.6.0): hidden at rest on pointer
+    // Controls appear when needed (DESIGN §1.1): hidden at rest on pointer
     // devices, revealed on hover or keyboard focus (focusing a hidden button reveals the bar).
     final alwaysShow =
         branch != null ||
@@ -1136,14 +1200,6 @@ class _PassageItemState extends State<_PassageItem> {
               semanticsLabel: l10n.t(L10nKey.chatActionEdit),
               onPressed: _startEdit,
             ),
-          if (isAssistant)
-            BistreIconButton(
-              icon: BistreUiIcon.reply,
-              size: 14,
-              dimension: 28,
-              semanticsLabel: l10n.t(L10nKey.chatActionReply),
-              onPressed: widget.onReply,
-            ),
           BistreIconButton(
             icon: BistreUiIcon.copy,
             size: 14,
@@ -1159,246 +1215,70 @@ class _PassageItemState extends State<_PassageItem> {
               semanticsLabel: l10n.t(L10nKey.chatActionRegenerate),
               onPressed: widget.onRegenerate,
             ),
-          if (widget.onToggleContextPin != null && !_editing)
-            BistreIconButton(
-              icon: widget.isPinnedContextStart
-                  ? BistreUiIcon.pinFilled
-                  : BistreUiIcon.pin,
-              size: 13,
-              dimension: 28,
-              color: widget.isPinnedContextStart
-                  ? theme.accentBrass
-                  : theme.inkMuted,
-              semanticsLabel: l10n.t(L10nKey.chatPinContextStart),
-              onPressed: widget.onToggleContextPin,
-            ),
-          if (widget.onDelete != null && !_editing)
-            BistreIconButton(
-              icon: BistreUiIcon.trash,
-              size: 14,
-              dimension: 28,
-              semanticsLabel: l10n.t(L10nKey.chatActionDelete),
-              onPressed: widget.onDelete,
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PinnedContextBanner extends StatelessWidget {
-  const _PinnedContextBanner({required this.onClear});
-
-  final VoidCallback onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    final l10n = BistreLocalizations.of(context);
-    return Padding(
-      padding: const EdgeInsetsDirectional.only(top: 4, bottom: 6),
-      child: Row(
-        children: [
-          const Expanded(child: FolioDivider()),
-          const SizedBox(width: 10),
-          BistreIcon(
-            BistreUiIcon.pinFilled,
-            size: 12,
-            color: theme.accentBrass,
-          ),
-          const SizedBox(width: 5),
-          InkText(
-            l10n.t(L10nKey.chatPinnedContextBanner),
-            role: InkTextRole.captionMeta,
-            color: theme.accentBrass,
-          ),
-          const SizedBox(width: 6),
+          if (_moreActionsOpen) ...[
+            if (isAssistant)
+              BistreIconButton(
+                icon: BistreUiIcon.reply,
+                size: 14,
+                dimension: 28,
+                semanticsLabel: l10n.t(L10nKey.chatActionReply),
+                onPressed: widget.onReply,
+              ),
+            if (widget.onTogglePinReply != null && !_editing)
+              BistreIconButton(
+                icon: widget.isPinnedReply
+                    ? BistreUiIcon.pinFilled
+                    : BistreUiIcon.pin,
+                size: 13,
+                dimension: 28,
+                color: widget.isPinnedReply
+                    ? theme.accentBrass
+                    : theme.inkMuted,
+                semanticsLabel: widget.isPinnedReply
+                    ? l10n.t(L10nKey.chatUnpinReply)
+                    : l10n.t(L10nKey.chatPinReply),
+                onPressed: widget.onTogglePinReply,
+              ),
+            if (widget.onToggleContextPin != null && !_editing)
+              BistreIconButton(
+                icon: BistreUiIcon.branchTree,
+                size: 13,
+                dimension: 28,
+                color: widget.isPinnedContextStart
+                    ? theme.accentBrass
+                    : theme.inkMuted,
+                semanticsLabel: l10n.t(L10nKey.chatPinContextStart),
+                onPressed: widget.onToggleContextPin,
+              ),
+            if (widget.onInspectTurnDetails != null)
+              BistreIconButton(
+                icon: BistreUiIcon.info,
+                size: 13,
+                dimension: 28,
+                semanticsLabel: l10n.t(L10nKey.chatTurnDetails),
+                onPressed: widget.onInspectTurnDetails,
+              ),
+            if (widget.onDelete != null && !_editing)
+              BistreIconButton(
+                icon: BistreUiIcon.trash,
+                size: 14,
+                dimension: 28,
+                semanticsLabel: l10n.t(L10nKey.chatActionDelete),
+                onPressed: widget.onDelete,
+              ),
+          ],
           BistreIconButton(
-            icon: BistreUiIcon.close,
-            size: 11,
-            dimension: 20,
-            semanticsLabel: l10n.t(L10nKey.threadUnpin),
-            onPressed: onClear,
-          ),
-          const SizedBox(width: 10),
-          const Expanded(child: FolioDivider()),
-        ],
-      ),
-    );
-  }
-}
-
-class _CompactionSummaryCard extends StatelessWidget {
-  const _CompactionSummaryCard({required this.node, required this.onUndo});
-
-  final EngineNode node;
-  final VoidCallback? onUndo;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    final l10n = BistreLocalizations.of(context);
-    return Padding(
-      padding: const EdgeInsetsDirectional.symmetric(vertical: 10),
-      child: FolioSurface(
-        padding: const EdgeInsetsDirectional.fromSTEB(14, 12, 14, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                BistreIcon(
-                  BistreUiIcon.document,
-                  size: 14,
-                  color: theme.accentBrass,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: InkText(
-                    l10n.t(L10nKey.chatCompactedTitle),
-                    role: InkTextRole.labelStrong,
-                    color: theme.accentBrass,
-                  ),
-                ),
-                if (onUndo != null)
-                  EngravedButton(
-                    label: l10n.t(L10nKey.chatUndoCompaction),
-                    compact: true,
-                    onPressed: onUndo,
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            InkText(
-              node.content,
-              role: InkTextRole.bodyCompact,
-              color: theme.inkSecondary,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StreamingPassageCard extends StatelessWidget {
-  const _StreamingPassageCard({
-    required this.assistantName,
-    required this.provider,
-    required this.modelId,
-    required this.buffer,
-    this.thinkingBuffer = '',
-    this.toolActivities = const <ToolActivityEntry>[],
-    required this.layoutMode,
-    required this.reduceMotionOverride,
-    required this.onCopyCode,
-    this.onQuoteThinking,
-    this.onRewindCheckpoint,
-  });
-
-  final String assistantName;
-  final EngineProvider? provider;
-  final String modelId;
-  final String buffer;
-  final String thinkingBuffer;
-  final List<ToolActivityEntry> toolActivities;
-  final FolioLayoutMode layoutMode;
-  final bool reduceMotionOverride;
-  final ValueChanged<String> onCopyCode;
-  final ValueChanged<String>? onQuoteThinking;
-  final ValueChanged<String>? onRewindCheckpoint;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    final body = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            LabIcon(
-              iconSlug: provider?.iconSlug,
-              customIconPath: provider?.customIconPath,
-              dialect: provider?.dialect,
-              providerName: provider?.name,
-              modelId: modelId,
-              size: 15,
-            ),
-            const SizedBox(width: BistreSpacing.s8),
-            InkText(
-              assistantName,
-              role: InkTextRole.labelStrong,
-              color: theme.inkPrimary,
-            ),
-            const SizedBox(width: BistreSpacing.s8),
-            FolioStreamingCursor(reduceMotionOverride: reduceMotionOverride),
-          ],
-        ),
-        if (thinkingBuffer.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          ReasoningBlock(
-            thinkingText: thinkingBuffer,
-            isStreaming: buffer.isEmpty,
-            onQuoteIntoComposer: onQuoteThinking,
+            icon: _moreActionsOpen
+                ? BistreUiIcon.chevronEnd
+                : BistreUiIcon.sliders,
+            size: 13,
+            dimension: 28,
+            active: _moreActionsOpen,
+            semanticsLabel: l10n.t(L10nKey.chatActionMore),
+            onPressed: () =>
+                setState(() => _moreActionsOpen = !_moreActionsOpen),
           ),
         ],
-        if (toolActivities.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          ToolTimelineView(
-            entries: toolActivities,
-            onRewindCheckpoint: onRewindCheckpoint,
-          ),
-        ],
-        if (buffer.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          MarkdownFolioView(markdown: buffer, onCopyCode: onCopyCode),
-        ],
-      ],
-    );
-
-    if (layoutMode == FolioLayoutMode.bubbles) {
-      return Padding(
-        padding: const EdgeInsetsDirectional.symmetric(
-          vertical: BistreSpacing.s8,
-        ),
-        child: FolioSurface(
-          tone: FolioTone.elevated,
-          padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
-          borderRadius: 14,
-          boxShadow: theme.cardShadow,
-          child: body,
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsetsDirectional.symmetric(
-        vertical: BistreSpacing.s12,
-      ),
-      child: body,
-    );
-  }
-}
-
-/// Centers one feed item inside the reading measure while the scroll surface stays full width.
-class _ReadingColumn extends StatelessWidget {
-  const _ReadingColumn({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final readingWidth = BistreTheme.of(context).typography.readingWidthPx
-        .clamp(600.0, 1120.0);
-    return Center(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: readingWidth),
-        child: Padding(
-          padding: const EdgeInsetsDirectional.symmetric(
-            horizontal: BistreSpacing.s24,
-          ),
-          child: child,
-        ),
       ),
     );
   }

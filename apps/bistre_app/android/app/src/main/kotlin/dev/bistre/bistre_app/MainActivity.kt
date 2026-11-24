@@ -1,13 +1,16 @@
 package dev.bistre.bistre_app
 
+import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.provider.DocumentsContract
 import android.provider.Settings
 import androidx.core.view.WindowCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -15,9 +18,44 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private var pendingFolderResult: MethodChannel.Result? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         super.onCreate(savedInstanceState)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == REQ_PICK_FOLDER) {
+            val cb = pendingFolderResult
+            pendingFolderResult = null
+            if (cb != null) {
+                val uri = if (resultCode == Activity.RESULT_OK) data?.data else null
+                if (uri != null) {
+                    val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    runCatching { contentResolver.takePersistableUriPermission(uri, flags) }
+                    cb.success(resolveTreeUriPath(uri) ?: uri.toString())
+                } else {
+                    cb.success(null)
+                }
+            }
+            return
+        }
+        super.onActivityResult(requestCode, resultCode, data)
+    }
+
+    private fun resolveTreeUriPath(treeUri: Uri): String? {
+        return runCatching {
+            val docId = DocumentsContract.getTreeDocumentId(treeUri)
+            val parts = docId.split(":", limit = 2)
+            if (parts.size == 2 && parts[0].equals("primary", ignoreCase = true)) {
+                val base = Environment.getExternalStorageDirectory().absolutePath
+                if (parts[1].isEmpty()) base else "$base/${parts[1]}"
+            } else {
+                null
+            }
+        }.getOrNull()
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -105,9 +143,34 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        val hostChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, HOST_CHANNEL)
+        hostChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "pickLocalFolder" -> {
+                    pendingFolderResult?.success(null)
+                    pendingFolderResult = result
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                        addFlags(
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
+                        )
+                    }
+                    runCatching { startActivityForResult(intent, REQ_PICK_FOLDER) }
+                        .onFailure {
+                            pendingFolderResult = null
+                            result.success(null)
+                        }
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
     override fun onDestroy() {
+        pendingFolderResult?.success(null)
+        pendingFolderResult = null
         activePowerChannel = null
         super.onDestroy()
     }
@@ -122,9 +185,11 @@ class MainActivity : FlutterActivity() {
     }
 
     companion object {
+        private const val HOST_CHANNEL = "bistre/desktop_host"
         private const val POWER_CHANNEL = "dev.bistre.app/power_guard"
         private const val TERMUX_CHANNEL = "dev.bistre.app/termux"
         private const val VAULT_CHANNEL = "dev.bistre.app/vault_key"
+        private const val REQ_PICK_FOLDER = 42941
 
         @Volatile
         private var activePowerChannel: MethodChannel? = null

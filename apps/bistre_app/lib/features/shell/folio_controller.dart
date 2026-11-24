@@ -19,6 +19,7 @@ import 'live_turn_notifier.dart';
 
 part 'folio_controller_boot.dart';
 part 'folio_controller_catalog.dart';
+part 'folio_controller_extras.dart';
 part 'folio_controller_navigation.dart';
 part 'folio_controller_threads.dart';
 part 'folio_controller_studio.dart';
@@ -52,11 +53,13 @@ class ComposerAttachment {
 
 enum SettingsTab {
   providers,
+  defaultModels,
   assistants,
   appearance,
   trust,
   agent,
   memory,
+  worldBook,
   updates,
   language,
   shortcuts,
@@ -273,35 +276,33 @@ class FolioController extends ChangeNotifier {
   // Chats deleted within the last 8 s (still restorable with Undo).
   final Map<String, Timer> _pendingThreadDeletes = <String, Timer>{};
 
-  // Wave A durable runs, mid-stream steering queue, and OS sleep guard state.
+  // Durable runs, mid-stream steering queue, and OS sleep guard state.
   List<EngineAgentRun> _agentRuns = const <EngineAgentRun>[];
   List<EngineSteeringMessage> _pendingSteering =
       const <EngineSteeringMessage>[];
   EnginePowerGuardStatus _powerStatus = const EnginePowerGuardStatus();
   bool _studioPaneOpen = false;
 
-  // Wave B workspace binding, MCP servers, context compaction, pin, and tool timeline.
+  // Agent workspace binding, MCP servers, context compaction, pin, and tool timeline.
   String _workspaceRootPath = '';
   String _webSearchEndpoint = '';
   List<EngineMcpServerConfig> _mcpServers = const <EngineMcpServerConfig>[];
   String? _pinnedContextNodeId;
   List<ToolActivityEntry> _toolActivities = const <ToolActivityEntry>[];
   List<EngineCheckpoint> _checkpoints = const <EngineCheckpoint>[];
-  List<EngineLocalServer> _discoveredLocalServers = const <EngineLocalServer>[];
 
-  // Wave C rich studio tabs, attachments, session tree, and provider overrides.
+  // Rich studio tabs, attachments, session tree, and provider overrides.
   StudioTab _studioTab = StudioTab.runs;
   bool _sessionTreeOpen = false;
   bool _sessionTreePromptsOnly = false;
   List<ComposerAttachment> _attachments = const <ComposerAttachment>[];
-  bool _detectingLocalServers = false;
 
-  // Wave D cross-chat memory, progressive skills, and scheduled cron jobs.
+  // Cross-chat memory, progressive skills, and scheduled cron jobs.
   List<EngineMemoryEntry> _memoryEntries = const <EngineMemoryEntry>[];
   List<EngineSkillIndex> _discoveredSkills = const <EngineSkillIndex>[];
   List<EngineCronJob> _cronJobs = const <EngineCronJob>[];
 
-  // Wave E Writing & Roleplay Studio (CCv3 cards, Personas, Lorebook V3, Manuscript, Prompt Inspector).
+  // Writing & Roleplay Studio (CCv3 cards, Personas, Lorebook V3, Manuscript, Prompt Inspector).
   List<EngineCharacterCard> _characterCards = const <EngineCharacterCard>[];
   List<EngineUserPersona> _userPersonas = const <EngineUserPersona>[];
   List<EngineStoryEntry> _storyEntries = const <EngineStoryEntry>[];
@@ -323,6 +324,7 @@ class FolioController extends ChangeNotifier {
   bool _checkingUpdates = false;
   bool _stagingUpdate = false;
   String? _stagedUpdatePath;
+  bool _updateBannerDismissed = false;
 
   // Sidebar, Inspector, Search, Overlays & Toast.
   bool _sidebarOpen = true;
@@ -343,6 +345,26 @@ class FolioController extends ChangeNotifier {
   String? _editingAssistantId;
   bool _commandPaletteOpen = false;
   bool _tabSwitcherOpen = false;
+  bool _pinnedPanelOpen = false;
+  bool _chatNotesOpen = false;
+  String _replyPrefill = '';
+  Set<String> _pinnedNodeIds = <String>{};
+  String _activeChatNotes = '';
+  int _threadExtrasVersion = 0;
+  String _profileAvatarPath = '';
+  int? _activeChatSpendLimitMicros;
+  Map<String, String> _toolPermissions = <String, String>{};
+  ComposerAttachment? _previewingAttachment;
+  EngineNode? _inspectingTurnNode;
+  String? _highlightedSettingKey;
+  DefaultModelsConfig _defaultModels = const DefaultModelsConfig();
+  UiDisplayPrefs _uiPrefs = const UiDisplayPrefs();
+  List<String> _workspaceFolders = const <String>[];
+  String _activeGitBranch = '';
+  List<WorkspaceProject> _projects = const <WorkspaceProject>[];
+  String? _activeProjectId;
+  bool _splitViewOpen = false;
+  String? _splitSecondaryThreadId;
 
   /// The current toast; listened to only by the toast overlay.
   final ToastNotifier toast = ToastNotifier();
@@ -392,6 +414,14 @@ class FolioController extends ChangeNotifier {
   bool get checkingUpdates => _checkingUpdates;
   bool get stagingUpdate => _stagingUpdate;
   String? get stagedUpdatePath => _stagedUpdatePath;
+  bool get showUpdateBanner =>
+      (_updateCheck?.updateAvailable ?? false) && !_updateBannerDismissed;
+
+  void dismissUpdateBanner() {
+    if (_updateBannerDismissed) return;
+    _updateBannerDismissed = true;
+    _notify();
+  }
 
   List<EngineProviderModel> modelsForProvider(String providerId) =>
       _modelsByProvider[providerId] ?? const <EngineProviderModel>[];
@@ -485,6 +515,24 @@ class FolioController extends ChangeNotifier {
   );
 
   bool get tabSwitcherOpen => _tabSwitcherOpen;
+  bool get pinnedPanelOpen => _pinnedPanelOpen;
+  bool get chatNotesOpen => _chatNotesOpen;
+  String get replyPrefill => _replyPrefill;
+  Set<String> get pinnedNodeIds => _pinnedNodeIds;
+  String get activeChatNotes => _activeChatNotes;
+  String get profileAvatarPath => _profileAvatarPath;
+  int? get activeChatSpendLimitMicros => _activeChatSpendLimitMicros;
+  Map<String, String> get toolPermissions => _toolPermissions;
+  ComposerAttachment? get previewingAttachment => _previewingAttachment;
+  EngineNode? get inspectingTurnNode => _inspectingTurnNode;
+  String? get highlightedSettingKey => _highlightedSettingKey;
+
+  bool isNodePinned(String nodeId) => _pinnedNodeIds.contains(nodeId);
+
+  List<EngineNode> get pinnedNodes => <EngineNode>[
+    for (final n in _nodes)
+      if (_pinnedNodeIds.contains(n.id)) n,
+  ];
 
   bool get hasAnyActiveRun =>
       _streamingThreadId != null || _agentRuns.any((r) => r.isActive);
@@ -790,6 +838,24 @@ class FolioController extends ChangeNotifier {
         if (BistrePowerGuardHost.isAndroid) {
           unawaited(_syncAndroidFgs(active: false));
         }
+        if (!event.cancelled && _uiPrefs.desktopNotifyOnComplete) {
+          final finishedTitle =
+              _threads
+                  .where((t) => t.id == event.threadId)
+                  .firstOrNull
+                  ?.title ??
+              _defaultThreadTitle;
+          unawaited(() async {
+            final focused = await BistreDesktopHost.isWindowFocused();
+            if (!focused && !_disposed) {
+              await BistreDesktopHost.showNotification(
+                title: 'Bistre',
+                body: finishedTitle,
+                playSound: _uiPrefs.desktopNotifySound,
+              );
+            }
+          }());
+        }
         unawaited(_refreshAfterRun(event.threadId));
         notifyListeners();
       case DraftSavedEvent():
@@ -991,6 +1057,7 @@ class FolioController extends ChangeNotifier {
     _draftEpoch++;
     draftSavedState.value = _restoredDraft.isNotEmpty;
     if (hits != null && search.query == query) search.update(hits: hits);
+    unawaited(_loadThreadKvExtras(thread.id, generation));
   }
 
   Future<void> selectThread(String threadId) async {

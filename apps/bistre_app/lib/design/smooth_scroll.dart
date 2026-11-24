@@ -1,13 +1,12 @@
-import 'dart:async';
-
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import 'bistre_theme.dart';
 
-/// Smooth mouse-wheel scrolling (DESIGN §6, owner decision 2026-11-24): each wheel notch glides
-/// to its target instead of jumping, and quick notches extend the same glide. Trackpads stay
-/// 1:1 (they arrive as pan-zoom or as small deltas), and Reduce motion keeps the plain jump.
+/// Smooth mouse-wheel scrolling (DESIGN §6): each wheel notch glides via a critically damped
+/// spring driven directly by Flutter's VSync ticker, preserving live scroll velocity across
+/// consecutive notches instead of restarting from zero. Trackpads stay 1:1 (small deltas or
+/// pan-zoom), and Reduce motion snaps immediately.
 class SmoothScrollController extends ScrollController {
   SmoothScrollController({super.initialScrollOffset});
 
@@ -64,7 +63,8 @@ class _SmoothWheelPosition extends ScrollPositionWithSingleContext {
 
   /// Wheel notches at or below this size come from smooth devices and stay 1:1.
   static const double _smoothDeviceDelta = 16;
-  static const Duration _glide = Duration(milliseconds: 170);
+  static final SpringDescription _wheelSpring =
+      SpringDescription.withDampingRatio(mass: 1, stiffness: 320);
 
   double? _wheelTarget;
 
@@ -76,24 +76,26 @@ class _SmoothWheelPosition extends ScrollPositionWithSingleContext {
       super.pointerScroll(delta);
       return;
     }
+    final activeBallistic = activity is BallisticScrollActivity;
     final pending = _wheelTarget;
-    final base = pending != null && activity is DrivenScrollActivity
-        ? pending
-        : pixels;
+    final base = pending != null && activeBallistic ? pending : pixels;
     final target = (base + delta).clamp(minScrollExtent, maxScrollExtent);
     if (target == pixels) return;
+
+    // Preserve in-flight scroll velocity across consecutive wheel notches so rapid scrolling
+    // feels continuous and VSync-locked rather than restarting from zero on every detent.
+    final currentVelocity = activeBallistic ? activity!.velocity : 0.0;
     updateUserScrollDirection(
       delta < 0 ? ScrollDirection.forward : ScrollDirection.reverse,
     );
     _wheelTarget = target;
-    unawaited(
-      animateTo(
-        target,
-        duration: _glide,
-        curve: Curves.easeOutCubic,
-      ).whenComplete(() {
-        if (_wheelTarget == target) _wheelTarget = null;
-      }),
+    final sim = ScrollSpringSimulation(
+      _wheelSpring,
+      pixels,
+      target,
+      currentVelocity,
+      tolerance: physics.toleranceFor(this),
     );
+    beginActivity(BallisticScrollActivity(this, sim, context.vsync, false));
   }
 }

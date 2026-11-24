@@ -4,13 +4,47 @@
 #include <shobjidl.h>
 #include <windows.h>
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "resource.h"
 
 namespace {
+
+constexpr UINT kTrayCallbackMsg = WM_APP + 42;
+constexpr UINT kTrayIconId = 1001;
+constexpr const wchar_t kAutoStartRegKey[] =
+    L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+constexpr const wchar_t kAutoStartValueName[] = L"Bistre";
+
+bool SetWindowsAutoStart(bool enable) {
+  HKEY hkey = nullptr;
+  if (RegOpenKeyExW(HKEY_CURRENT_USER, kAutoStartRegKey, 0, KEY_SET_VALUE,
+                    &hkey) != ERROR_SUCCESS) {
+    return false;
+  }
+  bool ok = false;
+  if (enable) {
+    wchar_t exe_path[MAX_PATH] = {};
+    DWORD len = GetModuleFileNameW(nullptr, exe_path, MAX_PATH);
+    if (len > 0 && len < MAX_PATH) {
+      std::wstring quoted = std::wstring(L"\"") + exe_path + L"\"";
+      ok = RegSetValueExW(
+               hkey, kAutoStartValueName, 0, REG_SZ,
+               reinterpret_cast<const BYTE*>(quoted.c_str()),
+               static_cast<DWORD>((quoted.size() + 1) * sizeof(wchar_t))) ==
+           ERROR_SUCCESS;
+    }
+  } else {
+    LSTATUS st = RegDeleteValueW(hkey, kAutoStartValueName);
+    ok = (st == ERROR_SUCCESS || st == ERROR_FILE_NOT_FOUND);
+  }
+  RegCloseKey(hkey);
+  return ok;
+}
 
 std::wstring Utf8ToWide(const std::string& utf8) {
   if (utf8.empty()) {
@@ -181,6 +215,47 @@ std::optional<std::string> ShowSaveFileDialog(HWND owner,
   return selected;
 }
 
+std::optional<std::string> ShowPickFolderDialog(HWND owner,
+                                                const std::wstring& title) {
+  IFileOpenDialog* dialog = nullptr;
+  HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr,
+                                CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog));
+  if (FAILED(hr) || dialog == nullptr) {
+    return std::nullopt;
+  }
+
+  DWORD opts = 0;
+  if (SUCCEEDED(dialog->GetOptions(&opts))) {
+    dialog->SetOptions(opts | FOS_PICKFOLDERS | FOS_PATHMUSTEXIST |
+                       FOS_FORCEFILESYSTEM);
+  }
+  if (!title.empty()) {
+    dialog->SetTitle(title.c_str());
+  }
+
+  std::optional<std::string> selected;
+  if (SUCCEEDED(dialog->Show(owner))) {
+    IShellItem* item = nullptr;
+    if (SUCCEEDED(dialog->GetResult(&item)) && item != nullptr) {
+      PWSTR psz_path = nullptr;
+      if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &psz_path)) &&
+          psz_path != nullptr) {
+        std::wstring wpath(psz_path);
+        const bool is_unc =
+            wpath.size() > 1 && (wpath[0] == L'\\' || wpath[0] == L'/') &&
+            (wpath[1] == L'\\' || wpath[1] == L'/');
+        if (!is_unc && !wpath.empty()) {
+          selected = WideToUtf8(wpath);
+        }
+        CoTaskMemFree(psz_path);
+      }
+      item->Release();
+    }
+  }
+  dialog->Release();
+  return selected;
+}
+
 }  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
@@ -203,17 +278,82 @@ bool FlutterWindow::OnCreate() {
   RegisterDesktopHostChannel();
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
-  flutter_controller_->engine()->SetNextFrameCallback([&]() { this->Show(); });
+  flutter_controller_->engine()->SetNextFrameCallback([this]() {
+    has_shown_ = true;
+    this->ShowWithCmd(pending_maximized_ ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL);
+    if (flutter_controller_) {
+      // Trigger an explicit present AFTER the HWND becomes visible so Windows 11
+      // DWM + ANGLE D3D11 never stalls on a hidden first-frame swapchain.
+      flutter_controller_->ForceRedraw();
+    }
+  });
   flutter_controller_->ForceRedraw();
   return true;
 }
 
 void FlutterWindow::OnDestroy() {
+  EnsureTrayIcon(false);
   host_channel_.reset();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
   Win32Window::OnDestroy();
+}
+
+void FlutterWindow::EnsureTrayIcon(bool enable) {
+  HWND hwnd = GetHandle();
+  if (hwnd == nullptr) {
+    return;
+  }
+  if (enable && !tray_icon_added_) {
+    NOTIFYICONDATAW nid{};
+    nid.cbSize = sizeof(nid);
+    nid.hWnd = hwnd;
+    nid.uID = kTrayIconId;
+    nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+    nid.uCallbackMessage = kTrayCallbackMsg;
+    nid.hIcon = LoadIcon(GetModuleHandle(nullptr), MAKEINTRESOURCE(IDI_APP_ICON));
+    wcsncpy_s(nid.szTip, L"Bistre", _TRUNCATE);
+    if (Shell_NotifyIconW(NIM_ADD, &nid)) {
+      tray_icon_added_ = true;
+    }
+  } else if (!enable && tray_icon_added_) {
+    NOTIFYICONDATAW nid{};
+    nid.cbSize = sizeof(nid);
+    nid.hWnd = hwnd;
+    nid.uID = kTrayIconId;
+    Shell_NotifyIconW(NIM_DELETE, &nid);
+    tray_icon_added_ = false;
+  }
+}
+
+void FlutterWindow::ShowTrayBalloon(const std::wstring& title,
+                                    const std::wstring& body,
+                                    bool play_sound) {
+  HWND hwnd = GetHandle();
+  if (hwnd == nullptr) {
+    return;
+  }
+  const bool was_added = tray_icon_added_;
+  EnsureTrayIcon(true);
+  if (!tray_icon_added_) {
+    return;
+  }
+  NOTIFYICONDATAW nid{};
+  nid.cbSize = sizeof(nid);
+  nid.hWnd = hwnd;
+  nid.uID = kTrayIconId;
+  nid.uFlags = NIF_INFO;
+  nid.dwInfoFlags = play_sound ? NIIF_INFO : (NIIF_INFO | NIIF_NOSOUND);
+  wcsncpy_s(nid.szInfoTitle, title.c_str(), _TRUNCATE);
+  wcsncpy_s(nid.szInfo, body.c_str(), _TRUNCATE);
+  Shell_NotifyIconW(NIM_MODIFY, &nid);
+  if (play_sound) {
+    MessageBeep(MB_OK);
+  }
+  if (!was_added && !tray_enabled_) {
+    // Keep balloon visible without permanently pinning tray icon unless user enabled tray.
+  }
 }
 
 void FlutterWindow::RegisterDesktopHostChannel() {
@@ -250,6 +390,17 @@ void FlutterWindow::HandleDesktopHostCall(
         GetHandle(), Utf8ToWide(GetStringArg(*args, "title")),
         Utf8ToWide(GetStringArg(*args, "filterLabel")),
         Utf8ToWide(GetStringArg(*args, "filterSpec")));
+    if (chosen.has_value()) {
+      result->Success(flutter::EncodableValue(*chosen));
+    } else {
+      result->Success();
+    }
+    return;
+  }
+
+  if (method == "pickLocalFolder" && args != nullptr) {
+    auto chosen = ShowPickFolderDialog(
+        GetHandle(), Utf8ToWide(GetStringArg(*args, "title")));
     if (chosen.has_value()) {
       result->Success(flutter::EncodableValue(*chosen));
     } else {
@@ -336,21 +487,98 @@ void FlutterWindow::HandleDesktopHostCall(
       int w = static_cast<int>(GetIntArg(*args, "width", 1320));
       int h = static_cast<int>(GetIntArg(*args, "height", 820));
       bool maximized = GetBoolArg(*args, "maximized", false);
-      if (w >= 720 && h >= 520) {
+      pending_maximized_ = maximized;
+
+      WINDOWPLACEMENT cur{};
+      cur.length = sizeof(WINDOWPLACEMENT);
+      const bool have_cur = GetWindowPlacement(hwnd, &cur) != FALSE;
+      const bool cur_max = have_cur && cur.showCmd == SW_SHOWMAXIMIZED;
+      const bool same_rect =
+          have_cur && cur.rcNormalPosition.left == x &&
+          cur.rcNormalPosition.top == y &&
+          (cur.rcNormalPosition.right - cur.rcNormalPosition.left) == w &&
+          (cur.rcNormalPosition.bottom - cur.rcNormalPosition.top) == h;
+
+      bool changed = false;
+      if (!same_rect && w >= 720 && h >= 520) {
         RECT candidate = {x, y, x + w, y + h};
         if (MonitorFromRect(&candidate, MONITOR_DEFAULTTONULL) != nullptr) {
-          SetWindowPos(hwnd, nullptr, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+          SetWindowPos(hwnd, nullptr, x, y, w, h,
+                       SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+          changed = true;
         }
       }
-      if (maximized) {
-        ShowWindow(hwnd, SW_SHOWMAXIMIZED);
+      if (has_shown_ && (changed || cur_max != maximized)) {
+        ShowWindow(hwnd, maximized ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL);
+        UpdateWindow(hwnd);
+        if (flutter_controller_) {
+          flutter_controller_->ForceRedraw();
+        }
       }
     }
     result->Success(flutter::EncodableValue(true));
     return;
   }
 
+  if (method == "isWindowFocused") {
+    HWND hwnd = GetHandle();
+    const bool focused = hwnd != nullptr && GetForegroundWindow() == hwnd;
+    result->Success(flutter::EncodableValue(focused));
+    return;
+  }
+
+  if (method == "showNotification" && args != nullptr) {
+    ShowTrayBalloon(Utf8ToWide(GetStringArg(*args, "title", "Bistre")),
+                    Utf8ToWide(GetStringArg(*args, "body")),
+                    GetBoolArg(*args, "playSound", false));
+    result->Success(flutter::EncodableValue(true));
+    return;
+  }
+
+  if (method == "setAutoStart" && args != nullptr) {
+    const bool enabled = GetBoolArg(*args, "enabled", false);
+    result->Success(flutter::EncodableValue(SetWindowsAutoStart(enabled)));
+    return;
+  }
+
+  if (method == "setTrayEnabled" && args != nullptr) {
+    tray_enabled_ = GetBoolArg(*args, "enabled", false);
+    EnsureTrayIcon(tray_enabled_);
+    result->Success(flutter::EncodableValue(true));
+    return;
+  }
+
   result->NotImplemented();
+}
+
+void FlutterWindow::EmitWindowBoundsChanged() {
+  if (!host_channel_ || !has_shown_) {
+    return;
+  }
+  HWND hwnd = GetHandle();
+  if (hwnd == nullptr) {
+    return;
+  }
+  WINDOWPLACEMENT wp{};
+  wp.length = sizeof(WINDOWPLACEMENT);
+  if (!GetWindowPlacement(hwnd, &wp)) {
+    return;
+  }
+  const RECT& r = wp.rcNormalPosition;
+  flutter::EncodableMap map;
+  map[flutter::EncodableValue("x")] =
+      flutter::EncodableValue(static_cast<int32_t>(r.left));
+  map[flutter::EncodableValue("y")] =
+      flutter::EncodableValue(static_cast<int32_t>(r.top));
+  map[flutter::EncodableValue("width")] =
+      flutter::EncodableValue(static_cast<int32_t>(r.right - r.left));
+  map[flutter::EncodableValue("height")] =
+      flutter::EncodableValue(static_cast<int32_t>(r.bottom - r.top));
+  map[flutter::EncodableValue("maximized")] =
+      flutter::EncodableValue(wp.showCmd == SW_SHOWMAXIMIZED);
+  host_channel_->InvokeMethod(
+      "onWindowBoundsChanged",
+      std::make_unique<flutter::EncodableValue>(map));
 }
 
 LRESULT
@@ -369,6 +597,28 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   switch (message) {
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
+      break;
+    case WM_EXITSIZEMOVE:
+      EmitWindowBoundsChanged();
+      break;
+    case WM_SIZE:
+      if (wparam == SIZE_MAXIMIZED || wparam == SIZE_RESTORED) {
+        EmitWindowBoundsChanged();
+      }
+      break;
+    case WM_CLOSE:
+      EmitWindowBoundsChanged();
+      break;
+    case kTrayCallbackMsg:
+      if (lparam == WM_LBUTTONUP || lparam == WM_LBUTTONDBLCLK ||
+          lparam == WM_RBUTTONUP) {
+        ShowWindow(hwnd, SW_RESTORE);
+        SetForegroundWindow(hwnd);
+        if (flutter_controller_) {
+          flutter_controller_->ForceRedraw();
+        }
+        return 0;
+      }
       break;
     case WM_SETTINGCHANGE:
       if (lparam != 0 &&

@@ -1,14 +1,12 @@
 part of 'settings_workspace.dart';
 
-/// Phone Settings, 1:1 with Parchment v2.6.0 (`ParchmentSettingsPages.kt` compact layout):
-/// - one compact header: `⚙ Settings` and a quiet `Chat` button at the root; on a page, a
-///   `Settings` back button, the page icon, and its name;
+/// Compact phone Settings layout:
+/// - one compact header: Settings and a quiet Chat button at the root; on a page, a
+///   Settings back button, the page icon, and its name;
 /// - the root is a search field and a vertical list of page cards (tinted icon box, name, a
 ///   one-line summary, chevron), never a sideways tab strip;
 /// - Android back and a start-edge swipe step back: search, then page, then close;
-/// - root and pages cross-fade.
-/// Improvement over v2.6.0: searching keeps the card list and names the matching settings
-/// under each card instead of replacing the list.
+/// - root and pages cross-fade, keeping matching setting labels under each card while searching.
 mixin _MobileSettings on State<SettingsWorkspace> {
   final TextEditingController _mobileQuery = TextEditingController();
   final FocusNode _mobileQueryFocus = FocusNode();
@@ -43,8 +41,8 @@ mixin _MobileSettings on State<SettingsWorkspace> {
     return false;
   }
 
-  void _openMobilePage(SettingsTab tab) {
-    widget.controller.setSettingsTab(tab);
+  void _openMobilePage(SettingsTab tab, [String? matchLabel]) {
+    widget.controller.openSettingsAt(tab, matchLabel);
     setState(() {
       _mobilePage = tab;
       _mobileQuery.clear();
@@ -61,6 +59,7 @@ mixin _MobileSettings on State<SettingsWorkspace> {
           'count': ctrl.providers.length,
         },
       ),
+      SettingsTab.defaultModels => l10n.t(L10nKey.settingsSubDefaultModels),
       SettingsTab.assistants => l10n.t(
         L10nKey.settingsSubAssistants,
         <String, Object?>{'count': ctrl.assistants.length},
@@ -69,6 +68,7 @@ mixin _MobileSettings on State<SettingsWorkspace> {
       SettingsTab.trust => l10n.t(L10nKey.settingsSubTrust),
       SettingsTab.agent => l10n.t(L10nKey.settingsSubAgent),
       SettingsTab.memory => l10n.t(L10nKey.settingsSubMemory),
+      SettingsTab.worldBook => l10n.t(L10nKey.settingsSubWorldBook),
       SettingsTab.updates => l10n.t(L10nKey.settingsSubUpdates),
       SettingsTab.language => l10n.t(L10nKey.settingsSubLanguage),
       SettingsTab.shortcuts => l10n.t(L10nKey.settingsSubShortcuts),
@@ -82,8 +82,7 @@ mixin _MobileSettings on State<SettingsWorkspace> {
     final page = _mobilePage;
     final q = _mobileQuery.text.trim().toLowerCase();
     final rtl = Directionality.of(context) == TextDirection.rtl;
-    // Improvement over v2.6.0: with large text the page name gets its own row instead of
-    // ellipsizing next to the buttons.
+    // At large text scales the page name gets its own row instead of ellipsizing beside buttons.
     final stackTitle = MediaQuery.textScalerOf(context).scale(1) >= 1.3;
     final pageEntry = page == null
         ? null
@@ -201,7 +200,18 @@ mixin _MobileSettings on State<SettingsWorkspace> {
 
     final Widget body;
     if (page != null) {
-      body = _buildActivePage(ctrl, page);
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (ctrl.highlightedSettingKey != null &&
+              ctrl.highlightedSettingKey!.isNotEmpty)
+            _HighlightedSettingBanner(
+              label: ctrl.highlightedSettingKey!,
+              onDismiss: ctrl.clearHighlightedSetting,
+            ),
+          Expanded(child: _buildActivePage(ctrl, page)),
+        ],
+      );
     } else {
       final visible = [
         for (final t in _kSettingsTabs)
@@ -220,7 +230,10 @@ mixin _MobileSettings on State<SettingsWorkspace> {
                   label: l10n.t(t.$2),
                   summary: _summary(l10n, t.$1),
                   matches: _matchingLabels(l10n, t.$1, q),
-                  onTap: () => _openMobilePage(t.$1),
+                  onTap: () {
+                    final m = _matchingLabels(l10n, t.$1, q);
+                    _openMobilePage(t.$1, m.isEmpty ? null : m.first);
+                  },
                 ),
                 const SizedBox(height: 10),
               ],
@@ -245,7 +258,7 @@ mixin _MobileSettings on State<SettingsWorkspace> {
         header,
         const FolioDivider(),
         Expanded(
-          // A swipe from the start edge toward the end steps back (v2.6.0: 72 dp).
+          // A 72 dp swipe from the start edge toward the end steps back.
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
             onHorizontalDragStart: (_) => _dragDx = 0,
@@ -289,11 +302,13 @@ mixin _MobileSettings on State<SettingsWorkspace> {
   Widget _buildActivePage(FolioController ctrl, SettingsTab tab) {
     return switch (tab) {
       SettingsTab.providers => ProvidersSettingsView(controller: ctrl),
+      SettingsTab.defaultModels => DefaultModelsSettingsView(controller: ctrl),
       SettingsTab.assistants => AssistantsSettingsView(controller: ctrl),
       SettingsTab.appearance => AppearanceSettingsView(controller: ctrl),
       SettingsTab.trust => BudgetSafetySettingsView(controller: ctrl),
       SettingsTab.agent => AgentToolsSettingsView(controller: ctrl),
       SettingsTab.memory => MemorySkillsSettingsView(controller: ctrl),
+      SettingsTab.worldBook => WorldbookCardsSettingsView(controller: ctrl),
       SettingsTab.updates => UpdatesStorageSettingsView(controller: ctrl),
       SettingsTab.language => LanguageSettingsView(controller: ctrl),
       SettingsTab.shortcuts => ShortcutsSettingsView(controller: ctrl),
@@ -301,7 +316,7 @@ mixin _MobileSettings on State<SettingsWorkspace> {
   }
 }
 
-/// One page in the phone list: tinted icon box, name, summary, chevron (v2.6.0 card).
+/// One page in the phone list: tinted icon box, name, summary, chevron.
 class _MobileSettingsCard extends StatelessWidget {
   const _MobileSettingsCard({
     required this.icon,

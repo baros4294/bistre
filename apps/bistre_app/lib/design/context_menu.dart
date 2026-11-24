@@ -23,7 +23,7 @@ class ContextMenuEntry {
 }
 
 /// Right-click menu for a region (touch keeps the visible action bar instead: a long-press is
-/// text selection there), like Parchment v2.6.0
+/// text selection there).
 /// `PlatformContextMenu`. It opens at the pointer, stays inside the window, fades out on
 /// close, and dismisses on Escape, an outside tap, or a choice. The entries repeat actions
 /// that also exist as visible or hover controls, so nothing is reachable only from here.

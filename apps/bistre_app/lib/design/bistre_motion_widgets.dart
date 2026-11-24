@@ -1,7 +1,9 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import 'bistre_icons.dart';
 import 'bistre_theme.dart';
+import 'disclosure_reveal.dart';
 import 'ink_primitives.dart';
 
 /// Smooth GPU-composited entrance animation (transform + opacity only, zero layout passes).
@@ -277,7 +279,7 @@ class _FolioDrawerFrameState extends State<FolioDrawerFrame>
   }
 }
 
-/// Calm pulsing activity dot (Parchment v2.6.0 `KissStreamingPulseDot`, 750 ms loop).
+/// Calm pulsing activity dot (750 ms loop).
 /// Static under Reduce motion; uses only GPU opacity + scale transforms.
 class StreamingPulseDot extends StatefulWidget {
   const StreamingPulseDot({
@@ -427,68 +429,184 @@ class _FolioStreamingCursorState extends State<FolioStreamingCursor>
   }
 }
 
-/// Smooth top-end sliding notification pill for copy/pin/save actions.
+/// Centered top floating notification pill (`• <plain sentence> [Action] ×`)
+/// with spring pop-in, `liveRegion` semantics, and accessible dismiss control.
 class FolioToastBanner extends StatelessWidget {
   const FolioToastBanner({
     super.key,
     required this.message,
     this.reduceMotionOverride = false,
+    this.dotColor,
     this.actionLabel,
     this.onAction,
+    this.dismissLabel,
+    this.onDismiss,
   });
 
   final String message;
   final bool reduceMotionOverride;
+  final Color? dotColor;
 
   /// Optional trailing action (e.g. `Undo` after deleting a chat).
   final String? actionLabel;
   final VoidCallback? onAction;
+  final String? dismissLabel;
+  final VoidCallback? onDismiss;
 
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
     final hasAction = actionLabel != null && onAction != null;
-    return IgnorePointer(
-      ignoring: !hasAction,
-      child: Align(
-        alignment: AlignmentDirectional.topEnd,
-        child: Padding(
-          padding: const EdgeInsetsDirectional.only(
-            top: BistreSpacing.s16,
-            end: BistreSpacing.s16,
-          ),
-          child: FolioFadeSlide(
-            beginOffset: const Offset(0, -0.5),
-            beginScale: 0.9,
-            reduceMotionOverride: reduceMotionOverride,
-            child: FolioSurface(
-              tone: FolioTone.elevated,
-              padding: const EdgeInsetsDirectional.symmetric(
-                horizontal: BistreSpacing.s16,
-                vertical: BistreSpacing.s8,
-              ),
-              borderRadius: 999,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: InkText(
-                      message,
-                      role: InkTextRole.captionMeta,
-                      color: theme.inkPrimary,
+    final hasDismiss = onDismiss != null;
+    return Align(
+      alignment: AlignmentDirectional.topCenter,
+      child: Padding(
+        padding: const EdgeInsetsDirectional.only(
+          top: BistreSpacing.s12,
+          start: BistreSpacing.s16,
+          end: BistreSpacing.s16,
+        ),
+        child: FolioFadeSlide(
+          beginOffset: const Offset(0, -0.45),
+          beginScale: 0.9,
+          reduceMotionOverride: reduceMotionOverride,
+          child: Semantics(
+            liveRegion: true,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: FolioSurface(
+                tone: FolioTone.elevated,
+                padding: const EdgeInsetsDirectional.fromSTEB(14, 7, 8, 7),
+                borderRadius: 999,
+                boxShadow: theme.floatingShadow,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox.square(
+                      dimension: 7,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: dotColor ?? theme.accentBrass,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
                     ),
-                  ),
-                  if (hasAction) ...[
-                    const SizedBox(width: BistreSpacing.s8),
-                    EngravedButton(
-                      label: actionLabel!,
-                      compact: true,
-                      onPressed: onAction,
+                    const SizedBox(width: 9),
+                    Flexible(
+                      child: InkText(
+                        message,
+                        role: InkTextRole.bodyCompact,
+                        color: theme.inkPrimary,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
+                    if (hasAction) ...[
+                      const SizedBox(width: BistreSpacing.s8),
+                      EngravedButton(
+                        label: actionLabel!,
+                        compact: true,
+                        onPressed: onAction,
+                      ),
+                    ],
+                    if (hasDismiss) ...[
+                      const SizedBox(width: 4),
+                      BistreIconButton(
+                        icon: BistreUiIcon.close,
+                        size: 13,
+                        dimension: 28,
+                        semanticsLabel: dismissLabel ?? message,
+                        onPressed: onDismiss,
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Slim top notification bar tucked directly under the workspace header
+/// (for OTA update notices and non-blocking workspace recovery banners).
+class FolioTopBanner extends StatelessWidget {
+  const FolioTopBanner({
+    super.key,
+    required this.visible,
+    required this.icon,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+    this.dismissLabel,
+    this.onDismiss,
+    this.accentColor,
+  });
+
+  final bool visible;
+  final BistreUiIcon icon;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+  final String? dismissLabel;
+  final VoidCallback? onDismiss;
+  final Color? accentColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = BistreTheme.of(context);
+    final accent = accentColor ?? theme.accentBrass;
+    return DisclosureReveal(
+      open: visible,
+      child: Semantics(
+        liveRegion: true,
+        child: ColoredBox(
+          color: theme.bgSurface,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(16, 6, 12, 6),
+                child: Row(
+                  children: [
+                    BistreIcon(icon, size: 15, color: accent),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: InkText(
+                        message,
+                        role: InkTextRole.bodyCompact,
+                        color: theme.inkPrimary,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (actionLabel != null && onAction != null) ...[
+                      const SizedBox(width: 10),
+                      EngravedButton(
+                        label: actionLabel!,
+                        primary: true,
+                        compact: true,
+                        onPressed: onAction,
+                      ),
+                    ],
+                    if (onDismiss != null) ...[
+                      const SizedBox(width: 6),
+                      BistreIconButton(
+                        icon: BistreUiIcon.close,
+                        size: 13,
+                        dimension: 28,
+                        semanticsLabel: dismissLabel ?? message,
+                        onPressed: onDismiss,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const FolioDivider(),
+            ],
           ),
         ),
       ),

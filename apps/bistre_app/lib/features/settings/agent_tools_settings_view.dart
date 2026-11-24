@@ -3,14 +3,15 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../../bridge/bistre_engine.dart';
+import '../../design/bistre_controls.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
+import '../../platform/desktop_host.dart';
 import '../../platform/power_guard_host.dart';
-import '../chat/reasoning_block.dart';
 import '../shell/folio_controller.dart';
 
 /// Dedicated Agent, Workspace Tools, MCP Server Manager, and Android Termux Bridge settings tab.
@@ -99,11 +100,20 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
     }
   }
 
-  // MCP transport names are protocol terms from the MCP specification, not translatable copy.
+  // MCP transport names are protocol identifiers, not prose copy.
   static const String _kMcpTransportHttp = 'Streamable HTTP';
   static const String _kMcpTransportStdio = 'Stdio';
   static const String _kMcpCommandPlaceholder =
       'npx -y @modelcontextprotocol/server';
+  static const List<String> _kPermissionTools = <String>[
+    'read_file',
+    'edit_file',
+    'grep',
+    'glob',
+    'shell',
+    'web_fetch',
+    'mcp',
+  ];
 
   static String _formatMcpMeta(
     BistreLocalizationController l10n,
@@ -149,7 +159,7 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 1. Workspace Folder Binding
+            // 1. Workspace Folders (native OS folder picker + Git branch indicator)
             FolioSurface(
               tone: FolioTone.elevated,
               padding: const EdgeInsetsDirectional.all(18),
@@ -171,50 +181,129 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
                           role: InkTextRole.titleMedium,
                         ),
                       ),
+                      if (ctrl.activeGitBranch.isNotEmpty)
+                        WaxSealBadge(label: ctrl.activeGitBranch),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: QuillInput(
-                          controller: _workspaceCtrl,
-                          focusNode: _workspaceFocus,
-                          placeholder: l10n.t(
-                            L10nKey.settingsAgentWorkspacePick,
-                          ),
-                          maxLines: 1,
-                          onSubmitted: () => unawaited(
-                            ctrl.setWorkspaceRootPath(_workspaceCtrl.text),
-                          ),
+                  if (ctrl.workspaceFolders.isEmpty)
+                    InkText(
+                      l10n.t(L10nKey.settingsAgentNoFolders),
+                      role: InkTextRole.bodyCompact,
+                      color: theme.inkMuted,
+                    )
+                  else
+                    for (final folder in ctrl.workspaceFolders) ...[
+                      FolioSurface(
+                        padding: const EdgeInsetsDirectional.fromSTEB(
+                          10,
+                          6,
+                          6,
+                          6,
+                        ),
+                        borderRadius: 8,
+                        child: Row(
+                          children: [
+                            BistreIcon(
+                              BistreUiIcon.folder,
+                              size: 13,
+                              color: theme.accentBrass,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: InkText(
+                                folder,
+                                role: InkTextRole.codeBlock,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            BistreIconButton(
+                              icon: BistreUiIcon.close,
+                              size: 12,
+                              dimension: 26,
+                              semanticsLabel: l10n.t(L10nKey.threadDelete),
+                              onPressed: () =>
+                                  unawaited(ctrl.removeWorkspaceFolder(folder)),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(height: 6),
+                    ],
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
                       EngravedButton(
-                        label: l10n.t(L10nKey.threadSave),
+                        label: ctrl.workspaceFolders.isEmpty
+                            ? l10n.t(L10nKey.settingsAgentChooseFolder)
+                            : l10n.t(L10nKey.settingsAgentAddFolder),
                         primary: true,
                         compact: true,
-                        onPressed: () => unawaited(
-                          ctrl.setWorkspaceRootPath(_workspaceCtrl.text),
+                        leading: BistreIcon(
+                          BistreUiIcon.folder,
+                          size: 13,
+                          color: theme.onAccentWax,
                         ),
+                        onPressed: () async {
+                          final picked =
+                              await BistreDesktopHost.pickLocalFolder(
+                                title: l10n.t(
+                                  L10nKey.settingsAgentWorkspaceDir,
+                                ),
+                              );
+                          if (picked != null && picked.isNotEmpty) {
+                            await ctrl.addWorkspaceFolder(picked);
+                            if (mounted) {
+                              _workspaceCtrl.text = picked;
+                            }
+                          }
+                        },
                       ),
+                      if (ctrl.workspaceFolders.isNotEmpty)
+                        EngravedButton(
+                          label: l10n.t(L10nKey.settingsProfileAvatarClear),
+                          compact: true,
+                          onPressed: () =>
+                              unawaited(ctrl.clearWorkspaceFolders()),
+                        ),
                     ],
-                  ),
-                  const SizedBox(height: 16),
-                  const FolioDivider(),
-                  const SizedBox(height: 14),
-                  InkText(
-                    l10n.t(L10nKey.chatReasoningEffort),
-                    role: InkTextRole.labelStrong,
-                  ),
-                  const SizedBox(height: 8),
-                  ReasoningEffortSelector(
-                    value: ctrl.settings.reasoningEffort,
-                    onChanged: (effort) =>
-                        unawaited(ctrl.setReasoningEffort(effort)),
                   ),
                 ],
               ),
+            ),
+            const SizedBox(height: 16),
+
+            // 1b. Per-tool permissions (Ask / Allow / Off)
+            BistreSettingsSection(
+              title: l10n.t(L10nKey.settingsAgentPermissionsTitle),
+              children: [
+                for (final tool in _kPermissionTools)
+                  BistreSettingRow(
+                    label: tool,
+                    trailing: BistreSegmentedControl<String>(
+                      selected: ctrl.toolPermissionFor(tool),
+                      onSelected: (v) =>
+                          unawaited(ctrl.setToolPermission(tool, v)),
+                      options: <BistreSegmentedOption<String>>[
+                        BistreSegmentedOption<String>(
+                          value: 'ask',
+                          label: l10n.t(L10nKey.settingsAgentPermAsk),
+                        ),
+                        BistreSegmentedOption<String>(
+                          value: 'allow',
+                          label: l10n.t(L10nKey.settingsAgentPermAllow),
+                        ),
+                        BistreSegmentedOption<String>(
+                          value: 'off',
+                          label: l10n.t(L10nKey.settingsAgentPermOff),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 16),
 
@@ -311,6 +400,21 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
                         onSelected: () =>
                             setState(() => _mcpTransport = 'stdio'),
                       ),
+                      const Spacer(),
+                      EngravedButton(
+                        label: l10n.t(L10nKey.settingsAgentImportMcpJson),
+                        compact: true,
+                        onPressed: () async {
+                          final picked = await BistreDesktopHost.pickLocalFile(
+                            title: l10n.t(L10nKey.settingsAgentImportMcpJson),
+                            filterLabel: 'MCP JSON (*.json)',
+                            filterSpec: '*.json',
+                          );
+                          if (picked != null && picked.isNotEmpty) {
+                            await ctrl.importMcpJsonFile(picked);
+                          }
+                        },
+                      ),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -355,7 +459,7 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
             ),
             const SizedBox(height: 16),
 
-            // 3. Web Search Endpoint
+            // 3. Web Search (Keyless DuckDuckGo or custom endpoint)
             FolioSurface(
               tone: FolioTone.elevated,
               padding: const EdgeInsetsDirectional.all(18),
@@ -376,6 +480,17 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
                           l10n.t(L10nKey.settingsAgentWebSearch),
                           role: InkTextRole.titleMedium,
                         ),
+                      ),
+                      InkChip(
+                        label: l10n.t(L10nKey.settingsAgentWebDdg),
+                        selected: ctrl.webSearchEndpoint == 'duckduckgo',
+                        onSelected: () {
+                          final next = ctrl.webSearchEndpoint == 'duckduckgo'
+                              ? ''
+                              : 'duckduckgo';
+                          _webSearchCtrl.text = next;
+                          unawaited(ctrl.setWebSearchEndpoint(next));
+                        },
                       ),
                     ],
                   ),
@@ -408,7 +523,116 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
             ),
             const SizedBox(height: 16),
 
-            // 4. Optional Android Termux Bridge
+            // 4. Background & Sleep Survival + Unattended Approval Policy
+            BistreSettingsSection(
+              title: l10n.t(L10nKey.settingsSleepSectionTitle),
+              subtitle: l10n.t(L10nKey.settingsSleepSectionSubtitle),
+              children: [
+                BistreSettingRow(
+                  label: l10n.t(L10nKey.settingsSleepKeepAwake),
+                  trailing: BistreSwitch(
+                    value: ctrl.settings.keepAwakeWhileRunning,
+                    semanticsLabel: l10n.t(L10nKey.settingsSleepKeepAwake),
+                    reduceMotionOverride: ctrl.reduceMotionOverride,
+                    onChanged: (v) => unawaited(
+                      ctrl.updateSettings(
+                        ctrl.settings.copyWith(keepAwakeWhileRunning: v),
+                      ),
+                    ),
+                  ),
+                ),
+                BistreSettingRow(
+                  label: l10n.t(L10nKey.settingsSleepDaemonActive),
+                  description: l10n.t(L10nKey.settingsSleepDaemonActiveDesc),
+                  trailing: BistreSwitch(
+                    value: ctrl.settings.daemonKeepAliveWhenActive,
+                    semanticsLabel: l10n.t(L10nKey.settingsSleepDaemonActive),
+                    reduceMotionOverride: ctrl.reduceMotionOverride,
+                    onChanged: (v) => unawaited(
+                      ctrl.updateSettings(
+                        ctrl.settings.copyWith(daemonKeepAliveWhenActive: v),
+                      ),
+                    ),
+                  ),
+                ),
+                BistreSettingRow(
+                  label: l10n.t(L10nKey.settingsSleepWindowsBattery),
+                  description: l10n.t(L10nKey.settingsSleepWindowsBatteryDesc),
+                  trailing: BistreSwitch(
+                    value: ctrl.settings.windowsKeepAwakeOnBattery,
+                    semanticsLabel: l10n.t(L10nKey.settingsSleepWindowsBattery),
+                    reduceMotionOverride: ctrl.reduceMotionOverride,
+                    onChanged: (v) => unawaited(
+                      ctrl.updateSettings(
+                        ctrl.settings.copyWith(windowsKeepAwakeOnBattery: v),
+                      ),
+                    ),
+                  ),
+                ),
+                BistreSettingRow(
+                  label: l10n.t(L10nKey.settingsSleepUnattendedPolicy),
+                  trailing: BistreSegmentedControl<String>(
+                    selected: ctrl.settings.unattendedPolicy,
+                    onSelected: (v) => unawaited(
+                      ctrl.updateSettings(
+                        ctrl.settings.copyWith(unattendedPolicy: v),
+                      ),
+                    ),
+                    options: <BistreSegmentedOption<String>>[
+                      BistreSegmentedOption<String>(
+                        value: 'pause_and_notify',
+                        label: l10n.t(L10nKey.settingsSleepPolicyPause),
+                      ),
+                      BistreSegmentedOption<String>(
+                        value: 'deny_tier2_and_continue',
+                        label: l10n.t(L10nKey.settingsSleepPolicyDeny),
+                      ),
+                      BistreSegmentedOption<String>(
+                        value: 'sandbox_worktree_auto',
+                        label: l10n.t(L10nKey.settingsSleepPolicySandbox),
+                      ),
+                    ],
+                  ),
+                ),
+                BistreSettingRow(
+                  label: l10n.t(L10nKey.settingsAgentComputerUse),
+                  description: l10n.t(L10nKey.settingsAgentComputerUseHint),
+                  trailing: BistreSwitch(
+                    value: ctrl.uiPrefs.computerUseEnabled,
+                    semanticsLabel: l10n.t(L10nKey.settingsAgentComputerUse),
+                    reduceMotionOverride: ctrl.reduceMotionOverride,
+                    onChanged: (v) => unawaited(
+                      ctrl.saveUiPrefs(
+                        ctrl.uiPrefs.copyWith(computerUseEnabled: v),
+                        quiet: true,
+                      ),
+                    ),
+                  ),
+                ),
+                if (BistrePowerGuardHost.isAndroid)
+                  BistreSettingRow(
+                    label: l10n.t(L10nKey.settingsSleepAndroidBattery),
+                    trailing: ctrl.powerStatus.androidBatteryUnrestricted
+                        ? WaxSealBadge(
+                            label: l10n.t(
+                              L10nKey.settingsSleepAndroidBatteryOk,
+                            ),
+                          )
+                        : EngravedButton(
+                            label: l10n.t(
+                              L10nKey.settingsSleepAndroidBatteryAllow,
+                            ),
+                            compact: true,
+                            onPressed: () => unawaited(
+                              ctrl.requestAndroidBatteryUnrestricted(),
+                            ),
+                          ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // 5. Optional Android Termux Bridge
             FolioSurface(
               tone: FolioTone.elevated,
               padding: const EdgeInsetsDirectional.all(18),

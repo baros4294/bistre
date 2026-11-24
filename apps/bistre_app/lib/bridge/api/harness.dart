@@ -90,10 +90,6 @@ Future<String?> getContextStartPin({required String threadId}) => BistreRustLib
     .api
     .crateApiHarnessGetContextStartPin(threadId: threadId);
 
-/// Probes loopback Ollama, LM Studio, llama.cpp, and KoboldCPP servers (`$0` local priority).
-Future<String> discoverLocalServersJson() =>
-    BistreRustLib.instance.api.crateApiHarnessDiscoverLocalServersJson();
-
 /// Discovers tools from a Streamable HTTP MCP server (`2026-07-28` primary -> `2025-11-25` fallback).
 Future<String> discoverMcpServerJson({required String serverConfigJson}) =>
     BistreRustLib.instance.api.crateApiHarnessDiscoverMcpServerJson(

@@ -36,15 +36,16 @@ class MarkdownFolioView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final parsed = _parseBlocksStreaming(markdown);
     // A message reads in its own direction, not the app's (see [contentDirection]).
-    final direction = contentDirection(markdown);
+    final direction = parsed.direction;
     Widget blocks(BuildContext context) => direction == null
-        ? _buildBlocks(context)
+        ? _buildBlocks(context, parsed.blocks)
         : Directionality(
             textDirection: direction,
-            child: Builder(builder: _buildBlocks),
+            child: Builder(builder: (ctx) => _buildBlocks(ctx, parsed.blocks)),
           );
-    if (!markdown.contains(r'$')) return blocks(context);
+    if (!parsed.hasMath) return blocks(context);
     // Inline math: load the math face on demand and repaint once it is registered.
     unawaited(MathFontGate.ensureLoaded());
     return ValueListenableBuilder<bool>(
@@ -53,9 +54,8 @@ class MarkdownFolioView extends StatelessWidget {
     );
   }
 
-  Widget _buildBlocks(BuildContext context) {
+  Widget _buildBlocks(BuildContext context, List<_MdBlock> blocks) {
     final theme = BistreTheme.of(context);
-    final blocks = _parseBlocksStreaming(markdown);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -204,8 +204,7 @@ class MarkdownFolioView extends StatelessWidget {
 
   /// Parsed blocks of recent messages, keyed by their exact text (LRU, bounded). Committed
   /// messages are parsed once, not on every rebuild, hover, or scroll back into view.
-  static final Map<String, List<_MdBlock>> _parsedBlocks =
-      <String, List<_MdBlock>>{};
+  static final Map<String, _ParsedDoc> _parsedBlocks = <String, _ParsedDoc>{};
   static const int _kParsedCacheEntries = 256;
 
   static final RegExp _tableRulePattern = RegExp(r'^:?-{2,}:?$');
@@ -214,12 +213,27 @@ class MarkdownFolioView extends StatelessWidget {
   static final RegExp _numberedPattern = RegExp(r'^(\d+\.)\s+(.*)$');
   static final RegExp _listStartPattern = RegExp(r'^([-*]|\d+\.)\s+');
 
-  static List<_MdBlock> _parseBlocksStreaming(String source) {
+  /// Constant-time prefix probe for monotonically growing streams (checks head, midpoint, and
+  /// boundary tail instead of scanning 80+ KB every delta frame).
+  static bool _matchesPrefixFast(String longer, String prefix) {
+    final n = prefix.length;
+    if (longer.length < n) return false;
+    if (n <= 96) return longer.startsWith(prefix);
+    const sample = 32;
+    if (!longer.startsWith(prefix.substring(0, sample))) return false;
+    final mid = n >> 1;
+    if (!longer.startsWith(prefix.substring(mid, mid + sample), mid)) {
+      return false;
+    }
+    return longer.startsWith(prefix.substring(n - sample), n - sample);
+  }
+
+  static _ParsedDoc _parseBlocksStreaming(String source) {
     for (var i = 0; i < _openFenceMemos.length; i++) {
       final memo = _openFenceMemos[i];
-      if (identical(memo.source, source)) return memo.blocks;
+      if (identical(memo.source, source)) return memo.doc;
       if (source.length <= memo.source.length ||
-          !source.startsWith(memo.source)) {
+          !_matchesPrefixFast(source, memo.source)) {
         continue;
       }
       // A closing fence may straddle the previous end, so rescan its last two characters.
@@ -229,16 +243,19 @@ class MarkdownFolioView extends StatelessWidget {
         _openFenceMemos.removeAt(i);
         break;
       }
-      final open = memo.blocks.last as _MdCodeBlock;
+      final open = memo.doc.blocks.last as _MdCodeBlock;
       final blocks = <_MdBlock>[
-        ...memo.blocks.sublist(0, memo.blocks.length - 1),
+        ...memo.doc.blocks.sublist(0, memo.doc.blocks.length - 1),
         _MdCodeBlock(
           language: open.language,
           code: source.substring(memo.codeStart),
         ),
       ];
-      _openFenceMemos[i] = _OpenFenceMemo(source, blocks, memo.codeStart);
-      return blocks;
+      final hasMath =
+          memo.doc.hasMath || source.contains(r'$', memo.source.length);
+      final doc = _ParsedDoc(blocks, memo.doc.direction, hasMath);
+      _openFenceMemos[i] = _OpenFenceMemo(source, doc, memo.codeStart);
+      return doc;
     }
     final cached = _parsedBlocks.remove(source);
     if (cached != null) {
@@ -247,16 +264,21 @@ class MarkdownFolioView extends StatelessWidget {
       return cached;
     }
     final blocks = _parseBlocks(source);
-    _parsedBlocks[source] = blocks;
+    final doc = _ParsedDoc(
+      blocks,
+      contentDirection(source),
+      source.contains(r'$'),
+    );
+    _parsedBlocks[source] = doc;
     if (_parsedBlocks.length > _kParsedCacheEntries) {
       _parsedBlocks.remove(_parsedBlocks.keys.first);
     }
     final codeStart = _openFenceCodeStart(source, blocks);
     if (codeStart >= 0) {
       if (_openFenceMemos.length >= 4) _openFenceMemos.removeAt(0);
-      _openFenceMemos.add(_OpenFenceMemo(source, blocks, codeStart));
+      _openFenceMemos.add(_OpenFenceMemo(source, doc, codeStart));
     }
-    return blocks;
+    return doc;
   }
 
   /// Offset where the code of a trailing, still-open fence starts, or `-1`. The memo is only
@@ -418,11 +440,18 @@ class MarkdownFolioView extends StatelessWidget {
   }
 }
 
+final class _ParsedDoc {
+  const _ParsedDoc(this.blocks, this.direction, this.hasMath);
+  final List<_MdBlock> blocks;
+  final TextDirection? direction;
+  final bool hasMath;
+}
+
 /// One reply streaming inside an unterminated code fence (see `_parseBlocksStreaming`).
 final class _OpenFenceMemo {
-  const _OpenFenceMemo(this.source, this.blocks, this.codeStart);
+  const _OpenFenceMemo(this.source, this.doc, this.codeStart);
   final String source;
-  final List<_MdBlock> blocks;
+  final _ParsedDoc doc;
   final int codeStart;
 }
 
@@ -659,6 +688,7 @@ class _FencedCodeCard extends StatefulWidget {
 class _FencedCodeCardState extends State<_FencedCodeCard> {
   bool _copied = false;
   bool _folded = false;
+  bool _previewSvg = false;
   Timer? _copiedTimer;
 
   /// Completed chunk texts and the widgets built for them. While a fence streams, only the
@@ -667,11 +697,31 @@ class _FencedCodeCardState extends State<_FencedCodeCard> {
   final List<String> _chunkTexts = <String>[];
   final List<Widget> _chunkWidgets = <Widget>[];
   Object? _chunkStyleKey;
+  int _completeChunks = 0;
+  int _completeOffset = 0;
+  String _completeHead = '';
+  String _completeTail = '';
+  int _lineCount = 1;
 
   @override
   void dispose() {
     _copiedTimer?.cancel();
     super.dispose();
+  }
+
+  bool _canResumeCompletePrefix(String code) {
+    if (_completeChunks == 0 || code.length < _completeOffset) return false;
+    if (_completeHead.isNotEmpty && !code.startsWith(_completeHead)) {
+      return false;
+    }
+    if (_completeTail.isNotEmpty &&
+        !code.startsWith(
+          _completeTail,
+          _completeOffset - _completeTail.length,
+        )) {
+      return false;
+    }
+    return true;
   }
 
   List<Widget> _codeChunks(String code, BistreThemeData theme, bool wrap) {
@@ -680,31 +730,74 @@ class _FencedCodeCardState extends State<_FencedCodeCard> {
       _chunkStyleKey = styleKey;
       _chunkTexts.clear();
       _chunkWidgets.clear();
+      _completeChunks = 0;
+      _completeOffset = 0;
+      _completeHead = '';
+      _completeTail = '';
     }
-    // Keep the leading chunks that still match the code (streaming only appends).
-    var keep = 0;
-    var offset = 0;
-    while (keep < _chunkTexts.length) {
-      final chunk = _chunkTexts[keep];
-      final complete = chunk.endsWith('\n');
-      if (!complete || !code.startsWith(chunk, offset)) break;
-      offset += chunk.length;
-      keep++;
+    int keep;
+    int offset;
+    if (_canResumeCompletePrefix(code)) {
+      // O(1) streaming fast path: completed leading chunks are immutable while the fence grows.
+      keep = _completeChunks;
+      offset = _completeOffset;
+    } else {
+      keep = 0;
+      offset = 0;
+      while (keep < _chunkTexts.length) {
+        final chunk = _chunkTexts[keep];
+        final complete = chunk.endsWith('\n');
+        if (!complete || !code.startsWith(chunk, offset)) break;
+        offset += chunk.length;
+        keep++;
+      }
     }
     _chunkTexts.removeRange(keep, _chunkTexts.length);
     _chunkWidgets.removeRange(keep, _chunkWidgets.length);
     var start = offset;
     var lines = 0;
+    var totalLines = keep * kCodeChunkLines;
     for (var i = offset; i < code.length; i++) {
       if (code.codeUnitAt(i) != 0x0A) continue;
       lines++;
       if (lines == kCodeChunkLines) {
         _addChunk(code.substring(start, i + 1), theme, wrap);
         start = i + 1;
+        totalLines += kCodeChunkLines;
         lines = 0;
       }
     }
-    if (start < code.length) _addChunk(code.substring(start), theme, wrap);
+    _completeChunks = _chunkTexts.length;
+    _completeOffset = start;
+    if (_completeOffset > 0) {
+      final headLen = math.min(32, _completeOffset);
+      _completeHead = code.substring(0, headLen);
+      final tailLen = math.min(32, _completeOffset);
+      _completeTail = code.substring(
+        _completeOffset - tailLen,
+        _completeOffset,
+      );
+    } else {
+      _completeHead = '';
+      _completeTail = '';
+    }
+    if (start < code.length) {
+      final tail = code.substring(start);
+      _addChunk(tail, theme, wrap);
+      // Count visible non-trailing-newline lines in O(tail.length).
+      var trimmedEnd = tail.length;
+      while (trimmedEnd > 0 && tail.codeUnitAt(trimmedEnd - 1) <= 0x20) {
+        trimmedEnd--;
+      }
+      if (trimmedEnd > 0) {
+        var tailNewlines = 0;
+        for (var i = 0; i < trimmedEnd; i++) {
+          if (tail.codeUnitAt(i) == 0x0A) tailNewlines++;
+        }
+        totalLines += tailNewlines + 1;
+      }
+    }
+    _lineCount = totalLines > 0 ? totalLines : 1;
     return _chunkWidgets;
   }
 
@@ -740,29 +833,30 @@ class _FencedCodeCardState extends State<_FencedCodeCard> {
     final l10n = BistreLocalizations.of(context);
     final codeSurface = theme.isDark ? theme.bgCanvas : theme.bgElevated;
     final headerSurface = theme.bgSurface;
-    // `kotlin (2 lines)` (Parchment v2.6.0 code card header).
-    final langLabel = l10n.t(L10nKey.chatCodeHeader, <String, Object?>{
-      'language': widget.language.isEmpty
-          ? l10n.t(L10nKey.modeCode)
-          : widget.language,
-      'count': '\n'.allMatches(widget.code.trimRight()).length + 1,
-    });
-    // Stable per-fence key (language + opening text) so the toggle survives streaming growth
-    // and list virtualization.
     final head = widget.code.length > 64
         ? widget.code.substring(0, 64)
         : widget.code;
     final fenceKey = Object.hash(widget.language, head);
     final wrap = CodeWrapScope.wrapFor(context, fenceKey);
     final overrides = CodeWrapScope.maybeOf(context)?.notifier;
+    final chunks = _codeChunks(widget.code, theme, wrap);
+    final langLabel = l10n.t(L10nKey.chatCodeHeader, <String, Object?>{
+      'language': widget.language.isEmpty
+          ? l10n.t(L10nKey.modeCode)
+          : widget.language,
+      'count': _lineCount,
+    });
+    final isSvg =
+        widget.language.trim().toLowerCase() == 'svg' ||
+        head.trimLeft().toLowerCase().startsWith('<svg');
     final codeText = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
-      children: _codeChunks(widget.code, theme, wrap),
+      children: chunks,
     );
 
     // Source code is always left-to-right even inside RTL Arabic conversations.
-    // Right-click menu exposes the same actions as the code card header (v2.6.0 parity).
+    // Right-click menu exposes the same actions as the code card header.
     return ContextMenuRegion(
       entries: <ContextMenuEntry>[
         ContextMenuEntry(
@@ -826,13 +920,24 @@ class _FencedCodeCardState extends State<_FencedCodeCard> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        // Parchment v2.6.0: wrap, fold, download, and copy as equal icon buttons.
-                        // A RepaintBoundary keeps streaming line-count updates from repainting
-                        // the action buttons on every delta frame (Spec 11).
+                        // Equal-weight icon actions; RepaintBoundary isolates buttons from
+                        // streaming line-count updates on every delta frame (Spec 11).
                         RepaintBoundary(
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              if (isSvg) ...[
+                                InkChip(
+                                  label: _previewSvg
+                                      ? l10n.t(L10nKey.chatSvgSource)
+                                      : l10n.t(L10nKey.chatSvgPreview),
+                                  selected: _previewSvg,
+                                  onSelected: () => setState(
+                                    () => _previewSvg = !_previewSvg,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                              ],
                               if (overrides != null)
                                 BistreIconButton(
                                   icon: BistreUiIcon.wrap,
@@ -895,7 +1000,22 @@ class _FencedCodeCardState extends State<_FencedCodeCard> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const FolioDivider(),
-                      if (wrap)
+                      if (isSvg && _previewSvg)
+                        Padding(
+                          padding: const EdgeInsetsDirectional.all(14),
+                          child: SizedBox(
+                            height: 220,
+                            child: CustomPaint(
+                              painter: _SafeSvgPreviewPainter(
+                                svgSource: widget.code,
+                                fallbackStroke: theme.inkPrimary,
+                                fallbackFill: theme.accentBrass,
+                              ),
+                              size: const Size(double.infinity, 220),
+                            ),
+                          ),
+                        )
+                      else if (wrap)
                         Padding(
                           padding: const EdgeInsetsDirectional.fromSTEB(
                             14,
@@ -933,23 +1053,48 @@ class _FencedCodeCardState extends State<_FencedCodeCard> {
 /// layout: 8 lines cut it from ~4.0 to ~0.85 ms per slow frame in the profile trace (Spec 11).
 const int kCodeChunkLines = 8;
 
+final Expando<_CodeHighlightStyles> _codeStyleCache =
+    Expando<_CodeHighlightStyles>('bistre_code_styles');
+
+final class _CodeHighlightStyles {
+  _CodeHighlightStyles(BistreThemeData theme)
+    : base = BistreTypography.codeBlock(
+        theme.inkPrimary,
+        config: theme.typography,
+      ),
+      comment = BistreTypography.codeBlock(
+        theme.inkMuted,
+        config: theme.typography,
+      ).copyWith(fontStyle: FontStyle.italic),
+      string = BistreTypography.codeBlock(
+        theme.statusOk,
+        config: theme.typography,
+      ),
+      keyword = BistreTypography.codeBlock(
+        theme.accentWax,
+        config: theme.typography,
+      ).copyWith(fontWeight: FontWeight.w500),
+      typeOrNumber = BistreTypography.codeBlock(
+        theme.accentBrass,
+        config: theme.typography,
+      );
+
+  final TextStyle base;
+  final TextStyle comment;
+  final TextStyle string;
+  final TextStyle keyword;
+  final TextStyle typeOrNumber;
+}
+
 /// Zero-dependency Sepia token syntax highlighter using strictly WCAG-verified theme tokens.
 /// Preserves every source character verbatim so text selection and `toPlainText()` stay exact.
 TextSpan _highlightCode(String source, BistreThemeData theme) {
-  final base = BistreTypography.codeBlock(
-    theme.inkPrimary,
-    config: theme.typography,
-  );
-  final commentStyle = base.copyWith(
-    color: theme.inkMuted,
-    fontStyle: FontStyle.italic,
-  );
-  final stringStyle = base.copyWith(color: theme.statusOk);
-  final keywordStyle = base.copyWith(
-    color: theme.accentWax,
-    fontWeight: FontWeight.w500,
-  );
-  final typeOrNumberStyle = base.copyWith(color: theme.accentBrass);
+  final styles = _codeStyleCache[theme] ??= _CodeHighlightStyles(theme);
+  final base = styles.base;
+  final commentStyle = styles.comment;
+  final stringStyle = styles.string;
+  final keywordStyle = styles.keyword;
+  final typeOrNumberStyle = styles.typeOrNumber;
 
   final spans = <InlineSpan>[];
   var cursor = 0;
@@ -1154,4 +1299,193 @@ class _InlineRichText extends StatelessWidget {
 
     return Text.rich(TextSpan(style: baseStyle, children: spans));
   }
+}
+
+/// Safe, offline pure-Dart renderer for basic SVG geometry (`rect`, `circle`, `ellipse`, `line`,
+/// `polygon`, `polyline`) inside fenced `svg` blocks. Ignores scripts, external links, and filters.
+class _SafeSvgPreviewPainter extends CustomPainter {
+  const _SafeSvgPreviewPainter({
+    required this.svgSource,
+    required this.fallbackStroke,
+    required this.fallbackFill,
+  });
+
+  final String svgSource;
+  final Color fallbackStroke;
+  final Color fallbackFill;
+
+  static final RegExp _tagPattern = RegExp(
+    r'<(rect|circle|ellipse|line|polygon|polyline)\b([^>]*)/?>',
+    caseSensitive: false,
+  );
+  static final RegExp _viewBoxPattern = RegExp(
+    r'''viewBox\s*=\s*["']([^"']+)["']''',
+    caseSensitive: false,
+  );
+  static final RegExp _attrPattern = RegExp(
+    r'''([A-Za-z_-]+)\s*=\s*["']([^"']*)["']''',
+  );
+
+  static Map<String, String> _parseAttrs(String raw) {
+    final map = <String, String>{};
+    for (final m in _attrPattern.allMatches(raw)) {
+      map[m.group(1)!.toLowerCase()] = m.group(2)!.trim();
+    }
+    return map;
+  }
+
+  static double _num(Map<String, String> attrs, String key, [double def = 0]) {
+    final raw = attrs[key];
+    if (raw == null) return def;
+    final cleaned = raw.replaceAll(RegExp(r'[^0-9.+-]'), '');
+    return double.tryParse(cleaned) ?? def;
+  }
+
+  static Color? _parseColor(String? raw, Color fallback) {
+    if (raw == null || raw.isEmpty) return null;
+    final s = raw.trim().toLowerCase();
+    if (s == 'none' || s == 'transparent') return null;
+    if (s == 'currentcolor') return fallback;
+    if (s.startsWith('#')) {
+      final hex = s.substring(1);
+      if (hex.length == 3) {
+        final expanded =
+            '#${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}';
+        return BistreAccentOption.tryParseHex(expanded) ?? fallback;
+      }
+      if (hex.length == 6) {
+        return BistreAccentOption.tryParseHex(s) ?? fallback;
+      }
+    }
+    return fallback;
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var vbX = 0.0;
+    var vbY = 0.0;
+    var vbW = 200.0;
+    var vbH = 200.0;
+    final vbMatch = _viewBoxPattern.firstMatch(svgSource);
+    if (vbMatch != null) {
+      final parts = vbMatch
+          .group(1)!
+          .trim()
+          .split(RegExp(r'[\s,]+'))
+          .map(double.tryParse)
+          .whereType<double>()
+          .toList(growable: false);
+      if (parts.length == 4 && parts[2] > 0 && parts[3] > 0) {
+        vbX = parts[0];
+        vbY = parts[1];
+        vbW = parts[2];
+        vbH = parts[3];
+      }
+    }
+
+    final scaleX = size.width / vbW;
+    final scaleY = size.height / vbH;
+    final scale = scaleX < scaleY ? scaleX : scaleY;
+    final dx = (size.width - vbW * scale) / 2 - vbX * scale;
+    final dy = (size.height - vbH * scale) / 2 - vbY * scale;
+
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+    canvas.translate(dx, dy);
+    canvas.scale(scale, scale);
+
+    for (final m in _tagPattern.allMatches(svgSource).take(128)) {
+      final tag = m.group(1)!.toLowerCase();
+      final attrs = _parseAttrs(m.group(2) ?? '');
+      final fillColor = _parseColor(
+        attrs['fill'] ?? (tag == 'line' ? 'none' : 'currentColor'),
+        fallbackFill,
+      );
+      final strokeColor = _parseColor(attrs['stroke'], fallbackStroke);
+      final strokeWidth = _num(attrs, 'stroke-width', 1.5);
+
+      Paint? fillPaint;
+      if (fillColor != null) {
+        fillPaint = Paint()
+          ..style = PaintingStyle.fill
+          ..color = fillColor;
+      }
+      Paint? strokePaint;
+      if (strokeColor != null) {
+        strokePaint = Paint()
+          ..style = PaintingStyle.stroke
+          ..color = strokeColor
+          ..strokeWidth = strokeWidth;
+      }
+
+      switch (tag) {
+        case 'rect':
+          final rect = Rect.fromLTWH(
+            _num(attrs, 'x'),
+            _num(attrs, 'y'),
+            _num(attrs, 'width'),
+            _num(attrs, 'height'),
+          );
+          final rx = _num(attrs, 'rx');
+          if (rx > 0) {
+            final rrect = RRect.fromRectAndRadius(rect, Radius.circular(rx));
+            if (fillPaint != null) canvas.drawRRect(rrect, fillPaint);
+            if (strokePaint != null) canvas.drawRRect(rrect, strokePaint);
+          } else {
+            if (fillPaint != null) canvas.drawRect(rect, fillPaint);
+            if (strokePaint != null) canvas.drawRect(rect, strokePaint);
+          }
+        case 'circle':
+          final c = Offset(_num(attrs, 'cx'), _num(attrs, 'cy'));
+          final r = _num(attrs, 'r');
+          if (fillPaint != null) canvas.drawCircle(c, r, fillPaint);
+          if (strokePaint != null) canvas.drawCircle(c, r, strokePaint);
+        case 'ellipse':
+          final rect = Rect.fromCenter(
+            center: Offset(_num(attrs, 'cx'), _num(attrs, 'cy')),
+            width: _num(attrs, 'rx') * 2,
+            height: _num(attrs, 'ry') * 2,
+          );
+          if (fillPaint != null) canvas.drawOval(rect, fillPaint);
+          if (strokePaint != null) canvas.drawOval(rect, strokePaint);
+        case 'line':
+          final p1 = Offset(_num(attrs, 'x1'), _num(attrs, 'y1'));
+          final p2 = Offset(_num(attrs, 'x2'), _num(attrs, 'y2'));
+          final lp =
+              strokePaint ??
+              (Paint()
+                ..style = PaintingStyle.stroke
+                ..color = fallbackStroke
+                ..strokeWidth = strokeWidth);
+          canvas.drawLine(p1, p2, lp);
+        case 'polygon':
+        case 'polyline':
+          final rawPts = attrs['points'] ?? '';
+          final nums = rawPts
+              .trim()
+              .split(RegExp(r'[\s,]+'))
+              .map(double.tryParse)
+              .whereType<double>()
+              .toList(growable: false);
+          if (nums.length >= 4) {
+            final path = Path()..moveTo(nums[0], nums[1]);
+            for (var i = 2; i + 1 < nums.length; i += 2) {
+              path.lineTo(nums[i], nums[i + 1]);
+            }
+            if (tag == 'polygon') path.close();
+            if (fillPaint != null && tag == 'polygon') {
+              canvas.drawPath(path, fillPaint);
+            }
+            if (strokePaint != null) canvas.drawPath(path, strokePaint);
+          }
+      }
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_SafeSvgPreviewPainter oldDelegate) =>
+      oldDelegate.svgSource != svgSource ||
+      oldDelegate.fallbackStroke != fallbackStroke ||
+      oldDelegate.fallbackFill != fallbackFill;
 }

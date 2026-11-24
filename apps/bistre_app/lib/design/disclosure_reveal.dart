@@ -6,8 +6,8 @@ import 'package:flutter/widgets.dart';
 import 'bistre_theme.dart';
 
 /// The one sanctioned height animation (DESIGN §6, owner decision 2026-11-24): a disclosure's
-/// content grows and shrinks on a critically damped spring while it fades, like Parchment
-/// v2.6.0. Toggling mid-motion reverses from the current height and speed. The content stays
+/// content grows and shrinks on a critically damped spring while it fades.
+/// Toggling mid-motion reverses from the current height and speed. The content stays
 /// mounted while it closes and is dropped once closed. Reduce motion snaps it.
 class DisclosureReveal extends StatefulWidget {
   const DisclosureReveal({super.key, required this.open, required this.child});

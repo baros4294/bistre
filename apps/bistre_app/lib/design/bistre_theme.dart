@@ -216,13 +216,13 @@ class BistreThemeData {
   static BistreThemeData resolve({
     required bool isDark,
     String themeId = '',
-    String accentPreset = 'wax',
+    String accentPreset = 'brass',
     String customAccentHex = '',
     BistreTypographyConfig typography = BistreTypographyConfig.defaults,
     bool reducedEffects = false,
   }) {
     final preset = BistreThemePreset.tryById(themeId);
-    final base = preset?.theme ?? (isDark ? nightCandlelight : dayParchment);
+    final base = preset?.theme ?? (isDark ? warmDark : warmSepia);
     final effectiveDark = base.isDark;
     Color primaryAccent;
     Color brassAccent;
@@ -332,7 +332,7 @@ class BistreThemeData {
           ),
         ];
 
-  static const BistreThemeData dayParchment = BistreThemeData(
+  static const BistreThemeData warmSepia = BistreThemeData(
     isDark: false,
     bgCanvas: Color(0xFFF6EFE2),
     bgSurface: Color(0xFFEFE3CF),
@@ -340,9 +340,9 @@ class BistreThemeData {
     inkPrimary: Color(0xFF24160E),
     inkSecondary: Color(0xFF594030),
     inkMuted: Color(0xFF6E5442),
-    accentWax: Color(0xFFA83625),
+    accentWax: Color(0xFF8B5014),
     onAccentWax: Color(0xFFFFFDF8),
-    accentBrass: Color(0xFF8B5014),
+    accentBrass: Color(0xFF9C5D18),
     statusOk: Color(0xFF2B5E3F),
     statusWarn: Color(0xFF8A520F),
     statusErr: Color(0xFF9E2A1C),
@@ -353,7 +353,7 @@ class BistreThemeData {
     windowBorder: Color(0xFFD8C8B2),
   );
 
-  static const BistreThemeData nightCandlelight = BistreThemeData(
+  static const BistreThemeData warmDark = BistreThemeData(
     isDark: true,
     bgCanvas: Color(0xFF19120D),
     bgSurface: Color(0xFF231912),
@@ -361,9 +361,9 @@ class BistreThemeData {
     inkPrimary: Color(0xFFF2E6D3),
     inkSecondary: Color(0xFFC9B69E),
     inkMuted: Color(0xFFA38E76),
-    accentWax: Color(0xFFE06350),
+    accentWax: Color(0xFFE5A44D),
     onAccentWax: Color(0xFF19120D),
-    accentBrass: Color(0xFFE8A955),
+    accentBrass: Color(0xFFF0BE73),
     statusOk: Color(0xFF74B88E),
     statusWarn: Color(0xFFE6A856),
     statusErr: Color(0xFFEB6B59),
@@ -401,7 +401,7 @@ class BistreThemeData {
   );
 }
 
-/// The 9 curated color themes matching Parchment v2.6.0 (`Models.kt:660-784`) with plain
+/// Curated color themes with plain everyday names and WCAG-verified contrast ratios.
 /// everyday names and automatic 4-surface WCAG AA contrast via [BistreThemeData.resolve].
 @immutable
 class BistreThemePreset {
@@ -411,7 +411,7 @@ class BistreThemePreset {
   final BistreThemeData theme;
 
   static const List<BistreThemePreset> presets = <BistreThemePreset>[
-    BistreThemePreset(id: 'day', theme: BistreThemeData.dayParchment),
+    BistreThemePreset(id: 'day', theme: BistreThemeData.warmSepia),
     BistreThemePreset(
       id: 'blue_cream',
       theme: BistreThemeData(
@@ -504,7 +504,7 @@ class BistreThemePreset {
         windowBorder: Color(0xFFC4AE88),
       ),
     ),
-    BistreThemePreset(id: 'night', theme: BistreThemeData.nightCandlelight),
+    BistreThemePreset(id: 'night', theme: BistreThemeData.warmDark),
     BistreThemePreset(
       id: 'pure_black',
       theme: BistreThemeData(
@@ -751,7 +751,7 @@ class BistreMotion {
     return reduceMotion || disableAnimations || accessibleNav;
   }
 
-  /// Motion timings match Parchment v2.6.0 (`docs/design/DESIGN.md` §6): 150 ms arriving,
+  /// Motion timings (`docs/design/DESIGN.md` §6): 150 ms arriving,
   /// 110 ms leaving, 180 ms travelling. Overlays and drawers disappear instantly when closed, so
   /// closing never waits on an animation.
   static const Duration arriving = Duration(milliseconds: 150);

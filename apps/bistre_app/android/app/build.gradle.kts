@@ -1,7 +1,19 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+val keystoreProps = Properties().apply {
+    val propsFile = rootProject.file("key.properties")
+    if (propsFile.isFile) {
+        propsFile.inputStream().use { load(it) }
+    }
+}
+val envKeystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+    ?: keystoreProps.getProperty("storeFile")
+val hasReleaseSigning = !envKeystorePath.isNullOrBlank() && file(envKeystorePath).isFile
 
 android {
     namespace = "dev.bistre.bistre_app"
@@ -22,6 +34,7 @@ android {
 
         ndk {
             abiFilters += listOf("arm64-v8a")
+            debugSymbolLevel = "NONE"
         }
         resValue("string", "bistre_distribution_channel", "direct")
     }
@@ -37,10 +50,35 @@ android {
         resValues = true
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(envKeystorePath!!)
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                    ?: keystoreProps.getProperty("storePassword")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                    ?: keystoreProps.getProperty("keyAlias")
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+                    ?: keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // Release signing keys supplied via CI secrets or local key.properties; debug fallback for local verification builds.
-            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            // Uses provisioned release keystore when available (CI secrets or local key.properties);
+            // falls back to debug keystore for unsigned local verification builds.
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

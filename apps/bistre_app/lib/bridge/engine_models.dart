@@ -9,11 +9,17 @@ class NodeUsageMeta {
     this.modelId = '',
     this.inputTokens = 0,
     this.outputTokens = 0,
+    this.cachedInputTokens = 0,
+    this.cacheCreationInputTokens = 0,
+    this.reasoningTokens = 0,
+    this.firstTokenMs = 0,
     this.costMicros = 0,
     this.costKnown = true,
     this.cancelled = false,
     this.thinkingText = '',
     this.thinkingDurationMs = 0,
+    this.elapsedMs = 0,
+    this.requestId = '',
     this.compactedCount = 0,
   });
 
@@ -23,6 +29,10 @@ class NodeUsageMeta {
   final String modelId;
   final int inputTokens;
   final int outputTokens;
+  final int cachedInputTokens;
+  final int cacheCreationInputTokens;
+  final int reasoningTokens;
+  final int firstTokenMs;
   final int costMicros;
 
   /// `false` when the model has no published price (`cost_known` in Rust): the reply counts as
@@ -31,10 +41,15 @@ class NodeUsageMeta {
   final bool cancelled;
   final String thinkingText;
   final int thinkingDurationMs;
+  final int elapsedMs;
+  final String requestId;
   final int compactedCount;
 
   bool get hasTokens => inputTokens > 0 || outputTokens > 0;
   bool get hasThinking => thinkingText.trim().isNotEmpty;
+  double? get tokensPerSecond => elapsedMs > 0 && outputTokens > 0
+      ? outputTokens / (elapsedMs / 1000.0)
+      : null;
 
   static NodeUsageMeta? tryParse(String? raw) {
     if (raw == null || raw.trim().isEmpty) return null;
@@ -48,12 +63,20 @@ class NodeUsageMeta {
         modelId: decoded['model_id'] as String? ?? '',
         inputTokens: (decoded['input_tokens'] as num?)?.toInt() ?? 0,
         outputTokens: (decoded['output_tokens'] as num?)?.toInt() ?? 0,
+        cachedInputTokens:
+            (decoded['cached_input_tokens'] as num?)?.toInt() ?? 0,
+        cacheCreationInputTokens:
+            (decoded['cache_creation_input_tokens'] as num?)?.toInt() ?? 0,
+        reasoningTokens: (decoded['reasoning_tokens'] as num?)?.toInt() ?? 0,
+        firstTokenMs: (decoded['first_token_ms'] as num?)?.toInt() ?? 0,
         costMicros: (decoded['cost_micros'] as num?)?.toInt() ?? 0,
         costKnown: decoded['cost_known'] as bool? ?? true,
         cancelled: decoded['cancelled'] as bool? ?? false,
         thinkingText: decoded['thinking_text'] as String? ?? '',
         thinkingDurationMs:
             (decoded['thinking_duration_ms'] as num?)?.toInt() ?? 0,
+        elapsedMs: (decoded['elapsed_ms'] as num?)?.toInt() ?? 0,
+        requestId: decoded['request_id'] as String? ?? '',
         compactedCount: (decoded['compacted_count'] as num?)?.toInt() ?? 0,
       );
     } on FormatException {
@@ -240,7 +263,7 @@ class EngineSettings {
     this.proseFontPath = '',
     this.monoFontFamily = '',
     this.monoFontPath = '',
-    this.accentPreset = 'wax',
+    this.accentPreset = 'brass',
     this.customAccentHex = '',
     this.sidebarOpen = true,
     this.sendOnEnter = true,
@@ -744,34 +767,6 @@ class EngineCheckpoint {
   final String preHashBlake3;
   final String postHashBlake3;
   final int createdAtMs;
-}
-
-/// Auto-discovered local loopback inference server (`$0` priority).
-class EngineLocalServer {
-  const EngineLocalServer({
-    required this.kind,
-    required this.name,
-    required this.baseUrl,
-    this.models = const <String>[],
-  });
-
-  final String kind;
-  final String name;
-  final String baseUrl;
-  final List<String> models;
-
-  static EngineLocalServer fromJson(Map<String, Object?> m) {
-    final raw = m['models'];
-    final models = raw is List<Object?>
-        ? raw.whereType<String>().toList(growable: false)
-        : const <String>[];
-    return EngineLocalServer(
-      kind: m['kind'] as String? ?? '',
-      name: m['name'] as String? ?? '',
-      baseUrl: m['base_url'] as String? ?? '',
-      models: models,
-    );
-  }
 }
 
 /// Configured MCP server entry (`stdio` or Streamable `http`).

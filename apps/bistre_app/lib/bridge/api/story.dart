@@ -65,7 +65,7 @@ Future<String> listStoryProgressionsJson({String? entryId}) => BistreRustLib
     .api
     .crateApiStoryListStoryProgressionsJson(entryId: entryId);
 
-/// Adds a Novelcrafter-style Chronological Progression from JSON.
+/// Adds a chronological progression to a Story Bible entry from JSON.
 Future<String> addStoryProgressionJson({required String progJson}) =>
     BistreRustLib.instance.api.crateApiStoryAddStoryProgressionJson(
       progJson: progJson,

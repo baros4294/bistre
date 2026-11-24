@@ -81,6 +81,10 @@ extension FolioNavigationAndSettingsActions on FolioController {
   Future<void> persistCurrentWindowBounds() async {
     final bounds = await BistreDesktopHost.readWindowBounds();
     if (bounds == null) return;
+    await persistWindowBounds(bounds);
+  }
+
+  Future<void> persistWindowBounds(DesktopWindowBounds bounds) async {
     final encoded = bounds.toJsonString();
     if (encoded == _settings.windowBoundsJson) return;
     try {
@@ -147,7 +151,7 @@ extension FolioNavigationAndSettingsActions on FolioController {
 
   // --- Open Chat Tabs ---
 
-  /// Open chats as tabs (Parchment v2.6.0), skipping deleted ones.
+  /// Open chats as tabs, skipping deleted ones.
   List<EngineThread> get openTabs => <EngineThread>[
     for (final id in _openTabIds)
       if (_threads.where((t) => t.id == id).firstOrNull case final t?) t,
@@ -165,7 +169,24 @@ extension FolioNavigationAndSettingsActions on FolioController {
     _notify();
   }
 
-  /// Cycles through open tabs (`Ctrl+Tab` / `Ctrl+Shift+Tab`, `ParchmentApp.kt` L432-L440).
+  /// Open non-active tabs that have no committed messages and are not streaming.
+  List<EngineThread> get emptyOpenTabs => <EngineThread>[
+    for (final tab in openTabs)
+      if (tab.id != _activeThread?.id &&
+          tab.activeHeadNodeId == null &&
+          !isThreadStreaming(tab.id))
+        tab,
+  ];
+
+  /// Closes every open empty tab at once.
+  void closeEmptyTabs() {
+    final emptyIds = <String>{for (final t in emptyOpenTabs) t.id};
+    if (emptyIds.isEmpty) return;
+    _openTabIds.removeWhere(emptyIds.contains);
+    _notify();
+  }
+
+  /// Cycles through open tabs (`Ctrl+Tab` / `Ctrl+Shift+Tab`).
   Future<void> cycleTab(int delta) async {
     final tabs = openTabs;
     if (tabs.length < 2) return;
@@ -290,6 +311,22 @@ extension FolioNavigationAndSettingsActions on FolioController {
   }
 
   void handleEscape() {
+    if (_previewingAttachment != null) {
+      closeAttachmentPreview();
+      return;
+    }
+    if (_inspectingTurnNode != null) {
+      closeTurnDetails();
+      return;
+    }
+    if (_pinnedPanelOpen) {
+      closePinnedPanel();
+      return;
+    }
+    if (_chatNotesOpen) {
+      closeChatNotes();
+      return;
+    }
     if (_tabSwitcherOpen) {
       closeTabSwitcher();
       return;
@@ -347,13 +384,21 @@ extension FolioNavigationAndSettingsActions on FolioController {
 
   void showToast(
     L10nKey key, {
+    Map<String, Object?>? args,
+    ToastTone tone = ToastTone.info,
     L10nKey? actionKey,
     VoidCallback? onAction,
-    Duration duration = const Duration(milliseconds: 2200),
+    Duration duration = const Duration(milliseconds: 2800),
   }) {
     if (_disposed) return;
     toast.show(
-      ToastMessage(key, actionKey: actionKey, onAction: onAction),
+      ToastMessage(
+        key,
+        args: args,
+        tone: tone,
+        actionKey: actionKey,
+        onAction: onAction,
+      ),
       duration,
     );
   }

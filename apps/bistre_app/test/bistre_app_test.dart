@@ -48,7 +48,7 @@ double _contrastRatio(Color a, Color b) {
 }
 
 void main() {
-  test('Day Parchment, Night Candlelight, and all 5 accent presets pass WCAG AA/AAA contrast ratios', () {
+  test('Warm Sepia, Warm Dark, and all accent presets pass WCAG AA/AAA contrast ratios', () {
     for (final isDark in const <bool>[false, true]) {
       for (final preset in BistreAccentOption.presets) {
         final theme = BistreThemeData.resolve(
@@ -210,7 +210,7 @@ void main() {
       expect(find.text('Reply draft #1'), findsOneWidget);
       expect(find.text('1 / 2'), findsOneWidget);
 
-      // Chat parameters moved from the header to the command palette (Parchment v2.6.0
+      // Chat parameters are reached through the command palette and inspector.
       // header); open and close the drawer the way the palette entry does.
       controller.toggleInspector();
       await tester.pumpAndSettle();
@@ -317,18 +317,18 @@ void main() {
   );
 
   testWidgets(
-    'ParchmentScaffold preserves physical left/right cutout padding in RTL mode',
+    'BistreScaffold preserves physical left/right cutout padding in RTL mode',
     (WidgetTester tester) async {
       await tester.pumpWidget(
         const BistreTheme(
-          data: BistreThemeData.dayParchment,
+          data: BistreThemeData.warmSepia,
           child: Directionality(
             textDirection: TextDirection.rtl,
             child: MediaQuery(
               data: MediaQueryData(
                 padding: EdgeInsets.fromLTRB(44, 12, 16, 20),
               ),
-              child: ParchmentScaffold(
+              child: BistreScaffold(
                 header: SizedBox(height: 10),
                 body: SizedBox.expand(),
                 footer: SizedBox(height: 10),
@@ -366,7 +366,7 @@ void main() {
   });
 
   testWidgets(
-    'Wave B ReasoningBlock, ToolTimelineView diff+approval+rewind, and Agent Settings render cleanly',
+    'ReasoningBlock, ToolTimelineView diff+approval+rewind, and Agent Settings render cleanly',
     (WidgetTester tester) async {
       final l10n = _loadDiskCatalogs();
       String? quoted;
@@ -377,7 +377,7 @@ void main() {
         BistreLocalizations(
           controller: l10n,
           child: BistreTheme(
-            data: BistreThemeData.dayParchment,
+            data: BistreThemeData.warmSepia,
             child: Directionality(
               textDirection: TextDirection.ltr,
               child: SingleChildScrollView(
@@ -435,7 +435,7 @@ void main() {
   );
 
   testWidgets(
-    'Wave C GFM Tables, NotoSansMath LaTeX, and Mermaid CustomPainter render cleanly with copy actions',
+    'GFM Tables, NotoSansMath LaTeX, and Mermaid CustomPainter render cleanly with copy actions',
     (WidgetTester tester) async {
       // The math face registers lazily in production; register it from disk up front so its
       // font-change relayout never lands after this test tears the tree down.
@@ -478,7 +478,7 @@ flowchart LR
         BistreLocalizations(
           controller: l10n,
           child: BistreTheme(
-            data: BistreThemeData.dayParchment,
+            data: BistreThemeData.warmSepia,
             child: Directionality(
               textDirection: TextDirection.ltr,
               child: SingleChildScrollView(
@@ -507,7 +507,7 @@ flowchart LR
   );
 
   testWidgets(
-    'Wave E Writing & Roleplay Studio renders Story Bible, Prompt Inspector Cache Boundary, Roleplay Controls, and Manuscript Beats canvas',
+    'Writing & Roleplay Studio renders Story Bible, Prompt Inspector Cache Boundary, Roleplay Controls, and Manuscript Beats canvas',
     (WidgetTester tester) async {
       tester.view.physicalSize = const Size(1360, 860);
       tester.view.devicePixelRatio = 1.0;

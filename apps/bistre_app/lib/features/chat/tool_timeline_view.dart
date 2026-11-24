@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../../design/bistre_icons.dart';
+import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/disclosure_reveal.dart';
 import '../../design/ink_primitives.dart';
@@ -45,6 +46,59 @@ const Set<String> kFoldableReadOnlyTools = <String>{
   'web_search',
 };
 
+/// Splits a compound shell command on `&&`, `||`, `;`, or `|` outside single/double quotes for
+/// readable step inspection. Display-only: tool execution permits always bind the raw command.
+List<String> splitShellCompoundSteps(String command) {
+  final steps = <String>[];
+  final buf = StringBuffer();
+  var inSingle = false;
+  var inDouble = false;
+  var escaped = false;
+  for (var i = 0; i < command.length; i++) {
+    final ch = command[i];
+    if (escaped) {
+      buf.write(ch);
+      escaped = false;
+      continue;
+    }
+    if (ch == r'\' && !inSingle) {
+      buf.write(ch);
+      escaped = true;
+      continue;
+    }
+    if (ch == "'" && !inDouble) {
+      inSingle = !inSingle;
+      buf.write(ch);
+      continue;
+    }
+    if (ch == '"' && !inSingle) {
+      inDouble = !inDouble;
+      buf.write(ch);
+      continue;
+    }
+    if (!inSingle && !inDouble) {
+      final next = i + 1 < command.length ? command[i + 1] : '';
+      if ((ch == '&' && next == '&') || (ch == '|' && next == '|')) {
+        final piece = buf.toString().trim();
+        if (piece.isNotEmpty) steps.add(piece);
+        buf.clear();
+        i++;
+        continue;
+      }
+      if (ch == ';' || ch == '|') {
+        final piece = buf.toString().trim();
+        if (piece.isNotEmpty) steps.add(piece);
+        buf.clear();
+        continue;
+      }
+    }
+    buf.write(ch);
+  }
+  final tail = buf.toString().trim();
+  if (tail.isNotEmpty) steps.add(tail);
+  return steps;
+}
+
 /// Folds runs of consecutive completed read/search steps into a single entry (summaries and
 /// outputs joined) so long exploration bursts read as one quiet line (`docs/design/DESIGN.md` §8).
 /// [joinSummaries] is the locale's meta join (`BistreLocalizationController.joinMeta`).
@@ -82,9 +136,9 @@ List<ToolActivityEntry> foldReadOnlySteps(
   return out;
 }
 
-/// Quiet collapsed live tool activity timeline with expandable `imara-diff` unified or (on wide layouts) split diff viewer,
-/// inline 4-level approval card, and 1-click Rewind backed by SQLite checkpoints.
-class ToolTimelineView extends StatelessWidget {
+/// Quiet collapsible Agent Step Checklist (`Worked for Xs · N/N steps`) with expandable
+/// `imara-diff` unified/split diff viewer, inline 4-level approval card, and 1-click Rewind.
+class ToolTimelineView extends StatefulWidget {
   const ToolTimelineView({
     super.key,
     required this.entries,
@@ -101,28 +155,121 @@ class ToolTimelineView extends StatelessWidget {
   final ValueChanged<String>? onRewindCheckpoint;
 
   @override
+  State<ToolTimelineView> createState() => _ToolTimelineViewState();
+}
+
+class _ToolTimelineViewState extends State<ToolTimelineView> {
+  bool _checklistOpen = true;
+
+  @override
   Widget build(BuildContext context) {
-    if (entries.isEmpty) return const SizedBox.shrink();
+    if (widget.entries.isEmpty) return const SizedBox.shrink();
+    final theme = BistreTheme.of(context);
+    final l10n = BistreLocalizations.of(context);
     final rows = foldReadOnlySteps(
-      entries,
-      joinSummaries: BistreLocalizations.of(context).joinMeta,
+      widget.entries,
+      joinSummaries: l10n.joinMeta,
     );
+    if (widget.entries.length == 1) {
+      return Padding(
+        padding: const EdgeInsetsDirectional.only(bottom: BistreSpacing.s12),
+        child: _ToolActivityRow(
+          entry: rows.first,
+          onApproveOnce: widget.onApproveOnce,
+          onApproveChat: widget.onApproveChat,
+          onDeny: widget.onDeny,
+          onRewindCheckpoint: widget.onRewindCheckpoint,
+        ),
+      );
+    }
+    final total = widget.entries.length;
+    final done = widget.entries.where((e) => e.status == 'completed').length;
+    final running = widget.entries.any((e) => e.status == 'running');
+    final awaiting = widget.entries.any((e) => e.status == 'awaiting_approval');
+    final totalMs = widget.entries.fold<int>(0, (s, e) => s + e.durationMs);
+    final secs = (totalMs / 1000.0).ceil();
+    final showOpen = _checklistOpen || awaiting;
+
     return Padding(
       padding: const EdgeInsetsDirectional.only(bottom: BistreSpacing.s12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var i = 0; i < rows.length; i++) ...[
-            if (i > 0) const SizedBox(height: 6),
-            _ToolActivityRow(
-              entry: rows[i],
-              onApproveOnce: onApproveOnce,
-              onApproveChat: onApproveChat,
-              onDeny: onDeny,
-              onRewindCheckpoint: onRewindCheckpoint,
+      child: FolioSurface(
+        padding: const EdgeInsetsDirectional.fromSTEB(10, 8, 10, 8),
+        borderRadius: 10,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            PressFeedback(
+              pressScale: kRowPressScale,
+              hoverScale: 1,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _checklistOpen = !_checklistOpen),
+                child: Row(
+                  children: [
+                    if (running)
+                      const StreamingPulseDot(size: 7)
+                    else
+                      BistreIcon(
+                        BistreUiIcon.check,
+                        size: 13,
+                        color: done == total
+                            ? theme.statusOk
+                            : theme.accentBrass,
+                      ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: InkText(
+                        secs > 0
+                            ? l10n.t(
+                                L10nKey.chatChecklistSummaryTimed,
+                                <String, Object?>{
+                                  'seconds': secs,
+                                  'done': done,
+                                  'total': total,
+                                },
+                              )
+                            : l10n.t(
+                                L10nKey.chatChecklistSummary,
+                                <String, Object?>{'done': done, 'total': total},
+                              ),
+                        role: InkTextRole.captionMeta,
+                        color: theme.inkSecondary,
+                      ),
+                    ),
+                    BistreIcon(
+                      showOpen
+                          ? BistreUiIcon.chevronUp
+                          : BistreUiIcon.chevronDown,
+                      size: 12,
+                      color: theme.inkMuted,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            DisclosureReveal(
+              open: showOpen,
+              child: Padding(
+                padding: const EdgeInsetsDirectional.only(top: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var i = 0; i < rows.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 6),
+                      _ToolActivityRow(
+                        entry: rows[i],
+                        onApproveOnce: widget.onApproveOnce,
+                        onApproveChat: widget.onApproveChat,
+                        onDeny: widget.onDeny,
+                        onRewindCheckpoint: widget.onRewindCheckpoint,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -156,6 +303,9 @@ class _ToolActivityRowState extends State<_ToolActivityRow> {
     return '${(ms / 1000.0).toStringAsFixed(1)}s';
   }
 
+  static String _formatShellStep(int index, String step) =>
+      '${index + 1}. $step';
+
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
@@ -182,7 +332,15 @@ class _ToolActivityRowState extends State<_ToolActivityRow> {
         : l10n.t(L10nKey.toolCompleted);
 
     final durationBadge = _formatDuration(entry.durationMs);
+    final shellSteps =
+        (entry.toolName == 'shell' ||
+            entry.toolName == 'bash' ||
+            entry.toolName == 'run_command')
+        ? splitShellCompoundSteps(entry.summary)
+        : const <String>[];
+    final hasShellSteps = shellSteps.length > 1;
     final hasExpandableDetails =
+        hasShellSteps ||
         entry.outputText.trim().isNotEmpty ||
         (entry.diffText != null && entry.diffText!.trim().isNotEmpty);
 
@@ -336,6 +494,31 @@ class _ToolActivityRowState extends State<_ToolActivityRow> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (hasShellSteps) ...[
+                          InkText(
+                            l10n.t(L10nKey.toolShellSteps, <String, Object?>{
+                              'count': shellSteps.length,
+                            }),
+                            role: InkTextRole.captionMeta,
+                            color: theme.inkMuted,
+                          ),
+                          const SizedBox(height: 6),
+                          for (var sIdx = 0; sIdx < shellSteps.length; sIdx++)
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(
+                                bottom: 3,
+                              ),
+                              child: InkText(
+                                _formatShellStep(sIdx, shellSteps[sIdx]),
+                                role: InkTextRole.codeBlock,
+                                color: theme.inkPrimary,
+                              ),
+                            ),
+                          if (entry.outputText.trim().isNotEmpty ||
+                              (entry.diffText != null &&
+                                  entry.diffText!.trim().isNotEmpty))
+                            const SizedBox(height: 8),
+                        ],
                         if (entry.diffText != null &&
                             entry.diffText!.trim().isNotEmpty)
                           _DiffViewer(diffText: entry.diffText!),

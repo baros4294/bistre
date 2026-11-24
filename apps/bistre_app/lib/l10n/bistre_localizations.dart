@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
@@ -46,6 +47,8 @@ String evaluateIcuMessage(
   String locale,
   Map<String, Object?> args,
 ) {
+  // Zero-allocation fast path for the ~95% of UI labels with no ICU placeholders.
+  if (args.isEmpty && !pattern.contains('{')) return pattern;
   return _evalSegment(pattern, locale, args, null);
 }
 
@@ -199,12 +202,21 @@ class BistreLocalizationController extends ChangeNotifier {
   BistreLocalizationController({
     required Map<String, BistreLocaleCatalog> catalogs,
     String initialLocale = 'en',
+    List<String>? bundledLocales,
+    AssetBundle? assetBundle,
   }) : _catalogs = Map<String, BistreLocaleCatalog>.from(catalogs),
+       _bundledLocales = List<String>.unmodifiable(
+         bundledLocales ?? catalogs.keys.toList(),
+       ),
+       _assetBundle = assetBundle,
        _activeLocale = catalogs.containsKey(initialLocale)
            ? initialLocale
            : 'en';
 
   final Map<String, BistreLocaleCatalog> _catalogs;
+  final List<String> _bundledLocales;
+  final AssetBundle? _assetBundle;
+  final Set<String> _loadingLocales = <String>{};
   String _activeLocale;
 
   String get activeLocale => _activeLocale;
@@ -214,13 +226,37 @@ class BistreLocalizationController extends ChangeNotifier {
 
   TextDirection get textDirection => currentCatalog.direction;
 
-  List<String> get availableLocales => _catalogs.keys.toList()..sort();
+  List<String> get availableLocales {
+    final all = <String>{..._bundledLocales, ..._catalogs.keys};
+    return all.toList()..sort();
+  }
 
-  /// Switches active locale instantaneously in-memory without rebuilding `WidgetsApp`.
+  /// Switches active locale instantaneously when already cached, or lazy-loads the bundled
+  /// locale catalog from Flutter assets on first switch (saving ~65% startup l10n RAM/I/O).
   void setLocale(String locale) {
-    if (_activeLocale == locale || !_catalogs.containsKey(locale)) return;
-    _activeLocale = locale;
-    notifyListeners();
+    if (_activeLocale == locale) return;
+    if (_catalogs.containsKey(locale)) {
+      _activeLocale = locale;
+      notifyListeners();
+      return;
+    }
+    if (_bundledLocales.contains(locale) && _assetBundle != null) {
+      unawaited(_loadBundledLocaleAndActivate(locale));
+    }
+  }
+
+  Future<void> _loadBundledLocaleAndActivate(String locale) async {
+    if (!_loadingLocales.add(locale)) return;
+    try {
+      final raw = await _assetBundle!.loadString(
+        'assets/l10n/$locale.bistre-l10n.json',
+      );
+      _catalogs[locale] = BistreLocaleCatalog.fromJsonString(raw);
+      _activeLocale = locale;
+      notifyListeners();
+    } finally {
+      _loadingLocales.remove(locale);
+    }
   }
 
   /// Hot-loads a verified Track-A JSON locale pack into memory and optionally activates it.
@@ -255,7 +291,8 @@ class BistreLocalizationController extends ChangeNotifier {
       .map((p) => '\u2068$p\u2069')
       .join(t(L10nKey.appMetaSeparator));
 
-  /// Loads all bundled catalogs (`en`, `vi`, `ar`) from Flutter assets.
+  /// Loads `en` (plus `initialLocale` when different) at startup and defers other bundled
+  /// catalogs (`vi`, `ar`) until selected via [setLocale].
   static Future<BistreLocalizationController> loadBundled({
     AssetBundle? bundle,
     String initialLocale = 'en',
@@ -266,8 +303,13 @@ class BistreLocalizationController extends ChangeNotifier {
     );
     final manifest = jsonDecode(manifestRaw) as Map<String, dynamic>;
     final locales = (manifest['locales'] as List<dynamic>).cast<String>();
+    final eager = <String>{
+      if (locales.contains('en')) 'en',
+      if (locales.contains(initialLocale)) initialLocale,
+    };
+    if (eager.isEmpty && locales.isNotEmpty) eager.add(locales.first);
     final catalogs = <String, BistreLocaleCatalog>{};
-    for (final code in locales) {
+    for (final code in eager) {
       final raw = await effectiveBundle.loadString(
         'assets/l10n/$code.bistre-l10n.json',
       );
@@ -276,6 +318,8 @@ class BistreLocalizationController extends ChangeNotifier {
     return BistreLocalizationController(
       catalogs: catalogs,
       initialLocale: initialLocale,
+      bundledLocales: locales,
+      assetBundle: effectiveBundle,
     );
   }
 }

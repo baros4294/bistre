@@ -194,7 +194,7 @@ extension FolioThreadActions on FolioController {
     }
   }
 
-  // --- Wave B Agent Workspace, MCP, Compaction, Pin, and Tool Controls ---
+  // --- Agent Workspace, MCP, Compaction, Pin, and Tool Controls ---
 
   String get workspaceRootPath => _workspaceRootPath;
 
@@ -208,8 +208,6 @@ extension FolioThreadActions on FolioController {
 
   List<EngineCheckpoint> get checkpoints => _checkpoints;
 
-  List<EngineLocalServer> get discoveredLocalServers => _discoveredLocalServers;
-
   String get activeThreadMode => _activeThread?.mode ?? 'chat';
 
   Future<void> _loadAgentWorkspaceConfig() async {
@@ -217,6 +215,17 @@ extension FolioThreadActions on FolioController {
       _workspaceRootPath =
           (await _gateway.getKvMeta('agent.workspace_root')) ?? '';
       _webSearchEndpoint = (await _gateway.getKvMeta('agent.web_search')) ?? '';
+      _profileAvatarPath = (await _gateway.getKvMeta('user.avatar_path')) ?? '';
+      final rawPerms = await _gateway.getKvMeta('agent.tool_permissions');
+      if (rawPerms != null && rawPerms.trim().isNotEmpty) {
+        final decoded = jsonDecode(rawPerms);
+        if (decoded is Map<String, Object?>) {
+          _toolPermissions = <String, String>{
+            for (final entry in decoded.entries)
+              if (entry.value is String) entry.key: entry.value! as String,
+          };
+        }
+      }
       final rawMcp = await _gateway.getKvMeta('agent.mcp_servers');
       if (rawMcp != null && rawMcp.trim().isNotEmpty) {
         final decoded = jsonDecode(rawMcp);
@@ -230,6 +239,182 @@ extension FolioThreadActions on FolioController {
     } catch (e) {
       _noteNonFatal('agent_workspace_config_load', e);
     }
+  }
+
+  Future<void> _loadThreadKvExtras(String threadId, int generation) async {
+    final startVersion = ++_threadExtrasVersion;
+    try {
+      final rawPins = await _gateway.getKvMeta('thread_pinned_nodes:$threadId');
+      final rawNotes = await _gateway.getKvMeta('thread_notes:$threadId');
+      final rawLimit = await _gateway.getKvMeta('thread_spend_limit:$threadId');
+      if (generation != _threadGeneration ||
+          startVersion != _threadExtrasVersion ||
+          _disposed) {
+        return;
+      }
+      final pins = <String>{};
+      if (rawPins != null && rawPins.trim().isNotEmpty) {
+        final decoded = jsonDecode(rawPins);
+        if (decoded is List<Object?>) {
+          for (final item in decoded) {
+            if (item is String && item.isNotEmpty) pins.add(item);
+          }
+        }
+      }
+      _pinnedNodeIds = pins;
+      _activeChatNotes = rawNotes ?? '';
+      _activeChatSpendLimitMicros =
+          rawLimit != null && rawLimit.trim().isNotEmpty
+          ? int.tryParse(rawLimit.trim())
+          : null;
+      _notify();
+    } catch (e) {
+      _noteNonFatal('thread_kv_extras_load', e);
+    }
+  }
+
+  void setReplyPrefill(String text) {
+    if (_replyPrefill == text) return;
+    _replyPrefill = text;
+    _notify();
+  }
+
+  Future<void> togglePinNode(String nodeId) async {
+    final tid = _activeThread?.id;
+    if (tid == null) return;
+    final next = Set<String>.from(_pinnedNodeIds);
+    final pinned = next.add(nodeId);
+    if (!pinned) next.remove(nodeId);
+    _threadExtrasVersion++;
+    _pinnedNodeIds = next;
+    _notify();
+    try {
+      await _gateway.setKvMeta(
+        'thread_pinned_nodes:$tid',
+        jsonEncode(next.toList(growable: false)),
+      );
+      showToast(pinned ? L10nKey.toastPinned : L10nKey.toastUnpinned);
+    } catch (e) {
+      _noteNonFatal('toggle_pin_node', e);
+    }
+  }
+
+  void togglePinnedPanel() {
+    _pinnedPanelOpen = !_pinnedPanelOpen;
+    if (_pinnedPanelOpen) _chatNotesOpen = false;
+    _notify();
+  }
+
+  void closePinnedPanel() {
+    if (!_pinnedPanelOpen) return;
+    _pinnedPanelOpen = false;
+    _notify();
+  }
+
+  void toggleChatNotes() {
+    _chatNotesOpen = !_chatNotesOpen;
+    if (_chatNotesOpen) _pinnedPanelOpen = false;
+    _notify();
+  }
+
+  void closeChatNotes() {
+    if (!_chatNotesOpen) return;
+    _chatNotesOpen = false;
+    _notify();
+  }
+
+  Future<void> saveActiveChatNotes(String text) async {
+    final tid = _activeThread?.id;
+    _threadExtrasVersion++;
+    _activeChatNotes = text;
+    if (tid == null) return;
+    try {
+      await _gateway.setKvMeta('thread_notes:$tid', text);
+    } catch (e) {
+      _noteNonFatal('save_chat_notes', e);
+    }
+  }
+
+  Future<void> setProfileAvatarPath(String path) async {
+    final clean = path.trim();
+    _profileAvatarPath = clean;
+    _notify();
+    try {
+      await _gateway.setKvMeta('user.avatar_path', clean);
+      showToast(L10nKey.toastSettingsSaved);
+    } catch (e) {
+      _noteNonFatal('save_profile_avatar', e);
+    }
+  }
+
+  Future<void> setActiveChatSpendLimitMicros(int? micros) async {
+    final tid = _activeThread?.id;
+    _threadExtrasVersion++;
+    _activeChatSpendLimitMicros = micros;
+    _notify();
+    if (tid == null) return;
+    try {
+      await _gateway.setKvMeta(
+        'thread_spend_limit:$tid',
+        micros == null ? '' : micros.toString(),
+      );
+      showToast(L10nKey.toastSettingsSaved);
+    } catch (e) {
+      _noteNonFatal('save_chat_spend_limit', e);
+    }
+  }
+
+  String toolPermissionFor(String toolId) =>
+      _toolPermissions[toolId] ??
+      (toolId == 'read_file' || toolId == 'grep' || toolId == 'glob'
+          ? 'allow'
+          : 'ask');
+
+  Future<void> setToolPermission(String toolId, String mode) async {
+    final next = Map<String, String>.from(_toolPermissions);
+    next[toolId] = mode;
+    _toolPermissions = next;
+    _notify();
+    try {
+      await _gateway.setKvMeta('agent.tool_permissions', jsonEncode(next));
+    } catch (e) {
+      _noteNonFatal('save_tool_permissions', e);
+    }
+  }
+
+  void openAttachmentPreview(ComposerAttachment attachment) {
+    _previewingAttachment = attachment;
+    _notify();
+  }
+
+  void closeAttachmentPreview() {
+    if (_previewingAttachment == null) return;
+    _previewingAttachment = null;
+    _notify();
+  }
+
+  void openTurnDetails(EngineNode node) {
+    _inspectingTurnNode = node;
+    _notify();
+  }
+
+  void closeTurnDetails() {
+    if (_inspectingTurnNode == null) return;
+    _inspectingTurnNode = null;
+    _notify();
+  }
+
+  void openSettingsAt(SettingsTab tab, [String? settingKey]) {
+    _highlightedSettingKey = (settingKey != null && settingKey.isNotEmpty)
+        ? settingKey
+        : null;
+    openSettings(tab);
+  }
+
+  void clearHighlightedSetting() {
+    if (_highlightedSettingKey == null) return;
+    _highlightedSettingKey = null;
+    _notify();
   }
 
   Future<void> setWorkspaceRootPath(String path) async {
@@ -408,19 +593,6 @@ extension FolioThreadActions on FolioController {
       _notify();
     } catch (e) {
       _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
-    }
-  }
-
-  Future<void> discoverLocalServers() async {
-    _detectingLocalServers = true;
-    _notify();
-    try {
-      _discoveredLocalServers = await _gateway.discoverLocalServers();
-    } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-    } finally {
-      _detectingLocalServers = false;
       _notify();
     }
   }

@@ -24,7 +24,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     tester.view.devicePixelRatio = 1.0;
     final l10n = loadDiskCatalogs();
-    const theme = BistreThemeData.dayParchment;
+    const theme = BistreThemeData.warmSepia;
 
     Widget sheet(GlobalKey key, Widget child) => RepaintBoundary(
       key: key,

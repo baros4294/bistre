@@ -13,8 +13,7 @@ import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import 'folio_controller.dart';
 
-/// Open chats as tabs under the header (Parchment v2.6.0 `DesktopBrowserTabBar`,
-/// `ParchmentModalsAndNavigation.kt:85-196`). Shown once two or more chats are open; the current
+/// Open chats as tabs under the header. Shown once two or more chats are open; the current
 /// tab carries the one `rubricMark`, streaming tabs pulse, and trailing `+` / `N tabs` buttons
 /// create a new tab or open the tab overview modal.
 class ChatTabStrip extends StatelessWidget {

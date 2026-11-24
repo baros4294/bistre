@@ -39,6 +39,9 @@ class Win32Window {
   // Show the current window. Returns true if the window was successfully shown.
   bool Show();
 
+  // Show the current window with an explicit Win32 SW_* command (e.g. SW_SHOWMAXIMIZED).
+  bool ShowWithCmd(int show_cmd);
+
   // Release OS resources associated with window.
   void Destroy();
 
@@ -94,7 +97,9 @@ class Win32Window {
   static Win32Window* GetThisFromHandle(HWND const window) noexcept;
 
   // Update the window frame's theme to match the system theme.
-  static void UpdateTheme(HWND const window);
+  void UpdateTheme(HWND const window);
+
+  void SetCanvasBackgroundColor(COLORREF canvas_bgr);
 
   bool quit_on_close_ = false;
 
@@ -103,6 +108,13 @@ class Win32Window {
 
   // window handle for hosted content.
   HWND child_content_ = nullptr;
+
+  // Solid brush matching active Sepia Day/Night canvas so HWND never flashes white.
+  HBRUSH bg_brush_ = nullptr;
+  COLORREF bg_color_ = RGB(0xF6, 0xEF, 0xE2);
+  // Once the window is shown and Flutter owns child_content_, skip GDI background erases
+  // so Win32 never overpaints ANGLE's D3D11/OpenGL swapchain.
+  bool window_visible_ = false;
 };
 
 #endif  // RUNNER_WIN32_WINDOW_H_

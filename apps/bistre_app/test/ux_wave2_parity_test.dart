@@ -1,8 +1,10 @@
 import 'package:bistre_app/bridge/bistre_engine.dart';
 import 'package:bistre_app/design/bistre_theme.dart';
 import 'package:bistre_app/design/context_menu.dart';
+import 'package:bistre_app/features/chat/composer_tools_control.dart';
 import 'package:bistre_app/features/chat/context_gauge_ring.dart';
 import 'package:bistre_app/features/chat/markdown_folio_view.dart';
+import 'package:bistre_app/features/chat/tool_timeline_view.dart';
 import 'package:bistre_app/features/chat/usage_details_pill.dart';
 import 'package:bistre_app/features/shell/folio_controller.dart';
 import 'package:bistre_app/features/shell/tab_switcher_modal.dart';
@@ -127,7 +129,7 @@ Widget _wrapWidget(BistreLocalizationController l10n, Widget child) {
       child: BistreLocalizations(
         controller: l10n,
         child: BistreTheme(
-          data: BistreThemeData.dayParchment,
+          data: BistreThemeData.warmSepia,
           child: Overlay(
             initialEntries: <OverlayEntry>[OverlayEntry(builder: (_) => child)],
           ),
@@ -137,7 +139,7 @@ Widget _wrapWidget(BistreLocalizationController l10n, Widget child) {
   );
 }
 
-/// Regression tests for Parchment v2.6.0 parity wave 2B:
+/// Regression tests for interactive chat, tab, modal, and settings workflows:
 /// - `TabSwitcherModal` (phone bottom sheet, desktop modal, 200% text 1-col, RTL, Android back, Ctrl+Tab)
 /// - `ModelPickerPopover` (cross-provider search, provider & family filter chips, active pinned first)
 /// - `ContextGaugeRing` session cost & attached files rows
@@ -648,6 +650,146 @@ void main() {
       expect(restored.id, assistantBefore.id);
       expect(ctrl.toastKey, isNull);
       expect(thread.id, ctrl.activeThread?.id);
+
+      ctrl.dispose();
+      await gw.shutdown();
+    },
+  );
+
+  test(
+    'splitShellCompoundSteps splits compound commands while respecting quotes',
+    () {
+      expect(
+        splitShellCompoundSteps(
+          'cargo check && echo "a && b" | wc -l; echo \'x;y\' || true',
+        ),
+        <String>['cargo check', 'echo "a && b"', 'wc -l', "echo 'x;y'", 'true'],
+      );
+      expect(splitShellCompoundSteps('git status'), <String>['git status']);
+    },
+  );
+
+  testWidgets(
+    'UsageDetailsPill displays duration and tokens/sec speed when elapsedMs is provided',
+    (WidgetTester tester) async {
+      final l10n = loadDiskCatalogs();
+      await tester.pumpWidget(
+        _wrapWidget(
+          l10n,
+          const Center(
+            child: UsageDetailsPill(
+              usage: NodeUsageMeta(
+                providerName: 'OpenAI',
+                modelId: 'model-x',
+                inputTokens: 500,
+                outputTokens: 200,
+                costMicros: 12000,
+                elapsedMs: 2500,
+              ),
+              summaryText: 'model-x',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(UsageDetailsPill));
+      await tester.pumpAndSettle();
+
+      expect(find.text(l10n.t(L10nKey.chatUsageDurationLabel)), findsOneWidget);
+      expect(find.text('2.5s'), findsOneWidget);
+      expect(find.text(l10n.t(L10nKey.chatUsageSpeedLabel)), findsOneWidget);
+      expect(find.text('80.0 tok/s'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'fenced svg code card toggles inline Preview and Source cleanly',
+    (WidgetTester tester) async {
+      final l10n = loadDiskCatalogs();
+      await tester.pumpWidget(
+        _wrapWidget(
+          l10n,
+          Center(
+            child: SizedBox(
+              width: 520,
+              child: MarkdownFolioView(
+                markdown: '```svg\n<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="30" fill="#A83625"/></svg>\n```',
+                onCopyCode: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final previewChip = find.text(l10n.t(L10nKey.chatSvgPreview));
+      expect(previewChip, findsOneWidget);
+      await tester.tap(previewChip);
+      await tester.pumpAndSettle();
+
+      expect(find.text(l10n.t(L10nKey.chatSvgSource)), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'ComposerToolsControl, TabSwitcher bulk close, chat notes, pinned replies, and tool permissions work end to end',
+    (WidgetTester tester) async {
+      final l10n = loadDiskCatalogs();
+      final gw = FakeEngineGateway(seedConnectedOpenAi: true);
+      final ctrl = FolioController(
+        gateway: gw,
+        defaultThreadTitle: 'New chat',
+        onLocaleSynced: l10n.setLocale,
+      );
+      await ctrl.bootstrap('test');
+      await ctrl.submitPassage('Keep this active thread');
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // Create two extra empty tabs and verify Close N empty removes them cleanly.
+      await ctrl.createNewFolio();
+      await ctrl.createNewFolio();
+      expect(ctrl.emptyOpenTabs.length, greaterThanOrEqualTo(1));
+      final beforeCount = ctrl.openTabs.length;
+      ctrl.closeEmptyTabs();
+      expect(ctrl.openTabs.length, lessThan(beforeCount));
+
+      // Pin reply, save chat notes, set per-chat spend cap, and update per-tool permission.
+      final assistantNode = ctrl.visibleBranchNodes
+          .where((n) => n.role == 'assistant')
+          .firstOrNull;
+      if (assistantNode != null) {
+        await ctrl.togglePinNode(assistantNode.id);
+        expect(ctrl.isNodePinned(assistantNode.id), isTrue);
+      }
+      await ctrl.saveActiveChatNotes('Remember local constraints.');
+      expect(ctrl.activeChatNotes, 'Remember local constraints.');
+      await ctrl.setActiveChatSpendLimitMicros(2500000);
+      expect(ctrl.activeChatSpendLimitMicros, 2500000);
+      await ctrl.setToolPermission('shell', 'off');
+      expect(ctrl.toolPermissionFor('shell'), 'off');
+
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        BistreApp(l10nController: l10n, folioController: ctrl),
+      );
+      await tester.pumpAndSettle();
+
+      // Open ComposerToolsControl popover and confirm its controls render.
+      await tester.tap(find.byType(ComposerToolsControl));
+      await tester.pumpAndSettle();
+      expect(find.text(l10n.t(L10nKey.chatToolsTitle)), findsOneWidget);
+      expect(find.text(l10n.t(L10nKey.chatToolsPrefillLabel)), findsOneWidget);
+
+      // Open ChatNotesModal and confirm Escape closes cleanly.
+      ctrl.toggleChatNotes();
+      await tester.pumpAndSettle();
+      expect(find.text(l10n.t(L10nKey.chatNotesTitle)), findsOneWidget);
+      ctrl.handleEscape();
+      await tester.pumpAndSettle();
+      expect(ctrl.chatNotesOpen, isFalse);
 
       ctrl.dispose();
       await gw.shutdown();

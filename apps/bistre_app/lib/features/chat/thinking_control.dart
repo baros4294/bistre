@@ -27,9 +27,9 @@ int thinkingStopIndex(String value) {
   return i < 0 ? 0 : i;
 }
 
-/// Composer chip `Thinking: Medium` that opens a step slider above itself (Parchment v2.6.0
-/// `ThinkingControl`): Auto, Off, Low, Medium, High, Extra, Max. Usable by mouse, touch,
-/// keyboard (arrows), and screen reader; the popover closes on an outside tap or Escape.
+/// Composer chip `Thinking: Medium` that opens a step slider above itself: Auto, Off, Low,
+/// Medium, High, Extra, Max, plus a custom effort input. Usable by mouse, touch, keyboard
+/// (arrows), and screen reader; the popover closes on an outside tap or Escape.
 class ThinkingControl extends StatefulWidget {
   const ThinkingControl({
     super.key,
@@ -53,6 +53,34 @@ class ThinkingControl extends StatefulWidget {
 class _ThinkingControlState extends State<ThinkingControl> {
   final FolioOverlayController _popover = FolioOverlayController();
   final LayerLink _link = LayerLink();
+  final TextEditingController _customCtrl = TextEditingController();
+  final FocusNode _customFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _customCtrl.text = widget.value == 'default' ? '' : widget.value;
+  }
+
+  @override
+  void didUpdateWidget(ThinkingControl oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value && !_customFocus.hasFocus) {
+      _customCtrl.text = widget.value == 'default' ? '' : widget.value;
+    }
+  }
+
+  @override
+  void dispose() {
+    _customCtrl.dispose();
+    _customFocus.dispose();
+    super.dispose();
+  }
+
+  void _commitCustom() {
+    final clean = _customCtrl.text.trim().toLowerCase();
+    widget.onChanged(clean.isEmpty ? 'default' : clean);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -146,6 +174,7 @@ class _ThinkingControlState extends State<ThinkingControl> {
                       value: index.toDouble(),
                       min: 0,
                       max: last.toDouble(),
+                      reduceMotionOverride: widget.reduceMotionOverride,
                       semanticsLabel: l10n.t(L10nKey.chatReasoningEffort),
                       onChanged: (v) {
                         final i = v.round().clamp(0, last);
@@ -168,10 +197,48 @@ class _ThinkingControlState extends State<ThinkingControl> {
                       ],
                     ),
                     const SizedBox(height: BistreSpacing.s8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        InkChip(
+                          label: l10n.t(L10nKey.chatEffortAdaptive),
+                          selected: widget.value == 'adaptive',
+                          onSelected: () => widget.onChanged('adaptive'),
+                        ),
+                        InkChip(
+                          label: l10n.t(L10nKey.chatEffortAuto),
+                          selected:
+                              widget.value == 'default' ||
+                              widget.value == 'auto',
+                          onSelected: () => widget.onChanged('default'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: BistreSpacing.s8),
                     InkText(
                       l10n.t(L10nKey.chatThinkingHint),
                       role: InkTextRole.captionMeta,
                       color: theme.inkMuted,
+                    ),
+                    const SizedBox(height: BistreSpacing.s8),
+                    const FolioDivider(),
+                    const SizedBox(height: BistreSpacing.s8),
+                    InkText(
+                      l10n.t(L10nKey.chatThinkingCustomLabel),
+                      role: InkTextRole.captionMeta,
+                      color: theme.inkSecondary,
+                    ),
+                    const SizedBox(height: BistreSpacing.s4),
+                    QuillInput(
+                      controller: _customCtrl,
+                      focusNode: _customFocus,
+                      placeholder: l10n.t(
+                        L10nKey.chatThinkingCustomPlaceholder,
+                      ),
+                      maxLines: 1,
+                      compact: true,
+                      onSubmitted: _commitCustom,
                     ),
                   ],
                 ),

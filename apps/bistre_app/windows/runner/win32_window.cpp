@@ -106,7 +106,9 @@ const wchar_t* WindowClassRegistrar::GetWindowClass() {
     WNDCLASS window_class{};
     window_class.hCursor = LoadCursor(nullptr, IDC_ARROW);
     window_class.lpszClassName = kWindowClassName;
-    window_class.style = CS_HREDRAW | CS_VREDRAW;
+    // Omit CS_HREDRAW | CS_VREDRAW so Win32 never invalidates the whole host HWND with
+    // GDI erases on resize while Flutter/ANGLE owns the child swapchain.
+    window_class.style = 0;
     window_class.cbClsExtra = 0;
     window_class.cbWndExtra = 0;
     window_class.hInstance = GetModuleHandle(nullptr);
@@ -150,7 +152,8 @@ bool Win32Window::Create(const std::wstring& title,
   double scale_factor = dpi / 96.0;
 
   HWND window = CreateWindow(
-      window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
+      window_class, title.c_str(),
+      WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
       Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
       Scale(size.width, scale_factor), Scale(size.height, scale_factor),
       nullptr, nullptr, GetModuleHandle(nullptr), this);
@@ -165,7 +168,29 @@ bool Win32Window::Create(const std::wstring& title,
 }
 
 bool Win32Window::Show() {
-  return ShowWindow(window_handle_, SW_SHOWNORMAL);
+  return ShowWithCmd(SW_SHOWNORMAL);
+}
+
+bool Win32Window::ShowWithCmd(int show_cmd) {
+  if (!window_handle_) {
+    return false;
+  }
+  const bool result = ShowWindow(window_handle_, show_cmd) != FALSE;
+  window_visible_ = true;
+  UpdateWindow(window_handle_);
+  return result;
+}
+
+void Win32Window::SetCanvasBackgroundColor(COLORREF canvas_bgr) {
+  if (bg_brush_ != nullptr && bg_color_ == canvas_bgr) {
+    return;
+  }
+  if (bg_brush_ != nullptr) {
+    DeleteObject(bg_brush_);
+    bg_brush_ = nullptr;
+  }
+  bg_color_ = canvas_bgr;
+  bg_brush_ = CreateSolidBrush(canvas_bgr);
 }
 
 // static
@@ -220,9 +245,11 @@ Win32Window::MessageHandler(HWND hwnd,
       }
       RECT rect = GetClientArea();
       if (child_content_ != nullptr) {
-        // Size and position the child window.
-        MoveWindow(child_content_, rect.left, rect.top, rect.right - rect.left,
-                   rect.bottom - rect.top, TRUE);
+        // Resize the child Flutter surface without triggering a redundant GDI erase/repaint
+        // so ANGLE presents cleanly in sync with DWM composition.
+        SetWindowPos(child_content_, nullptr, rect.left, rect.top,
+                     rect.right - rect.left, rect.bottom - rect.top,
+                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW);
       }
       return 0;
     }
@@ -234,6 +261,22 @@ Win32Window::MessageHandler(HWND hwnd,
       mmi->ptMinTrackSize.x = Scale(720, scale);
       mmi->ptMinTrackSize.y = Scale(520, scale);
       return 0;
+    }
+
+    case WM_ERASEBKGND: {
+      if (child_content_ != nullptr && window_visible_) {
+        // Flutter owns the entire client area once visible; skip GDI FillRect to avoid
+        // tearing/flashing over the hardware swapchain.
+        return 1;
+      }
+      HDC hdc = reinterpret_cast<HDC>(wparam);
+      if (hdc != nullptr && bg_brush_ != nullptr) {
+        RECT rect{};
+        GetClientRect(hwnd, &rect);
+        FillRect(hdc, &rect, bg_brush_);
+        return 1;
+      }
+      break;
     }
 
     case WM_ACTIVATE:
@@ -257,6 +300,10 @@ void Win32Window::Destroy() {
     DestroyWindow(window_handle_);
     window_handle_ = nullptr;
   }
+  if (bg_brush_ != nullptr) {
+    DeleteObject(bg_brush_);
+    bg_brush_ = nullptr;
+  }
   if (g_active_window_count == 0) {
     WindowClassRegistrar::GetInstance()->UnregisterWindowClass();
   }
@@ -270,10 +317,13 @@ Win32Window* Win32Window::GetThisFromHandle(HWND const window) noexcept {
 void Win32Window::SetChildContent(HWND content) {
   child_content_ = content;
   SetParent(content, window_handle_);
+  LONG_PTR style = GetWindowLongPtr(content, GWL_STYLE);
+  SetWindowLongPtr(content, GWL_STYLE, style | WS_CLIPSIBLINGS);
   RECT frame = GetClientArea();
 
-  MoveWindow(content, frame.left, frame.top, frame.right - frame.left,
-             frame.bottom - frame.top, true);
+  SetWindowPos(content, nullptr, frame.left, frame.top,
+               frame.right - frame.left, frame.bottom - frame.top,
+               SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_NOREDRAW);
 
   SetFocus(child_content_);
 }
@@ -305,6 +355,7 @@ void Win32Window::ApplyBistreTheme(bool is_dark,
                                    COLORREF caption_bgr,
                                    COLORREF text_bgr,
                                    COLORREF border_bgr) {
+  SetCanvasBackgroundColor(caption_bgr);
   if (!window_handle_) {
     return;
   }
@@ -337,10 +388,11 @@ void Win32Window::UpdateTheme(HWND const window) {
   DwmSetWindowAttribute(window, DWMWA_WINDOW_CORNER_PREFERENCE, &corner_pref,
                         sizeof(corner_pref));
   // Apply matching Sepia Day/Night initial caption tint before first Flutter frame so
-  // the window never flashes an untinted legacy accent bar on launch.
+  // the window never flashes an untinted legacy accent bar or white canvas on launch.
   COLORREF caption = enable_dark_mode ? RGB(0x19, 0x12, 0x0D) : RGB(0xF6, 0xEF, 0xE2);
   COLORREF text = enable_dark_mode ? RGB(0xF2, 0xE6, 0xD3) : RGB(0x24, 0x16, 0x0E);
   COLORREF border = enable_dark_mode ? RGB(0x3D, 0x2F, 0x24) : RGB(0xD8, 0xC8, 0xB2);
+  SetCanvasBackgroundColor(caption);
   DwmSetWindowAttribute(window, DWMWA_CAPTION_COLOR, &caption, sizeof(caption));
   DwmSetWindowAttribute(window, DWMWA_TEXT_COLOR, &text, sizeof(text));
   DwmSetWindowAttribute(window, DWMWA_BORDER_COLOR, &border, sizeof(border));

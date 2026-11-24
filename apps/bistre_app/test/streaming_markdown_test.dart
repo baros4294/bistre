@@ -25,7 +25,7 @@ void main() {
     child: Directionality(
       textDirection: TextDirection.ltr,
       child: BistreTheme(
-        data: BistreThemeData.dayParchment,
+        data: BistreThemeData.warmSepia,
         child: CodeWrapScope(
           wrapByDefault: false,
           overrides: overrides,

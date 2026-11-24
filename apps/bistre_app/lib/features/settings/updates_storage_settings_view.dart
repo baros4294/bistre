@@ -10,7 +10,6 @@ import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../../platform/desktop_host.dart';
-import '../../platform/power_guard_host.dart';
 import '../shell/folio_controller.dart';
 
 /// Updates & Local Storage Studio:
@@ -238,121 +237,7 @@ class _UpdatesStorageSettingsViewState
             ),
             const SizedBox(height: BistreSpacing.s24),
 
-            // Section 2: Background & Sleep Survival (Long-Horizon Resilience)
-            BistreSettingsSection(
-              title: l10n.t(L10nKey.settingsSleepSectionTitle),
-              subtitle: l10n.t(L10nKey.settingsSleepSectionSubtitle),
-              children: [
-                BistreSettingRow(
-                  label: l10n.t(L10nKey.settingsSleepKeepAwake),
-                  trailing: BistreSegmentedControl<bool>(
-                    selected: s.keepAwakeWhileRunning,
-                    onSelected: (v) => unawaited(
-                      ctrl.updateSettings(s.copyWith(keepAwakeWhileRunning: v)),
-                    ),
-                    options: <BistreSegmentedOption<bool>>[
-                      BistreSegmentedOption<bool>(
-                        value: true,
-                        label: l10n.t(L10nKey.settingsAppearanceOn),
-                      ),
-                      BistreSegmentedOption<bool>(
-                        value: false,
-                        label: l10n.t(L10nKey.settingsAppearanceOff),
-                      ),
-                    ],
-                  ),
-                ),
-                BistreSettingRow(
-                  label: l10n.t(L10nKey.settingsSleepDaemonActive),
-                  description: l10n.t(L10nKey.settingsSleepDaemonActiveDesc),
-                  trailing: BistreSegmentedControl<bool>(
-                    selected: s.daemonKeepAliveWhenActive,
-                    onSelected: (v) => unawaited(
-                      ctrl.updateSettings(
-                        s.copyWith(daemonKeepAliveWhenActive: v),
-                      ),
-                    ),
-                    options: <BistreSegmentedOption<bool>>[
-                      BistreSegmentedOption<bool>(
-                        value: true,
-                        label: l10n.t(L10nKey.settingsAppearanceOn),
-                      ),
-                      BistreSegmentedOption<bool>(
-                        value: false,
-                        label: l10n.t(L10nKey.settingsAppearanceOff),
-                      ),
-                    ],
-                  ),
-                ),
-                BistreSettingRow(
-                  label: l10n.t(L10nKey.settingsSleepWindowsBattery),
-                  description: l10n.t(L10nKey.settingsSleepWindowsBatteryDesc),
-                  trailing: BistreSegmentedControl<bool>(
-                    selected: s.windowsKeepAwakeOnBattery,
-                    onSelected: (v) => unawaited(
-                      ctrl.updateSettings(
-                        s.copyWith(windowsKeepAwakeOnBattery: v),
-                      ),
-                    ),
-                    options: <BistreSegmentedOption<bool>>[
-                      BistreSegmentedOption<bool>(
-                        value: false,
-                        label: l10n.t(L10nKey.settingsAppearanceOff),
-                      ),
-                      BistreSegmentedOption<bool>(
-                        value: true,
-                        label: l10n.t(L10nKey.settingsAppearanceOn),
-                      ),
-                    ],
-                  ),
-                ),
-                BistreSettingRow(
-                  label: l10n.t(L10nKey.settingsSleepUnattendedPolicy),
-                  trailing: BistreSegmentedControl<String>(
-                    selected: s.unattendedPolicy,
-                    onSelected: (v) => unawaited(
-                      ctrl.updateSettings(s.copyWith(unattendedPolicy: v)),
-                    ),
-                    options: <BistreSegmentedOption<String>>[
-                      BistreSegmentedOption<String>(
-                        value: 'pause_and_notify',
-                        label: l10n.t(L10nKey.settingsSleepPolicyPause),
-                      ),
-                      BistreSegmentedOption<String>(
-                        value: 'deny_tier2_and_continue',
-                        label: l10n.t(L10nKey.settingsSleepPolicyDeny),
-                      ),
-                      BistreSegmentedOption<String>(
-                        value: 'sandbox_worktree_auto',
-                        label: l10n.t(L10nKey.settingsSleepPolicySandbox),
-                      ),
-                    ],
-                  ),
-                ),
-                if (BistrePowerGuardHost.isAndroid)
-                  BistreSettingRow(
-                    label: l10n.t(L10nKey.settingsSleepAndroidBattery),
-                    trailing: ctrl.powerStatus.androidBatteryUnrestricted
-                        ? WaxSealBadge(
-                            label: l10n.t(
-                              L10nKey.settingsSleepAndroidBatteryOk,
-                            ),
-                          )
-                        : EngravedButton(
-                            label: l10n.t(
-                              L10nKey.settingsSleepAndroidBatteryAllow,
-                            ),
-                            compact: true,
-                            onPressed: () => unawaited(
-                              ctrl.requestAndroidBatteryUnrestricted(),
-                            ),
-                          ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: BistreSpacing.s24),
-
-            // Section 3: Local Storage & Backups
+            // Section 2: Local Storage & Backups
             BistreSettingsSection(
               title: l10n.t(L10nKey.settingsStorageSectionTitle),
               subtitle: l10n.t(L10nKey.settingsEngineTelemetry),

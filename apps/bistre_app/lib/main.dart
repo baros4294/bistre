@@ -82,6 +82,10 @@ Directory? _findRepoRoot(Directory start) {
 Future<void> main() async {
   final bootClock = Stopwatch()..start();
   WidgetsFlutterBinding.ensureInitialized();
+  // Bound decoded image memory (16 MiB normal; lowered to 8 MiB on < 4 GB hosts).
+  PaintingBinding.instance.imageCache
+    ..maximumSize = 128
+    ..maximumSizeBytes = 16 << 20;
   unawaited(configureGpuResourceCacheCap(lowMemory: false));
 
   final l10nController = await BistreLocalizationController.loadBundled();
@@ -122,20 +126,45 @@ Future<void> main() async {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         probe('chat_ready_ms=${bootClock.elapsedMilliseconds}');
         probe('chat_count=${folioController.threads.length}');
+        if (probePath.isNotEmpty) {
+          // Wait one settle beat (500 ms) after chat_ready paint before sampling 10 s of true
+          // idle frames (Spec 11: 0 wakeups/sec once settled) plus frame-timing percentiles.
+          Timer(const Duration(milliseconds: 500), () {
+            var idleFrames = 0;
+            final vsyncOverheadUs = <int>[];
+            final buildUs = <int>[];
+            final rasterUs = <int>[];
+            void countFrames(List<FrameTiming> timings) {
+              idleFrames += timings.length;
+              for (final t in timings) {
+                vsyncOverheadUs.add(t.vsyncOverhead.inMicroseconds);
+                buildUs.add(t.buildDuration.inMicroseconds);
+                rasterUs.add(t.rasterDuration.inMicroseconds);
+              }
+            }
+
+            WidgetsBinding.instance.addTimingsCallback(countFrames);
+            Timer(const Duration(seconds: 10), () {
+              WidgetsBinding.instance.removeTimingsCallback(countFrames);
+              probe('idle_frames=$idleFrames');
+              probe('idle_rss_bytes=${ProcessInfo.currentRss}');
+              if (buildUs.isNotEmpty) {
+                vsyncOverheadUs.sort();
+                buildUs.sort();
+                rasterUs.sort();
+                double p95Ms(List<int> xs) =>
+                    xs[((xs.length - 1) * 0.95).round()] / 1000.0;
+                probe(
+                  'vsync_overhead_p95_ms=${p95Ms(vsyncOverheadUs).toStringAsFixed(2)}',
+                );
+                probe('build_p95_ms=${p95Ms(buildUs).toStringAsFixed(2)}');
+                probe('raster_p95_ms=${p95Ms(rasterUs).toStringAsFixed(2)}');
+              }
+            });
+          });
+        }
       });
       WidgetsBinding.instance.scheduleFrame();
-      if (probePath.isNotEmpty) {
-        // Frames rendered while idle (Spec 11: zero idle work); counted from chat ready.
-        var idleFrames = 0;
-        void countFrames(List<FrameTiming> timings) =>
-            idleFrames += timings.length;
-        WidgetsBinding.instance.addTimingsCallback(countFrames);
-        Timer(const Duration(seconds: 10), () {
-          WidgetsBinding.instance.removeTimingsCallback(countFrames);
-          probe('idle_frames=$idleFrames');
-          probe('idle_rss_bytes=${ProcessInfo.currentRss}');
-        });
-      }
     }),
   );
 
@@ -168,6 +197,7 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _syncSystemBrightness();
     BistreDesktopHost.attachSystemThemeListener(_syncSystemBrightness);
+    BistreDesktopHost.attachWindowBoundsListener(_onWindowBoundsChanged);
     widget.folioController.addListener(_syncWindowTitle);
     _syncWindowTitle();
   }
@@ -176,8 +206,13 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     BistreDesktopHost.detachSystemThemeListener(_syncSystemBrightness);
+    BistreDesktopHost.detachWindowBoundsListener(_onWindowBoundsChanged);
     widget.folioController.removeListener(_syncWindowTitle);
     super.dispose();
+  }
+
+  void _onWindowBoundsChanged(DesktopWindowBounds bounds) {
+    unawaited(widget.folioController.persistWindowBounds(bounds));
   }
 
   void _syncWindowTitle() =>

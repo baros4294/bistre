@@ -5,12 +5,23 @@ import 'package:flutter/foundation.dart';
 import '../bridge/bistre_engine.dart';
 import '../l10n/l10n_keys.g.dart';
 
-/// One transient notice with an optional action (for example Undo).
+/// Semantic tone for a floating pill toast.
+enum ToastTone { info, ok, error }
+
+/// One transient notice with an optional action (for example Undo) and ICU args.
 @immutable
 class ToastMessage {
-  const ToastMessage(this.key, {this.actionKey, this.onAction});
+  const ToastMessage(
+    this.key, {
+    this.args,
+    this.tone = ToastTone.info,
+    this.actionKey,
+    this.onAction,
+  });
 
   final L10nKey key;
+  final Map<String, Object?>? args;
+  final ToastTone tone;
   final L10nKey? actionKey;
   final VoidCallback? onAction;
 }

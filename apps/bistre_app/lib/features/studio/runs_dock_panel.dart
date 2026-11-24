@@ -17,7 +17,7 @@ import '../shell/folio_controller.dart';
 ///   reconciliation, and mid-stream steering queue.
 /// - `[Files]`: Touched workspace files / checkpoints with 1-click Rewind & inline `"Comment in chat"`
 ///   chips (`@file:L1-L20` attached straight into composer).
-/// - `[Story]` & `[Prompt]`: Story Bible & Live Prompt Inspector tabs (extended in Wave E).
+/// - `[Story]` & `[Prompt]`: Story Bible & Live Prompt Inspector tabs.
 class RunsDockPanel extends StatelessWidget {
   const RunsDockPanel({
     super.key,
