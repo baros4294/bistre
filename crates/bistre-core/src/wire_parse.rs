@@ -68,6 +68,11 @@ pub fn parse_models_payload(dialect: ProviderDialect, body: &Value) -> Vec<Provi
 /// Extracts incremental text delta (or non-streaming plain-JSON reply text) across all 4 dialects.
 pub fn extract_sse_delta(dialect: ProviderDialect, json_str: &str) -> Option<String> {
     let val: Value = serde_json::from_str(json_str).ok()?;
+    delta_of_frame(dialect, &val)
+}
+
+/// The same, on a frame already parsed once (R35).
+pub fn delta_of_frame(dialect: ProviderDialect, val: &Value) -> Option<String> {
     match dialect {
         ProviderDialect::OpenAi => {
             if val.get("type").and_then(Value::as_str) == Some("response.output_text.delta")
@@ -75,7 +80,7 @@ pub fn extract_sse_delta(dialect: ProviderDialect, json_str: &str) -> Option<Str
             {
                 return Some(delta.to_owned());
             }
-            if let Some(chat) = extract_openai_chat_delta(&val) {
+            if let Some(chat) = extract_openai_chat_delta(val) {
                 return Some(chat);
             }
             // Plain-JSON fallback (non-streaming Responses API body).
@@ -170,7 +175,7 @@ pub fn extract_sse_delta(dialect: ProviderDialect, json_str: &str) -> Option<Str
             }
             None
         }
-        ProviderDialect::CustomOpenAi => extract_openai_chat_delta(&val),
+        ProviderDialect::CustomOpenAi => extract_openai_chat_delta(val),
     }
 }
 
@@ -188,6 +193,11 @@ fn extract_openai_chat_delta(val: &Value) -> Option<String> {
 /// and `OpenAI`-compatible reasoning models.
 pub fn extract_sse_thinking_delta(dialect: ProviderDialect, json_str: &str) -> Option<String> {
     let val: Value = serde_json::from_str(json_str).ok()?;
+    thinking_delta_of_frame(dialect, &val)
+}
+
+/// The same, on a frame already parsed once (R35).
+pub fn thinking_delta_of_frame(dialect: ProviderDialect, val: &Value) -> Option<String> {
     match dialect {
         ProviderDialect::OpenAi => {
             let kind = val.get("type").and_then(Value::as_str);
@@ -200,7 +210,7 @@ pub fn extract_sse_thinking_delta(dialect: ProviderDialect, json_str: &str) -> O
                     .and_then(Value::as_str)
                     .map(ToOwned::to_owned);
             }
-            extract_openai_chat_reasoning_delta(&val)
+            extract_openai_chat_reasoning_delta(val)
         }
         ProviderDialect::Anthropic => {
             if val.get("type").and_then(Value::as_str) == Some("content_block_delta")
@@ -252,7 +262,7 @@ pub fn extract_sse_thinking_delta(dialect: ProviderDialect, json_str: &str) -> O
                 Some(combined)
             }
         }
-        ProviderDialect::CustomOpenAi => extract_openai_chat_reasoning_delta(&val),
+        ProviderDialect::CustomOpenAi => extract_openai_chat_reasoning_delta(val),
     }
 }
 
@@ -278,13 +288,24 @@ fn merge_anthropic_usage_block(u: &Value, usage: &mut UsageMetrics) {
     if let Some(v) = u.get("cache_creation_input_tokens").and_then(Value::as_u64) {
         usage.cache_creation_input_tokens = v;
     }
+    if let Some(v) = u
+        .get("cache_creation")
+        .and_then(|c| c.get("ephemeral_1h_input_tokens"))
+        .and_then(Value::as_u64)
+    {
+        usage.cache_creation_1h_input_tokens = v;
+    }
 }
 
 /// Extracts exact integer token counts from SSE lifecycle frames across all 4 supported dialects.
 pub fn merge_sse_usage(dialect: ProviderDialect, json_str: &str, usage: &mut UsageMetrics) {
-    let Ok(val) = serde_json::from_str::<Value>(json_str) else {
-        return;
-    };
+    if let Ok(val) = serde_json::from_str::<Value>(json_str) {
+        merge_usage_of_frame(dialect, &val, usage);
+    }
+}
+
+/// The same, on a frame already parsed once (R35).
+pub fn merge_usage_of_frame(dialect: ProviderDialect, val: &Value, usage: &mut UsageMetrics) {
     match dialect {
         ProviderDialect::OpenAi => {
             let u = val
@@ -396,9 +417,11 @@ pub fn is_terminal_event(dialect: ProviderDialect, payload: &str) -> bool {
     if payload.trim() == "[DONE]" {
         return true;
     }
-    let Ok(val) = serde_json::from_str::<Value>(payload) else {
-        return false;
-    };
+    serde_json::from_str::<Value>(payload).is_ok_and(|val| is_terminal_frame(dialect, &val))
+}
+
+/// The same, on a frame already parsed once (R35).
+pub fn is_terminal_frame(dialect: ProviderDialect, val: &Value) -> bool {
     let chat_finished = || {
         val.get("choices")
             .and_then(|c| c.get(0))

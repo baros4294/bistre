@@ -44,43 +44,97 @@ pub struct HookExecutionResult {
     pub output: String,
 }
 
-/// Reads `.bistre/hooks.json` from `workspace_root`. A missing file means no hooks; an
-/// unreadable or malformed one is an error, so a broken config never silently disables hooks.
-pub fn load_workspace_hooks(workspace_root: &Path) -> BistreResult<Vec<WorkspaceHookConfig>> {
-    let path = workspace_root.join(".bistre").join("hooks.json");
-    let raw = match std::fs::read_to_string(path) {
-        Ok(raw) => raw,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(_) => {
-            return Err(BistreError::with_detail(
-                DiagnosticKey::InvalidInput,
-                "hooks_json_read",
-            ));
-        }
-    };
-    serde_json::from_str::<Vec<WorkspaceHookConfig>>(&raw)
-        .map_err(|_| BistreError::with_detail(DiagnosticKey::InvalidInput, "hooks_json_parse"))
+/// The hooks file of a workspace with its content digest.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceHooks {
+    pub hooks: Vec<WorkspaceHookConfig>,
+    /// `blake3` hex of the raw file bytes; an approval covers exactly these bytes.
+    pub digest: String,
 }
 
-/// Runs matching workspace lifecycle hooks with `kill_on_drop(true)` and stripped provider keys.
+/// A workspace's hooks as shown to the user for approval.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceHooksStatus {
+    pub hooks: Vec<WorkspaceHookConfig>,
+    pub digest: String,
+    /// The user approved exactly this file.
+    pub approved: bool,
+}
+
+/// Largest hooks file read (64 KiB).
+const MAX_HOOKS_FILE_BYTES: u64 = 64 * 1024;
+
+/// Reads `.bistre/hooks.json` from `workspace_root`. A missing file means no hooks (`None`);
+/// an unreadable, oversized, or malformed one is an error, so a broken config never silently
+/// disables hooks.
+pub fn load_workspace_hooks(workspace_root: &Path) -> BistreResult<Option<WorkspaceHooks>> {
+    let path = workspace_root.join(".bistre").join("hooks.json");
+    let read_err = || BistreError::with_detail(DiagnosticKey::InvalidInput, "hooks_json_read");
+    let bytes = match std::fs::metadata(&path) {
+        Ok(meta) if meta.len() > MAX_HOOKS_FILE_BYTES => return Err(read_err()),
+        Ok(_) => std::fs::read(&path).map_err(|_| read_err())?,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(read_err()),
+    };
+    let hooks = serde_json::from_slice::<Vec<WorkspaceHookConfig>>(&bytes)
+        .map_err(|_| BistreError::with_detail(DiagnosticKey::InvalidInput, "hooks_json_parse"))?;
+    Ok(Some(WorkspaceHooks {
+        hooks,
+        digest: blake3::hash(&bytes).to_hex().to_string(),
+    }))
+}
+
+/// `kv_meta` key holding the approved hooks digest for one workspace root.
+pub fn hooks_approval_key(workspace_root: &Path) -> String {
+    let root = workspace_root.to_string_lossy();
+    format!(
+        "agent.hooks_approved:{}",
+        blake3::hash(root.as_bytes()).to_hex()
+    )
+}
+
+/// What running the hooks of one event did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HookRun {
+    /// No hook matches this event and tool.
+    None,
+    /// Matching hooks exist, but the user has not approved this exact hooks file (A-S5).
+    NotApproved,
+    /// Every matching hook ran (in order); each result says whether it succeeded.
+    Ran(Vec<HookExecutionResult>),
+}
+
+/// Runs the hooks matching `event`/`tool_name` with `kill_on_drop(true)` and stripped
+/// provider keys, but only when `approved_digest` equals the current file's digest.
 pub async fn run_lifecycle_hooks(
     workspace_root: &Path,
     event: HookEventKind,
     tool_name: Option<&str>,
-) -> BistreResult<Vec<HookExecutionResult>> {
-    let hooks = load_workspace_hooks(workspace_root)?;
-    let mut results = Vec::new();
-
-    for hook in hooks {
-        if hook.event != event {
-            continue;
-        }
-        if let Some(ref filter) = hook.tool_filter
-            && !filter.trim().is_empty()
-            && tool_name != Some(filter.as_str())
-        {
-            continue;
-        }
+    approved_digest: Option<&str>,
+) -> BistreResult<HookRun> {
+    let Some(file) = load_workspace_hooks(workspace_root)? else {
+        return Ok(HookRun::None);
+    };
+    let matching: Vec<WorkspaceHookConfig> = file
+        .hooks
+        .into_iter()
+        .filter(|hook| hook.event == event)
+        .filter(|hook| {
+            hook.tool_filter
+                .as_deref()
+                .map(str::trim)
+                .filter(|f| !f.is_empty())
+                .is_none_or(|f| tool_name == Some(f))
+        })
+        .collect();
+    if matching.is_empty() {
+        return Ok(HookRun::None);
+    }
+    if approved_digest != Some(file.digest.as_str()) {
+        return Ok(HookRun::NotApproved);
+    }
+    let mut results = Vec::with_capacity(matching.len());
+    for hook in matching {
         let timeout = Duration::from_secs(hook.timeout_secs.clamp(1, 60));
         let shell = preferred_shell();
         let mut cmd = shell_command(shell, &hook.command, workspace_root);
@@ -114,9 +168,8 @@ pub async fn run_lifecycle_hooks(
         });
     }
 
-    Ok(results)
+    Ok(HookRun::Ran(results))
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,14 +190,65 @@ mod tests {
             .is_ok()
         );
 
-        let skipped =
-            Some(run_lifecycle_hooks(dir.path(), HookEventKind::PostToolUse, Some("read")).await?);
-        assert_eq!(skipped.as_ref().map(Vec::len), Some(0));
+        let digest = load_workspace_hooks(dir.path())?.map_or_else(String::new, |h| h.digest);
+        let skipped = run_lifecycle_hooks(
+            dir.path(),
+            HookEventKind::PostToolUse,
+            Some("read"),
+            Some(&digest),
+        )
+        .await?;
+        assert_eq!(skipped, HookRun::None);
 
-        let ran =
-            Some(run_lifecycle_hooks(dir.path(), HookEventKind::PostToolUse, Some("edit")).await?);
-        assert_eq!(ran.as_ref().map(Vec::len), Some(1));
-        assert!(ran.as_ref().and_then(|v| v.first()).is_some_and(|r| r.ok));
+        let ran = run_lifecycle_hooks(
+            dir.path(),
+            HookEventKind::PostToolUse,
+            Some("edit"),
+            Some(&digest),
+        )
+        .await?;
+        assert!(matches!(ran, HookRun::Ran(ref v) if v.len() == 1 && v[0].ok));
+        Ok(())
+    }
+
+    /// A-S5: hooks run only when the user approved this exact file; any edit needs a new
+    /// approval.
+    #[tokio::test]
+    async fn hooks_run_only_for_the_approved_file() -> TestResult {
+        let dir = tempdir()?;
+        let cfg_dir = dir.path().join(".bistre");
+        std::fs::create_dir_all(&cfg_dir)?;
+        std::fs::write(
+            cfg_dir.join("hooks.json"),
+            r#"[{"event":"pre_tool_use","command":"echo one"}]"#,
+        )?;
+        let approved = load_workspace_hooks(dir.path())?.map_or_else(String::new, |h| h.digest);
+        let run = |digest: Option<String>| {
+            let root = dir.path().to_path_buf();
+            async move {
+                run_lifecycle_hooks(
+                    &root,
+                    HookEventKind::PreToolUse,
+                    Some("edit"),
+                    digest.as_deref(),
+                )
+                .await
+            }
+        };
+        assert_eq!(run(None).await?, HookRun::NotApproved);
+        assert!(matches!(
+            run(Some(approved.clone())).await?,
+            HookRun::Ran(_)
+        ));
+        std::fs::write(
+            cfg_dir.join("hooks.json"),
+            r#"[{"event":"pre_tool_use","command":"echo two"}]"#,
+        )?;
+        assert_eq!(
+            run(Some(approved)).await?,
+            HookRun::NotApproved,
+            "an edited file needs a new approval"
+        );
         Ok(())
     }
 }

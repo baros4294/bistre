@@ -1,4 +1,5 @@
 use super::*;
+use std::time::Duration;
 use tempfile::tempdir;
 
 #[test]
@@ -141,7 +142,7 @@ async fn end_to_end_agentic_tool_loop_reads_file_and_handles_approval_deny()
     });
 
     let engine =
-        crate::InProcessEngine::open(dir.path(), Some(bistre_crypto::VaultKey::generate()?))?;
+        crate::InProcessEngine::open_for_test(dir.path(), crate::http_clients::provider_client()?)?;
     engine
         .set_kv_meta(
             "agent.workspace_root".to_owned(),
@@ -189,6 +190,7 @@ async fn end_to_end_agentic_tool_loop_reads_file_and_handles_approval_deny()
         match tokio::time::timeout(Duration::from_millis(200), rx.recv()).await {
             Ok(Ok(EngineEvent::ToolApprovalRequested {
                 thread_id,
+                run_id,
                 call_id,
                 tool_name,
                 ..
@@ -196,7 +198,7 @@ async fn end_to_end_agentic_tool_loop_reads_file_and_handles_approval_deny()
                 assert_eq!(tool_name, "edit");
                 saw_approval_req = true;
                 let delivered = engine
-                    .respond_tool_approval(thread_id, call_id, ToolApprovalDecision::Deny)
+                    .respond_tool_approval(thread_id, run_id, call_id, ToolApprovalDecision::Deny)
                     .await?;
                 assert!(delivered);
             }
@@ -220,5 +222,27 @@ async fn end_to_end_agentic_tool_loop_reads_file_and_handles_approval_deny()
         "hello wave2 tool loop\n"
     );
     server.abort();
+    Ok(())
+}
+
+/// R21: a large tool output is saved whole (atomic temp file + rename, no temp file left
+/// behind) and the preview names the saved blob.
+#[tokio::test]
+async fn a_large_tool_output_is_saved_whole_without_leftover_temp_files()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempdir()?;
+    let text = "x".repeat(TOOL_OUTPUT_SPILL_BYTES + 1);
+    let preview = spill_off_worker(dir.path(), "call_1", &text).await;
+    assert!(
+        preview.contains("bytes saved to tool_blobs/"),
+        "{}",
+        &preview[preview.len() - 80..]
+    );
+    let entries: Vec<_> = std::fs::read_dir(dir.path().join("tool_blobs"))?
+        .map(|e| e.map(|e| e.file_name().to_string_lossy().into_owned()))
+        .collect::<Result<_, _>>()?;
+    assert_eq!(entries.len(), 1, "one blob and no temp file: {entries:?}");
+    let saved = std::fs::read_to_string(dir.path().join("tool_blobs").join(&entries[0]))?;
+    assert_eq!(saved.len(), text.len());
     Ok(())
 }

@@ -15,11 +15,18 @@ where
     F: FnOnce(&StorageHandle) -> BistreResult<T> + Send + 'static,
 {
     let storage = Arc::clone(storage);
-    tokio::task::spawn_blocking(move || f(&storage))
-        .await
-        .map_err(|err| {
-            BistreError::with_detail(DiagnosticKey::InternalError, format!("storage_task:{err}"))
-        })?
+    blocking(move || f(&storage)).await
+}
+
+/// Runs blocking work (file walks, file reads and writes) on the blocking pool (R20, R21).
+pub(crate) async fn blocking<T, F>(f: F) -> BistreResult<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> BistreResult<T> + Send + 'static,
+{
+    tokio::task::spawn_blocking(f).await.map_err(|err| {
+        BistreError::with_detail(DiagnosticKey::InternalError, format!("blocking_task:{err}"))
+    })?
 }
 
 #[cfg(test)]

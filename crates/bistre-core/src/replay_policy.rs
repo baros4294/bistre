@@ -42,6 +42,9 @@ pub enum ReasoningBlock {
     },
     /// Plaintext reasoning trace (`DeepSeek` / vLLM / Ollama / cross-provider handoff).
     PlainReasoning { text: String },
+    /// Gemini `thoughtSignature` on a (often empty, trailing) text part of the answer; it goes
+    /// back on the text part, never moved onto a call (kelivo fixtures).
+    GeminiTextSignature { signature: String },
 }
 
 /// Canonical persisted tool call attached to an `Assistant` turn.
@@ -230,6 +233,164 @@ pub fn eligible_server_chain_id<'a>(
     }
 }
 
+/// A safe stateful chain (R7): the stored reply to continue from, and where the items after
+/// it (the only ones sent) begin in the history.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChainPlan {
+    pub previous_id: String,
+    pub first_new_index: usize,
+}
+
+/// R7: chain from the latest assistant reply when storing is on for this request and the
+/// history is uncompacted (a compaction rewrote the prefix the server holds). The request
+/// then sends only what came after that reply; the server already has the rest.
+#[must_use]
+pub fn chain_plan(
+    history: &[NodeRecord],
+    target: &ReplayContext,
+    store_enabled: bool,
+) -> Option<ChainPlan> {
+    if !store_enabled || history_has_client_compaction(history) {
+        return None;
+    }
+    let idx = history
+        .iter()
+        .rposition(|n| n.role == NodeRole::Assistant)?;
+    let meta = parse_turn_wire_meta(history[idx].provider_meta_json.as_deref());
+    let id = eligible_server_chain_id(
+        meta.origin.as_ref(),
+        meta.server_state.as_ref(),
+        target,
+        store_enabled,
+    )?;
+    Some(ChainPlan {
+        previous_id: id.to_owned(),
+        first_new_index: idx.saturating_add(1),
+    })
+}
+
+/// Keys of a node's metadata the app never reads (R39): opaque reasoning payloads and
+/// signatures, server chain state, and parts delivered typed elsewhere (grounding through
+/// `list_thread_grounding`, attachments on the node DTO). They stay in storage for replay.
+const UI_HIDDEN_META_KEYS: [&str; 5] = [
+    "reasoning_blocks",
+    "server_state",
+    "grounding",
+    "attachments",
+    "origin",
+];
+
+/// The node metadata sent to the app (R39): everything but [`UI_HIDDEN_META_KEYS`], so a
+/// reply's large encrypted reasoning never crosses the FFI on every thread load.
+#[must_use]
+pub fn ui_node_meta(raw: Option<&str>) -> Option<String> {
+    let text = raw?;
+    let Ok(Value::Object(mut map)) = serde_json::from_str::<Value>(text) else {
+        return Some(text.to_owned());
+    };
+    for key in UI_HIDDEN_META_KEYS {
+        map.remove(key);
+    }
+    Some(Value::Object(map).to_string())
+}
+
+/// The result sent back for a tool call that never ran (written to the model, not the UI).
+pub const TOOL_CALL_DID_NOT_RUN: &str = "This tool call did not run (the reply was stopped).";
+
+/// Pairs every tool call with a result (pi #9986, cherry-studio #24997): a call left without
+/// one by a stopped or crashed run gets a "did not run" error result right after its turn's
+/// existing results, so the next request is valid and the model knows the call did not run.
+#[must_use]
+pub fn answer_dangling_tool_calls(history: Vec<NodeRecord>) -> Vec<NodeRecord> {
+    let answered: std::collections::HashSet<String> = history
+        .iter()
+        .filter(|n| n.role == NodeRole::Tool)
+        .filter_map(|n| parse_turn_wire_meta(n.provider_meta_json.as_deref()).tool_result)
+        .map(|r| r.call_id)
+        .collect();
+    let mut out = Vec::with_capacity(history.len());
+    let mut pending: Vec<(NodeRecord, StoredToolCall)> = Vec::new();
+    let flush = |out: &mut Vec<NodeRecord>, pending: &mut Vec<(NodeRecord, StoredToolCall)>| {
+        for (turn, call) in pending.drain(..) {
+            let meta = serde_json::json!({ "tool_result": StoredToolResult {
+                call_id: call.call_id.clone(),
+                name: call.name,
+                is_error: true,
+                media_attachments: Vec::new(),
+            }});
+            out.push(NodeRecord {
+                id: format!("{}:did-not-run:{}", turn.id, call.call_id),
+                thread_id: turn.thread_id.clone(),
+                parent_id: Some(turn.id.clone()),
+                role: NodeRole::Tool,
+                content: TOOL_CALL_DID_NOT_RUN.to_owned(),
+                provider_meta_json: Some(meta.to_string()),
+                created_at_ms: turn.created_at_ms,
+            });
+        }
+    };
+    for node in history {
+        if node.role != NodeRole::Tool {
+            flush(&mut out, &mut pending);
+        }
+        if node.role == NodeRole::Assistant {
+            for call in parse_turn_wire_meta(node.provider_meta_json.as_deref()).tool_calls {
+                if !call.call_id.is_empty() && !answered.contains(&call.call_id) {
+                    pending.push((node.clone(), call));
+                }
+            }
+        }
+        out.push(node);
+    }
+    flush(&mut out, &mut pending);
+    out
+}
+
+/// Drops `null` members from a stored provider item before it is sent back (codex #47733):
+/// some providers reject `"field": null` they would accept as absent. Depth-bounded.
+#[must_use]
+pub fn without_null_fields(value: &Value) -> Value {
+    fn strip(v: &Value, depth: u8) -> Value {
+        if depth == 0 {
+            return v.clone();
+        }
+        match v {
+            Value::Object(map) => Value::Object(
+                map.iter()
+                    .filter(|(_, v)| !v.is_null())
+                    .map(|(k, v)| (k.clone(), strip(v, depth - 1)))
+                    .collect(),
+            ),
+            Value::Array(items) => {
+                Value::Array(items.iter().map(|v| strip(v, depth - 1)).collect())
+            }
+            other => other.clone(),
+        }
+    }
+    strip(value, 32)
+}
+
+/// When the history was last compacted: the newest summary marker's time, if any (R14).
+#[must_use]
+pub fn latest_compaction_ms(history: &[NodeRecord]) -> Option<i64> {
+    history
+        .iter()
+        .filter(|n| {
+            n.role == NodeRole::CompactionSummary
+                || (n.role == NodeRole::User
+                    && n.content.starts_with("[Earlier conversation summary]"))
+        })
+        .map(|n| n.created_at_ms)
+        .max()
+}
+
+/// R14: a turn's opaque reasoning is bound to the prefix it was made with; only turns made
+/// before the newest compaction lost that prefix (later turns were made after it).
+#[must_use]
+pub fn made_before_compaction(compaction_at: Option<i64>, node: &NodeRecord) -> bool {
+    compaction_at.is_some_and(|at| node.created_at_ms <= at)
+}
+
 /// Detects whether `history` begins with a client-side compaction marker (which alters the
 /// conversation prefix and therefore invalidates prefix-bound signatures on earlier turns).
 #[must_use]
@@ -260,7 +421,8 @@ pub fn safe_reasoning_blocks_for_target(
                     encrypted_content, ..
                 },
             ) => !encrypted_content.is_empty(),
-            (ProviderDialect::Anthropic, ReasoningBlock::AnthropicThinking { signature, .. }) => {
+            (ProviderDialect::Anthropic, ReasoningBlock::AnthropicThinking { signature, .. })
+            | (ProviderDialect::GoogleGemini, ReasoningBlock::GeminiTextSignature { signature }) => {
                 !signature.is_empty()
             }
             (ProviderDialect::Anthropic, ReasoningBlock::AnthropicRedactedThinking { data }) => {
@@ -323,6 +485,104 @@ pub fn cross_provider_reasoning_handoff_for_node(
 
 #[cfg(test)]
 mod tests {
+    /// R39: the app gets the usage and thinking it shows, never the opaque reasoning payload.
+    #[test]
+    fn the_app_gets_slim_node_metadata() {
+        let raw = serde_json::json!({
+            "model_id": "m",
+            "input_tokens": 12,
+            "thinking_text": "because",
+            "reasoning_blocks": [{ "kind": "anthropic_thinking", "thinking": "x", "signature": "s".repeat(4096) }],
+            "server_state": { "response_id": "resp_1" },
+            "attachments": [],
+        })
+        .to_string();
+        let slim = ui_node_meta(Some(&raw)).unwrap_or_default();
+        let val: Value = serde_json::from_str(&slim).unwrap_or(Value::Null);
+        assert_eq!(val["model_id"], "m");
+        assert_eq!(val["input_tokens"], 12);
+        assert_eq!(val["thinking_text"], "because");
+        assert!(val.get("reasoning_blocks").is_none());
+        assert!(val.get("server_state").is_none());
+        assert!(slim.len() < raw.len() / 4);
+        assert_eq!(ui_node_meta(None), None);
+    }
+
+    /// A tool call left without a result (a stopped or crashed run) gets a "did not run" result
+    /// right after its turn, so the next request is valid and the model knows (pi #9986).
+    #[test]
+    fn a_dangling_tool_call_gets_a_did_not_run_result() {
+        let rec = |id: &str, role, meta: Option<Value>| NodeRecord {
+            id: id.to_owned(),
+            thread_id: "t".to_owned(),
+            parent_id: None,
+            role,
+            content: "x".to_owned(),
+            provider_meta_json: meta.map(|m| m.to_string()),
+            created_at_ms: 1,
+        };
+        let calls = serde_json::json!({ "tool_calls": [
+            { "call_id": "c1", "name": "read", "arguments_json": "{}" },
+            { "call_id": "c2", "name": "grep", "arguments_json": "{}" }
+        ]});
+        let answered = serde_json::json!({ "tool_result": { "call_id": "c1", "name": "read" } });
+        let history = vec![
+            rec("u", NodeRole::User, None),
+            rec("a", NodeRole::Assistant, Some(calls)),
+            rec("r1", NodeRole::Tool, Some(answered)),
+            rec("u2", NodeRole::User, None),
+        ];
+        let fixed = answer_dangling_tool_calls(history);
+        let roles: Vec<NodeRole> = fixed.iter().map(|n| n.role).collect();
+        assert_eq!(
+            roles,
+            [
+                NodeRole::User,
+                NodeRole::Assistant,
+                NodeRole::Tool,
+                NodeRole::Tool,
+                NodeRole::User
+            ]
+        );
+        let synthetic = parse_turn_wire_meta(fixed[3].provider_meta_json.as_deref());
+        let res = synthetic.tool_result.unwrap_or_else(|| StoredToolResult {
+            call_id: String::new(),
+            name: String::new(),
+            is_error: false,
+            media_attachments: Vec::new(),
+        });
+        assert_eq!(
+            (res.call_id.as_str(), res.name.as_str(), res.is_error),
+            ("c2", "grep", true)
+        );
+        assert_eq!(fixed[3].content, TOOL_CALL_DID_NOT_RUN);
+    }
+
+    /// R14: a compaction only invalidates reasoning made before it; a turn made after the
+    /// newest summary keeps its blocks.
+    #[test]
+    fn reasoning_made_after_the_compaction_is_still_replayable() {
+        use bistre_protocol::{NodeRecord, NodeRole};
+        let node = |role, at: i64| NodeRecord {
+            id: format!("n{at}"),
+            thread_id: "t".to_owned(),
+            parent_id: None,
+            role,
+            content: "x".to_owned(),
+            provider_meta_json: None,
+            created_at_ms: at,
+        };
+        let history = vec![
+            node(NodeRole::Assistant, 10),
+            node(NodeRole::CompactionSummary, 20),
+            node(NodeRole::Assistant, 30),
+        ];
+        let at = latest_compaction_ms(&history);
+        assert!(made_before_compaction(at, &history[0]));
+        assert!(!made_before_compaction(at, &history[2]));
+        assert!(!made_before_compaction(None, &history[0]));
+    }
+
     use super::*;
 
     fn ctx(dialect: ProviderDialect, model: &str, sys: &str, tools: &str) -> ReplayContext {
@@ -337,6 +597,41 @@ mod tests {
             system_hash: blake3_short_hash(sys),
             tools_hash: blake3_short_hash(tools),
         }
+    }
+
+    /// R7: chaining happens when storing is on and the history is uncompacted, and then only
+    /// the items after the chained reply are sent.
+    #[test]
+    fn chaining_needs_storing_and_sends_only_the_new_items() {
+        let target = ctx(ProviderDialect::OpenAi, "m", "sys", "tools");
+        let meta = serde_json::json!({
+            "origin": origin(ProviderDialect::OpenAi, "m", "sys", "tools"),
+            "server_state": { "response_id": "resp_1", "store_enabled": true }
+        });
+        let rec = |id: &str, role, content: &str, meta: Option<String>| NodeRecord {
+            id: id.to_owned(),
+            thread_id: "thread-1".to_owned(),
+            parent_id: None,
+            role,
+            content: content.to_owned(),
+            provider_meta_json: meta,
+            created_at_ms: 1,
+        };
+        let history = vec![
+            rec("u1", NodeRole::User, "one", None),
+            rec("a1", NodeRole::Assistant, "reply", Some(meta.to_string())),
+            rec("u2", NodeRole::User, "two", None),
+        ];
+        let plan = chain_plan(&history, &target, true);
+        assert_eq!(
+            plan.as_ref()
+                .map(|p| (p.previous_id.as_str(), p.first_new_index)),
+            Some(("resp_1", 2))
+        );
+        assert_eq!(chain_plan(&history, &target, false), None, "storing is off");
+        let mut compacted = history.clone();
+        compacted.insert(0, rec("s", NodeRole::CompactionSummary, "sum", None));
+        assert_eq!(chain_plan(&compacted, &target, true), None, "compacted");
     }
 
     #[test]

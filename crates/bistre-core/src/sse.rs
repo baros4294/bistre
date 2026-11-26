@@ -30,6 +30,9 @@ pub struct SseFramer {
     started: bool,
     saw_sse_field: bool,
     plain_body: String,
+    /// Bytes at the start of `pending` already searched for a line ending, so each chunk is
+    /// scanned once (linear in the line length, not quadratic).
+    scanned: usize,
 }
 
 fn is_complete_json(text: &str) -> bool {
@@ -116,11 +119,17 @@ impl SseFramer {
         let mut cursor = 0_usize;
         let pending = core::mem::take(&mut self.pending);
         let bytes = pending.as_bytes();
+        // `scanned` never splits a char: it only ever ends before an ASCII `\r` or at the end.
+        let mut search_from = if at_eof {
+            0
+        } else {
+            self.scanned.min(bytes.len())
+        };
         while cursor < bytes.len() {
-            let Some(rel_idx) = pending[cursor..].find(['\n', '\r']) else {
+            let Some(rel_idx) = pending[search_from..].find(['\n', '\r']) else {
                 break;
             };
-            let idx = cursor + rel_idx;
+            let idx = search_from + rel_idx;
             let is_cr = bytes[idx] == b'\r';
             if is_cr && idx + 1 == bytes.len() && !at_eof {
                 // Hold back a trailing `\r`: the matching `\n` may arrive in the next chunk.
@@ -134,11 +143,15 @@ impl SseFramer {
             let line = &pending[cursor..idx];
             self.handle_line(line, out);
             cursor = idx + terminator_len;
+            search_from = cursor;
         }
         if at_eof && cursor < bytes.len() {
             self.handle_line(&pending[cursor..], out);
             cursor = bytes.len();
         }
+        // What is left has no line ending, except perhaps one held-back trailing `\r`.
+        let left = bytes.len() - cursor.min(bytes.len());
+        self.scanned = left - usize::from(bytes.last() == Some(&b'\r') && left > 0);
         if cursor == 0 {
             self.pending = pending;
         } else if cursor >= bytes.len() {
@@ -254,6 +267,25 @@ mod tests {
         }
         out.extend(framer.finish());
         out
+    }
+
+    /// A long line arriving in many chunks is scanned once, not once per chunk (a quadratic
+    /// rescan made a 64 MiB line take minutes). 16 MiB in 16 KiB chunks must take well under
+    /// two seconds even in a debug build.
+    #[test]
+    fn a_long_line_in_many_chunks_is_scanned_in_linear_time() -> BistreResult<()> {
+        let mut framer = SseFramer::new();
+        framer.push_bytes(b"data: ")?;
+        let chunk = vec![b'a'; 16 * 1024];
+        let started = std::time::Instant::now();
+        for _ in 0..1024 {
+            framer.push_bytes(&chunk)?;
+        }
+        let got = framer.push_bytes(b"\n\n")?;
+        let elapsed = started.elapsed();
+        assert_eq!(got.len(), 1);
+        assert!(elapsed < Duration::from_secs(2), "took {elapsed:?}");
+        Ok(())
     }
 
     #[test]

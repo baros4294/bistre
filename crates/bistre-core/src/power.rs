@@ -168,22 +168,38 @@ impl PowerCoordinator {
 
     /// Acquires a run-scoped sleep lease. Drops release automatically when the final run ends.
     pub fn acquire_run_lease(self: &Arc<Self>, reason: impl Into<String>) -> PowerRunLease {
+        self.add_lease(&reason.into());
+        PowerRunLease {
+            coordinator: Arc::clone(self),
+        }
+    }
+
+    /// Gives back one run's keep-awake while the run waits for the user (decision D2): an
+    /// approval can wait for hours, and the machine may sleep meanwhile. Dropping the pause
+    /// takes the lease again.
+    pub fn pause_for_user(self: &Arc<Self>) -> PowerUserPause {
+        let reason = lock_or_recover(&self.reason, "reason").clone();
+        self.release_one();
+        PowerUserPause {
+            coordinator: Arc::clone(self),
+            reason,
+        }
+    }
+
+    fn add_lease(&self, reason_str: &str) {
         let prev = self.active_leases.fetch_add(1, Ordering::SeqCst);
-        let reason_str = reason.into();
         {
             let mut guard = lock_or_recover(&self.reason, "reason");
-            guard.clone_from(&reason_str);
+            guard.clear();
+            guard.push_str(reason_str);
         }
         if prev == 0 {
             let policy = *lock_or_recover(&self.policy, "policy");
             if policy.keep_awake_while_running {
-                self.try_acquire(policy, &reason_str);
+                self.try_acquire(policy, reason_str);
             }
         } else {
             self.retry_if_due();
-        }
-        PowerRunLease {
-            coordinator: Arc::clone(self),
         }
     }
 
@@ -257,6 +273,20 @@ pub struct PowerRunLease {
 impl Drop for PowerRunLease {
     fn drop(&mut self) {
         self.coordinator.release_one();
+    }
+}
+
+/// RAII pause of one run lease while the run waits for the user; drop resumes the lease.
+#[derive(Debug)]
+pub struct PowerUserPause {
+    coordinator: Arc<PowerCoordinator>,
+    reason: String,
+}
+
+impl Drop for PowerUserPause {
+    fn drop(&mut self) {
+        self.coordinator
+            .add_lease(&std::mem::take(&mut self.reason));
     }
 }
 

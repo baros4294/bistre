@@ -35,7 +35,7 @@ pub struct ToolExecutionPermit {
 }
 
 /// Canonical digest of tool arguments (sorted-key JSON, `blake3`).
-fn args_digest(args: &Value) -> String {
+pub(crate) fn args_digest(args: &Value) -> String {
     blake3::hash(args.to_string().as_bytes())
         .to_hex()
         .as_str()

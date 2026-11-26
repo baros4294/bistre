@@ -41,12 +41,18 @@ pub struct StreamRequestOptions<'a> {
     pub replay_ctx: Option<&'a ReplayContext>,
     pub tools_wire: Option<&'a [Value]>,
     pub previous_server_id: Option<&'a str>,
+    /// R7: where the items after the chained reply begin in `history` (only they are sent
+    /// when chaining); ignored without `previous_server_id`.
+    pub chain_first_new_index: usize,
+    /// The run's decision whether the provider stores this request (R7: one decision shared
+    /// with chaining); `None` takes it from the provider profile.
+    pub store: Option<bool>,
     pub anthropic_cache_1h: bool,
     pub anthropic_server_compaction: bool,
     pub disable_legacy_fallback: bool,
     pub reply_prefill: Option<String>,
     pub anthropic_beta_headers: Vec<String>,
-    pub extra_headers: Vec<(String, String)>,
+    pub extra_headers: Vec<crate::custom_headers::CustomHeader>,
     pub extra_body_fields: Option<serde_json::Map<String, Value>>,
 }
 
@@ -65,7 +71,7 @@ pub fn estimate_cost_micros(
     {
         return Some(MoneyMicros::ZERO);
     }
-    rates.map(|r| r.cost_for_dialect(provider.dialect, usage))
+    rates.and_then(|r| r.cost_for_dialect(provider.dialect, usage))
 }
 
 static CRYPTO_PROVIDER_INIT: OnceLock<()> = OnceLock::new();
@@ -191,7 +197,16 @@ pub async fn dispatch(
                 wire.headers.remove("anthropic-beta");
             }
             heals += 1;
-            notices.push((DiagnosticKey::ProviderRequestHealed, heal.code().to_owned()));
+            // R14: dropping reasoning for one request only marks the model "no reasoning"
+            // when the provider said reasoning is unsupported.
+            let code = if heal == crate::error_policy::Http400Heal::DropReasoning
+                && !crate::error_policy::says_reasoning_unsupported(&body_text)
+            {
+                "heal_drop_reasoning_once".to_owned()
+            } else {
+                heal.code().to_owned()
+            };
+            notices.push((DiagnosticKey::ProviderRequestHealed, code));
             continue;
         }
         // Only downgrade Gemini Interactions -> streamGenerateContent on 404 or once 400 heals are exhausted.
@@ -206,6 +221,7 @@ pub async fn dispatch(
             kind,
             status,
             parse_retry_hint(&resp_headers, &body_text, SystemTime::now()),
+            crate::finish::provider_reason(&body_text).as_deref(),
         ));
     }
 }
@@ -220,17 +236,16 @@ pub async fn fetch_models(
     if provider.dialect.requires_api_key() && keys.is_empty() {
         return Err(BistreError::new(DiagnosticKey::ProviderNotConfigured));
     }
-    let base = provider.base_url.trim_end_matches('/');
+    let base = provider.dialect.api_root(&provider.base_url);
     let mut headers = HeaderMap::new();
     headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
-    let url = match provider.dialect {
-        ProviderDialect::OpenAi | ProviderDialect::CustomOpenAi => format!("{base}/models"),
-        ProviderDialect::GoogleGemini => format!("{base}/v1beta/models"),
-        ProviderDialect::Anthropic => {
-            headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
-            format!("{base}/models")
-        }
-    };
+    if provider.dialect == ProviderDialect::Anthropic {
+        headers.insert(
+            "anthropic-version",
+            HeaderValue::from_static(bistre_protocol::dialect::ANTHROPIC_API_VERSION),
+        );
+    }
+    let url = format!("{base}{}", provider.dialect.models_path());
     let wire = WireRequest {
         dialect: provider.dialect,
         method: reqwest::Method::GET,
@@ -405,7 +420,10 @@ where
         return Err(BistreError::new(DiagnosticKey::ProviderNotConfigured));
     }
 
-    let store_server_state = !stateless_default && provider.use_server_state_cache;
+    let store_server_state = match options.store {
+        Some(store) => store,
+        None => !stateless_default && provider.use_server_state_cache,
+    };
     let base = provider.base_url.trim_end_matches('/');
     let primary_key = keys.primary().unwrap_or("");
     let uploaded = tokio::select! {
@@ -427,173 +445,272 @@ where
             ..StreamOutcome::default()
         });
     };
-    let mut effective_opts = options.clone();
-    if provider.dialect == ProviderDialect::Anthropic {
-        if !uploaded.refs.is_empty()
-            && !effective_opts
-                .anthropic_beta_headers
-                .iter()
-                .any(|b| b == "files-api-2025-04-14")
-        {
-            effective_opts
-                .anthropic_beta_headers
-                .push("files-api-2025-04-14".to_owned());
-        }
-        if effective_opts.anthropic_server_compaction
-            && history.len() >= 8
-            && history
-                .iter()
-                .any(|n| n.role == bistre_protocol::NodeRole::Tool)
-            && !effective_opts
-                .anthropic_beta_headers
-                .iter()
-                .any(|b| b == "context-management-2025-06-27")
-        {
-            effective_opts
-                .anthropic_beta_headers
-                .push("context-management-2025-06-27".to_owned());
-        }
-    }
-    let wire = build_stream_request_full(
-        provider.dialect,
-        base,
-        clean_model,
-        system_prompt,
-        history,
-        gen_params,
-        store_server_state,
-        data_dir,
-        &uploaded.refs,
-        &effective_opts,
-    );
-    let mut state = StreamState::default();
-    state.started_at = Some(std::time::Instant::now());
-    // Stop must take effect while connecting and while waiting for the first token, not only
-    // between chunks (the first-token budget is 300 s).
-    let dispatched = tokio::select! {
-        biased;
-        () = until_cancelled(cancel_flag) => None,
-        r = dispatch(client, wire, keys, &mut state.out.notices) => Some(r),
+    // R11: uploaded files belong to the key that uploaded them (the primary).
+    let pinned_keys;
+    let request_keys = if uploaded.refs.is_empty() {
+        keys
+    } else {
+        pinned_keys = keys.primary_only();
+        &pinned_keys
     };
-    let Some(dispatched) = dispatched else {
-        state.out.cancelled = true;
-        return Ok(state.out);
-    };
-    let mut resp = match dispatched {
-        Ok(r) => r,
-        Err(err) => {
+    // R24: say which attachments the model will not get (each is replaced by a note).
+    let unsent = data_dir.map_or_else(Vec::new, |dir| {
+        crate::attachments::unsent_attachment_names_with_refs(dir, history, &uploaded.refs)
+    });
+    let result: BistreResult<StreamOutcome> = async {
+        let mut effective_opts = options.clone();
+        if provider.dialect == ProviderDialect::Anthropic {
             if !uploaded.refs.is_empty()
-                && matches!(
-                    err.key,
-                    DiagnosticKey::ProviderRequestFailed | DiagnosticKey::ProviderAuthFailed
-                )
+                && !effective_opts
+                    .anthropic_beta_headers
+                    .iter()
+                    .any(|b| b == bistre_protocol::dialect::ANTHROPIC_BETA_FILES)
             {
-                crate::attachments::evict_remote_file_cache(
-                    data_dir,
-                    provider.dialect,
-                    base,
-                    primary_key,
-                );
+                effective_opts
+                    .anthropic_beta_headers
+                    .push(bistre_protocol::dialect::ANTHROPIC_BETA_FILES.to_owned());
             }
-            for (d, fid) in &uploaded.ephemeral_ids {
-                crate::attachments::delete_remote_file(client, *d, base, primary_key, fid).await;
+            if effective_opts.anthropic_server_compaction
+                && history.len() >= 8
+                && history
+                    .iter()
+                    .any(|n| n.role == bistre_protocol::NodeRole::Tool)
+                && !effective_opts
+                    .anthropic_beta_headers
+                    .iter()
+                    .any(|b| b == bistre_protocol::dialect::ANTHROPIC_BETA_CONTEXT_MANAGEMENT)
+            {
+                effective_opts
+                    .anthropic_beta_headers
+                    .push(bistre_protocol::dialect::ANTHROPIC_BETA_CONTEXT_MANAGEMENT.to_owned());
             }
-            return Err(err);
         }
-    };
-
-    let mut sse = SseFramer::new();
-    let mut received_any = false;
-    loop {
-        if cancel_flag.load(Ordering::SeqCst) {
-            state.out.cancelled = true;
-            break;
-        }
-        let idle = if received_any {
-            STREAMING_LINE_TIMEOUT
-        } else {
-            INITIAL_LINE_TIMEOUT
-        };
-        let waited = tokio::select! {
+        let wire = build_stream_request_full(
+            provider.dialect,
+            base,
+            clean_model,
+            system_prompt,
+            history,
+            gen_params,
+            store_server_state,
+            data_dir,
+            &uploaded.refs,
+            &effective_opts,
+        );
+        let mut state = StreamState::default();
+        state.started_at = Some(std::time::Instant::now());
+        // Stop must take effect while connecting and while waiting for the first token, not only
+        // between chunks (the first-token budget is 300 s).
+        let dispatched = tokio::select! {
             biased;
             () = until_cancelled(cancel_flag) => None,
-            r = tokio::time::timeout(idle, resp.chunk()) => Some(r),
+            r = dispatch(client, wire, request_keys, &mut state.out.notices) => Some(r),
         };
-        let Some(waited) = waited else {
+        let Some(dispatched) = dispatched else {
             state.out.cancelled = true;
-            break;
+            return Ok(state.out);
         };
-        let next_chunk = match waited {
-            Ok(Ok(chunk)) => chunk,
-            failure => {
-                let detail = if failure.is_err() {
-                    "idle_timeout"
-                } else {
-                    "stream_io"
-                };
-                // Once any output reached the user the request is paid and visible: keep it and
-                // mark the reply interrupted. Only a stream that produced nothing may be retried.
-                if crate::error_policy::may_retry_stream(
-                    &state.out.full_text,
-                    state.out.tool_calls.len(),
-                ) && state.out.thinking_text.is_empty()
+        let mut resp = match dispatched {
+            Ok(r) => r,
+            Err(err) => {
+                if !uploaded.refs.is_empty()
+                    && matches!(
+                        err.key,
+                        DiagnosticKey::ProviderRequestFailed | DiagnosticKey::ProviderAuthFailed
+                    )
                 {
-                    return Err(BistreError::with_detail(
-                        DiagnosticKey::ProviderStreamInterrupted,
-                        detail,
-                    ));
+                    crate::attachments::evict_remote_file_cache(
+                        data_dir,
+                        provider.dialect,
+                        base,
+                        primary_key,
+                    );
                 }
-                state.out.interrupted = true;
+                return Err(err);
+            }
+        };
+
+        let mut sse = SseFramer::new();
+        let mut received_any = false;
+        let epoch = RESUME_EPOCH.load(Ordering::SeqCst);
+        let mut last_byte = std::time::Instant::now();
+        loop {
+            if cancel_flag.load(Ordering::SeqCst) {
+                state.out.cancelled = true;
                 break;
             }
-        };
-        let Some(bytes) = next_chunk else {
-            break;
-        };
-        received_any = true;
-        if cancel_flag.load(Ordering::SeqCst) {
-            state.out.cancelled = true;
-            break;
+            let idle = if received_any {
+                STREAMING_LINE_TIMEOUT
+            } else {
+                INITIAL_LINE_TIMEOUT
+            };
+            let waited = tokio::select! {
+                biased;
+                () = until_cancelled(cancel_flag) => None,
+                () = stalled_across_resume(epoch, last_byte) => Some(Ok(Err(None))),
+                r = tokio::time::timeout(idle, resp.chunk()) => Some(r.map(|c| c.map_err(Some))),
+            };
+            let Some(waited) = waited else {
+                state.out.cancelled = true;
+                break;
+            };
+            let next_chunk = match waited {
+                Ok(Ok(chunk)) => chunk,
+                failure => {
+                    let detail = match failure {
+                        Err(_) => "idle_timeout",
+                        Ok(Err(None)) => "resume_stall",
+                        _ => "stream_io",
+                    };
+                    // Once any output reached the user the request is paid and visible: keep it and
+                    // mark the reply interrupted. Only a stream that produced nothing may be retried.
+                    if crate::error_policy::may_retry_stream(
+                        &state.out.full_text,
+                        state.out.tool_calls.len(),
+                    ) && state.out.thinking_text.is_empty()
+                    {
+                        return Err(BistreError::with_detail(
+                            DiagnosticKey::ProviderStreamInterrupted,
+                            detail,
+                        ));
+                    }
+                    state.out.interrupted = true;
+                    break;
+                }
+            };
+            let Some(bytes) = next_chunk else {
+                break;
+            };
+            last_byte = std::time::Instant::now();
+            received_any = true;
+            if cancel_flag.load(Ordering::SeqCst) {
+                state.out.cancelled = true;
+                break;
+            }
+            let payloads = match sse.push_bytes(&bytes) {
+                Ok(payloads) => payloads,
+                Err(err) => {
+                    // R8: the buffer cap follows the dropped-stream rule. Retry only when nothing
+                    // was shown; otherwise keep the paid, visible output and mark it interrupted.
+                    if crate::error_policy::may_retry_stream(
+                        &state.out.full_text,
+                        state.out.tool_calls.len(),
+                    ) && state.out.thinking_text.is_empty()
+                    {
+                        return Err(err);
+                    }
+                    tracing::warn!(
+                        key = err.key.as_key(),
+                        detail = err.detail_code.as_deref().unwrap_or_default(),
+                        "stream stopped after output; reply kept as interrupted"
+                    );
+                    state.out.interrupted = true;
+                    break;
+                }
+            };
+            for payload in payloads {
+                state.handle_payload(provider.dialect, &payload, &mut on_delta, &mut on_thinking);
+            }
         }
-        for payload in sse.push_bytes(&bytes)? {
+        for payload in sse.finish() {
             state.handle_payload(provider.dialect, &payload, &mut on_delta, &mut on_thinking);
         }
-    }
-    for payload in sse.finish() {
-        state.handle_payload(provider.dialect, &payload, &mut on_delta, &mut on_thinking);
-    }
-    let tail = state.text_norm.finish();
-    if !tail.is_empty() {
-        state.out.full_text.push_str(&tail);
-        on_delta(&tail);
-    }
-    state.finalize(provider.dialect);
-
-    if !state.out.cancelled && !state.terminal_seen {
-        if state.out.full_text.is_empty()
-            && state.out.thinking_text.is_empty()
-            && state.out.tool_calls.is_empty()
-        {
-            for (d, fid) in &uploaded.ephemeral_ids {
-                crate::attachments::delete_remote_file(client, *d, base, primary_key, fid).await;
-            }
-            return Err(BistreError::with_detail(
-                DiagnosticKey::ProviderStreamInterrupted,
-                "eof_before_output",
-            ));
+        let tail = state.text_norm.finish();
+        if !tail.is_empty() {
+            state.out.full_text.push_str(&tail);
+            on_delta(&tail);
         }
-        state.out.interrupted = true;
+        state.finalize(provider.dialect);
+
+        // R10/R42: an error frame (or a plain JSON error body) is the real ending. Without
+        // output, a retryable one (overload, server error) takes the retry path and anything
+        // else fails at once with the provider's reason; after output, the reply is kept and
+        // marked interrupted.
+        if let Some(crate::finish::FinishKind::Error { retryable, code }) = state.out.finish.clone()
+            && !state.out.cancelled
+        {
+            let no_output = state.out.full_text.is_empty()
+                && state.out.thinking_text.is_empty()
+                && state.out.tool_calls.is_empty();
+            if no_output {
+                let mut detail = format!("stream_error:{}", crate::finish::sanitize_reason(&code));
+                if let Some(reason) = state.out.error_reason.as_deref() {
+                    detail.push_str(";reason=");
+                    detail.push_str(reason);
+                }
+                let key = if retryable {
+                    DiagnosticKey::ProviderStreamInterrupted
+                } else {
+                    DiagnosticKey::ProviderRequestFailed
+                };
+                return Err(BistreError::with_detail(key, detail));
+            }
+            state.out.interrupted = true;
+        }
+
+        if !state.out.cancelled && !state.terminal_seen {
+            if state.out.full_text.is_empty()
+                && state.out.thinking_text.is_empty()
+                && state.out.tool_calls.is_empty()
+            {
+                return Err(BistreError::with_detail(
+                    DiagnosticKey::ProviderStreamInterrupted,
+                    "eof_before_output",
+                ));
+            }
+            state.out.interrupted = true;
+        }
+        Ok(state.out)
     }
+    .await;
+    // R12: files uploaded for this request alone (`store: false`) are deleted on every path
+    // (success, error, and Stop), never only after a clean finish.
     for (d, fid) in &uploaded.ephemeral_ids {
         crate::attachments::delete_remote_file(client, *d, base, primary_key, fid).await;
     }
-    Ok(state.out)
+    result.map(|mut out| {
+        out.notices.extend(
+            unsent
+                .into_iter()
+                .map(|name| (DiagnosticKey::AttachmentNotSent, name)),
+        );
+        out
+    })
 }
 
 /// How often an in-flight request re-checks its Stop flag (cancel latency bound).
 pub const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Resolves once `flag` is set. Only awaited while a request is in flight, never while idle.
+/// Bumped each time the app comes back to the foreground or the system wakes (P19).
+static RESUME_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// How long a stream may have been silent before a resume ends it (P19). A live stream sends
+/// something well within this; one that died while the app was away never will.
+#[cfg(not(test))]
+const RESUME_STALL_AFTER: Duration = Duration::from_secs(15);
+#[cfg(test)]
+const RESUME_STALL_AFTER: Duration = Duration::from_millis(500);
+
+/// P19: the app came back (or the system woke); streams silent for longer than
+/// [`RESUME_STALL_AFTER`] end now instead of waiting out their idle timeout.
+pub fn note_app_resumed() {
+    RESUME_EPOCH.fetch_add(1, Ordering::SeqCst);
+}
+
+/// Resolves once a resume happened after `seen_epoch` while the stream had been silent for
+/// [`RESUME_STALL_AFTER`] since `last_byte`.
+async fn stalled_across_resume(seen_epoch: u64, last_byte: std::time::Instant) {
+    loop {
+        tokio::time::sleep(CANCEL_POLL_INTERVAL).await;
+        if RESUME_EPOCH.load(Ordering::SeqCst) != seen_epoch
+            && last_byte.elapsed() >= RESUME_STALL_AFTER
+        {
+            return;
+        }
+    }
+}
+
 pub async fn until_cancelled(flag: &AtomicBool) {
     while !flag.load(Ordering::SeqCst) {
         tokio::time::sleep(CANCEL_POLL_INTERVAL).await;
@@ -612,32 +729,20 @@ fn stream_headers(dialect: ProviderDialect, options: &StreamRequestOptions<'_>) 
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     headers.insert(ACCEPT, HeaderValue::from_static("text/event-stream"));
     if dialect == ProviderDialect::Anthropic {
-        headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
+        headers.insert(
+            "anthropic-version",
+            HeaderValue::from_static(bistre_protocol::dialect::ANTHROPIC_API_VERSION),
+        );
         if !options.anthropic_beta_headers.is_empty()
             && let Ok(val) = HeaderValue::from_str(&options.anthropic_beta_headers.join(","))
         {
             headers.insert("anthropic-beta", val);
         }
     }
-    for (k, v) in &options.extra_headers {
-        let lower = k.trim().to_ascii_lowercase();
-        if matches!(
-            lower.as_str(),
-            "authorization"
-                | "x-api-key"
-                | "x-goog-api-key"
-                | "host"
-                | "content-length"
-                | "transfer-encoding"
-        ) {
-            continue;
-        }
-        if let (Ok(name), Ok(val)) = (
-            reqwest::header::HeaderName::from_bytes(k.trim().as_bytes()),
-            HeaderValue::from_str(v.trim()),
-        ) {
-            headers.insert(name, val);
-        }
+    // Already validated at the boundary (`custom_headers::parse_custom_headers`): never a
+    // reserved, credential, or malformed header.
+    for h in &options.extra_headers {
+        headers.insert(h.name().clone(), h.value().clone());
     }
     headers
 }
@@ -739,10 +844,12 @@ pub fn build_stream_request_full<S: std::hash::BuildHasher>(
     gemini_uris: &HashMap<String, String, S>,
     options: &StreamRequestOptions<'_>,
 ) -> WireRequest {
+    let base = dialect.api_root(base);
+    let endpoint = format!("{base}{}", dialect.default_endpoint_path());
     match dialect {
         ProviderDialect::OpenAi => wire(
             dialect,
-            format!("{base}/responses"),
+            endpoint,
             openai_responses_body(
                 model,
                 system_prompt,
@@ -776,7 +883,7 @@ pub fn build_stream_request_full<S: std::hash::BuildHasher>(
             });
             wire(
                 dialect,
-                format!("{base}/v1beta/interactions"),
+                endpoint,
                 gemini_interactions_body(
                     model,
                     system_prompt,
@@ -793,7 +900,7 @@ pub fn build_stream_request_full<S: std::hash::BuildHasher>(
         }
         ProviderDialect::Anthropic => wire(
             dialect,
-            format!("{base}/messages"),
+            endpoint,
             anthropic_messages_body(
                 model,
                 system_prompt,
@@ -808,11 +915,20 @@ pub fn build_stream_request_full<S: std::hash::BuildHasher>(
         ),
         ProviderDialect::CustomOpenAi => wire(
             dialect,
-            format!("{base}/chat/completions"),
+            endpoint,
             openai_compat_chat_body(model, system_prompt, history, gen_params, data_dir, options),
             options,
             None,
         ),
+    }
+}
+
+/// R7: how many history nodes a chained request leaves out (the server holds them).
+const fn chain_skip(store: bool, options: &StreamRequestOptions<'_>) -> usize {
+    if store && options.previous_server_id.is_some() {
+        options.chain_first_new_index
+    } else {
+        0
     }
 }
 
@@ -830,12 +946,24 @@ fn openai_responses_body<S: std::hash::BuildHasher>(
     remote_refs: &HashMap<String, String, S>,
     options: &StreamRequestOptions<'_>,
 ) -> Value {
-    let input = crate::wire_history::build_openai_responses_input_with_refs(
+    let mut input = crate::wire_history::build_openai_responses_input_with_refs(
         history,
         data_dir,
         remote_refs,
         options.replay_ctx,
+        chain_skip(store, options),
     );
+    // G1 (`OpenAI` prompt-caching guide, read 2026-11-26): newer models append top-level
+    // `instructions` after `input`; a `developer` message first in `input` keeps the system
+    // prompt inside the cached prefix.
+    // A chained request already has it in the stored conversation (prompt-caching guide).
+    let chained = store && options.previous_server_id.is_some();
+    if !system_prompt.trim().is_empty() && !chained {
+        input.insert(
+            0,
+            serde_json::json!({ "role": "developer", "content": system_prompt }),
+        );
+    }
     let mut obj = serde_json::Map::new();
     // Serialize `tools` FIRST for prompt-cache prefix stability (Spec 02).
     if let Some(tools) = options.tools_wire
@@ -844,12 +972,6 @@ fn openai_responses_body<S: std::hash::BuildHasher>(
         obj.insert("tools".to_owned(), Value::Array(tools.to_vec()));
     }
     obj.insert("model".to_owned(), Value::String(model.to_owned()));
-    if !system_prompt.trim().is_empty() {
-        obj.insert(
-            "instructions".to_owned(),
-            Value::String(system_prompt.to_owned()),
-        );
-    }
     obj.insert("input".to_owned(), Value::Array(input));
     obj.insert("stream".to_owned(), Value::Bool(true));
     obj.insert("store".to_owned(), Value::Bool(store));
@@ -935,6 +1057,7 @@ fn gemini_interactions_body<S: std::hash::BuildHasher>(
         data_dir,
         gemini_uris,
         options.replay_ctx,
+        chain_skip(store, options),
     );
     let mut obj = serde_json::Map::new();
     if let Some(tools) = options.tools_wire

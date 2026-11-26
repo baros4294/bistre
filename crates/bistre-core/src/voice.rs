@@ -74,7 +74,11 @@ pub async fn synthesize_speech(
     if clean_model.is_empty() {
         return Err(BistreError::new(DiagnosticKey::ProviderModelRequired));
     }
-    let api_key = keys.primary().unwrap_or("");
+    // Keys rotate like every other request; a missing key never sends an empty credential.
+    let api_key = keys.rotation().first().copied().unwrap_or("");
+    if api_key.is_empty() && !crate::net::is_loopback_url(&provider.base_url) {
+        return Err(BistreError::new(DiagnosticKey::ProviderNotConfigured));
+    }
     let base = resolve_base_url(provider.dialect, &provider.base_url);
     let voice_name =
         voice
@@ -117,6 +121,7 @@ async fn synthesize_gemini_tts(
     voice_name: &str,
 ) -> BistreResult<Vec<u8>> {
     let model_slug = clean_model.strip_prefix("models/").unwrap_or(clean_model);
+    let base = ProviderDialect::GoogleGemini.api_root(base);
     let url = format!("{base}/v1beta/models/{model_slug}:generateContent");
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
@@ -367,6 +372,92 @@ impl LiveVoiceManager {
     }
 }
 
+/// Where and how a live-voice WebSocket connects.
+#[derive(Debug, PartialEq, Eq)]
+struct LiveTarget {
+    host: String,
+    port: u16,
+    is_tls: bool,
+    path_and_query: String,
+    headers: Vec<(String, String)>,
+}
+
+/// Builds the live-voice WebSocket target.
+///
+/// Gemini Live authenticates only with a `key` query parameter (the documented method; an
+/// `x-goog-api-key` header is not accepted, verified 2026-11-25), so the key is URL-encoded
+/// into the query and the session is refused over plain `ws` to a non-loopback host, so the
+/// key never crosses the network unencrypted (A-S10). `OpenAI` Realtime keeps the base path
+/// (proxies mount it below `/v1`) and URL-encodes the model (R44).
+fn live_ws_target(
+    dialect: ProviderDialect,
+    base_url: &str,
+    model: &str,
+    api_key: &str,
+) -> BistreResult<LiveTarget> {
+    let is_local = crate::net::is_loopback_url(base_url);
+    if api_key.is_empty() && !is_local {
+        return Err(BistreError::new(DiagnosticKey::ProviderNotConfigured));
+    }
+    let base = resolve_base_url(dialect, base_url);
+    let parsed = reqwest::Url::parse(&base).map_err(|_| {
+        BistreError::with_detail(DiagnosticKey::InvalidInput, "live_invalid_base_url")
+    })?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| BistreError::with_detail(DiagnosticKey::InvalidInput, "live_no_host"))?
+        .to_owned();
+    let is_tls = parsed.scheme().eq_ignore_ascii_case("https");
+    if !is_tls && !is_local {
+        return Err(BistreError::with_detail(
+            DiagnosticKey::ProviderRequestFailed,
+            "live_insecure_transport",
+        ));
+    }
+    let port = parsed
+        .port_or_known_default()
+        .unwrap_or(if is_tls { 443 } else { 80 });
+    let mut target = parsed.clone();
+    let headers = match dialect {
+        ProviderDialect::GoogleGemini => {
+            target.set_path(
+                "/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent",
+            );
+            target.set_query(None);
+            if !api_key.is_empty() {
+                target.query_pairs_mut().append_pair("key", api_key);
+            }
+            Vec::new()
+        }
+        ProviderDialect::OpenAi | ProviderDialect::CustomOpenAi => {
+            let path = format!("{}/realtime", parsed.path().trim_end_matches('/'));
+            target.set_path(&path);
+            target.set_query(None);
+            target.query_pairs_mut().append_pair("model", model);
+            vec![
+                ("Authorization".to_owned(), format!("Bearer {api_key}")),
+                ("OpenAI-Beta".to_owned(), "realtime=v1".to_owned()),
+            ]
+        }
+        ProviderDialect::Anthropic => {
+            return Err(BistreError::with_detail(
+                DiagnosticKey::ProviderRequestFailed,
+                "live_voice_unsupported_dialect",
+            ));
+        }
+    };
+    let path_and_query = match target.query() {
+        Some(q) => format!("{}?{q}", target.path()),
+        None => target.path().to_owned(),
+    };
+    Ok(LiveTarget {
+        host,
+        port,
+        is_tls,
+        path_and_query,
+        headers,
+    })
+}
 #[expect(
     clippy::too_many_arguments,
     reason = "Live voice runner takes explicit immutable session config without global state."
@@ -381,46 +472,15 @@ async fn run_live_voice_ws(
     mut rx: mpsc::Receiver<LiveOutbound>,
     events_tx: &broadcast::Sender<EngineEvent>,
 ) -> BistreResult<()> {
-    let api_key = keys.primary().unwrap_or("");
-    let is_local = crate::net::is_loopback_url(&provider.base_url);
-    if api_key.is_empty() && !is_local {
-        return Err(BistreError::new(DiagnosticKey::ProviderNotConfigured));
-    }
-    let base = resolve_base_url(provider.dialect, &provider.base_url);
-    let parsed = reqwest::Url::parse(&base).map_err(|_| {
-        BistreError::with_detail(DiagnosticKey::InvalidInput, "live_invalid_base_url")
-    })?;
-    let host = parsed
-        .host_str()
-        .ok_or_else(|| BistreError::with_detail(DiagnosticKey::InvalidInput, "live_no_host"))?
-        .to_owned();
-    let is_tls = parsed.scheme().eq_ignore_ascii_case("https");
-    let port = parsed
-        .port_or_known_default()
-        .unwrap_or(if is_tls { 443 } else { 80 });
-
-    let (ws_path, extra_headers) = match provider.dialect {
-        ProviderDialect::GoogleGemini => (
-            format!(
-                "/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key={api_key}"
-            ),
-            Vec::<(String, String)>::new(),
-        ),
-        ProviderDialect::OpenAi | ProviderDialect::CustomOpenAi => (
-            format!("/v1/realtime?model={model}"),
-            vec![
-                ("Authorization".to_owned(), format!("Bearer {api_key}")),
-                ("OpenAI-Beta".to_owned(), "realtime=v1".to_owned()),
-            ],
-        ),
-        ProviderDialect::Anthropic => {
-            return Err(BistreError::with_detail(
-                DiagnosticKey::ProviderRequestFailed,
-                "live_voice_unsupported_dialect",
-            ));
-        }
-    };
-
+    // Keys rotate like every other request (round-robin start).
+    let api_key = keys.rotation().first().copied().unwrap_or("");
+    let LiveTarget {
+        host,
+        port,
+        is_tls,
+        path_and_query: ws_path,
+        headers: extra_headers,
+    } = live_ws_target(provider.dialect, &provider.base_url, model, api_key)?;
     let tcp = TcpStream::connect((host.as_str(), port))
         .await
         .map_err(|_| BistreError::with_detail(DiagnosticKey::ProviderRequestFailed, "live_tcp"))?;
@@ -972,4 +1032,60 @@ async fn read_ws_frame<R: AsyncRead + Unpin>(
         }
     }
     Ok(Some((opcode, payload)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A-S10 + R44: the Gemini key is URL-encoded into the documented `key` query, plain `ws`
+    /// to a public host is refused, and `OpenAI` keeps its base path with an encoded model.
+    #[test]
+    fn live_targets_encode_secrets_and_refuse_insecure_public_hosts() -> BistreResult<()> {
+        let gemini = live_ws_target(
+            ProviderDialect::GoogleGemini,
+            "https://generativelanguage.googleapis.com/v1beta",
+            "m",
+            "a+b/c&d",
+        )?;
+        assert!(gemini.is_tls);
+        assert_eq!(
+            gemini.path_and_query,
+            "/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=a%2Bb%2Fc%26d"
+        );
+        assert_eq!(gemini.headers.len(), 0);
+
+        let insecure = live_ws_target(
+            ProviderDialect::GoogleGemini,
+            "http://proxy.example.com/v1beta",
+            "m",
+            "secret",
+        );
+        assert_eq!(
+            insecure.err().and_then(|e| e.detail_code).as_deref(),
+            Some("live_insecure_transport")
+        );
+        assert!(
+            live_ws_target(
+                ProviderDialect::GoogleGemini,
+                "http://127.0.0.1:9000",
+                "m",
+                "k"
+            )
+            .is_ok(),
+            "a loopback test server may use plain ws"
+        );
+
+        let openai = live_ws_target(
+            ProviderDialect::OpenAi,
+            "https://gateway.example.com/openai/v1/",
+            "gpt realtime&x",
+            "sk",
+        )?;
+        assert_eq!(
+            openai.path_and_query,
+            "/openai/v1/realtime?model=gpt+realtime%26x"
+        );
+        Ok(())
+    }
 }

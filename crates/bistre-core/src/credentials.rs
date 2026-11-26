@@ -121,6 +121,15 @@ impl KeyRing {
         self.keys.iter().map(|k| k.as_str().to_owned()).collect()
     }
 
+    /// A ring of the primary key alone (R11): a request that refers to files uploaded with
+    /// the primary key must be sent with it (another key gets 403/404 for those files).
+    #[must_use]
+    pub fn primary_only(&self) -> Self {
+        Self {
+            keys: self.keys.first().cloned().into_iter().collect(),
+        }
+    }
+
     /// Every key exactly once, starting at the next round-robin position.
     pub fn rotation(&self) -> Vec<&str> {
         if self.keys.is_empty() {
@@ -163,20 +172,34 @@ pub fn apply_auth_header(
     }
 }
 
+/// The exact URLs a provider is called at (P8): shown in settings and in a failed connection
+/// test, so the user sees what was tried.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedEndpoint {
+    pub chat_url: String,
+    pub models_url: String,
+}
+
+/// Resolves the chat and model-list URLs for `raw_base` (empty: the dialect's default).
+pub fn resolve_endpoint(
+    dialect: bistre_protocol::ProviderDialect,
+    raw_base: &str,
+) -> ResolvedEndpoint {
+    let base = resolve_base_url(dialect, raw_base);
+    let root = dialect.api_root(&base);
+    ResolvedEndpoint {
+        chat_url: format!("{root}{}", dialect.default_endpoint_path()),
+        models_url: format!("{root}{}", dialect.models_path()),
+    }
+}
+
 /// Resolves a normalized provider base URL (falling back to the dialect's canonical default).
 pub fn resolve_base_url(dialect: bistre_protocol::ProviderDialect, raw: &str) -> String {
     let trimmed = raw.trim().trim_end_matches('/');
     if !trimmed.is_empty() {
         return trimmed.to_owned();
     }
-    match dialect {
-        bistre_protocol::ProviderDialect::OpenAi => "https://api.openai.com/v1".to_owned(),
-        bistre_protocol::ProviderDialect::GoogleGemini => {
-            "https://generativelanguage.googleapis.com".to_owned()
-        }
-        bistre_protocol::ProviderDialect::Anthropic => "https://api.anthropic.com/v1".to_owned(),
-        bistre_protocol::ProviderDialect::CustomOpenAi => "http://127.0.0.1:11434/v1".to_owned(),
-    }
+    dialect.default_base_url().to_owned()
 }
 
 /// HTTP statuses that switch to the next key immediately instead of backing off.

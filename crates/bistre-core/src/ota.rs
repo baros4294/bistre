@@ -17,7 +17,6 @@ use std::io::Write as _;
 
 use bistre_crypto::{Sha256Stream, verify_minisign_bytes};
 use bistre_protocol::{BistreError, BistreResult, DiagnosticKey, UpdateCheckResult};
-use serde::Deserialize;
 
 /// Hard cap on a staged OTA payload.
 pub const MAX_OTA_PAYLOAD_BYTES: u64 = 256 * 1024 * 1024;
@@ -27,24 +26,6 @@ const MAX_OTA_MANIFEST_BYTES: usize = 1024 * 1024;
 /// Public Ed25519 Minisign verification key for official Bistre releases (key id `84A60109283936B3`).
 pub const OFFICIAL_RELEASE_PUBKEY_B64: &str =
     "RWSzNjkoCQGmhPhmWgUEVRju0AEHELP3evLMpoKRKRvhlpCZAL43T2Yb";
-
-#[derive(Debug, Deserialize)]
-struct RemoteUpdateManifest {
-    #[serde(default)]
-    version: String,
-    #[serde(default)]
-    semver: String,
-    #[serde(default = "default_track")]
-    track: String,
-    #[serde(default)]
-    release_notes: String,
-    #[serde(default)]
-    download_url: String,
-    #[serde(default)]
-    sha256_hex: String,
-    #[serde(default)]
-    download_size_bytes: u64,
-}
 
 /// A manifest whose minisign signature verified against the release key.
 ///
@@ -65,10 +46,6 @@ impl VerifiedManifest {
     pub fn latest_version(&self) -> &str {
         &self.latest_version
     }
-}
-
-fn default_track() -> String {
-    "track_b".to_owned()
 }
 
 /// Detects whether the current executable is owned by an external package manager (Spec 10).
@@ -210,29 +187,23 @@ pub async fn check_for_updates(
         .map_err(|_| BistreError::new(DiagnosticKey::CryptoSignatureInvalid))?;
     verify_minisign_bytes(pk, &manifest_bytes, &sig_text)?;
 
-    let parsed: RemoteUpdateManifest = serde_json::from_slice(&manifest_bytes)
-        .map_err(|_| BistreError::with_detail(DiagnosticKey::OtaCheckFailed, "manifest_json"))?;
-    let latest_version = if !parsed.semver.trim().is_empty() {
-        parsed.semver.trim().to_owned()
-    } else if !parsed.version.trim().is_empty() {
-        parsed.version.trim().to_owned()
-    } else {
-        current_version.to_owned()
-    };
-
+    // A-W 7b: the same typed manifest the release builder writes (format 2).
+    let parsed = crate::ota_manifest::OtaManifestV2::parse(&manifest_bytes)?;
+    let asset = parsed
+        .asset_for(crate::ota_manifest::OtaTarget::current())?
+        .clone();
+    let latest_version = parsed.semver.trim().to_owned();
     let update_available = is_semver_newer(&latest_version, current_version);
-    // A signed manifest without a valid digest is unusable; refuse it at check time.
-    let sha256_hex = normalize_sha256(&parsed.sha256_hex).ok_or_else(|| {
-        BistreError::with_detail(DiagnosticKey::OtaIntegrityFailed, "ota_sha256_missing")
-    })?;
+    let sha256_hex = asset.sha256.as_str().to_owned();
+    let download_size_bytes = asset.size_bytes.get();
 
     let verified = VerifiedManifest {
         latest_version: latest_version.clone(),
         track: parsed.track.clone(),
         ownership_mode: ownership.to_owned(),
-        download_url: parsed.download_url.clone(),
+        download_url: asset.url.clone(),
         sha256_hex: sha256_hex.clone(),
-        download_size_bytes: parsed.download_size_bytes,
+        download_size_bytes,
     };
     let summary = UpdateCheckResult {
         current_version: current_version.to_owned(),
@@ -243,9 +214,9 @@ pub async fn check_for_updates(
         signature_verified: true,
         active_runs_blocking: active_runs > 0,
         release_notes: parsed.release_notes,
-        download_url: parsed.download_url,
+        download_url: asset.url.clone(),
         sha256_hex,
-        download_size_bytes: parsed.download_size_bytes,
+        download_size_bytes,
         checked_at_ms: now_unix_ms(),
     };
     Ok((summary, verified))
@@ -257,8 +228,17 @@ pub async fn stage_update_artifact(
     http: &reqwest::Client,
     data_dir: &Path,
     check: &VerifiedManifest,
+    current_version: &str,
     active_runs: u32,
 ) -> BistreResult<String> {
+    // R27: only a strictly newer version is ever staged; a replayed older (or equal) signed
+    // manifest would be a downgrade.
+    if !is_semver_newer(&check.latest_version, current_version) {
+        return Err(BistreError::with_detail(
+            DiagnosticKey::OtaIntegrityFailed,
+            "ota_not_newer",
+        ));
+    }
     if check.ownership_mode != "self_managed" && check.track == "track_b" {
         return Err(BistreError::new(DiagnosticKey::OtaManagedExternally));
     }
@@ -370,13 +350,12 @@ pub async fn stage_update_artifact(
 }
 
 /// Requires `https://` (or `http://` strictly for loopback test feeds) and returns the trimmed URL.
+/// `https`, or `http` to a loopback host decided by the parsed URL (R28: never a string
+/// prefix, so `http://localhost.evil.com` is plain http to a public host and refused).
 fn require_secure_url<'a>(raw: &'a str, detail: &'static str) -> BistreResult<&'a str> {
     let url = raw.trim();
-    let lower = url.to_ascii_lowercase();
-    let loopback_http = lower.starts_with("http://127.0.0.1")
-        || lower.starts_with("http://localhost")
-        || lower.starts_with("http://[::1]");
-    if lower.starts_with("https://") || loopback_http {
+    let https = reqwest::Url::parse(url).is_ok_and(|u| u.scheme() == "https");
+    if https || crate::net::is_loopback_url(url) {
         Ok(url)
     } else {
         Err(BistreError::with_detail(
@@ -551,6 +530,36 @@ pub(crate) mod tests {
         assert!(require_secure_url("http://127.0.0.1:8080/m.json", "x").is_ok());
         assert!(require_secure_url("http://example.com/m.json", "x").is_err());
         assert!(require_secure_url("file:///m.json", "x").is_err());
+        // R28: loopback is decided by the parsed host, never a string prefix.
+        assert!(require_secure_url("http://localhost.evil.com/m.json", "x").is_err());
+        assert!(require_secure_url("http://127.0.0.1.evil.com/m.json", "x").is_err());
+        assert!(require_secure_url("http://localhost:8080/m.json", "x").is_ok());
+        assert!(require_secure_url("http://[::1]:9/m.json", "x").is_ok());
+    }
+
+    /// R27: a signed manifest that is not strictly newer than the running version is never
+    /// staged (replayed older manifests are downgrades).
+    #[tokio::test]
+    async fn staging_refuses_a_version_that_is_not_newer() -> TestResult {
+        let dir = tempfile::tempdir()?;
+        let http = crate::http_clients::ota_client()?;
+        for version in ["0.1.2", "0.1.1", "0.1.2-rc.1"] {
+            let check = VerifiedManifest {
+                latest_version: version.to_owned(),
+                track: "track_a".to_owned(),
+                ownership_mode: "self_managed".to_owned(),
+                download_url: "https://example.invalid/payload.bin".to_owned(),
+                sha256_hex: "a".repeat(64),
+                download_size_bytes: 1,
+            };
+            let staged = stage_update_artifact(&http, dir.path(), &check, "0.1.2", 0).await;
+            assert_eq!(
+                staged.err().and_then(|e| e.detail_code),
+                Some("ota_not_newer".to_owned()),
+                "{version}"
+            );
+        }
+        Ok(())
     }
 
     #[tokio::test]
@@ -566,7 +575,7 @@ pub(crate) mod tests {
             sha256_hex: String::new(),
             download_size_bytes: 0,
         };
-        let missing = stage_update_artifact(&http, dir.path(), &check, 0).await;
+        let missing = stage_update_artifact(&http, dir.path(), &check, "0.1.0", 0).await;
         assert_eq!(
             missing.err().and_then(|e| e.detail_code),
             Some("ota_sha256_missing".to_owned())
@@ -591,7 +600,7 @@ pub(crate) mod tests {
         });
         check.download_url = format!("http://{addr}/payload.bin");
         check.sha256_hex = format!("sha256:{}", "0".repeat(64));
-        let mismatch = stage_update_artifact(&http, dir.path(), &check, 0).await;
+        let mismatch = stage_update_artifact(&http, dir.path(), &check, "0.1.0", 0).await;
         assert!(server.await.is_ok());
         assert_eq!(
             mismatch.err().and_then(|e| e.detail_code),
@@ -606,14 +615,29 @@ pub(crate) mod tests {
         Ok(())
     }
 
-    // Test-only minisign fixture: an "ED" (prehashed) signature over FIXTURE_MANIFEST made with a
-    // throwaway key (never a release key).
-    pub(crate) const FIXTURE_PK: &str = "RWRCSVNUUkV0MWEBxHXSIGJ4C8G3ReVjuabeBd/WF2rozJyuOTRnJouN";
-    pub(crate) const FIXTURE_MANIFEST: &str = r#"{"semver":"0.2.0","track":"track_b","release_notes":"Faster startup","download_url":"https://example.invalid/bistre.zip","sha256_hex":"sha256:0000000000000000000000000000000000000000000000000000000000000000","download_size_bytes":1024}"#;
+    // Test-only minisign fixtures: "ED" (prehashed) signatures made with a throwaway key that
+    // exists only for these tests (never a release key).
+    pub(crate) const FIXTURE_PK: &str = "RWQAFXtep/FXfvzfI7Z2I50CNHQOdeirpSLf9jH7+SBcRig/c/84SvdR";
+    /// A v2 manifest with an asset for every target.
+    pub(crate) const FIXTURE_MANIFEST: &str = r#"{"format":2,"semver":"0.2.0","track":"track_b","release_notes":"Faster startup","targets":{"android-arm64":{"url":"https://example.invalid/bistre-v0.2.0-android-arm64.apk","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":1024},"linux-x64":{"url":"https://example.invalid/bistre-v0.2.0-linux-x64.AppImage","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":1024},"windows-x64":{"url":"https://example.invalid/bistre-v0.2.0-windows-x64-setup.exe","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":1024}}}"#;
     pub(crate) const FIXTURE_SIG: &str = "untrusted comment: bistre test fixture\n\
-RURCSVNUUkV0MXBQ7FNd/i7zyRjC8EbgpoSjpHWzuDE/kRmraKDhHaoV4RzqQKa4vgc4wgBM9R8n+kIGu6m2daOYReIjleFdjgc=\n\
+RUQAFXtep/FXfn7mrGEFdzchn/Fafqp+vvnqGJreMsVovBn5iALnYPIExlnFhoN4M1LxaeWHO3dW8zBziLds0drGypcOfeXUnwk=\n\
 trusted comment: timestamp:0\tfile:manifest.json\tprehashed\n\
-AcVYMmpeIXCzgxq42h3Z3qKtmljay0AsdPqX+qkYbcHmmZxkYR/OZWqy1u7S4gT4X4e+aTVNH15wDFXG4biqCA==\n";
+oyEp6wVLXsxzj6ysZLwn+Gk5CPuSOA/YEn6s6b/JjDOd2QBwWLNpzMvDj8s9wfjY7OG7oCKnJ9WXBUMmJpUXAQ==\n";
+    /// The old (v1) shape, correctly signed: a v0.1.2 feed.
+    pub(crate) const FIXTURE_MANIFEST_V1: &str =
+        r#"{"semver":"0.2.0","track":"track_b","assets":[]}"#;
+    pub(crate) const FIXTURE_SIG_V1: &str = "untrusted comment: bistre test fixture\n\
+RUQAFXtep/FXfpGaUohzN/0MU4YnSnVzcnWu+d6YJDbAdm3XQ5TODaShSR2UhxeWcwIHHqZnQRhTXrCSWq/uo2Y5RbOXjSuBPAQ=\n\
+trusted comment: timestamp:0\tfile:manifest.json\tprehashed\n\
+oTrPXLPg0e2j7DiIjsWpHNSz7CPT4rZfzYSrlRrXVN8xvVVrMcqqkqZ5wSS2FW4eZnE1OdwY3LPTH1i6z+oxBg==\n";
+    /// A v2 manifest with no targets at all.
+    pub(crate) const FIXTURE_MANIFEST_NO_TARGETS: &str =
+        r#"{"format":2,"semver":"0.2.0","track":"track_b","release_notes":"","targets":{}}"#;
+    pub(crate) const FIXTURE_SIG_NO_TARGETS: &str = "untrusted comment: bistre test fixture\n\
+RUQAFXtep/FXfuQHn+jhnNifQZ4V0dIZmGqmBEadtPrZp1sdKN/n5EWjfTx8b9ZDWYy9N1sqHtaeTOpnDXEygI0KHb1h1K9zVgE=\n\
+trusted comment: timestamp:0\tfile:manifest.json\tprehashed\n\
+F0MWeykOYVpNE+ABqzC1o1Xohz532tKEdh4c7sFWkyMTMlLwexyu6xv/g3+Z0Yhe7YPc0HU16HcRbhPKIZnMDw==\n";
 
     /// Serves `manifest` at any path and `sig` (or 404 when `None`) at `*.minisig`, for up to
     /// `max_requests` connections.
@@ -721,14 +745,49 @@ fgsYLnenA1gdfE3Qca40F0ZfGmgfjF6sYP6BkmoLf+vN0UwGF+ThF99aEy3Gk5XDViORhA2BwS4QcSXG
         assert!(summary.signature_verified);
         assert!(summary.update_available);
         assert_eq!(verified.latest_version(), "0.2.0");
-        assert_eq!(verified.download_url, "https://example.invalid/bistre.zip");
+        let expected = crate::ota_manifest::OtaTarget::current()
+            .map(|t| format!("https://example.invalid/{}", t.asset_file_name("v0.2.0")));
+        assert_eq!(Some(verified.download_url.clone()), expected);
+        Ok(())
+    }
+
+    /// A-W 7b: a correctly signed manifest in the old shape is "unsupported" (reinstall once),
+    /// and a release without this platform says so, instead of "integrity failed".
+    #[tokio::test]
+    async fn old_or_incomplete_manifests_fail_with_their_own_reason() -> TestResult {
+        let http = crate::providers::build_http_client()?;
+        for (manifest, sig, key) in [
+            (
+                FIXTURE_MANIFEST_V1,
+                FIXTURE_SIG_V1,
+                DiagnosticKey::OtaManifestUnsupported,
+            ),
+            (
+                FIXTURE_MANIFEST_NO_TARGETS,
+                FIXTURE_SIG_NO_TARGETS,
+                DiagnosticKey::OtaNoAssetForPlatform,
+            ),
+        ] {
+            let (addr, server) = serve_feed(manifest, Some(sig), 2).await?;
+            let res = check_for_updates(
+                &http,
+                &format!("http://{addr}/manifest.json"),
+                "0.1.0",
+                0,
+                Some(FIXTURE_PK),
+            )
+            .await;
+            server.await?;
+            assert_eq!(res.err().map(|e| e.key), Some(key));
+        }
         Ok(())
     }
 
     #[tokio::test]
     async fn tampered_or_unsigned_manifest_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
         let http = crate::providers::build_http_client()?;
-        let tampered: &'static str = r#"{"semver":"9.9.9","track":"track_b","release_notes":"","download_url":"https://evil.invalid/x","sha256_hex":"sha256:0000000000000000000000000000000000000000000000000000000000000000","download_size_bytes":1}"#;
+        let tampered: &'static str =
+            r#"{"format":2,"semver":"9.9.9","track":"track_b","release_notes":"","targets":{}}"#;
         let (addr, server) = serve_feed(tampered, Some(FIXTURE_SIG), 2).await?;
         let res = check_for_updates(
             &http,

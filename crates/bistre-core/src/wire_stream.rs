@@ -13,9 +13,6 @@ use std::collections::BTreeMap;
 use bistre_protocol::{DiagnosticKey, ProviderDialect, UsageMetrics};
 use serde_json::Value;
 
-use crate::providers::{
-    extract_sse_delta, extract_sse_thinking_delta, is_terminal_event, merge_sse_usage,
-};
 use crate::replay_policy::{ReasoningBlock, StoredToolCall};
 use crate::sse::StreamingTextBuffer;
 use crate::tools::{ParsedToolCall, heal_and_dedup_tool_calls, sanitize_tool_call_id};
@@ -36,6 +33,12 @@ pub struct StreamOutcome {
     pub usage: UsageMetrics,
     /// Non-fatal notices raised while dispatching (heals, key failover), as `(key, detail)`.
     pub notices: Vec<(DiagnosticKey, String)>,
+    /// Web pages the reply used (search results and citations), parsed and bounded (B2).
+    pub grounding: Vec<crate::grounding::GroundingSource>,
+    /// How the reply ended (R10/P3); `None` when no terminal frame said.
+    pub finish: Option<crate::finish::FinishKind>,
+    /// The provider's own words when it ended the stream with an error (P4), bounded.
+    pub error_reason: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -69,6 +72,13 @@ pub(crate) struct StreamState {
     chat_calls_by_index: BTreeMap<usize, OpenAiToolAcc>,
     gemini_thought_buf: String,
     gemini_thought_sig: Option<String>,
+    /// The latest signature seen on a plain text part (classic `generateContent`).
+    gemini_text_sig: Option<String>,
+    /// Raw provider call ids already captured (R1): a call repeated by the provider (`OpenAI`
+    /// Responses `response.completed` after `output_item.done`) is dropped before its id is
+    /// sanitized, so it can never come back renamed and run twice.
+    raw_tool_call_ids: std::collections::HashSet<String>,
+    grounding: crate::grounding::GroundingCollector,
 }
 
 impl StreamState {
@@ -91,17 +101,36 @@ impl StreamState {
         F: FnMut(&str) + Send,
         T: FnMut(&str) + Send,
     {
-        if is_terminal_event(dialect, payload) {
+        if payload.trim() == "[DONE]" {
             self.terminal_seen = true;
-        }
-        if payload == "[DONE]" {
             return;
         }
-        merge_sse_usage(dialect, payload, &mut self.out.usage);
-        if let Ok(val) = serde_json::from_str::<Value>(payload) {
-            self.capture_structured_frame(dialect, &val);
+        // R35: each frame is parsed once; every reader below works on this value.
+        let Ok(val) = serde_json::from_str::<Value>(payload) else {
+            return;
+        };
+        if crate::wire_parse::is_terminal_frame(dialect, &val) {
+            self.terminal_seen = true;
         }
-        if let Some(thought) = extract_sse_thinking_delta(dialect, payload)
+        crate::wire_parse::merge_usage_of_frame(dialect, &val, &mut self.out.usage);
+        {
+            self.capture_structured_frame(dialect, &val);
+            self.grounding.absorb_frame(&val);
+            if let Some(finish) = crate::finish::finish_of_frame(dialect, &val) {
+                if matches!(finish, crate::finish::FinishKind::Error { .. }) {
+                    self.out.error_reason = crate::finish::provider_reason(payload);
+                    self.terminal_seen = true;
+                }
+                // An error is never overwritten by a later "stop" (it is the real ending).
+                if !matches!(
+                    self.out.finish,
+                    Some(crate::finish::FinishKind::Error { .. })
+                ) {
+                    self.out.finish = Some(finish);
+                }
+            }
+        }
+        if let Some(thought) = crate::wire_parse::thinking_delta_of_frame(dialect, &val)
             && !thought.is_empty()
         {
             self.mark_first_token();
@@ -112,7 +141,7 @@ impl StreamState {
             self.out.thinking_text.push_str(&thought);
             on_thinking(&thought);
         }
-        if let Some(delta) = extract_sse_delta(dialect, payload) {
+        if let Some(delta) = crate::wire_parse::delta_of_frame(dialect, &val) {
             let clean = self.text_norm.push(&delta);
             if !clean.is_empty() {
                 self.mark_first_token();
@@ -124,6 +153,7 @@ impl StreamState {
 
     /// Finalizes any buffered blocks/tool calls at stream end and runs self-healing dedup.
     pub(crate) fn finalize(&mut self, dialect: ProviderDialect) {
+        self.out.grounding = core::mem::take(&mut self.grounding).into_sources();
         // Flush any unclosed Anthropic blocks (e.g. if stream ended before content_block_stop).
         let pending_anth = core::mem::take(&mut self.anthropic_blocks);
         for (_, blk) in pending_anth {
@@ -143,6 +173,11 @@ impl StreamState {
                     text: core::mem::take(&mut self.gemini_thought_buf),
                     signature: self.gemini_thought_sig.take(),
                 });
+        }
+        if let Some(signature) = self.gemini_text_sig.take() {
+            self.out
+                .reasoning_blocks
+                .push(ReasoningBlock::GeminiTextSignature { signature });
         }
         // Flush OpenAI Responses / Chat Completions tool call accumulators.
         let oai_items = core::mem::take(&mut self.openai_calls_by_item);
@@ -656,10 +691,17 @@ impl StreamState {
                     .and_then(Value::as_str)
                     .filter(|s| !s.is_empty())
                     .map(ToOwned::to_owned);
+                let is_thought = part.get("thought").and_then(Value::as_bool) == Some(true);
+                let is_call = part.get("functionCall").is_some();
                 if let Some(ref sig) = part_sig {
-                    self.gemini_thought_sig = Some(sig.clone());
+                    if !is_thought && !is_call && part.get("text").is_some() {
+                        // A text part's signature stays with the text (kelivo fixtures).
+                        self.gemini_text_sig = Some(sig.clone());
+                    } else if is_thought {
+                        self.gemini_thought_sig = Some(sig.clone());
+                    }
                 }
-                if part.get("thought").and_then(Value::as_bool) == Some(true) {
+                if is_thought {
                     if let Some(t) = part.get("text").and_then(Value::as_str) {
                         self.gemini_thought_buf.push_str(t);
                     }
@@ -686,8 +728,9 @@ impl StreamState {
                     let args = fc
                         .get("args")
                         .map_or_else(|| "{}".to_owned(), Value::to_string);
-                    let sig = part_sig.or_else(|| self.gemini_thought_sig.clone());
-                    self.push_tool_call(cid, name, args, sig);
+                    // Only the call's own signature: in parallel calls only the first is
+                    // signed, and an unsigned call never borrows one (kelivo fixtures).
+                    self.push_tool_call(cid, name, args, part_sig);
                 }
             }
         }
@@ -740,6 +783,9 @@ impl StreamState {
         if name.trim().is_empty() {
             return;
         }
+        if !call_id.is_empty() && !self.raw_tool_call_ids.insert(call_id.clone()) {
+            return;
+        }
         let idx = self.out.tool_calls.len();
         let mut seen: std::collections::HashSet<String> = self
             .out
@@ -753,14 +799,6 @@ impl StreamState {
         } else {
             arguments_json
         };
-        if self
-            .out
-            .tool_calls
-            .iter()
-            .any(|c| c.call_id == clean_id && c.name == name)
-        {
-            return;
-        }
         self.out.tool_calls.push(StoredToolCall {
             call_id: clean_id,
             name,
@@ -785,6 +823,46 @@ pub fn stored_to_parsed_tool_call(call: &StoredToolCall) -> ParsedToolCall {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// R1: `OpenAI` Responses repeats a `function_call` in `response.completed` after
+    /// `output_item.done`. It must be captured once, or the tool (a shell command, an edit, an
+    /// MCP call) runs twice.
+    #[test]
+    fn a_function_call_repeated_in_response_completed_is_captured_once() {
+        let mut st = StreamState::default();
+        let item = r#"{"type":"function_call","id":"fc_1","call_id":"call_42","name":"shell","arguments":"{\"command\":\"echo hi\"}"}"#;
+        let frames = [
+            format!(r#"{{"type":"response.output_item.done","item":{item}}}"#),
+            format!(
+                r#"{{"type":"response.completed","response":{{"id":"resp_1","output":[{item}]}}}}"#
+            ),
+        ];
+        for f in &frames {
+            st.handle_payload(ProviderDialect::OpenAi, f, &mut |_| {}, &mut |_| {});
+        }
+        st.finalize(ProviderDialect::OpenAi);
+        let ids: Vec<&str> = st
+            .out
+            .tool_calls
+            .iter()
+            .map(|c| c.call_id.as_str())
+            .collect();
+        assert_eq!(ids, ["call_42"], "one call, not a renamed duplicate");
+    }
+
+    /// R1: two different provider ids that sanitize to the same text stay two calls.
+    #[test]
+    fn distinct_raw_ids_that_sanitize_alike_stay_distinct() {
+        let mut st = StreamState::default();
+        for raw in ["call.1", "call:1"] {
+            let item = format!(
+                r#"{{"type":"function_call","call_id":"{raw}","name":"read","arguments":"{{}}"}}"#
+            );
+            let frame = format!(r#"{{"type":"response.output_item.done","item":{item}}}"#);
+            st.handle_payload(ProviderDialect::OpenAi, &frame, &mut |_| {}, &mut |_| {});
+        }
+        assert_eq!(st.out.tool_calls.len(), 2);
+    }
 
     #[test]
     fn captures_anthropic_thinking_signature_and_redacted_thinking_and_tool_use() {

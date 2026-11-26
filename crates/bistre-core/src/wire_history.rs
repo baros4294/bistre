@@ -12,13 +12,14 @@ use bistre_protocol::{NodeRecord, NodeRole, StoredAttachment};
 use serde_json::{Value, json};
 
 use crate::attachments::{
-    is_office_document, is_text_like, parse_node_attachments, read_attachment_as_text_block,
-    read_attachment_base64,
+    attachment_not_sent_note, is_office_document, is_text_like, parse_node_attachments,
+    read_attachment_as_text_block, read_attachment_base64,
 };
 use crate::replay_policy::{
     ReasoningBlock, ReplayContext, StoredToolCall, StoredToolResult,
     cross_provider_reasoning_handoff_for_node, gemini_function_call_signature,
-    history_has_client_compaction, parse_turn_wire_meta, safe_reasoning_blocks_for_target,
+    latest_compaction_ms, made_before_compaction, parse_turn_wire_meta,
+    safe_reasoning_blocks_for_target,
 };
 
 /// Returns the set of `call_id`s that have BOTH an emitting `Assistant` tool call and a matching
@@ -65,7 +66,7 @@ pub fn build_openai_responses_input_with_ctx(
     replay_ctx: Option<&ReplayContext>,
 ) -> Vec<Value> {
     let empty: HashMap<String, String> = HashMap::new();
-    build_openai_responses_input_with_refs(history, data_dir, &empty, replay_ctx)
+    build_openai_responses_input_with_refs(history, data_dir, &empty, replay_ctx, 0)
 }
 
 /// Builds `OpenAI` Responses API (`v1/responses`) `input` items with optional remote `file_id` refs.
@@ -74,13 +75,16 @@ pub fn build_openai_responses_input_with_refs<S: std::hash::BuildHasher>(
     data_dir: Option<&Path>,
     remote_refs: &HashMap<String, String, S>,
     replay_ctx: Option<&ReplayContext>,
+    chain_skip: usize,
 ) -> Vec<Value> {
-    let compacted = history_has_client_compaction(history);
+    let compaction_at = latest_compaction_ms(history);
     let paired = paired_tool_call_ids(history);
     let last_asst = latest_assistant_index(history);
     let mut out: Vec<Value> = Vec::with_capacity(history.len());
 
-    for (idx, node) in history.iter().enumerate() {
+    // R7: a chained request sends only the items after `chain_skip` (the server holds the
+    // rest), while pairing still sees the whole history.
+    for (idx, node) in history.iter().enumerate().skip(chain_skip) {
         match node.role {
             NodeRole::System => {}
             NodeRole::User | NodeRole::CompactionSummary => {
@@ -98,14 +102,20 @@ pub fn build_openai_responses_input_with_refs<S: std::hash::BuildHasher>(
             }
             NodeRole::Assistant => {
                 let meta = parse_turn_wire_meta(node.provider_meta_json.as_deref());
+                // R14: only reasoning made before the newest compaction lost its prefix.
+                let stale = made_before_compaction(compaction_at, node);
                 if let Some(ctx) = replay_ctx {
-                    for blk in safe_reasoning_blocks_for_target(&meta, ctx, compacted) {
+                    for blk in safe_reasoning_blocks_for_target(&meta, ctx, stale) {
                         if let ReasoningBlock::OpenAiReasoning {
                             id,
                             summary,
                             encrypted_content,
                         } = blk
                         {
+                            let summary: Vec<Value> = summary
+                                .iter()
+                                .map(crate::replay_policy::without_null_fields)
+                                .collect();
                             let mut item = json!({
                                 "type": "reasoning",
                                 "summary": summary,
@@ -140,6 +150,8 @@ pub fn build_openai_responses_input_with_refs<S: std::hash::BuildHasher>(
                             "call_id": call.call_id,
                             "name": call.name,
                             "arguments": call.arguments_json,
+                            // G2: the documented status the API returned it with.
+                            "status": "completed",
                         }));
                     }
                 }
@@ -169,6 +181,7 @@ fn encode_openai_user_attachments<S: std::hash::BuildHasher>(
 ) -> Vec<Value> {
     let mut parts = Vec::new();
     for att in atts {
+        let before = parts.len();
         if att.mime_type.starts_with("image/") {
             if let Some(file_id) = remote_refs.get(&att.blake3_hex) {
                 parts.push(json!({
@@ -210,6 +223,10 @@ fn encode_openai_user_attachments<S: std::hash::BuildHasher>(
                 "text": format!("[Attachment: {} ({})]", att.name, att.mime_type),
             }));
         }
+        // R24: never a silent drop.
+        if parts.len() == before {
+            parts.push(json!({ "type": "input_text", "text": attachment_not_sent_note(att) }));
+        }
     }
     parts
 }
@@ -238,13 +255,15 @@ pub fn build_gemini_interactions_input_with_ctx<S: std::hash::BuildHasher>(
     data_dir: Option<&Path>,
     gemini_uris: &HashMap<String, String, S>,
     replay_ctx: Option<&ReplayContext>,
+    chain_skip: usize,
 ) -> Vec<Value> {
-    let compacted = history_has_client_compaction(history);
+    let compaction_at = latest_compaction_ms(history);
     let paired = paired_tool_call_ids(history);
     let last_asst = latest_assistant_index(history);
     let mut out = Vec::with_capacity(history.len());
 
-    for (idx, node) in history.iter().enumerate() {
+    // R7: as in the `OpenAI` builder, chained requests send only the new items.
+    for (idx, node) in history.iter().enumerate().skip(chain_skip) {
         match node.role {
             NodeRole::System => {}
             NodeRole::User | NodeRole::CompactionSummary => {
@@ -256,9 +275,11 @@ pub fn build_gemini_interactions_input_with_ctx<S: std::hash::BuildHasher>(
             }
             NodeRole::Assistant => {
                 let meta = parse_turn_wire_meta(node.provider_meta_json.as_deref());
+                // R14: only reasoning made before the newest compaction lost its prefix.
+                let stale = made_before_compaction(compaction_at, node);
                 let mut parts: Vec<Value> = Vec::new();
                 if let Some(ctx) = replay_ctx {
-                    for blk in safe_reasoning_blocks_for_target(&meta, ctx, compacted) {
+                    for blk in safe_reasoning_blocks_for_target(&meta, ctx, stale) {
                         if let ReasoningBlock::GeminiThought {
                             text,
                             signature: Some(sig),
@@ -296,7 +317,7 @@ pub fn build_gemini_interactions_input_with_ctx<S: std::hash::BuildHasher>(
                                     call,
                                     meta.origin.as_ref(),
                                     ctx,
-                                    compacted,
+                                    stale,
                                 )
                             },
                         );
@@ -346,6 +367,7 @@ fn encode_gemini_interactions_atts<S: std::hash::BuildHasher>(
         return parts;
     };
     for att in atts {
+        let before = parts.len();
         let block_type = if att.mime_type.starts_with("image/") {
             "image"
         } else if att.mime_type.starts_with("audio/") {
@@ -355,21 +377,19 @@ fn encode_gemini_interactions_atts<S: std::hash::BuildHasher>(
         } else {
             "document"
         };
-        if let Some(uri) = gemini_uris.get(&att.blake3_hex) {
+        if is_office_document(&att.mime_type, &att.name) || is_text_like(&att.mime_type, &att.name)
+        {
+            // R25: Gemini rejects Office MIME types; text and Office files always go as text
+            // (Office through the pure-Rust ZIP+XML extraction).
+            if let Some(block) = read_attachment_as_text_block(dir, att) {
+                parts.push(json!({ "type": "text", "text": block }));
+            }
+        } else if let Some(uri) = gemini_uris.get(&att.blake3_hex) {
             parts.push(json!({
                 "type": block_type,
                 "uri": uri,
                 "mime_type": att.mime_type,
             }));
-        } else if is_text_like(&att.mime_type, &att.name) {
-            if let Some(block) = read_attachment_as_text_block(dir, att) {
-                parts.push(json!({ "type": "text", "text": block }));
-            }
-        } else if is_office_document(&att.mime_type, &att.name) {
-            // Gemini inline_data rejects Office MIME types; fall back to pure-Rust ZIP+XML text.
-            if let Some(block) = read_attachment_as_text_block(dir, att) {
-                parts.push(json!({ "type": "text", "text": block }));
-            }
         } else if let Some(b64) = read_attachment_base64(dir, att) {
             parts.push(json!({
                 "type": block_type,
@@ -378,6 +398,10 @@ fn encode_gemini_interactions_atts<S: std::hash::BuildHasher>(
             }));
         } else if let Some(block) = read_attachment_as_text_block(dir, att) {
             parts.push(json!({ "type": "text", "text": block }));
+        }
+        // R24: never a silent drop.
+        if parts.len() == before {
+            parts.push(json!({ "type": "text", "text": attachment_not_sent_note(att) }));
         }
     }
     parts
@@ -391,7 +415,7 @@ pub fn build_gemini_generate_contents_with_ctx<S: std::hash::BuildHasher>(
     gemini_uris: &HashMap<String, String, S>,
     replay_ctx: Option<&ReplayContext>,
 ) -> Vec<Value> {
-    let compacted = history_has_client_compaction(history);
+    let compaction_at = latest_compaction_ms(history);
     let paired = paired_tool_call_ids(history);
     let last_asst = latest_assistant_index(history);
     let mut out = Vec::with_capacity(history.len());
@@ -408,19 +432,25 @@ pub fn build_gemini_generate_contents_with_ctx<S: std::hash::BuildHasher>(
             }
             NodeRole::Assistant => {
                 let meta = parse_turn_wire_meta(node.provider_meta_json.as_deref());
+                // R14: only reasoning made before the newest compaction lost its prefix.
+                let stale = made_before_compaction(compaction_at, node);
                 let mut parts: Vec<Value> = Vec::new();
+                let mut text_sig: Option<String> = None;
                 if let Some(ctx) = replay_ctx {
-                    for blk in safe_reasoning_blocks_for_target(&meta, ctx, compacted) {
-                        if let ReasoningBlock::GeminiThought {
-                            text,
-                            signature: Some(sig),
-                        } = blk
-                        {
-                            parts.push(json!({
+                    for blk in safe_reasoning_blocks_for_target(&meta, ctx, stale) {
+                        match blk {
+                            ReasoningBlock::GeminiThought {
+                                text,
+                                signature: Some(sig),
+                            } => parts.push(json!({
                                 "thought": true,
                                 "text": text,
                                 "thoughtSignature": sig,
-                            }));
+                            })),
+                            ReasoningBlock::GeminiTextSignature { signature } => {
+                                text_sig = Some(signature);
+                            }
+                            _ => {}
                         }
                     }
                 }
@@ -435,8 +465,13 @@ pub fn build_gemini_generate_contents_with_ctx<S: std::hash::BuildHasher>(
                     text = format!("[Prior reasoning summary]\n{handoff}\n\n{text}");
                 }
                 if !text.is_empty() || meta.tool_calls.is_empty() {
-                    parts.push(json!({ "text": text }));
+                    let mut part = json!({ "text": text });
+                    if let Some(sig) = text_sig.take() {
+                        part["thoughtSignature"] = Value::String(sig);
+                    }
+                    parts.push(part);
                 }
+                let mut first_call = true;
                 for call in &meta.tool_calls {
                     if paired.contains(&call.call_id) {
                         let args_val = serde_json::from_str::<Value>(&call.arguments_json)
@@ -448,19 +483,31 @@ pub fn build_gemini_generate_contents_with_ctx<S: std::hash::BuildHasher>(
                                     call,
                                     meta.origin.as_ref(),
                                     ctx,
-                                    compacted,
+                                    stale,
                                 )
                             },
                         );
-                        parts.push(json!({
+                        let mut part = json!({
                             "functionCall": {
                                 "id": call.call_id,
                                 "name": call.name,
                                 "args": args_val,
                             },
-                            "thoughtSignature": sig,
-                        }));
+                        });
+                        // The first call of a turn always carries a signature (its own, or
+                        // the documented bypass); later parallel calls only their own.
+                        if first_call
+                            || sig != crate::replay_policy::GEMINI_THOUGHT_SIGNATURE_BYPASS
+                        {
+                            part["thoughtSignature"] = Value::String(sig.to_owned());
+                        }
+                        first_call = false;
+                        parts.push(part);
                     }
+                }
+                // A detached signature part stays a separate part after the calls.
+                if let Some(sig) = text_sig {
+                    parts.push(json!({ "text": "", "thoughtSignature": sig }));
                 }
                 out.push(json!({ "role": "model", "parts": parts }));
             }
@@ -502,7 +549,13 @@ fn encode_gemini_generate_atts<S: std::hash::BuildHasher>(
         return parts;
     };
     for att in atts {
-        if let Some(uri) = gemini_uris.get(&att.blake3_hex) {
+        let before = parts.len();
+        if is_office_document(&att.mime_type, &att.name) {
+            // R25: Gemini rejects Office MIME types; always the pure-Rust ZIP+XML text.
+            if let Some(block) = read_attachment_as_text_block(dir, att) {
+                parts.push(json!({ "text": block }));
+            }
+        } else if let Some(uri) = gemini_uris.get(&att.blake3_hex) {
             parts.push(json!({
                 "file_data": {
                     "mime_type": att.mime_type,
@@ -524,6 +577,10 @@ fn encode_gemini_generate_atts<S: std::hash::BuildHasher>(
             }));
         } else if let Some(block) = read_attachment_as_text_block(dir, att) {
             parts.push(json!({ "text": block }));
+        }
+        // R24: never a silent drop.
+        if parts.len() == before {
+            parts.push(json!({ "text": attachment_not_sent_note(att) }));
         }
     }
     parts
@@ -547,7 +604,7 @@ pub fn build_anthropic_messages_with_refs<S: std::hash::BuildHasher>(
     remote_refs: &HashMap<String, String, S>,
     replay_ctx: Option<&ReplayContext>,
 ) -> Vec<Value> {
-    let compacted = history_has_client_compaction(history);
+    let compaction_at = latest_compaction_ms(history);
     let paired = paired_tool_call_ids(history);
     let last_asst = latest_assistant_index(history);
     let mut out: Vec<Value> = Vec::with_capacity(history.len());
@@ -576,9 +633,11 @@ pub fn build_anthropic_messages_with_refs<S: std::hash::BuildHasher>(
             }
             NodeRole::Assistant => {
                 let meta = parse_turn_wire_meta(node.provider_meta_json.as_deref());
+                // R14: only reasoning made before the newest compaction lost its prefix.
+                let stale = made_before_compaction(compaction_at, node);
                 let mut blocks: Vec<Value> = Vec::new();
                 if let Some(ctx) = replay_ctx {
-                    for blk in safe_reasoning_blocks_for_target(&meta, ctx, compacted) {
+                    for blk in safe_reasoning_blocks_for_target(&meta, ctx, stale) {
                         match blk {
                             ReasoningBlock::AnthropicThinking {
                                 thinking,
@@ -682,6 +741,7 @@ fn encode_anthropic_attachments_with_refs<S: std::hash::BuildHasher>(
 ) -> Vec<Value> {
     let mut blocks = Vec::new();
     for att in atts {
+        let before = blocks.len();
         if att.mime_type.starts_with("image/") {
             if let Some(file_id) = remote_refs.get(&att.blake3_hex) {
                 blocks.push(json!({
@@ -735,6 +795,10 @@ fn encode_anthropic_attachments_with_refs<S: std::hash::BuildHasher>(
                 "type": "text",
                 "text": format!("[Attachment: {} ({})]", att.name, att.mime_type),
             }));
+        }
+        // R24: never a silent drop.
+        if blocks.len() == before {
+            blocks.push(json!({ "type": "text", "text": attachment_not_sent_note(att) }));
         }
     }
     blocks
@@ -862,6 +926,49 @@ mod tests {
     use super::*;
     use crate::replay_policy::{TurnOriginMeta, blake3_short_hash};
     use bistre_protocol::ProviderDialect;
+
+    fn rec(id: &str, role: NodeRole, content: &str, meta: Option<Value>, at: i64) -> NodeRecord {
+        NodeRecord {
+            id: id.to_owned(),
+            thread_id: "t1".to_owned(),
+            parent_id: None,
+            role,
+            content: content.to_owned(),
+            provider_meta_json: meta.map(|m| m.to_string()),
+            created_at_ms: at,
+        }
+    }
+
+    /// Null fields in a stored reasoning item are never sent back (codex #47733).
+    #[test]
+    fn replayed_reasoning_items_carry_no_null_fields() {
+        let origin = TurnOriginMeta {
+            dialect: ProviderDialect::OpenAi,
+            provider_id: "p1".to_owned(),
+            model_id: "m".to_owned(),
+            system_hash: blake3_short_hash(""),
+            tools_hash: blake3_short_hash(""),
+        };
+        let meta = json!({
+            "origin": origin,
+            "reasoning_blocks": [{
+                "kind": "open_ai_reasoning",
+                "id": "rs_1",
+                "summary": [{ "type": "summary_text", "text": "x", "status": null }],
+                "encrypted_content": "enc"
+            }]
+        });
+        let history = vec![
+            rec("u1", NodeRole::User, "Hi", None, 1),
+            rec("a1", NodeRole::Assistant, "Hello", Some(meta), 2),
+            rec("u2", NodeRole::User, "Next", None, 3),
+        ];
+        let ctx = ReplayContext::new(ProviderDialect::OpenAi, "p1", "m", "", "", Some("t1"));
+        let items = build_openai_responses_input_with_ctx(&history, None, Some(&ctx));
+        let text = Value::Array(items).to_string();
+        assert!(text.contains("\"encrypted_content\":\"enc\""), "{text}");
+        assert!(!text.contains("null"), "{text}");
+    }
 
     #[test]
     fn replays_anthropic_thinking_signature_only_when_prefix_matches_and_drops_on_switch() {

@@ -1,11 +1,11 @@
 //! End-to-end agentic tool-calling loop, approval pausing, MCP schema deferral,
 //! and output blob spilling (Spec 04 & Spec 06, Wave 2).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use bistre_protocol::{
     BistreError, BistreResult, DiagnosticKey, EngineEvent, NodeRecord, NodeRole, ProviderDialect,
@@ -15,32 +15,32 @@ use bistre_protocol::{
 use bistre_storage::{AgentRunUpdate, StorageHandle};
 use serde_json::{Value, json};
 use tokio::sync::{broadcast, oneshot};
-use uuid::Uuid;
 
+pub use crate::agent_approvals::{
+    ApprovalKey, ApprovalMemory, MAX_APPROVAL_MEMORY, PendingApprovalMap, ThreadAutoApprovals,
+    deliver_tool_approval,
+};
+pub(crate) use crate::agent_approvals::{
+    pre_tool_hook_verdict, run_post_tool_hooks, wait_for_decision,
+};
 use crate::approval::ToolApprovalBroker;
 use crate::engine_runs::{StreamServices, utc_now_unix_ms};
 use crate::events::{emit, emit_logged, note_write};
-use crate::hooks::HookEventKind;
 use crate::mcp::{McpDiscoveredTool, McpServerConfig};
 use crate::replay_policy::{StoredToolCall, StoredToolResult};
+use crate::tool_spill::spill_off_worker;
 use crate::tools::{
     ReadLedger, ToolExecutionOutput, classify_tool_risk, compute_unified_diff, file_digest,
-    tool_edit, tool_glob, tool_grep, tool_read, tool_shell, tool_web_fetch, tool_web_search,
+    tool_edit, tool_glob, tool_grep, tool_read, tool_web_fetch, tool_web_search,
 };
 
 /// Spill threshold for persisted tool outputs (`64 KiB`, AGENTS.md §7).
 pub const TOOL_OUTPUT_SPILL_BYTES: usize = 64 * 1024;
-/// Maximum time a tool call waits for user approval before timing out safely (fail-closed deny).
-const APPROVAL_WAIT_TIMEOUT: Duration = Duration::from_secs(300);
+
 /// Maximum direct MCP tool schemas exposed before deferring the rest behind `mcp_schema`.
 pub const MAX_DIRECT_MCP_TOOLS: usize = 6;
 /// Consecutive tool failures that trip the loop safety breaker.
 pub const MAX_CONSECUTIVE_TOOL_FAILURES: u32 = 4;
-
-/// Pending live tool-approval waiters keyed by `call_id`.
-pub type PendingApprovalMap = Arc<Mutex<HashMap<String, oneshot::Sender<ToolApprovalDecision>>>>;
-/// Thread-scoped auto-approved tool names granted via `ApproveForThread`.
-pub type ThreadAutoApprovals = Arc<Mutex<HashSet<(String, String)>>>;
 
 /// Per-tool user permission policy stored in `kv_meta["agent.tool_permissions"]`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,6 +75,11 @@ pub struct ActiveToolCatalog {
     pub permissions: HashMap<String, ToolPermission>,
     /// Effective trust preset.
     pub trust_preset: TrustPreset,
+    /// The permission map could not be read: only Tier-0 reads may run (A-S2).
+    pub policy_unreadable: bool,
+    /// Read-only Plan mode: only Tier-0 reads may run, whatever tool the model calls
+    /// (opencode #65442: hiding write tools alone let a shell or MCP call through).
+    pub read_only: bool,
 }
 
 impl Default for ActiveToolCatalog {
@@ -86,6 +91,8 @@ impl Default for ActiveToolCatalog {
             workspace_root: None,
             permissions: HashMap::new(),
             trust_preset: TrustPreset::Off,
+            policy_unreadable: false,
+            read_only: false,
         }
     }
 }
@@ -98,6 +105,14 @@ impl ActiveToolCatalog {
         } else {
             Value::Array(self.canonical_schemas.clone()).to_string()
         }
+    }
+
+    /// Tokens the sent tool schemas add to a request, counted schema by schema (the context
+    /// breakdown's tool rows add up to exactly this).
+    pub fn schema_tokens(&self, model: Option<&str>) -> u64 {
+        self.canonical_schemas.iter().fold(0_u64, |acc, s| {
+            acc.saturating_add(crate::context_breakdown::tool_schema_tokens(s, model))
+        })
     }
 
     /// Formats `canonical_schemas` into the exact wire shape expected by `dialect`.
@@ -204,29 +219,46 @@ fn normalize_tool_permission_key(raw: &str) -> &str {
     }
 }
 
-fn load_tool_permissions(storage: &StorageHandle) -> HashMap<String, ToolPermission> {
+/// Loads the per-tool permission map. A storage error or a value that is not a JSON object is
+/// an error: the caller then blocks every tool except Tier-0 reads (A-S2), so a tool the user
+/// turned off never silently comes back.
+fn load_tool_permissions(storage: &StorageHandle) -> BistreResult<HashMap<String, ToolPermission>> {
     let mut out = HashMap::new();
-    let Ok(Some(raw)) = storage.get_kv_meta("agent.tool_permissions") else {
-        return out;
+    let Some(raw) = storage.get_kv_meta("agent.tool_permissions")? else {
+        return Ok(out);
     };
-    let Ok(val) = serde_json::from_str::<Value>(&raw) else {
-        return out;
+    if raw.trim().is_empty() {
+        return Ok(out);
+    }
+    let Ok(Value::Object(map)) = serde_json::from_str::<Value>(&raw) else {
+        return Err(BistreError::with_detail(
+            DiagnosticKey::ToolApprovalRequired,
+            "tool_permissions_unreadable",
+        ));
     };
-    if let Some(map) = val.as_object() {
-        for (k, v) in map {
-            if let Some(s) = v.as_str() {
-                let perm = ToolPermission::parse(s);
-                out.insert(k.clone(), perm);
-                let canonical = normalize_tool_permission_key(k);
-                if canonical != k {
-                    out.insert(canonical.to_owned(), perm);
-                }
+    for (k, v) in &map {
+        if let Some(s) = v.as_str() {
+            let perm = ToolPermission::parse(s);
+            out.insert(k.clone(), perm);
+            let canonical = normalize_tool_permission_key(k);
+            if canonical != k {
+                out.insert(canonical.to_owned(), perm);
             }
         }
     }
-    out
+    Ok(out)
 }
 
+/// Tool-call arguments as a JSON object; an empty string means no arguments.
+fn parse_tool_arguments(raw: &str) -> Option<Value> {
+    if raw.trim().is_empty() {
+        return Some(json!({}));
+    }
+    match serde_json::from_str::<Value>(raw) {
+        Ok(v @ Value::Object(_)) => Some(v),
+        _ => None,
+    }
+}
 fn load_enabled_mcp_servers(storage: &StorageHandle) -> Vec<McpServerConfig> {
     let Ok(Some(raw)) = storage.get_kv_meta("agent.mcp_servers") else {
         return Vec::new();
@@ -251,6 +283,38 @@ fn load_cached_mcp_tools(storage: &StorageHandle, server_id: &str) -> Vec<McpDis
     }
 }
 
+/// Enabled MCP server tools under deterministic names `mcp__<server_id>__<tool_name>`, minus
+/// the ones turned off, sorted by name.
+fn enabled_mcp_entries(
+    storage: &StorageHandle,
+    permissions: &HashMap<String, ToolPermission>,
+) -> Vec<(String, McpServerConfig, McpDiscoveredTool)> {
+    let mut mcp_entries: Vec<(String, McpServerConfig, McpDiscoveredTool)> = Vec::new();
+    for srv in load_enabled_mcp_servers(storage) {
+        let safe_srv: String = srv
+            .id
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+            .take(24)
+            .collect();
+        for def in load_cached_mcp_tools(storage, &srv.id) {
+            let safe_tool: String = def
+                .name
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+                .take(36)
+                .collect();
+            let exposed = format!("mcp__{safe_srv}__{safe_tool}");
+            if permissions.get(&exposed) == Some(&ToolPermission::Off) {
+                continue;
+            }
+            mcp_entries.push((exposed, srv.clone(), def));
+        }
+    }
+    mcp_entries.sort_by(|a, b| a.0.cmp(&b.0));
+    mcp_entries
+}
+
 /// Builds the active tool catalog for a run step from settings, workspace binding,
 /// `agent.tool_permissions`, and enabled MCP servers (with automatic `mcp_schema` deferral past 6).
 pub fn resolve_active_tool_catalog(
@@ -258,11 +322,22 @@ pub fn resolve_active_tool_catalog(
     thread_mode: ThreadMode,
 ) -> BistreResult<ActiveToolCatalog> {
     let settings = storage.load_settings()?;
-    let permissions = load_tool_permissions(storage);
+    let (permissions, policy_unreadable) = match load_tool_permissions(storage) {
+        Ok(map) => (map, false),
+        Err(err) => {
+            tracing::warn!(
+                key = err.key.as_key(),
+                detail = err.detail_code.as_deref().unwrap_or_default(),
+                "tool permissions unreadable; only read-only tools run"
+            );
+            (HashMap::new(), true)
+        }
+    };
     if settings.trust_preset == TrustPreset::Off {
         return Ok(ActiveToolCatalog {
             trust_preset: TrustPreset::Off,
             permissions,
+            policy_unreadable,
             ..ActiveToolCatalog::default()
         });
     }
@@ -276,7 +351,8 @@ pub fn resolve_active_tool_catalog(
 
     let mut schemas = Vec::new();
     // Workspace tools are exposed when a workspace is bound (write tools only outside read-only Plan mode).
-    let include_write_tools = has_workspace && thread_mode != ThreadMode::Plan;
+    let include_write_tools =
+        has_workspace && thread_mode != ThreadMode::Plan && !policy_unreadable;
     let builtin = crate::tools::builtin_tool_schemas(include_write_tools);
     for tool in builtin {
         let Some(name) = tool.get("name").and_then(Value::as_str) else {
@@ -303,30 +379,7 @@ pub fn resolve_active_tool_catalog(
         schemas.push(tool);
     }
 
-    // Add enabled MCP server tools with deterministic names `mcp__<server_id>__<tool_name>`.
-    let mut mcp_entries: Vec<(String, McpServerConfig, McpDiscoveredTool)> = Vec::new();
-    for srv in load_enabled_mcp_servers(storage) {
-        let safe_srv: String = srv
-            .id
-            .chars()
-            .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
-            .take(24)
-            .collect();
-        for def in load_cached_mcp_tools(storage, &srv.id) {
-            let safe_tool: String = def
-                .name
-                .chars()
-                .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
-                .take(36)
-                .collect();
-            let exposed = format!("mcp__{safe_srv}__{safe_tool}");
-            if permissions.get(&exposed) == Some(&ToolPermission::Off) {
-                continue;
-            }
-            mcp_entries.push((exposed, srv.clone(), def));
-        }
-    }
-    mcp_entries.sort_by(|a, b| a.0.cmp(&b.0));
+    let mcp_entries = enabled_mcp_entries(storage, &permissions);
 
     let mut mcp_dispatch = HashMap::new();
     let mut deferred_mcp_schemas = HashMap::new();
@@ -377,6 +430,8 @@ pub fn resolve_active_tool_catalog(
         workspace_root,
         permissions,
         trust_preset: settings.trust_preset,
+        policy_unreadable,
+        read_only: thread_mode == ThreadMode::Plan,
     })
 }
 
@@ -386,71 +441,7 @@ pub fn exact_active_tools_tokens(
     thread_mode: ThreadMode,
     model: Option<&str>,
 ) -> BistreResult<u64> {
-    let catalog = resolve_active_tool_catalog(storage, thread_mode)?;
-    let canon = catalog.canonical_json();
-    if canon.is_empty() {
-        Ok(0)
-    } else {
-        Ok(crate::compaction::estimate_tokens_for_model(&canon, model))
-    }
-}
-
-/// Delivers a user approval decision to a paused tool call waiter. Returns `true` if a waiter existed.
-pub fn deliver_tool_approval(
-    pending: &PendingApprovalMap,
-    thread_approvals: &ThreadAutoApprovals,
-    thread_id: &str,
-    call_id: &str,
-    decision: ToolApprovalDecision,
-    tool_name_hint: Option<&str>,
-) -> bool {
-    if decision == ToolApprovalDecision::ApproveForThread
-        && let Some(tool) = tool_name_hint
-    {
-        lock_or_recover(thread_approvals, "thread_auto_approvals")
-            .insert((thread_id.to_owned(), tool.to_owned()));
-    }
-    let sender = lock_or_recover(pending, "pending_approvals").remove(call_id);
-    match sender {
-        Some(tx) => tx.send(decision).is_ok(),
-        None => false,
-    }
-}
-
-/// Spills outputs larger than `TOOL_OUTPUT_SPILL_BYTES` (`64 KiB`) to `<data_dir>/tool_blobs/`
-/// and returns a compact inline preview referencing the full blob path.
-fn spill_large_output(data_dir: &Path, call_id: &str, text: &str) -> String {
-    if text.len() <= TOOL_OUTPUT_SPILL_BYTES {
-        return text.to_owned();
-    }
-    let dir = data_dir.join("tool_blobs");
-    let safe_id: String = call_id
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
-        .take(40)
-        .collect();
-    let filename = format!("{safe_id}-{}.txt", Uuid::now_v7().simple());
-    let dest = dir.join(&filename);
-    let wrote = std::fs::create_dir_all(&dir)
-        .and_then(|()| std::fs::write(&dest, text.as_bytes()))
-        .is_ok();
-    let mut cut = 16 * 1024;
-    while cut > 0 && !text.is_char_boundary(cut) {
-        cut -= 1;
-    }
-    let preview = &text[..cut];
-    if wrote {
-        format!(
-            "{preview}\n\n[tool output spilled: {} bytes saved to tool_blobs/{filename}]",
-            text.len()
-        )
-    } else {
-        format!(
-            "{preview}\n\n[tool output truncated at {} of {} bytes]",
-            cut,
-            text.len()
-        )
-    }
+    Ok(resolve_active_tool_catalog(storage, thread_mode)?.schema_tokens(model))
 }
 
 /// Outcome of executing all tool calls emitted in one assistant turn.
@@ -492,8 +483,28 @@ pub(crate) async fn execute_tool_batch(
 
     for call in calls {
         *step_index = step_index.saturating_add(1);
-        let parsed_args: Value =
-            serde_json::from_str(&call.arguments_json).unwrap_or_else(|_| json!({}));
+        // A-S7: arguments are parsed once; anything but a JSON object (an empty string means
+        // no arguments) is an error result with no permit, never an empty `{}` call.
+        let parsed_args: Value = if let Some(args) = parse_tool_arguments(&call.arguments_json) {
+            args
+        } else {
+            parent_id = commit_tool_result_node(
+                storage,
+                events_tx,
+                thread_id,
+                run_id,
+                &parent_id,
+                call,
+                ToolRiskTier::Tier0ReadOnly,
+                "Tool arguments are not valid JSON; the call was not run.",
+                true,
+                Vec::new(),
+                None,
+                None,
+                0,
+            );
+            continue;
+        };
         let risk = if call.name == "mcp_schema" {
             ToolRiskTier::Tier0ReadOnly
         } else {
@@ -520,9 +531,28 @@ pub(crate) async fn execute_tool_batch(
             );
             continue;
         }
+        if catalog.read_only && risk != ToolRiskTier::Tier0ReadOnly {
+            parent_id = commit_tool_result_node(
+                storage,
+                events_tx,
+                thread_id,
+                run_id,
+                &parent_id,
+                call,
+                risk,
+                "Refused: this chat is in read-only Plan mode, so only tools that read may run.",
+                true,
+                Vec::new(),
+                None,
+                None,
+                0,
+            );
+            continue;
+        }
         if risk == ToolRiskTier::Tier3Blocked
             || catalog.trust_preset == TrustPreset::Off
             || catalog.permissions.get(&call.name) == Some(&ToolPermission::Off)
+            || (catalog.policy_unreadable && risk != ToolRiskTier::Tier0ReadOnly)
         {
             parent_id = commit_tool_result_node(
                 storage,
@@ -543,16 +573,38 @@ pub(crate) async fn execute_tool_batch(
         }
 
         // Determine whether this call needs interactive user approval.
-        let thread_approved =
-            lock_or_recover(&services.thread_auto_approvals, "thread_auto_approvals")
-                .contains(&(thread_id.to_owned(), call.name.clone()));
+        let (chat_granted, denied_earlier) = {
+            let memory = lock_or_recover(&services.thread_auto_approvals, "approval_memory");
+            (
+                memory.is_granted(thread_id, &call.name, &parsed_args),
+                memory.was_denied(run_id, &call.name, &parsed_args),
+            )
+        };
+        if denied_earlier {
+            parent_id = commit_tool_result_node(
+                storage,
+                events_tx,
+                thread_id,
+                run_id,
+                &parent_id,
+                call,
+                risk,
+                "Tool call already denied by user earlier in this run.",
+                true,
+                Vec::new(),
+                None,
+                None,
+                0,
+            );
+            continue;
+        }
         let explicit_perm = catalog.permissions.get(&call.name).copied();
         let auto_approve = match explicit_perm {
             Some(ToolPermission::Allow) => catalog.trust_preset != TrustPreset::Strict,
-            Some(ToolPermission::Ask) => thread_approved,
+            Some(ToolPermission::Ask) => chat_granted,
             Some(ToolPermission::Off) => false,
             None => {
-                thread_approved
+                chat_granted
                     || (risk == ToolRiskTier::Tier0ReadOnly
                         && catalog.trust_preset != TrustPreset::Strict)
                     || (risk == ToolRiskTier::Tier1ReversibleEdit
@@ -560,69 +612,121 @@ pub(crate) async fn execute_tool_batch(
             }
         };
 
-        let permit = if auto_approve {
-            services.broker.issue(thread_id, &call.name, &parsed_args)
-        } else {
-            // Pause and request explicit user approval via EngineEvent::ToolApprovalRequested.
-            let (tx, rx) = oneshot::channel();
-            lock_or_recover(&services.pending_approvals, "pending_approvals")
-                .insert(call.call_id.clone(), tx);
-            note_write(
-                "agent_run_waiting_approval",
-                storage.update_agent_run(
-                    run_id.to_owned(),
-                    AgentRunUpdate {
-                        status: Some(RunStatus::WaitingApproval),
-                        ..AgentRunUpdate::default()
-                    },
-                ),
-            );
-            emit_logged(
-                storage,
-                events_tx,
-                Some(thread_id.to_owned()),
-                EngineEvent::ToolApprovalRequested {
+        let permit =
+            if auto_approve {
+                services.broker.issue(thread_id, &call.name, &parsed_args)
+            } else {
+                // Pause and request explicit user approval via EngineEvent::ToolApprovalRequested.
+                let key = ApprovalKey {
                     thread_id: thread_id.to_owned(),
                     run_id: run_id.to_owned(),
                     call_id: call.call_id.clone(),
-                    tool_name: call.name.clone(),
-                    arguments_json: call.arguments_json.clone(),
-                    risk_tier: risk,
-                },
-            );
-            let decision = tokio::select! {
-                biased;
-                () = crate::providers::until_cancelled(cancel_flag) => {
-                    cancelled = true;
-                    ToolApprovalDecision::Deny
-                }
-                res = tokio::time::timeout(APPROVAL_WAIT_TIMEOUT, rx) => {
-                    match res {
-                        Ok(Ok(d)) => d,
-                        _ => ToolApprovalDecision::Deny,
-                    }
-                }
-            };
-            lock_or_recover(&services.pending_approvals, "pending_approvals").remove(&call.call_id);
-            note_write(
-                "agent_run_resume_running",
-                storage.update_agent_run(
-                    run_id.to_owned(),
-                    AgentRunUpdate {
-                        status: Some(RunStatus::Running),
-                        ..AgentRunUpdate::default()
+                };
+                let (tx, rx) = oneshot::channel();
+                lock_or_recover(&services.pending_approvals, "pending_approvals")
+                    .insert(key.clone(), tx);
+                note_write(
+                    "agent_run_waiting_approval",
+                    storage.update_agent_run(
+                        run_id.to_owned(),
+                        AgentRunUpdate {
+                            status: Some(RunStatus::WaitingApproval),
+                            ..AgentRunUpdate::default()
+                        },
+                    ),
+                );
+                emit_logged(
+                    storage,
+                    events_tx,
+                    Some(thread_id.to_owned()),
+                    EngineEvent::ToolApprovalRequested {
+                        thread_id: thread_id.to_owned(),
+                        run_id: run_id.to_owned(),
+                        call_id: call.call_id.clone(),
+                        tool_name: call.name.clone(),
+                        arguments_json: call.arguments_json.clone(),
+                        risk_tier: risk,
                     },
-                ),
-            );
-            match decision {
-                ToolApprovalDecision::ApproveOnce => {
-                    if let Ok(p) = services
-                        .broker
-                        .approve(thread_id, &call.name, &parsed_args)
-                        .and_then(|id| services.broker.take_approved(&id))
-                    {
-                        p
-                    } else {
+                );
+                let (decision, cancelled_while_waiting) = {
+                    let _paused = services.power.pause_for_user();
+                    emit(
+                        events_tx,
+                        EngineEvent::PowerStatusChanged {
+                            status: services.power.status(),
+                        },
+                    );
+                    wait_for_decision(rx, cancel_flag, &services.wake).await
+                };
+                cancelled |= cancelled_while_waiting;
+                lock_or_recover(&services.pending_approvals, "pending_approvals").remove(&key);
+                note_write(
+                    "agent_run_resume_running",
+                    storage.update_agent_run(
+                        run_id.to_owned(),
+                        AgentRunUpdate {
+                            status: Some(RunStatus::Running),
+                            ..AgentRunUpdate::default()
+                        },
+                    ),
+                );
+                emit(
+                    events_tx,
+                    EngineEvent::PowerStatusChanged {
+                        status: services.power.status(),
+                    },
+                );
+                match decision {
+                    ToolApprovalDecision::ApproveOnce => {
+                        if let Ok(p) = services
+                            .broker
+                            .approve(thread_id, &call.name, &parsed_args)
+                            .and_then(|id| services.broker.take_approved(&id))
+                        {
+                            p
+                        } else {
+                            parent_id = commit_tool_result_node(
+                                storage,
+                                events_tx,
+                                thread_id,
+                                run_id,
+                                &parent_id,
+                                call,
+                                risk,
+                                "Tool approval permit could not be issued.",
+                                true,
+                                Vec::new(),
+                                None,
+                                None,
+                                0,
+                            );
+                            continue;
+                        }
+                    }
+                    ToolApprovalDecision::ApproveForThread => {
+                        if !lock_or_recover(&services.thread_auto_approvals, "approval_memory")
+                            .grant(thread_id, &call.name, &parsed_args, risk)
+                        {
+                            tracing::warn!(
+                                key = ?DiagnosticKey::ToolApprovalRequired,
+                                detail = "approval_memory_full",
+                                "chat grant not remembered; the next identical call asks again"
+                            );
+                        }
+                        services.broker.issue(thread_id, &call.name, &parsed_args)
+                    }
+                    ToolApprovalDecision::Deny | ToolApprovalDecision::Stop => {
+                        let msg = if decision == ToolApprovalDecision::Stop {
+                            cancel_flag.store(true, Ordering::SeqCst);
+                            cancelled = true;
+                            "Run stopped by user at this tool call."
+                        } else if cancelled {
+                            "Cancelled by user while awaiting approval."
+                        } else {
+                            lock_or_recover(&services.thread_auto_approvals, "approval_memory")
+                                .deny(run_id, &call.name, &parsed_args);
+                            "Tool execution denied by user."
+                        };
                         parent_id = commit_tool_result_node(
                             storage,
                             events_tx,
@@ -631,7 +735,7 @@ pub(crate) async fn execute_tool_batch(
                             &parent_id,
                             call,
                             risk,
-                            "Tool approval permit could not be issued.",
+                            msg,
                             true,
                             Vec::new(),
                             None,
@@ -641,37 +745,7 @@ pub(crate) async fn execute_tool_batch(
                         continue;
                     }
                 }
-                ToolApprovalDecision::ApproveForThread => {
-                    lock_or_recover(&services.thread_auto_approvals, "thread_auto_approvals")
-                        .insert((thread_id.to_owned(), call.name.clone()));
-                    services.broker.issue(thread_id, &call.name, &parsed_args)
-                }
-                ToolApprovalDecision::Deny => {
-                    let msg = if cancelled {
-                        "Cancelled by user while awaiting approval."
-                    } else {
-                        "Tool execution denied by user."
-                    };
-                    parent_id = commit_tool_result_node(
-                        storage,
-                        events_tx,
-                        thread_id,
-                        run_id,
-                        &parent_id,
-                        call,
-                        risk,
-                        msg,
-                        true,
-                        Vec::new(),
-                        None,
-                        None,
-                        0,
-                    );
-                    continue;
-                }
-            }
-        };
-
+            };
         // Claim the one-use, argument-bound permit immediately before dispatch.
         if let Err(err) = services
             .broker
@@ -730,11 +804,34 @@ pub(crate) async fn execute_tool_batch(
         );
 
         let started = Instant::now();
-        // Run pre-tool lifecycle hooks if a workspace is bound.
+        // Pre-tool hooks gate the call (A-S5): unapproved, failing, or unrunnable hooks block it.
         if let Some(ws) = &catalog.workspace_root {
-            let _hook_reports =
-                crate::hooks::run_lifecycle_hooks(ws, HookEventKind::PreToolUse, Some(&call.name))
-                    .await;
+            let blocked = tokio::select! {
+                biased;
+                () = crate::providers::until_cancelled(cancel_flag) => {
+                    cancelled = true;
+                    Some("Cancelled by user before tool execution.".to_owned())
+                }
+                verdict = pre_tool_hook_verdict(storage, events_tx, ws, &call.name) => verdict,
+            };
+            if let Some(msg) = blocked {
+                parent_id = commit_tool_result_node(
+                    storage,
+                    events_tx,
+                    thread_id,
+                    run_id,
+                    &parent_id,
+                    call,
+                    risk,
+                    &msg,
+                    true,
+                    Vec::new(),
+                    None,
+                    None,
+                    0,
+                );
+                continue;
+            }
         }
 
         let exec_res = tokio::select! {
@@ -743,13 +840,15 @@ pub(crate) async fn execute_tool_batch(
                 cancelled = true;
                 Err(BistreError::with_detail(DiagnosticKey::ProviderStreamInterrupted, "cancelled"))
             }
-            r = dispatch_single_tool(
+            r = dispatch_with_progress(
                 storage,
                 services,
                 catalog,
+                events_tx,
                 thread_id,
                 run_id,
-                &call.name,
+                call,
+                risk,
                 &parsed_args,
             ) => r,
         };
@@ -758,18 +857,13 @@ pub(crate) async fn execute_tool_batch(
         match exec_res {
             Ok(out) => {
                 let spilled =
-                    spill_large_output(&services.data_dir, &call.call_id, &out.output_text);
+                    spill_off_worker(&services.data_dir, &call.call_id, &out.output_text).await;
                 if out.ok {
                     any_succeeded = true;
                     all_failed = false;
                 }
                 if let Some(ws) = &catalog.workspace_root {
-                    let _post = crate::hooks::run_lifecycle_hooks(
-                        ws,
-                        HookEventKind::PostToolUse,
-                        Some(&call.name),
-                    )
-                    .await;
+                    run_post_tool_hooks(storage, ws, &call.name, cancel_flag).await;
                 }
                 if let Some(ref st) = step_rec {
                     note_write(
@@ -871,9 +965,60 @@ pub(crate) async fn execute_tool_batch(
     }
 }
 
+/// [`dispatch_single_tool`]; a `shell` call also streams its output to the timeline while it
+/// runs (P21), through a bounded channel the forwarder drains until the command ends.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Explicit run context for the one tool-dispatch entry point."
+)]
+async fn dispatch_with_progress(
+    storage: &Arc<StorageHandle>,
+    services: &StreamServices,
+    catalog: &ActiveToolCatalog,
+    events_tx: &broadcast::Sender<EngineEvent>,
+    thread_id: &str,
+    run_id: &str,
+    call: &StoredToolCall,
+    risk: ToolRiskTier,
+    args: &Value,
+) -> BistreResult<ToolExecutionOutput> {
+    if call.name != "shell" {
+        return dispatch_single_tool(
+            storage, services, catalog, thread_id, run_id, &call.name, args, None,
+        )
+        .await;
+    }
+    let (tx, rx) = tokio::sync::mpsc::channel(crate::shell_progress::SHELL_PROGRESS_QUEUE);
+    let target = crate::shell_progress::ShellProgressTarget {
+        events_tx,
+        thread_id,
+        run_id,
+        call_id: &call.call_id,
+        risk,
+    };
+    let (out, ()) = tokio::join!(
+        dispatch_single_tool(
+            storage,
+            services,
+            catalog,
+            thread_id,
+            run_id,
+            &call.name,
+            args,
+            Some(tx),
+        ),
+        crate::shell_progress::forward_shell_progress(rx, target),
+    );
+    out
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "Single flat tool-name router dispatching mcp_schema, MCP tools, web tools, and workspace tools."
+)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Explicit run context plus the optional shell progress channel (P21)."
 )]
 async fn dispatch_single_tool(
     storage: &Arc<StorageHandle>,
@@ -883,6 +1028,7 @@ async fn dispatch_single_tool(
     run_id: &str,
     tool_name: &str,
     args: &Value,
+    progress: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
 ) -> BistreResult<ToolExecutionOutput> {
     if tool_name == "mcp_schema" {
         let wanted = args
@@ -998,6 +1144,7 @@ async fn dispatch_single_tool(
                 Some(run_id),
                 tool_name,
                 args,
+                progress,
             )
             .await
         }
@@ -1008,7 +1155,57 @@ async fn dispatch_single_tool(
     }
 }
 
+/// Workspace tools. `shell` is async already; the file tools (`read`, `edit`, `grep`, `glob`)
+/// walk and read the disk synchronously, so they run on the blocking pool and a large
+/// repository never stalls the async workers (R21).
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Explicit run context plus the optional shell progress channel (P21)."
+)]
 async fn dispatch_workspace_builtin(
+    storage: &Arc<StorageHandle>,
+    read_ledger: &Arc<ReadLedger>,
+    root_path: &Path,
+    thread_id: &str,
+    run_id: Option<&str>,
+    tool_name: &str,
+    args: &Value,
+    progress: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
+) -> BistreResult<ToolExecutionOutput> {
+    if tool_name == "shell" {
+        let cmd = args
+            .get("command")
+            .and_then(Value::as_str)
+            .ok_or_else(|| BistreError::new(DiagnosticKey::InvalidInput))?;
+        let timeout_secs = args
+            .get("timeout_secs")
+            .and_then(Value::as_u64)
+            .unwrap_or(60);
+        return crate::tools::tool_shell_with_progress(root_path, cmd, timeout_secs, progress)
+            .await;
+    }
+    let storage = Arc::clone(storage);
+    let read_ledger = Arc::clone(read_ledger);
+    let root = root_path.to_path_buf();
+    let thread = thread_id.to_owned();
+    let run = run_id.map(str::to_owned);
+    let name = tool_name.to_owned();
+    let args = args.clone();
+    crate::off_worker::blocking(move || {
+        run_file_tool(
+            &storage,
+            &read_ledger,
+            &root,
+            &thread,
+            run.as_deref(),
+            &name,
+            &args,
+        )
+    })
+    .await
+}
+
+fn run_file_tool(
     storage: &StorageHandle,
     read_ledger: &ReadLedger,
     root_path: &Path,
@@ -1082,17 +1279,6 @@ async fn dispatch_workspace_builtin(
                 .and_then(Value::as_str)
                 .ok_or_else(|| BistreError::new(DiagnosticKey::InvalidInput))?;
             tool_glob(root_path, pattern)
-        }
-        "shell" => {
-            let cmd = args
-                .get("command")
-                .and_then(Value::as_str)
-                .ok_or_else(|| BistreError::new(DiagnosticKey::InvalidInput))?;
-            let timeout_secs = args
-                .get("timeout_secs")
-                .and_then(Value::as_u64)
-                .unwrap_or(60);
-            tool_shell(root_path, cmd, timeout_secs).await
         }
         _ => Err(BistreError::with_detail(
             DiagnosticKey::InvalidInput,
@@ -1175,9 +1361,9 @@ fn commit_tool_result_node(
     reason = "Explicit immutable handles keep direct tool execution stateless and testable."
 )]
 pub async fn execute_workspace_tool_direct(
-    storage: &StorageHandle,
+    storage: &Arc<StorageHandle>,
     web: &crate::ssrf::PublicWebTransport,
-    read_ledger: &ReadLedger,
+    read_ledger: &Arc<ReadLedger>,
     broker: &ToolApprovalBroker,
     workspace_root: &str,
     thread_id: &str,
@@ -1262,6 +1448,7 @@ pub async fn execute_workspace_tool_direct(
                 None,
                 tool_name,
                 args,
+                None,
             )
             .await
         }
@@ -1286,3 +1473,7 @@ pub fn is_continuing_tool_turn(history: &[NodeRecord]) -> bool {
 #[cfg(test)]
 #[path = "agent_tools_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "approval_flow_tests.rs"]
+mod approval_flow_tests;

@@ -188,8 +188,10 @@ pub fn evict_remote_file_cache(
     }
 }
 
-/// Canonical MIME type inferred from filename extension when caller supplies an empty or generic type.
-pub fn infer_mime_type(file_name: &str, supplied: &str) -> String {
+/// Canonical MIME type: the caller's specific type, else the extension's, else the file's
+/// leading bytes (`head`, R23): a signature, or `text/plain` only when the bytes read as text,
+/// else `application/octet-stream` (binary is never sent as text).
+pub fn infer_mime_type(file_name: &str, supplied: &str, head: &[u8]) -> String {
     let clean_supplied = supplied.trim().to_ascii_lowercase();
     if !clean_supplied.is_empty() && clean_supplied != "application/octet-stream" {
         return clean_supplied;
@@ -231,9 +233,82 @@ pub fn infer_mime_type(file_name: &str, supplied: &str) -> String {
         "html" | "htm" => "text/html",
         "css" => "text/css",
         "yaml" | "yml" => "text/yaml",
-        _ => "text/plain",
+        "txt" | "log" | "ini" | "toml" | "rs" | "py" | "js" | "ts" | "dart" | "sh" => "text/plain",
+        "zip" => "application/zip",
+        "heic" => "image/heic",
+        "heif" => "image/heif",
+        "avif" => "image/avif",
+        _ => {
+            let head = &head[..head.len().min(crate::mime_sniff::SNIFF_BYTES)];
+            return crate::mime_sniff::sniff(head)
+                .unwrap_or(if crate::mime_sniff::looks_like_text(head) {
+                    "text/plain"
+                } else {
+                    "application/octet-stream"
+                })
+                .to_owned();
+        }
     }
     .to_owned()
+}
+
+/// The note sent to the model in place of an attachment it cannot get (R24: never a silent
+/// drop). Written to the model, not the UI.
+pub fn attachment_not_sent_note(att: &StoredAttachment) -> String {
+    format!(
+        "[Attachment {} ({}) could not be sent: the file is missing or too large]",
+        att.name, att.mime_type
+    )
+}
+
+/// Names of the attachments in `history` that cannot be sent (missing, or too large to send
+/// inline without an uploaded reference), so the run can say so (R24).
+pub fn unsent_attachment_names(
+    data_dir: &Path,
+    history: &[bistre_protocol::NodeRecord],
+) -> Vec<String> {
+    unsent_attachment_names_with_refs(data_dir, history, &HashMap::<String, String>::new())
+}
+
+/// [`unsent_attachment_names`], counting attachments uploaded for this request as sent.
+pub fn unsent_attachment_names_with_refs<S: std::hash::BuildHasher>(
+    data_dir: &Path,
+    history: &[bistre_protocol::NodeRecord],
+    refs: &HashMap<String, String, S>,
+) -> Vec<String> {
+    let inline_limit = u64::try_from(MAX_INLINE_BYTES).unwrap_or(u64::MAX);
+    let mut names = Vec::new();
+    for node in history {
+        if node.role != bistre_protocol::NodeRole::User {
+            continue;
+        }
+        for att in parse_node_attachments(node.provider_meta_json.as_deref()) {
+            if refs.contains_key(&att.blake3_hex) {
+                continue;
+            }
+            let size = resolve_blob_path(data_dir, &att)
+                .and_then(|p| std::fs::metadata(p).ok())
+                .filter(std::fs::Metadata::is_file)
+                .map(|m| m.len());
+            let too_large = size.is_some_and(|s| s > inline_limit)
+                && !is_text_like(&att.mime_type, &att.name)
+                && !is_office_document(&att.mime_type, &att.name);
+            if (size.is_none() || too_large) && !names.contains(&att.name) {
+                names.push(att.name.clone());
+            }
+        }
+    }
+    names
+}
+
+/// Whether Gemini gets this attachment through its Files API. Office files never do (Gemini
+/// rejects Office types; they go as extracted text, R25).
+pub fn gemini_needs_files_api(att: &StoredAttachment) -> bool {
+    !is_office_document(&att.mime_type, &att.name)
+        && (att.mime_type == "application/pdf"
+            || att.mime_type.starts_with("audio/")
+            || att.mime_type.starts_with("video/")
+            || att.mime_type.starts_with("image/") && att.size_bytes > 4 * 1024 * 1024)
 }
 
 /// Safe ASCII extension for content-addressed blob storage.
@@ -360,7 +435,7 @@ pub fn ingest_attachment(
     } else {
         input.name.trim().to_owned()
     };
-    let mime_type = infer_mime_type(&name, &input.mime_type);
+    let mime_type = infer_mime_type(&name, &input.mime_type, &bytes);
     let ext = safe_extension(&name);
     let rel_path = format!("attachments/{blake3_hex}.{ext}");
     let dest_dir = data_dir.join("attachments");
@@ -729,7 +804,7 @@ pub async fn gemini_upload_file(
     body.extend_from_slice(&bytes);
     body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
 
-    let clean_base = base.trim_end_matches('/');
+    let clean_base = bistre_protocol::ProviderDialect::GoogleGemini.api_root(base);
     let upload_url = format!("{clean_base}/upload/v1beta/files?uploadType=multipart");
     let mut headers = reqwest::header::HeaderMap::new();
     let content_type =
@@ -885,11 +960,15 @@ pub async fn upload_provider_file_api(
     if dialect == bistre_protocol::ProviderDialect::Anthropic {
         headers.insert(
             "anthropic-version",
-            reqwest::header::HeaderValue::from_static("2023-06-01"),
+            reqwest::header::HeaderValue::from_static(
+                bistre_protocol::dialect::ANTHROPIC_API_VERSION,
+            ),
         );
         headers.insert(
             "anthropic-beta",
-            reqwest::header::HeaderValue::from_static("files-api-2025-04-14"),
+            reqwest::header::HeaderValue::from_static(
+                bistre_protocol::dialect::ANTHROPIC_BETA_FILES,
+            ),
         );
     }
     apply_auth_header(dialect, api_key, &mut headers);
@@ -934,11 +1013,15 @@ pub async fn delete_remote_file(
     if dialect == bistre_protocol::ProviderDialect::Anthropic {
         headers.insert(
             "anthropic-version",
-            reqwest::header::HeaderValue::from_static("2023-06-01"),
+            reqwest::header::HeaderValue::from_static(
+                bistre_protocol::dialect::ANTHROPIC_API_VERSION,
+            ),
         );
         headers.insert(
             "anthropic-beta",
-            reqwest::header::HeaderValue::from_static("files-api-2025-04-14"),
+            reqwest::header::HeaderValue::from_static(
+                bistre_protocol::dialect::ANTHROPIC_BETA_FILES,
+            ),
         );
     }
     apply_auth_header(dialect, api_key, &mut headers);
@@ -977,12 +1060,7 @@ pub async fn preupload_attachments_for_dialect(
             }
             match dialect {
                 bistre_protocol::ProviderDialect::GoogleGemini => {
-                    let needs_files_api = is_office_document(&att.mime_type, &att.name)
-                        || att.mime_type == "application/pdf"
-                        || att.mime_type.starts_with("audio/")
-                        || att.mime_type.starts_with("video/")
-                        || att.size_bytes > 4 * 1024 * 1024;
-                    if needs_files_api
+                    if gemini_needs_files_api(&att)
                         && let Some(uri) =
                             gemini_upload_file(client, base, api_key, dir, &att).await
                     {
@@ -1086,6 +1164,7 @@ pub fn build_gemini_interactions_input<S: std::hash::BuildHasher>(
         data_dir,
         gemini_uris,
         None,
+        0,
     )
 }
 

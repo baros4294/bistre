@@ -52,6 +52,20 @@ impl EngineClient for InProcessEngine {
     ) -> BoxFuture<'_, BistreResult<ProviderProfile>> {
         Box::pin(async move {
             let updated = self.storage.update_provider(provider_id, patch)?;
+            // Saved custom headers belong to one server: a new origin clears them (A-S8).
+            if crate::provider_prefs::drop_headers_if_origin_changed(
+                &self.storage,
+                &updated.id,
+                &updated.base_url,
+            )? {
+                emit(
+                    &self.events_tx,
+                    EngineEvent::DiagnosticRaised {
+                        key: DiagnosticKey::ProviderHeadersCleared,
+                        detail_code: None,
+                    },
+                );
+            }
             Ok(self.hydrate_provider(updated))
         })
     }
@@ -294,6 +308,8 @@ impl EngineClient for InProcessEngine {
     fn delete_thread(&self, thread_id: String) -> BoxFuture<'_, BistreResult<()>> {
         Box::pin(async move {
             self.cancel_active_run(thread_id.clone()).await?;
+            lock_or_recover(&self.thread_auto_approvals, "approval_memory")
+                .forget_thread(&thread_id);
             self.storage.delete_thread(thread_id)
         })
     }
@@ -336,6 +352,7 @@ impl EngineClient for InProcessEngine {
         user_content: String,
     ) -> BoxFuture<'_, BistreResult<NodeRecord>> {
         Box::pin(async move {
+            self.stop_previous_run(&thread_id).await;
             self.send_with_attachments_inner(thread_id, parent_id, &user_content, &[])
         })
     }
@@ -348,6 +365,7 @@ impl EngineClient for InProcessEngine {
         attachments: Vec<super::AttachmentInput>,
     ) -> BoxFuture<'_, BistreResult<NodeRecord>> {
         Box::pin(async move {
+            self.stop_previous_run(&thread_id).await;
             self.send_with_attachments_inner(thread_id, parent_id, &user_content, &attachments)
         })
     }
@@ -372,8 +390,12 @@ impl EngineClient for InProcessEngine {
         Box::pin(async move { self.export_settings_json_inner() })
     }
 
-    fn import_settings_json(&self, raw_json: String) -> BoxFuture<'_, BistreResult<AppSettings>> {
-        Box::pin(async move { self.import_settings_json_inner(&raw_json) })
+    fn import_settings_json(
+        &self,
+        raw_json: String,
+        allow_loosening: bool,
+    ) -> BoxFuture<'_, BistreResult<AppSettings>> {
+        Box::pin(async move { self.import_settings_json_inner(&raw_json, allow_loosening) })
     }
 
     fn list_storage_files(&self) -> BoxFuture<'_, BistreResult<Vec<super::StorageFileEntry>>> {
@@ -410,6 +432,7 @@ impl EngineClient for InProcessEngine {
     ) -> BoxFuture<'_, BistreResult<String>> {
         Box::pin(async move {
             self.start_live_voice_session_inner(&provider_id, &model_id, voice, system_prompt)
+                .await
         })
     }
 
@@ -470,6 +493,7 @@ impl EngineClient for InProcessEngine {
                 thread.mode,
             );
 
+            self.stop_previous_run(&thread_id).await;
             self.spawn_live_stream(
                 &thread,
                 user_node_id,
@@ -497,6 +521,7 @@ impl EngineClient for InProcessEngine {
                 .ok_or_else(|| BistreError::new(DiagnosticKey::StorageNotFound))?;
             let preserved =
                 crate::attachments::parse_node_attachments(original.provider_meta_json.as_deref());
+            self.stop_previous_run(&thread_id).await;
             self.send_with_stored_attachments_inner(
                 thread_id,
                 original.parent_id,
@@ -560,7 +585,7 @@ impl EngineClient for InProcessEngine {
                 .filter(|u| !u.is_empty())
                 .unwrap_or(settings.ota_feed_url);
             let (summary, verified) = ota::check_for_updates(
-                &self.http,
+                &self.ota_http,
                 &feed_url,
                 CORE_VERSION,
                 self.active_runs.load(Ordering::Relaxed),
@@ -586,9 +611,10 @@ impl EngineClient for InProcessEngine {
                     )
                 })?;
             ota::stage_update_artifact(
-                &self.http,
+                &self.ota_http,
                 &self.data_dir,
                 &verified,
+                CORE_VERSION,
                 self.active_runs.load(Ordering::Relaxed),
             )
             .await
@@ -821,20 +847,28 @@ impl EngineClient for InProcessEngine {
         Box::pin(async move { self.storage.latest_event_cursor() })
     }
 
-    fn context_usage(
+    fn context_breakdown(
         &self,
         thread_id: String,
         leaf_node_id: String,
         draft: String,
-    ) -> BoxFuture<'_, BistreResult<crate::ContextUsage>> {
+    ) -> BoxFuture<'_, BistreResult<crate::ContextBreakdown>> {
         let dir = self.data_dir.clone();
+        let prices = self.pricing.snapshot();
         Box::pin(off_worker(&self.storage, move |s| {
-            crate::engine_runs::branch_context_usage(
+            let limit_for = |model: &str| {
+                prices
+                    .lookup(model)
+                    .and_then(|r| r.context_tokens)
+                    .map(u64::from)
+            };
+            crate::context_breakdown::branch_context_breakdown(
                 s,
                 Some(&dir),
                 &thread_id,
                 &leaf_node_id,
                 &draft,
+                &limit_for,
             )
         }))
     }
@@ -881,20 +915,47 @@ impl EngineClient for InProcessEngine {
         })
     }
 
+    fn allow_unpriced_once(&self, thread_id: String) -> BoxFuture<'_, BistreResult<()>> {
+        Box::pin(async move {
+            lock_or_recover(&self.unpriced_allowed, "unpriced_allowed").insert(thread_id);
+            Ok(())
+        })
+    }
+
+    fn save_provider_overrides(
+        &self,
+        provider_id: String,
+        headers_json: String,
+        body_json: String,
+    ) -> BoxFuture<'_, BistreResult<()>> {
+        Box::pin(async move {
+            self.save_provider_overrides_inner(&provider_id, &headers_json, &body_json)
+        })
+    }
+    fn allow_unpriced_media_once(&self) -> BoxFuture<'_, BistreResult<()>> {
+        Box::pin(async move {
+            lock_or_recover(&self.unpriced_allowed, "unpriced_allowed")
+                .insert(crate::engine_extras::MEDIA_ALLOWANCE.to_owned());
+            Ok(())
+        })
+    }
+
     fn respond_tool_approval(
         &self,
         thread_id: String,
+        run_id: String,
         call_id: String,
         decision: bistre_protocol::ToolApprovalDecision,
     ) -> BoxFuture<'_, BistreResult<bool>> {
         Box::pin(async move {
             Ok(crate::agent_tools::deliver_tool_approval(
                 &self.pending_approvals,
-                &self.thread_auto_approvals,
-                &thread_id,
-                &call_id,
+                &crate::agent_tools::ApprovalKey {
+                    thread_id,
+                    run_id,
+                    call_id,
+                },
                 decision,
-                None,
             ))
         })
     }
@@ -1074,6 +1135,9 @@ impl EngineClient for InProcessEngine {
     fn set_kv_meta(&self, key: String, value: String) -> BoxFuture<'_, BistreResult<()>> {
         Box::pin(async move {
             crate::agent_tools::invalidate_broker_on_policy_change(&self.broker, &key);
+            if key == "agent.mcp_servers" {
+                crate::mcp_stdio::close_all_stdio_sessions();
+            }
             self.storage.set_kv_meta(key, value)
         })
     }
@@ -1125,13 +1189,29 @@ impl EngineClient for InProcessEngine {
         })
     }
 
-    fn list_workspace_hooks(
+    fn list_thread_grounding(
         &self,
-        workspace_root: String,
-    ) -> BoxFuture<'_, BistreResult<Vec<hooks::WorkspaceHookConfig>>> {
-        Box::pin(async move { hooks::load_workspace_hooks(Path::new(&workspace_root)) })
+        thread_id: String,
+    ) -> BoxFuture<'_, BistreResult<Vec<crate::engine_grounding::NodeGrounding>>> {
+        Box::pin(self.list_thread_grounding_inner(thread_id))
     }
 
+    fn workspace_hooks_status(
+        &self,
+        workspace_root: String,
+    ) -> BoxFuture<'_, BistreResult<Option<hooks::WorkspaceHooksStatus>>> {
+        Box::pin(async move { self.workspace_hooks_status_inner(Path::new(&workspace_root)) })
+    }
+
+    fn approve_workspace_hooks(
+        &self,
+        workspace_root: String,
+        digest: String,
+    ) -> BoxFuture<'_, BistreResult<()>> {
+        Box::pin(
+            async move { self.approve_workspace_hooks_inner(Path::new(&workspace_root), &digest) },
+        )
+    }
     fn list_cron_jobs(&self) -> BoxFuture<'_, BistreResult<Vec<CronJobRecord>>> {
         Box::pin(async move { self.storage.list_cron_jobs() })
     }
@@ -1347,46 +1427,7 @@ impl EngineClient for InProcessEngine {
         active_scene_beats: Option<String>,
     ) -> BoxFuture<'_, BistreResult<story::prompt_assembler::CompiledPromptReport>> {
         Box::pin(async move {
-            let state = self.storage.load_story_thread_state(&thread_id)?;
-            let all_cards = self.storage.list_character_cards()?;
-            let active_cards: Vec<CharacterCardRecord> = if state.active_character_ids.is_empty() {
-                all_cards.into_iter().take(1).collect()
-            } else {
-                all_cards
-                    .into_iter()
-                    .filter(|c| state.active_character_ids.contains(&c.id))
-                    .collect()
-            };
-            let personas = self.storage.list_user_personas()?;
-            let active_persona = state
-                .user_persona_id
-                .as_deref()
-                .and_then(|pid| personas.iter().find(|p| p.id == pid))
-                .or_else(|| personas.iter().find(|p| p.is_default))
-                .or_else(|| personas.first());
-            let entries = self.storage.list_story_entries(None)?;
-            let progressions = self.storage.list_story_progressions(None)?;
-            let chapters = self.storage.list_story_chapters(&thread_id)?;
-            let nodes = self.storage.list_nodes(&thread_id)?;
-
-            let base_system = self
-                .storage
-                .get_thread(&thread_id)?
-                .and_then(|t| t.system_prompt_override)
-                .unwrap_or_default();
-
-            Ok(story::prompt_assembler::assemble_story_prompt(
-                &base_system,
-                &state,
-                &active_cards,
-                active_persona,
-                &entries,
-                &progressions,
-                &chapters,
-                &nodes,
-                active_scene_beats.as_deref(),
-                16_384,
-            ))
+            self.inspect_story_prompt_inner(&thread_id, active_scene_beats.as_deref())
         })
     }
 
@@ -1403,6 +1444,11 @@ impl EngineClient for InProcessEngine {
                     flag.store(true, Ordering::SeqCst);
                 }
             }
+            // Wake every run blocked in a backoff or approval wait so it sees the cancel and
+            // records its final state now, instead of being aborted at the drain deadline (A-S11).
+            for wake in lock_or_recover(&self.wakers, "wakers").values() {
+                wake.notify_one();
+            }
             // Let cancelled runs record their final state before storage closes (bounded).
             let mut runs = std::mem::take(&mut *lock_or_recover(&self.run_tasks, "run_tasks"));
             let drained = tokio::time::timeout(RUN_DRAIN_TIMEOUT, async {
@@ -1416,6 +1462,7 @@ impl EngineClient for InProcessEngine {
                 );
                 runs.abort_all();
             }
+            crate::mcp_stdio::close_all_stdio_sessions();
             self.storage.shutdown()?;
             Ok(())
         })

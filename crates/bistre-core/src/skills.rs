@@ -69,7 +69,7 @@ pub fn load_skill_body(workspace_root: &Path, skill_path: &Path) -> BistreResult
         .map_err(|_| BistreError::with_detail(DiagnosticKey::StorageNotFound, "skill_not_found"))?;
     if !canon_file.starts_with(&canon_root) {
         return Err(BistreError::with_detail(
-            DiagnosticKey::ToolEditHashMismatch,
+            DiagnosticKey::ToolPathDenied,
             "skill_outside_workspace",
         ));
     }
@@ -131,6 +131,21 @@ mod tests {
     use tempfile::tempdir;
 
     type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+    /// W8: a file outside the workspace is a path denial with its own key, not an "edit hash
+    /// mismatch" (which sent the user to the wrong fix).
+    #[test]
+    fn a_skill_outside_the_workspace_is_a_path_denial() -> TestResult {
+        let ws = tempdir()?;
+        let outside = tempdir()?;
+        let file = outside.path().join("SKILL.md");
+        std::fs::write(&file, "---\nname: x\n---\nbody")?;
+        let err = load_skill_body(ws.path(), &file)
+            .err()
+            .ok_or("must be denied")?;
+        assert_eq!(err.key, DiagnosticKey::ToolPathDenied);
+        Ok(())
+    }
 
     #[test]
     fn discovers_skill_frontmatter_and_loads_body_on_demand() -> TestResult {

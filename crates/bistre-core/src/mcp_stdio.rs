@@ -4,6 +4,13 @@
 //!   (Windows `CREATE_NO_WINDOW` + `KILL_ON_JOB_CLOSE`; Unix process group + `PR_SET_PDEATHSIG`).
 //! - Quarantines noisy non-JSON stdout banner lines (bounded at 64 lines).
 //! - Drains `stderr` into a bounded 64 KiB ring buffer so children never deadlock on pipe pressure.
+//! - Keeps ONE long-lived session (process) per server (R15; MCP 2026-07-28 stdio: clients
+//!   "SHOULD NOT use an individual task, thread, or conversation as the lifetime boundary").
+//!   A broken session (crash, timeout, endless line) is dropped, killing its tree, and the next
+//!   call starts a new one; a config change closes the old client before replacing it.
+//! - Reads stdout lines bounded at [`MAX_STDIO_LINE_BYTES`] (R16) and answers server requests
+//!   by method (`ping` -> `{}`, anything not negotiated -> `-32601`), never taking one as our
+//!   response (R43).
 //! - Enforces a strict `3 starts / 10 min` restart budget per server and never resends a crashed call.
 //! - Parses rich MCP `content[]` (`text`, `image`, `audio`, `resource`, `resource_link`) + `isError`,
 //!   persisting binary media into `<data_dir>/attachments/` so multimodal models see tool screenshots.
@@ -20,11 +27,12 @@ use bistre_protocol::{
 };
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::sync::Mutex as AsyncMutex;
 use uuid::Uuid;
 
 use crate::mcp::{
-    MAX_MCP_TOOL_RESULT_BYTES, MCP_CALL_TIMEOUT, MCP_PROTOCOL_2025, MCP_PROTOCOL_2026,
-    McpDiscoveryReport, McpServerConfig, normalize_and_sort_tools,
+    MAX_MCP_HTTP_RESPONSE_BYTES, MAX_MCP_TOOL_RESULT_BYTES, MCP_CALL_TIMEOUT, MCP_PROTOCOL_2025,
+    MCP_PROTOCOL_2026, McpDiscoveryReport, McpServerConfig, normalize_and_sort_tools,
 };
 use crate::process_util::{ChildContainment, no_window_command, spawn_contained};
 
@@ -35,6 +43,11 @@ pub const STDERR_RING_CAP_BYTES: usize = 64 * 1024;
 /// Restart budget: at most 3 starts within a 10-minute sliding window.
 pub const MAX_STDIO_STARTS_PER_WINDOW: usize = 3;
 pub const STDIO_RESTART_WINDOW: Duration = Duration::from_secs(600);
+
+/// Longest stdout line (one JSON-RPC message) accepted from a stdio server (R16).
+pub const MAX_STDIO_LINE_BYTES: usize = MAX_MCP_HTTP_RESPONSE_BYTES;
+/// Most stdio servers holding a live session at once.
+const MAX_STDIO_SESSIONS: usize = 64;
 
 static RESTART_BUDGET: LazyLock<Mutex<HashMap<String, VecDeque<Instant>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -227,6 +240,9 @@ fn persist_mcp_media_blob(
 
 /// RAII stdio MCP child process handle; kills the entire process tree on drop.
 struct StdioMcpProcess {
+    /// Held for the session's life: the command sets `kill_on_drop`, so dropping it kills the
+    /// server (the old code dropped it right after spawning, killing every server at once).
+    child: tokio::process::Child,
     stdin: tokio::process::ChildStdin,
     stdout: BufReader<tokio::process::ChildStdout>,
     _stderr_ring: Arc<Mutex<StderrRing>>,
@@ -279,6 +295,7 @@ impl StdioMcpProcess {
             });
         }
         Ok(Self {
+            child,
             stdin,
             stdout: BufReader::new(stdout),
             _stderr_ring: stderr_ring,
@@ -286,6 +303,54 @@ impl StdioMcpProcess {
             quarantined_stdout: Vec::new(),
             next_id: 1,
         })
+    }
+
+    /// Whether the server process is still running.
+    fn is_alive(&mut self) -> bool {
+        matches!(self.child.try_wait(), Ok(None))
+    }
+
+    /// Reads one line (without its newline) into `out`, never holding more than
+    /// [`MAX_STDIO_LINE_BYTES`] (R16). Returns `false` at end of stream.
+    async fn read_bounded_line(&mut self, out: &mut Vec<u8>) -> BistreResult<bool> {
+        let read_err =
+            || BistreError::with_detail(DiagnosticKey::ProviderRequestFailed, "mcp_stdio_read");
+        loop {
+            let buf = self.stdout.fill_buf().await.map_err(|_| read_err())?;
+            if buf.is_empty() {
+                return Ok(!out.is_empty());
+            }
+            let (take, done) = buf
+                .iter()
+                .position(|&b| b == b'\n')
+                .map_or((buf.len(), false), |pos| (pos + 1, true));
+            if out.len().saturating_add(take) > MAX_STDIO_LINE_BYTES.saturating_add(1) {
+                return Err(BistreError::with_detail(
+                    DiagnosticKey::ProviderRequestFailed,
+                    "mcp_stdio_line_too_long",
+                ));
+            }
+            out.extend_from_slice(&buf[..take]);
+            self.stdout.consume(take);
+            if done {
+                out.pop();
+                return Ok(true);
+            }
+        }
+    }
+
+    /// R43: answers a request the server sent us, by method.
+    async fn answer_server_request(&mut self, id: &Value, method: &str) -> BistreResult<()> {
+        let reply = if method == "ping" {
+            json!({ "jsonrpc": "2.0", "id": id, "result": {} })
+        } else {
+            json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "error": { "code": -32601, "message": "Method not found" }
+            })
+        };
+        self.send_line(&reply).await
     }
 
     async fn send_line(&mut self, msg: &Value) -> BistreResult<()> {
@@ -320,16 +385,10 @@ impl StdioMcpProcess {
                     "mcp_stdio_timeout",
                 ));
             }
-            let mut line = String::new();
-            let read_res = tokio::time::timeout(remaining, self.stdout.read_line(&mut line)).await;
-            let n = match read_res {
-                Ok(Ok(n)) => n,
-                Ok(Err(_)) => {
-                    return Err(BistreError::with_detail(
-                        DiagnosticKey::ProviderRequestFailed,
-                        "mcp_stdio_read",
-                    ));
-                }
+            let mut raw = Vec::new();
+            let got = match tokio::time::timeout(remaining, self.read_bounded_line(&mut raw)).await
+            {
+                Ok(read) => read?,
                 Err(_) => {
                     return Err(BistreError::with_detail(
                         DiagnosticKey::ProviderRequestFailed,
@@ -337,29 +396,33 @@ impl StdioMcpProcess {
                     ));
                 }
             };
-            if n == 0 {
+            if !got {
                 return Err(BistreError::with_detail(
                     DiagnosticKey::ProviderRequestFailed,
                     "mcp_stdio_eof",
                 ));
             }
+            let line = String::from_utf8_lossy(&raw);
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 continue;
             }
             match serde_json::from_str::<Value>(trimmed) {
-                Ok(val) if val.get("id").and_then(Value::as_u64) == Some(id) => {
-                    if let Some(err) = val.get("error") {
-                        let code = err.get("code").and_then(Value::as_i64).unwrap_or(-32000);
-                        return Err(BistreError::with_detail(
-                            DiagnosticKey::ProviderRequestFailed,
-                            format!("mcp_rpc_error_{code}"),
-                        ));
+                // R43: a message with a `method` is the server's request or notification, never
+                // our response, even when it reuses our id.
+                Ok(val) if val.get("method").is_some() => {
+                    if let (Some(req_id), Some(m)) =
+                        (val.get("id"), val.get("method").and_then(Value::as_str))
+                    {
+                        let m = m.to_owned();
+                        self.answer_server_request(&req_id.clone(), &m).await?;
                     }
-                    return Ok(val);
+                }
+                Ok(val) if val.get("id").and_then(Value::as_u64) == Some(id) => {
+                    return crate::mcp::json_rpc_result(val);
                 }
                 Ok(_) => {
-                    // Server notification or unrelated frame; ignore safely.
+                    // A response to an earlier, abandoned request; ignore safely.
                 }
                 Err(_) => {
                     // Noisy stdout banner line: quarantine without crashing the session.
@@ -401,13 +464,121 @@ impl StdioMcpProcess {
     }
 }
 
+/// One live session: the process, what it was started from, and the negotiated protocol.
+struct StdioSession {
+    proc: StdioMcpProcess,
+    fingerprint: String,
+    negotiated: String,
+}
+
+type SessionSlot = Arc<AsyncMutex<Option<StdioSession>>>;
+
+static SESSIONS: LazyLock<Mutex<HashMap<String, SessionSlot>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn session_slot(server_id: &str) -> BistreResult<SessionSlot> {
+    let mut map = lock_or_recover(&SESSIONS, "mcp_stdio_sessions");
+    if let Some(slot) = map.get(server_id) {
+        return Ok(Arc::clone(slot));
+    }
+    if map.len() >= MAX_STDIO_SESSIONS {
+        return Err(BistreError::with_detail(
+            DiagnosticKey::InvalidInput,
+            "mcp_stdio_too_many_servers",
+        ));
+    }
+    let slot: SessionSlot = Arc::new(AsyncMutex::new(None));
+    map.insert(server_id.to_owned(), Arc::clone(&slot));
+    Ok(slot)
+}
+
+/// Closes (kills) the live session of `server_id`, if any. A call still using it finishes
+/// first; the process dies when that call lets go.
+pub fn close_stdio_session(server_id: &str) {
+    let slot = lock_or_recover(&SESSIONS, "mcp_stdio_sessions").remove(server_id);
+    if let Some(slot) = slot
+        && let Ok(mut guard) = slot.try_lock()
+    {
+        *guard = None;
+    }
+}
+
+/// Closes every live stdio session: the server list changed (the user's edit also resets the
+/// restart budgets), or the engine is shutting down. Child pipe reads run on the blocking
+/// pool, so a session left open would also keep the runtime from shutting down.
+pub fn close_all_stdio_sessions() {
+    let slots: Vec<(String, SessionSlot)> = lock_or_recover(&SESSIONS, "mcp_stdio_sessions")
+        .drain()
+        .collect();
+    for (id, slot) in slots {
+        reset_stdio_restart_budget(&id);
+        if let Ok(mut guard) = slot.try_lock() {
+            *guard = None;
+        }
+    }
+}
+
+/// What a session was started from; a change starts a new one.
+fn session_fingerprint(server: &McpServerConfig) -> String {
+    json!([server.command, server.args]).to_string()
+}
+
+/// Sends one request on the server's live session, starting one if needed. Returns the
+/// response, the negotiated protocol, and any quarantined stdout lines.
+async fn session_rpc(
+    server: &McpServerConfig,
+    method: &str,
+    params: Value,
+) -> BistreResult<(Value, String, Vec<String>)> {
+    let slot = session_slot(&server.id)?;
+    let mut guard = slot.lock().await;
+    let fingerprint = session_fingerprint(server);
+    let reusable = guard
+        .as_mut()
+        .is_some_and(|s| s.fingerprint == fingerprint && s.proc.is_alive());
+    if !reusable {
+        // Close (kill) the old client before replacing it (AGENTS section 7).
+        *guard = None;
+        let mut proc = StdioMcpProcess::spawn(server)?;
+        let negotiated = proc.handshake().await?;
+        *guard = Some(StdioSession {
+            proc,
+            fingerprint,
+            negotiated,
+        });
+    }
+    let Some(session) = guard.as_mut() else {
+        return Err(BistreError::with_detail(
+            DiagnosticKey::InternalError,
+            "mcp_stdio_session",
+        ));
+    };
+    match session.proc.rpc(method, params).await {
+        Ok(resp) => Ok((
+            resp,
+            session.negotiated.clone(),
+            std::mem::take(&mut session.proc.quarantined_stdout),
+        )),
+        Err(err) => {
+            // A JSON-RPC error answer leaves the session healthy; anything else (crash,
+            // timeout, endless line) drops it, killing the process tree.
+            let rpc_answer = err
+                .detail_code
+                .as_deref()
+                .is_some_and(|d| d.starts_with("mcp_rpc_error_"));
+            if !rpc_answer {
+                *guard = None;
+            }
+            Err(err)
+        }
+    }
+}
+
 /// Discovers tools from a local `stdio` MCP server, quarantining noisy stdout banners cleanly.
 pub async fn discover_stdio_mcp_server(
     server: &McpServerConfig,
 ) -> BistreResult<McpDiscoveryReport> {
-    let mut proc = StdioMcpProcess::spawn(server)?;
-    let negotiated = proc.handshake().await?;
-    let list_resp = proc.rpc("tools/list", json!({})).await?;
+    let (list_resp, negotiated, quarantined) = session_rpc(server, "tools/list", json!({})).await?;
     let raw_tools = list_resp
         .pointer("/result/tools")
         .and_then(Value::as_array)
@@ -415,7 +586,7 @@ pub async fn discover_stdio_mcp_server(
     Ok(McpDiscoveryReport {
         negotiated_protocol: negotiated,
         tools: normalize_and_sort_tools(&server.id, raw_tools),
-        quarantined_stdout_lines: std::mem::take(&mut proc.quarantined_stdout),
+        quarantined_stdout_lines: quarantined,
     })
 }
 
@@ -427,17 +598,15 @@ pub async fn call_stdio_mcp_tool(
     arguments: &Value,
     data_dir: Option<&Path>,
 ) -> BistreResult<McpToolCallOutput> {
-    let mut proc = StdioMcpProcess::spawn(server)?;
-    let _negotiated = proc.handshake().await?;
-    let resp = proc
-        .rpc(
-            "tools/call",
-            json!({
-                "name": tool_name,
-                "arguments": arguments,
-            }),
-        )
-        .await?;
+    let (resp, _negotiated, _quarantined) = session_rpc(
+        server,
+        "tools/call",
+        json!({
+            "name": tool_name,
+            "arguments": arguments,
+        }),
+    )
+    .await?;
     let result = resp.get("result").unwrap_or(&resp);
     Ok(parse_mcp_call_result(result, data_dir))
 }
@@ -493,3 +662,7 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "mcp_stdio_tests.rs"]
+mod mcp_stdio_tests;

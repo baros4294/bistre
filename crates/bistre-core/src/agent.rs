@@ -30,28 +30,46 @@ pub enum RecoveryAction {
     WaitUntil { run_id: String, retry_after_ms: i64 },
 }
 
-/// Computes deterministic jittered exponential backoff (in milliseconds) honoring `Retry-After`
-/// and capped by the user's `retry_watchdog_max_wait_secs` budget.
+/// Computes jittered exponential backoff (in milliseconds) honoring `Retry-After` within the
+/// user's `retry_watchdog_max_wait_secs` budget. `None` means give up: the budget is spent, or
+/// the provider asked for longer than what is left (R32: an early retry hits the same limit).
+/// `jitter_seed` differs per run, so runs that failed together do not retry together.
 pub fn compute_backoff_wait_ms(
     attempt: u32,
     retry_after_header_secs: Option<u64>,
     elapsed_wait_secs: u64,
     max_total_wait_secs: u32,
+    jitter_seed: u64,
 ) -> Option<u64> {
     let budget = u64::from(max_total_wait_secs);
     if elapsed_wait_secs >= budget {
         return None;
     }
     let remaining_secs = budget.saturating_sub(elapsed_wait_secs);
+    if retry_after_header_secs.is_some_and(|hint| hint > remaining_secs) {
+        return None;
+    }
     let exp_secs = 2_u64
         .saturating_pow(attempt.min(6))
         .saturating_mul(2)
         .min(180);
     let base_secs = retry_after_header_secs.map_or(exp_secs, |hdr| hdr.max(1));
-    // Deterministic sub-second jitter (no RNG crate needed, avoids thundering herd across runs).
-    let jitter_ms = u64::from((attempt.wrapping_mul(257)) % 750);
+    // Sub-second jitter from a per-run seed (splitmix64; no RNG crate needed).
+    let mut z = jitter_seed
+        .wrapping_add(u64::from(attempt).wrapping_mul(0x9E37_79B9_7F4A_7C15))
+        .wrapping_add(0x9E37_79B9_7F4A_7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    let jitter_ms = (z ^ (z >> 31)) % 750;
     let clamped_secs = base_secs.min(remaining_secs);
     Some(clamped_secs.saturating_mul(1000).saturating_add(jitter_ms))
+}
+
+/// A stable per-run jitter seed (FNV-1a of the run id).
+pub fn jitter_seed(run_id: &str) -> u64 {
+    run_id.bytes().fold(0xCBF2_9CE4_8422_2325, |h, b| {
+        (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01B3)
+    })
 }
 
 /// Evaluates whether a Tier-2 action may proceed automatically under an unattended policy.
@@ -115,7 +133,12 @@ pub fn handle_power_event(
             Ok(Vec::new())
         }
         SystemPowerEvent::DidResume | SystemPowerEvent::NetworkRestored => {
+            crate::providers::note_app_resumed();
             reconcile_interrupted_runs(storage, settings, events_tx, spent_today)
+        }
+        SystemPowerEvent::AppResumed => {
+            crate::providers::note_app_resumed();
+            Ok(Vec::new())
         }
         SystemPowerEvent::NetworkLost | SystemPowerEvent::PowerSourceChanged { .. } => {
             Ok(Vec::new())

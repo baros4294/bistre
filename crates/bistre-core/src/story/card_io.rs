@@ -361,7 +361,7 @@ pub fn import_card_charx(zip_bytes: &[u8]) -> BistreResult<ImportedCharacterBund
             || name.contains(':')
         {
             return Err(BistreError::with_detail(
-                DiagnosticKey::ToolEditHashMismatch,
+                DiagnosticKey::ToolPathDenied,
                 "charx_path_traversal_blocked",
             ));
         }

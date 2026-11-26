@@ -34,9 +34,46 @@ pub fn count_tokens_with(text: &str, encoding: BpeEncoding) -> u64 {
     if text.is_empty() {
         return 0;
     }
+    // R36: every step re-counts the whole branch; long texts are counted once and cached by
+    // content hash (blake3 is far cheaper than a BPE pass).
+    let key = (text.len() >= CACHE_MIN_BYTES)
+        .then(|| (encoding, *blake3::hash(text.as_bytes()).as_bytes()));
+    if let Some(key) = key
+        && let Some(hit) = bistre_protocol::lock_or_recover(&COUNT_CACHE, "token_cache").get(&key)
+    {
+        return *hit;
+    }
+    BPE_PASSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let count = tiktoken::get_encoding(encoding.as_str())
         .map_or_else(|| text.chars().count().div_ceil(4), |bpe| bpe.count(text));
-    u64::try_from(count).unwrap_or(u64::MAX)
+    let count = u64::try_from(count).unwrap_or(u64::MAX);
+    if let Some(key) = key {
+        let mut cache = bistre_protocol::lock_or_recover(&COUNT_CACHE, "token_cache");
+        if cache.len() >= CACHE_MAX_ENTRIES {
+            cache.clear();
+        }
+        cache.insert(key, count);
+    }
+    count
+}
+
+/// Texts shorter than this are counted directly (hashing would not pay off).
+const CACHE_MIN_BYTES: usize = 1024;
+/// Most cached counts; the cache starts over when full (bounded memory, about 400 KiB).
+const CACHE_MAX_ENTRIES: usize = 8192;
+
+/// Cached counts by encoding and content hash.
+type CountCache = std::collections::HashMap<(BpeEncoding, [u8; 32]), u64>;
+
+static COUNT_CACHE: std::sync::LazyLock<std::sync::Mutex<CountCache>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(CountCache::new()));
+
+/// How many BPE passes ran (tests check the cache serves repeats).
+static BPE_PASSES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+#[cfg(test)]
+fn bpe_passes() -> u64 {
+    BPE_PASSES.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// Counts exact tokens in `text` using the universal `o200k_base` 200k multilingual BPE tokenizer.
@@ -54,6 +91,18 @@ pub fn count_tokens_for_model(text: &str, model_id: Option<&str>) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// R36: a long text counted again (every step re-counts the whole branch) comes from the
+    /// cache, not another BPE pass; the result is the same.
+    #[test]
+    fn a_long_text_is_counted_once() {
+        let text = format!("{} unique-r36-marker", "the quick brown fox ".repeat(4000));
+        let before = bpe_passes();
+        let first = count_tokens(&text);
+        let second = count_tokens(&text);
+        assert_eq!(first, second);
+        assert_eq!(bpe_passes() - before, 1, "the second count is cached");
+    }
 
     #[test]
     fn exact_o200k_counts_match_canonical_bpe() {

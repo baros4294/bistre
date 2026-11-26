@@ -1,0 +1,5 @@
+data: {"event_type":"step.delta","index":0,"delta":{"type":"text","text":"Hello"}}
+
+data: {"event_type":"step.delta","index":0,"delta":{"type":"text","text":" world"}}
+
+data: {"event_type":"interaction.completed","interaction":{"status":"completed","usage":{"total_input_tokens":12,"total_output_tokens":2,"total_cached_tokens":0}}}
