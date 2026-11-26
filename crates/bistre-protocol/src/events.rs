@@ -11,9 +11,15 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolApprovalDecision {
+    /// Run this exact call once.
     ApproveOnce,
+    /// Run this exact call, and allow the same call again in this chat (any arguments only for
+    /// Tier-0 read tools).
     ApproveForThread,
+    /// Refuse this call; the same call is refused again without asking for the rest of the run.
     Deny,
+    /// Refuse this call and stop the whole run.
+    Stop,
 }
 
 impl ToolApprovalDecision {
@@ -22,6 +28,7 @@ impl ToolApprovalDecision {
             Self::ApproveOnce => "approve_once",
             Self::ApproveForThread => "approve_for_thread",
             Self::Deny => "deny",
+            Self::Stop => "stop",
         }
     }
 
@@ -29,6 +36,7 @@ impl ToolApprovalDecision {
         match raw.trim().to_ascii_lowercase().as_str() {
             "approve_once" | "once" | "allow" => Self::ApproveOnce,
             "approve_for_thread" | "thread" | "chat" | "allow_chat" => Self::ApproveForThread,
+            "stop" => Self::Stop,
             _ => Self::Deny,
         }
     }
@@ -146,4 +154,57 @@ pub enum EngineEvent {
         session_id: String,
         wav_base64: String,
     },
+}
+
+impl EngineEvent {
+    /// The form kept in the durable event log (R31): ids, states, and counts only. Message
+    /// text, thinking, tool arguments and outputs, run buffers, and audio live in their own
+    /// tables (or nowhere), so deleting a chat deletes its content; a replay re-reads bodies
+    /// by id.
+    #[must_use]
+    pub fn without_content(&self) -> Self {
+        let mut ev = self.clone();
+        match &mut ev {
+            Self::DeltaBatch { chunks, .. } => {
+                for chunk in chunks {
+                    chunk.text_delta.clear();
+                }
+            }
+            Self::ThinkingDelta { delta, .. } => delta.clear(),
+            Self::RunStateChanged { run } => {
+                run.partial_text_buffer.clear();
+                run.partial_thinking_buffer.clear();
+            }
+            Self::RunStepUpdated { step } => {
+                step.input_json.clear();
+                step.output_json.clear();
+            }
+            Self::ToolApprovalRequested { arguments_json, .. } => arguments_json.clear(),
+            Self::ToolExecutionUpdated {
+                summary,
+                output_text,
+                diff_text,
+                ..
+            } => {
+                summary.clear();
+                output_text.clear();
+                *diff_text = None;
+            }
+            Self::NodeCommitted { node } => {
+                node.content.clear();
+                node.provider_meta_json = None;
+            }
+            Self::LiveVoiceTranscript { text, .. } => text.clear(),
+            Self::LiveVoiceAudio { wav_base64, .. } => wav_base64.clear(),
+            Self::RunStarted { .. }
+            | Self::RunFinished { .. }
+            | Self::SteeringQueueChanged { .. }
+            | Self::PowerStatusChanged { .. }
+            | Self::DraftSaved { .. }
+            | Self::DiagnosticRaised { .. }
+            | Self::LocalePackVerified { .. }
+            | Self::LiveVoiceState { .. } => {}
+        }
+        ev
+    }
 }

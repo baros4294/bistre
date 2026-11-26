@@ -58,9 +58,11 @@ rustls-platform-verifier = "0.7"
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_Security",
+  "Win32_Security_Authorization",
   "Win32_Security_Cryptography",
   "Win32_System_JobObjects",
   "Win32_System_Memory",
+  "Win32_System_Pipes",
   "Win32_System_Power",
   "Win32_System_SystemServices",
   "Win32_System_Threading",
@@ -102,6 +104,9 @@ undocumented_unsafe_blocks = "deny"
 lossy_float_literal = "deny"
 rc_buffer = "deny"
 rc_mutex = "deny"
+# Explicit although `all` covers them: no std lock or RefCell borrow is held across an await (W2.4).
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
 large_futures = "warn"
 rest_pat_in_fully_bound_structs = "warn"
 module_name_repetitions = "allow"

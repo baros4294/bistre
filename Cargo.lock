@@ -232,6 +232,7 @@ name = "bistre-daemon"
 version = "0.1.2"
 dependencies = [
  "bistre-core",
+ "bistre-crypto",
  "bistre-protocol",
  "fs2",
  "serde_json",

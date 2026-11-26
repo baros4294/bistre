@@ -29,12 +29,14 @@ pub struct KillOnCloseJob {
     reason = "Audited Win32 Job Object FFI for KILL_ON_JOB_CLOSE child containment (ADR-0010)."
 )]
 impl KillOnCloseJob {
-    /// Creates a job configured with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`.
+    /// Creates a job configured with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` and
+    /// `JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION` (G5: a crashing child dies instead of
+    /// showing the Windows fault dialog and hanging the run until its timeout).
     pub fn new() -> Option<Self> {
         use windows_sys::Win32::System::JobObjects::{
-            CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
-            SetInformationJobObject,
+            CreateJobObjectW, JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION,
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JobObjectExtendedLimitInformation, SetInformationJobObject,
         };
 
         // SAFETY: null attributes (non-inheritable) and a null name create an anonymous job.
@@ -48,7 +50,8 @@ impl KillOnCloseJob {
         // SAFETY: an all-zero JOBOBJECT_EXTENDED_LIMIT_INFORMATION is a valid "no limits" value
         // (plain integers, sizes, and a null affinity); only `LimitFlags` is set below.
         let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { core::mem::zeroed() };
-        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        info.BasicLimitInformation.LimitFlags =
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION;
         let len = u32::try_from(size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>()).ok()?;
         // SAFETY: `raw` is a live job handle and `info` is a correctly sized
         // JOBOBJECT_EXTENDED_LIMIT_INFORMATION for the `JobObjectExtendedLimitInformation` class.
@@ -62,6 +65,29 @@ impl KillOnCloseJob {
         };
         // On failure `job` drops here and closes the handle.
         (ok != 0).then_some(job)
+    }
+
+    /// The job's limit flags, as the kernel reports them (tests only).
+    #[cfg(test)]
+    fn limit_flags(&self) -> Option<u32> {
+        use windows_sys::Win32::System::JobObjects::{
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+            QueryInformationJobObject,
+        };
+        // SAFETY: all-zero is a valid value of this plain-data struct; the kernel fills it.
+        let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { core::mem::zeroed() };
+        let len = u32::try_from(size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>()).ok()?;
+        // SAFETY: a live job handle and a correctly sized buffer for this information class.
+        let ok = unsafe {
+            QueryInformationJobObject(
+                self.raw(),
+                JobObjectExtendedLimitInformation,
+                (&raw mut info).cast(),
+                len,
+                core::ptr::null_mut(),
+            )
+        };
+        (ok != 0).then_some(info.BasicLimitInformation.LimitFlags)
     }
 
     fn raw(&self) -> windows_sys::Win32::Foundation::HANDLE {
@@ -154,6 +180,19 @@ pub fn kill_with_parent(cmd: &mut std::process::Command) {
 
 #[cfg(test)]
 mod tests {
+    /// G5 (codex #63645): a child that crashes must not show the Windows fault dialog and hang
+    /// the bounded run until its timeout; the job makes every process in it die instead.
+    #[cfg(windows)]
+    #[test]
+    fn a_crashing_child_dies_instead_of_showing_a_fault_dialog() {
+        use windows_sys::Win32::System::JobObjects::{
+            JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        };
+        let flags = super::KillOnCloseJob::new().and_then(|j| j.limit_flags());
+        let want = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION;
+        assert_eq!(flags.map(|f| f & want), Some(want), "{flags:?}");
+    }
+
     #[cfg(windows)]
     #[test]
     fn job_objects_are_independent_and_reject_null_handles() {

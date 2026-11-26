@@ -1016,7 +1016,8 @@ impl StorageHandle {
         thread_id: Option<String>,
         event: &EngineEvent,
     ) -> BistreResult<u64> {
-        let event_json = serde_json::to_string(event).map_err(|_| {
+        // R31: the log keeps ids and states only; bodies stay in their own tables.
+        let event_json = serde_json::to_string(&event.without_content()).map_err(|_| {
             BistreError::with_detail(DiagnosticKey::InternalError, "event_serialize")
         })?;
         let now = now_unix_ms();

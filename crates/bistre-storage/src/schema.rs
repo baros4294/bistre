@@ -116,6 +116,22 @@ pub(crate) fn run_migrations(conn: &mut Connection, db_path: &Path) -> BistreRes
         verify_db_integrity(conn)?;
     }
 
+    if version < 10 {
+        if version == 9 {
+            backup_before_migration(conn, db_path, 9)?;
+        }
+        apply_sql_migration(conn, SCHEMA_V10_PRIVACY_AND_PARENT_SQL, 10, "v9_to_v10")?;
+        verify_db_integrity(conn)?;
+    }
+
+    if version < 11 {
+        if version == 10 {
+            backup_before_migration(conn, db_path, 10)?;
+        }
+        apply_sql_migration(conn, SCHEMA_V11_TRIGRAM_SQL, 11, "v10_to_v11")?;
+        verify_db_integrity(conn)?;
+    }
+
     Ok(())
 }
 
@@ -602,4 +618,82 @@ CREATE INDEX IF NOT EXISTS idx_wallet_ledger_job
 
 CREATE INDEX IF NOT EXISTS idx_wallet_ledger_reserved
     ON wallet_ledger (status) WHERE status = 'reserved';
+";
+
+/// v9 -> v10 (N-1 readable: only derived data is removed, one index is added).
+/// - R31: the event log is a replay buffer and v0.1.2 rows held message bodies; it is cleared
+///   once (new rows keep ids only), with the run journals of chats deleted before v10.
+/// - R38: `nodes(parent_id)` serves the foreign-key child lookup every node delete runs, so a
+///   long chat deletes in linear time; `agent_runs(thread_id)` serves the chat delete cascade.
+pub(crate) const SCHEMA_V10_PRIVACY_AND_PARENT_SQL: &str = r"
+DELETE FROM engine_events_log;
+
+DELETE FROM run_steps
+    WHERE run_id IN (SELECT id FROM agent_runs WHERE thread_id NOT IN (SELECT id FROM threads));
+
+DELETE FROM agent_runs WHERE thread_id NOT IN (SELECT id FROM threads);
+
+CREATE INDEX IF NOT EXISTS idx_nodes_parent
+    ON nodes (parent_id);
+
+CREATE INDEX IF NOT EXISTS idx_agent_runs_thread
+    ON agent_runs (thread_id);
+";
+
+/// Every FTS trigger (word and trigram index). Dropped together when an index is corrupt and
+/// recreated together by `rebuild_search_index` (G3).
+pub(crate) const SEARCH_TRIGGERS_SQL: &str = r"
+CREATE TRIGGER IF NOT EXISTS nodes_ai AFTER INSERT ON nodes BEGIN
+    INSERT INTO nodes_fts(rowid, content) VALUES (new.rowid, new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS nodes_ad AFTER DELETE ON nodes BEGIN
+    INSERT INTO nodes_fts(nodes_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+END;
+CREATE TRIGGER IF NOT EXISTS nodes_au AFTER UPDATE OF content ON nodes BEGIN
+    INSERT INTO nodes_fts(nodes_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+    INSERT INTO nodes_fts(rowid, content) VALUES (new.rowid, new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS nodes_tri_ai AFTER INSERT ON nodes BEGIN
+    INSERT INTO nodes_fts_tri(rowid, content) VALUES (new.rowid, new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS nodes_tri_ad AFTER DELETE ON nodes BEGIN
+    INSERT INTO nodes_fts_tri(nodes_fts_tri, rowid, content) VALUES('delete', old.rowid, old.content);
+END;
+CREATE TRIGGER IF NOT EXISTS nodes_tri_au AFTER UPDATE OF content ON nodes BEGIN
+    INSERT INTO nodes_fts_tri(nodes_fts_tri, rowid, content) VALUES('delete', old.rowid, old.content);
+    INSERT INTO nodes_fts_tri(rowid, content) VALUES (new.rowid, new.content);
+END;
+";
+
+/// Drops every FTS trigger (G3 corruption recovery).
+pub(crate) const DROP_SEARCH_TRIGGERS_SQL: &str = r"
+DROP TRIGGER IF EXISTS nodes_ai;
+DROP TRIGGER IF EXISTS nodes_ad;
+DROP TRIGGER IF EXISTS nodes_au;
+DROP TRIGGER IF EXISTS nodes_tri_ai;
+DROP TRIGGER IF EXISTS nodes_tri_ad;
+DROP TRIGGER IF EXISTS nodes_tri_au;
+";
+
+/// v10 -> v11 (D6, additive): a trigram index beside the word index, so CJK text (no spaces
+/// between words) and mid-word substrings are searchable. Built once from `nodes`; a stale
+/// word index (G3) leaves its triggers dropped until `rebuild_search_index`.
+pub(crate) const SCHEMA_V11_TRIGRAM_SQL: &str = r"
+CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts_tri USING fts5(
+    content,
+    content='nodes',
+    content_rowid='rowid',
+    tokenize='trigram'
+);
+CREATE TRIGGER IF NOT EXISTS nodes_tri_ai AFTER INSERT ON nodes BEGIN
+    INSERT INTO nodes_fts_tri(rowid, content) VALUES (new.rowid, new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS nodes_tri_ad AFTER DELETE ON nodes BEGIN
+    INSERT INTO nodes_fts_tri(nodes_fts_tri, rowid, content) VALUES('delete', old.rowid, old.content);
+END;
+CREATE TRIGGER IF NOT EXISTS nodes_tri_au AFTER UPDATE OF content ON nodes BEGIN
+    INSERT INTO nodes_fts_tri(nodes_fts_tri, rowid, content) VALUES('delete', old.rowid, old.content);
+    INSERT INTO nodes_fts_tri(rowid, content) VALUES (new.rowid, new.content);
+END;
+INSERT INTO nodes_fts_tri(nodes_fts_tri) VALUES('rebuild');
 ";
