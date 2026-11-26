@@ -43,6 +43,8 @@
 
 - **Live feedback** (W5.3): the retry notice says which try failed ("Try 2 failed. Trying again in 5s", from core's `attempt=` in `RunBackoffWaiting`) and its countdown restarts for every new wait (U37: a wait that ran out had stopped the ticker for the next one; the count now ticks down from the wait's length, test `retry_notice_test.dart`). A running `shell` call's row shows its output while it runs (P21, from core's progress events). Auto-follow keeps the reader at the bottom when thinking or tool rows grow, not only reply text (P22, `auto_follow_test.dart`). A search hit, a pinned reply in the sidebar, or Show in the pinned panel opens the chat at that exact message, selecting the branch that holds it (P23, `FolioRunState.revealNode`, `reveal_message_test.dart`). A sent message lists its files as buttons that open the preview (P1; core parses them once and the FFI node carries them, `sent_attachments_test.dart`).
 
+- **Settings search** (W8): every settings page is found by the labels on it (`settingsSearchPrefixes`, one entry per page; Default models and World book were missing). Test: `settings_search_map_test.dart`.
+
 ## 4. Responsive & Interaction Matrix
 Every primary surface is verified across desktop (`>= 720 dp`), phone (`< 720 dp`), `200%` text scaling, and RTL (`ar`) via `just ui-gallery` and widget regression tests:
 

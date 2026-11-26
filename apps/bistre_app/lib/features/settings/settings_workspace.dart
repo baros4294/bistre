@@ -366,12 +366,20 @@ class _SettingsNavTileState extends State<_SettingsNavTile> {
 
 /// Catalog key prefixes whose text belongs to each settings page; searching matches the page
 /// name and every label on it.
-const Map<SettingsTab, List<String>> _searchPrefixes =
+const Map<SettingsTab, List<String>> settingsSearchPrefixes =
     <SettingsTab, List<String>>{
-      SettingsTab.providers: <String>['provider.', 'settings.tab.providers'],
+      SettingsTab.providers: <String>[
+        'provider.',
+        'settings.provider',
+        'settings.model',
+        'settings.tab.providers',
+      ],
+      SettingsTab.defaultModels: <String>['settings.default_models'],
       SettingsTab.assistants: <String>['settings.assistants', 'assistant.'],
       SettingsTab.appearance: <String>[
         'settings.appearance',
+        'settings.prefs',
+        'settings.desktop',
         'settings.profile',
       ],
       SettingsTab.trust: <String>[
@@ -384,10 +392,16 @@ const Map<SettingsTab, List<String>> _searchPrefixes =
         'settings.sleep',
         'settings.engine',
       ],
-      SettingsTab.memory: <String>['memory.', 'cron.', 'settings.tab.memory'],
+      SettingsTab.memory: <String>[
+        'memory.',
+        'automations.',
+        'skills.',
+        'settings.tab.memory',
+      ],
+      SettingsTab.worldBook: <String>['settings.world_book'],
       SettingsTab.updates: <String>['settings.ota', 'settings.storage'],
       SettingsTab.language: <String>['settings.language'],
-      SettingsTab.shortcuts: <String>['shortcut.'],
+      SettingsTab.shortcuts: <String>['shortcut.', 'shortcuts.'],
     };
 
 /// Whether [tab] matches the lower-cased query by its name or any label on it.
@@ -397,7 +411,7 @@ bool _tabMatches(
   String q,
 ) {
   if (q.isEmpty || l10n.t(tab.$2).toLowerCase().contains(q)) return true;
-  final prefixes = _searchPrefixes[tab.$1] ?? const <String>[];
+  final prefixes = settingsSearchPrefixes[tab.$1] ?? const <String>[];
   return L10nKey.values.any(
     (k) =>
         prefixes.any(k.key.startsWith) && l10n.t(k).toLowerCase().contains(q),
@@ -412,7 +426,7 @@ List<String> _matchingLabels(
   String q,
 ) {
   if (q.isEmpty) return const <String>[];
-  final prefixes = _searchPrefixes[tab] ?? const <String>[];
+  final prefixes = settingsSearchPrefixes[tab] ?? const <String>[];
   final out = <String>{};
   for (final k in L10nKey.values) {
     if (!prefixes.any(k.key.startsWith)) continue;
