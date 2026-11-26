@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:bistre_guard/app_memory.dart';
+import 'package:bistre_guard/binary_smoke.dart';
 import 'package:bistre_guard/bistre_guard.dart';
 import 'package:bistre_guard/elf_verify.dart';
 import 'package:bistre_guard/ledger.dart';
@@ -18,6 +19,7 @@ Commands:
   affected [--run]     Print (or run) the just recipes affected by unverified files
   record               Record current file fingerprints after a green verification run
   locked <cmd> [args]  Run a heavy command under the single-run lock, then enforce budgets
+  smoke                Build bistre-daemon + bistre-updater (debug) and run the CI smoke checks
   verify-elf <path>    Verify 16 KiB PT_LOAD alignment of a .so, directory, or APK
   perf [--android] [--skip-desktop] [--skip-streaming] [--app-memory] [--strict]
        [--rss-report-only]
@@ -65,6 +67,18 @@ Future<void> main(List<String> args) async {
         return;
       }
       exitCode = await _locked(repoRoot, args[1], args.sublist(2));
+    case 'smoke':
+      final failures = await runBinarySmoke(repoRoot);
+      for (final f in failures) {
+        stderr.writeln('SMOKE ERROR: $f');
+      }
+      if (failures.isNotEmpty) {
+        exitCode = 1;
+        return;
+      }
+      stdout.writeln(
+        'OK: bistre-daemon health check and bistre-updater usage exit.',
+      );
     case 'verify-elf':
       if (args.length != 2) {
         stderr.write(_usage);

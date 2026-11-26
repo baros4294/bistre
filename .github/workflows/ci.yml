@@ -436,6 +436,9 @@ jobs:
       - name: Build Android arm64-v8a direct release APK
         working-directory: apps/bistre_app
         shell: bash
+        env:
+          # CI check build, never shipped: debug signing is explicit, not a silent fallback (C1).
+          BISTRE_ALLOW_DEBUG_SIGNING: "1"
         run: |
           set -euo pipefail
           bash ../../.github/scripts/with-download-retry.sh flutter build apk --release --target-platform android-arm64 --split-debug-info=build/debug-info
