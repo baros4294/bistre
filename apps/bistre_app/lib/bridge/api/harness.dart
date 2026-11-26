@@ -8,7 +8,7 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`
 
 /// Records the user's approval of one exact tool call and returns its one-use permit id.
 Future<String> approveToolCall({
@@ -21,14 +21,39 @@ Future<String> approveToolCall({
   argumentsJson: argumentsJson,
 );
 
+/// "Allow once": the chat's next run may send requests whose price is unknown while a spending
+/// cap is active (`diag.wallet.price_unknown`).
+Future<void> allowUnpricedOnce({required String threadId}) => BistreRustLib
+    .instance
+    .api
+    .crateApiHarnessAllowUnpricedOnce(threadId: threadId);
+
+/// Validates and saves a provider's custom headers and body fields (JSON objects); an invalid
+/// header or body is refused with `diag.provider.headers_invalid` / `diag.provider.body_invalid`.
+Future<void> saveProviderOverrides({
+  required String providerId,
+  required String headersJson,
+  required String bodyJson,
+}) => BistreRustLib.instance.api.crateApiHarnessSaveProviderOverrides(
+  providerId: providerId,
+  headersJson: headersJson,
+  bodyJson: bodyJson,
+);
+
+/// "Allow once" for the next read-aloud or live-voice request whose price is unknown.
+Future<void> allowUnpricedMediaOnce() =>
+    BistreRustLib.instance.api.crateApiHarnessAllowUnpricedMediaOnce();
+
 /// Responds to a live `ToolApprovalRequested` event paused inside an active agent run.
-/// `decision`: `"approve_once"`, `"approve_for_thread"`, or `"deny"`.
+/// `decision`: `"approve_once"`, `"approve_for_thread"`, `"deny"`, or `"stop"`.
 Future<bool> respondToolApproval({
   required String threadId,
+  required String runId,
   required String callId,
   required String decision,
 }) => BistreRustLib.instance.api.crateApiHarnessRespondToolApproval(
   threadId: threadId,
+  runId: runId,
   callId: callId,
   decision: decision,
 );
@@ -187,6 +212,29 @@ Future<String> prepareSubagentSandboxJson({required String workspaceRoot}) =>
       workspaceRoot: workspaceRoot,
     );
 
+/// The hooks of `workspace_root` for review; `None` when the folder has no hooks file.
+Future<FfiWorkspaceHooksStatus?> workspaceHooksStatus({
+  required String workspaceRoot,
+}) => BistreRustLib.instance.api.crateApiHarnessWorkspaceHooksStatus(
+  workspaceRoot: workspaceRoot,
+);
+
+/// Approves the hooks file the user reviewed (by its `digest`); a changed file is refused.
+Future<void> approveWorkspaceHooks({
+  required String workspaceRoot,
+  required String digest,
+}) => BistreRustLib.instance.api.crateApiHarnessApproveWorkspaceHooks(
+  workspaceRoot: workspaceRoot,
+  digest: digest,
+);
+
+/// Web sources of every reply in `thread_id`, oldest reply first.
+Future<List<FfiGroundingSource>> listThreadGrounding({
+  required String threadId,
+}) => BistreRustLib.instance.api.crateApiHarnessListThreadGrounding(
+  threadId: threadId,
+);
+
 /// One file checkpoint in a chat's edit history. The pre-image bytes stay in core: rewinding
 /// uses the id, so the list never ships file contents across FFI.
 class FfiCheckpoint {
@@ -296,6 +344,35 @@ class FfiCronJob {
           lastStatus == other.lastStatus;
 }
 
+/// One web page a reply used (B2): `http(s)` only, bounded text.
+class FfiGroundingSource {
+  final String nodeId;
+  final String url;
+  final String title;
+  final String? citedText;
+
+  const FfiGroundingSource({
+    required this.nodeId,
+    required this.url,
+    required this.title,
+    this.citedText,
+  });
+
+  @override
+  int get hashCode =>
+      nodeId.hashCode ^ url.hashCode ^ title.hashCode ^ citedText.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FfiGroundingSource &&
+          runtimeType == other.runtimeType &&
+          nodeId == other.nodeId &&
+          url == other.url &&
+          title == other.title &&
+          citedText == other.citedText;
+}
+
 /// Persistent cross-chat memory entry (`MemoryEntryRecord`).
 class FfiMemoryEntry {
   final String id;
@@ -342,4 +419,55 @@ class FfiMemoryEntry {
           sourceThreadId == other.sourceThreadId &&
           pinned == other.pinned &&
           updatedAtMs == other.updatedAtMs;
+}
+
+/// One hook from `.bistre/hooks.json`, as shown for review.
+class FfiWorkspaceHook {
+  /// `pre_tool_use`, `post_tool_use`, `run_finished`, or `run_failed`.
+  final String event;
+  final String command;
+  final String? toolFilter;
+
+  const FfiWorkspaceHook({
+    required this.event,
+    required this.command,
+    this.toolFilter,
+  });
+
+  @override
+  int get hashCode => event.hashCode ^ command.hashCode ^ toolFilter.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FfiWorkspaceHook &&
+          runtimeType == other.runtimeType &&
+          event == other.event &&
+          command == other.command &&
+          toolFilter == other.toolFilter;
+}
+
+/// The workspace's hooks file, its digest, and whether the user approved exactly this file.
+class FfiWorkspaceHooksStatus {
+  final List<FfiWorkspaceHook> hooks;
+  final String digest;
+  final bool approved;
+
+  const FfiWorkspaceHooksStatus({
+    required this.hooks,
+    required this.digest,
+    required this.approved,
+  });
+
+  @override
+  int get hashCode => hooks.hashCode ^ digest.hashCode ^ approved.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FfiWorkspaceHooksStatus &&
+          runtimeType == other.runtimeType &&
+          hooks == other.hooks &&
+          digest == other.digest &&
+          approved == other.approved;
 }

@@ -67,10 +67,18 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  FfiWorkspaceHooksStatus dco_decode_box_autoadd_ffi_workspace_hooks_status(
+    dynamic raw,
+  );
+
+  @protected
   PlatformInt64 dco_decode_box_autoadd_i_64(dynamic raw);
 
   @protected
   int dco_decode_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  BigInt dco_decode_box_autoadd_u_64(dynamic raw);
 
   @protected
   FfiAgentRunRecord dco_decode_ffi_agent_run_record(dynamic raw);
@@ -88,10 +96,16 @@ abstract class BistreRustLibApiImplPlatform
   FfiCheckpoint dco_decode_ffi_checkpoint(dynamic raw);
 
   @protected
-  FfiContextUsage dco_decode_ffi_context_usage(dynamic raw);
+  FfiContextBreakdown dco_decode_ffi_context_breakdown(dynamic raw);
+
+  @protected
+  FfiContextCategory dco_decode_ffi_context_category(dynamic raw);
 
   @protected
   FfiCronJob dco_decode_ffi_cron_job(dynamic raw);
+
+  @protected
+  FfiDialectDescriptor dco_decode_ffi_dialect_descriptor(dynamic raw);
 
   @protected
   FfiDraftRecord dco_decode_ffi_draft_record(dynamic raw);
@@ -100,13 +114,25 @@ abstract class BistreRustLibApiImplPlatform
   FfiEngineEvent dco_decode_ffi_engine_event(dynamic raw);
 
   @protected
+  FfiGroundingSource dco_decode_ffi_grounding_source(dynamic raw);
+
+  @protected
   FfiHealthSnapshot dco_decode_ffi_health_snapshot(dynamic raw);
+
+  @protected
+  FfiMcpServerUsage dco_decode_ffi_mcp_server_usage(dynamic raw);
+
+  @protected
+  FfiMcpToolUsage dco_decode_ffi_mcp_tool_usage(dynamic raw);
 
   @protected
   FfiMemoryEntry dco_decode_ffi_memory_entry(dynamic raw);
 
   @protected
   FfiModelCatalogInfo dco_decode_ffi_model_catalog_info(dynamic raw);
+
+  @protected
+  FfiNodeAttachment dco_decode_ffi_node_attachment(dynamic raw);
 
   @protected
   FfiNodeRecord dco_decode_ffi_node_record(dynamic raw);
@@ -119,6 +145,9 @@ abstract class BistreRustLibApiImplPlatform
 
   @protected
   FfiProviderProfile dco_decode_ffi_provider_profile(dynamic raw);
+
+  @protected
+  FfiResolvedEndpoint dco_decode_ffi_resolved_endpoint(dynamic raw);
 
   @protected
   FfiSearchHit dco_decode_ffi_search_hit(dynamic raw);
@@ -139,6 +168,12 @@ abstract class BistreRustLibApiImplPlatform
   FfiUpdateCheckResult dco_decode_ffi_update_check_result(dynamic raw);
 
   @protected
+  FfiWorkspaceHook dco_decode_ffi_workspace_hook(dynamic raw);
+
+  @protected
+  FfiWorkspaceHooksStatus dco_decode_ffi_workspace_hooks_status(dynamic raw);
+
+  @protected
   PlatformInt64 dco_decode_i_64(dynamic raw);
 
   @protected
@@ -157,10 +192,30 @@ abstract class BistreRustLibApiImplPlatform
   List<FfiCheckpoint> dco_decode_list_ffi_checkpoint(dynamic raw);
 
   @protected
+  List<FfiContextCategory> dco_decode_list_ffi_context_category(dynamic raw);
+
+  @protected
   List<FfiCronJob> dco_decode_list_ffi_cron_job(dynamic raw);
 
   @protected
+  List<FfiDialectDescriptor> dco_decode_list_ffi_dialect_descriptor(
+    dynamic raw,
+  );
+
+  @protected
+  List<FfiGroundingSource> dco_decode_list_ffi_grounding_source(dynamic raw);
+
+  @protected
+  List<FfiMcpServerUsage> dco_decode_list_ffi_mcp_server_usage(dynamic raw);
+
+  @protected
+  List<FfiMcpToolUsage> dco_decode_list_ffi_mcp_tool_usage(dynamic raw);
+
+  @protected
   List<FfiMemoryEntry> dco_decode_list_ffi_memory_entry(dynamic raw);
+
+  @protected
+  List<FfiNodeAttachment> dco_decode_list_ffi_node_attachment(dynamic raw);
 
   @protected
   List<FfiNodeRecord> dco_decode_list_ffi_node_record(dynamic raw);
@@ -186,6 +241,9 @@ abstract class BistreRustLibApiImplPlatform
   List<FfiThreadSummary> dco_decode_list_ffi_thread_summary(dynamic raw);
 
   @protected
+  List<FfiWorkspaceHook> dco_decode_list_ffi_workspace_hook(dynamic raw);
+
+  @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
 
   @protected
@@ -209,10 +267,17 @@ abstract class BistreRustLibApiImplPlatform
   FfiNodeRecord? dco_decode_opt_box_autoadd_ffi_node_record(dynamic raw);
 
   @protected
+  FfiWorkspaceHooksStatus?
+  dco_decode_opt_box_autoadd_ffi_workspace_hooks_status(dynamic raw);
+
+  @protected
   PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw);
 
   @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
 
   @protected
   Uint8List? dco_decode_opt_list_prim_u_8_strict(dynamic raw);
@@ -275,10 +340,18 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  FfiWorkspaceHooksStatus sse_decode_box_autoadd_ffi_workspace_hooks_status(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer);
 
   @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
 
   @protected
   FfiAgentRunRecord sse_decode_ffi_agent_run_record(
@@ -302,10 +375,22 @@ abstract class BistreRustLibApiImplPlatform
   FfiCheckpoint sse_decode_ffi_checkpoint(SseDeserializer deserializer);
 
   @protected
-  FfiContextUsage sse_decode_ffi_context_usage(SseDeserializer deserializer);
+  FfiContextBreakdown sse_decode_ffi_context_breakdown(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  FfiContextCategory sse_decode_ffi_context_category(
+    SseDeserializer deserializer,
+  );
 
   @protected
   FfiCronJob sse_decode_ffi_cron_job(SseDeserializer deserializer);
+
+  @protected
+  FfiDialectDescriptor sse_decode_ffi_dialect_descriptor(
+    SseDeserializer deserializer,
+  );
 
   @protected
   FfiDraftRecord sse_decode_ffi_draft_record(SseDeserializer deserializer);
@@ -314,15 +399,33 @@ abstract class BistreRustLibApiImplPlatform
   FfiEngineEvent sse_decode_ffi_engine_event(SseDeserializer deserializer);
 
   @protected
+  FfiGroundingSource sse_decode_ffi_grounding_source(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   FfiHealthSnapshot sse_decode_ffi_health_snapshot(
     SseDeserializer deserializer,
   );
+
+  @protected
+  FfiMcpServerUsage sse_decode_ffi_mcp_server_usage(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  FfiMcpToolUsage sse_decode_ffi_mcp_tool_usage(SseDeserializer deserializer);
 
   @protected
   FfiMemoryEntry sse_decode_ffi_memory_entry(SseDeserializer deserializer);
 
   @protected
   FfiModelCatalogInfo sse_decode_ffi_model_catalog_info(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  FfiNodeAttachment sse_decode_ffi_node_attachment(
     SseDeserializer deserializer,
   );
 
@@ -341,6 +444,11 @@ abstract class BistreRustLibApiImplPlatform
 
   @protected
   FfiProviderProfile sse_decode_ffi_provider_profile(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  FfiResolvedEndpoint sse_decode_ffi_resolved_endpoint(
     SseDeserializer deserializer,
   );
 
@@ -365,6 +473,14 @@ abstract class BistreRustLibApiImplPlatform
 
   @protected
   FfiUpdateCheckResult sse_decode_ffi_update_check_result(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  FfiWorkspaceHook sse_decode_ffi_workspace_hook(SseDeserializer deserializer);
+
+  @protected
+  FfiWorkspaceHooksStatus sse_decode_ffi_workspace_hooks_status(
     SseDeserializer deserializer,
   );
 
@@ -395,10 +511,40 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  List<FfiContextCategory> sse_decode_list_ffi_context_category(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<FfiCronJob> sse_decode_list_ffi_cron_job(SseDeserializer deserializer);
 
   @protected
+  List<FfiDialectDescriptor> sse_decode_list_ffi_dialect_descriptor(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<FfiGroundingSource> sse_decode_list_ffi_grounding_source(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<FfiMcpServerUsage> sse_decode_list_ffi_mcp_server_usage(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<FfiMcpToolUsage> sse_decode_list_ffi_mcp_tool_usage(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<FfiMemoryEntry> sse_decode_list_ffi_memory_entry(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<FfiNodeAttachment> sse_decode_list_ffi_node_attachment(
     SseDeserializer deserializer,
   );
 
@@ -438,6 +584,11 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  List<FfiWorkspaceHook> sse_decode_list_ffi_workspace_hook(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
 
   @protected
@@ -465,10 +616,19 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  FfiWorkspaceHooksStatus?
+  sse_decode_opt_box_autoadd_ffi_workspace_hooks_status(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
 
   @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
 
   @protected
   Uint8List? sse_decode_opt_list_prim_u_8_strict(SseDeserializer deserializer);
@@ -546,6 +706,12 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  void sse_encode_box_autoadd_ffi_workspace_hooks_status(
+    FfiWorkspaceHooksStatus self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_i_64(
     PlatformInt64 self,
     SseSerializer serializer,
@@ -553,6 +719,9 @@ abstract class BistreRustLibApiImplPlatform
 
   @protected
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
 
   @protected
   void sse_encode_ffi_agent_run_record(
@@ -582,13 +751,25 @@ abstract class BistreRustLibApiImplPlatform
   void sse_encode_ffi_checkpoint(FfiCheckpoint self, SseSerializer serializer);
 
   @protected
-  void sse_encode_ffi_context_usage(
-    FfiContextUsage self,
+  void sse_encode_ffi_context_breakdown(
+    FfiContextBreakdown self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_ffi_context_category(
+    FfiContextCategory self,
     SseSerializer serializer,
   );
 
   @protected
   void sse_encode_ffi_cron_job(FfiCronJob self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ffi_dialect_descriptor(
+    FfiDialectDescriptor self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_ffi_draft_record(
@@ -603,8 +784,26 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  void sse_encode_ffi_grounding_source(
+    FfiGroundingSource self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_ffi_health_snapshot(
     FfiHealthSnapshot self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_ffi_mcp_server_usage(
+    FfiMcpServerUsage self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_ffi_mcp_tool_usage(
+    FfiMcpToolUsage self,
     SseSerializer serializer,
   );
 
@@ -617,6 +816,12 @@ abstract class BistreRustLibApiImplPlatform
   @protected
   void sse_encode_ffi_model_catalog_info(
     FfiModelCatalogInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_ffi_node_attachment(
+    FfiNodeAttachment self,
     SseSerializer serializer,
   );
 
@@ -638,6 +843,12 @@ abstract class BistreRustLibApiImplPlatform
   @protected
   void sse_encode_ffi_provider_profile(
     FfiProviderProfile self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_ffi_resolved_endpoint(
+    FfiResolvedEndpoint self,
     SseSerializer serializer,
   );
 
@@ -675,6 +886,18 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  void sse_encode_ffi_workspace_hook(
+    FfiWorkspaceHook self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_ffi_workspace_hooks_status(
+    FfiWorkspaceHooksStatus self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
 
   @protected
@@ -705,14 +928,50 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  void sse_encode_list_ffi_context_category(
+    List<FfiContextCategory> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_ffi_cron_job(
     List<FfiCronJob> self,
     SseSerializer serializer,
   );
 
   @protected
+  void sse_encode_list_ffi_dialect_descriptor(
+    List<FfiDialectDescriptor> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_ffi_grounding_source(
+    List<FfiGroundingSource> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_ffi_mcp_server_usage(
+    List<FfiMcpServerUsage> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_ffi_mcp_tool_usage(
+    List<FfiMcpToolUsage> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_ffi_memory_entry(
     List<FfiMemoryEntry> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_ffi_node_attachment(
+    List<FfiNodeAttachment> self,
     SseSerializer serializer,
   );
 
@@ -759,6 +1018,12 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  void sse_encode_list_ffi_workspace_hook(
+    List<FfiWorkspaceHook> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
 
   @protected
@@ -792,6 +1057,12 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_ffi_workspace_hooks_status(
+    FfiWorkspaceHooksStatus? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_i_64(
     PlatformInt64? self,
     SseSerializer serializer,
@@ -799,6 +1070,9 @@ abstract class BistreRustLibApiImplPlatform
 
   @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_list_prim_u_8_strict(

@@ -57,11 +57,16 @@ Future<int> importThreadsJson({required String rawJson}) =>
 Future<String> exportSettingsJson() =>
     BistreRustLib.instance.api.crateApiMediaExportSettingsJson();
 
-/// Imports user settings JSON after untrusted-import sanitization.
-Future<FfiAppSettings> importSettingsJson({required String rawJson}) =>
-    BistreRustLib.instance.api.crateApiMediaImportSettingsJson(
-      rawJson: rawJson,
-    );
+/// Imports user settings JSON after untrusted-import sanitization. A file that would loosen
+/// trust or the spending limit fails with `diag.import.loosens_safety` unless
+/// `allow_loosening` (the user confirmed).
+Future<FfiAppSettings> importSettingsJson({
+  required String rawJson,
+  required bool allowLoosening,
+}) => BistreRustLib.instance.api.crateApiMediaImportSettingsJson(
+  rawJson: rawJson,
+  allowLoosening: allowLoosening,
+);
 
 /// Lists files stored inside Bistre's local data directory.
 Future<List<FfiStorageFileEntry>> listStorageFiles() =>

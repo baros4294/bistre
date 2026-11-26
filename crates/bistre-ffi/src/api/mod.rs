@@ -175,6 +175,18 @@ pub struct FfiNodeRecord {
     pub content: String,
     pub provider_meta_json: Option<String>,
     pub created_at_ms: i64,
+    /// Files sent with this message (P1), parsed once in core from its metadata.
+    pub attachments: Vec<FfiNodeAttachment>,
+}
+
+/// One file sent with a message (P1). `blob_rel_path` is relative to the data directory.
+#[frb]
+#[derive(Debug, Clone)]
+pub struct FfiNodeAttachment {
+    pub name: String,
+    pub mime_type: String,
+    pub size_bytes: u64,
+    pub blob_rel_path: String,
 }
 
 /// Thin FFI DTO mirror of `StorageStats`.
@@ -380,6 +392,46 @@ pub async fn list_providers() -> Result<Vec<FfiProviderProfile>, String> {
         .await
         .map_err(crate::dto_mapping::ffi_err)?;
     Ok(list.into_iter().map(map_provider).collect())
+}
+
+/// The facts the provider settings show for one API format (P7): one source, in core.
+#[derive(Debug, Clone)]
+pub struct FfiDialectDescriptor {
+    pub id: String,
+    pub default_base_url: String,
+    pub endpoint_path: String,
+    pub requires_api_key: bool,
+}
+
+/// Every API format with its default server URL and chat endpoint path.
+#[frb(sync)]
+pub fn provider_dialect_descriptors() -> Vec<FfiDialectDescriptor> {
+    ProviderDialect::ALL
+        .into_iter()
+        .map(|d| FfiDialectDescriptor {
+            id: d.as_str().to_owned(),
+            default_base_url: d.default_base_url().to_owned(),
+            endpoint_path: d.default_endpoint_path().to_owned(),
+            requires_api_key: d.requires_api_key(),
+        })
+        .collect()
+}
+
+/// The chat and model-list URLs a provider with this format and server URL is called at (P8).
+#[derive(Debug, Clone)]
+pub struct FfiResolvedEndpoint {
+    pub chat_url: String,
+    pub models_url: String,
+}
+
+/// Resolves a provider's URLs exactly as requests build them (empty server URL: the default).
+#[frb(sync)]
+pub fn resolve_provider_endpoint(dialect: String, base_url: String) -> FfiResolvedEndpoint {
+    let r = bistre_core::credentials::resolve_endpoint(ProviderDialect::parse(&dialect), &base_url);
+    FfiResolvedEndpoint {
+        chat_url: r.chat_url,
+        models_url: r.models_url,
+    }
 }
 
 /// Updates non-secret provider metadata (name, base URL, default model, enabled, cache toggle, icon).
@@ -1150,6 +1202,7 @@ pub async fn notify_power_event(event_kind: String, on_ac: Option<bool>) -> Resu
     let parsed = match event_kind.as_str() {
         "will_suspend" => SystemPowerEvent::WillSuspend,
         "did_resume" => SystemPowerEvent::DidResume,
+        "app_resumed" => SystemPowerEvent::AppResumed,
         "network_lost" => SystemPowerEvent::NetworkLost,
         "network_restored" => SystemPowerEvent::NetworkRestored,
         "os_timeout_imminent" => SystemPowerEvent::OsTimeoutImminent,
@@ -1201,45 +1254,86 @@ pub async fn model_context_tokens(model: String) -> Result<Option<u32>, String> 
         .map_err(crate::dto_mapping::ffi_err)
 }
 
-/// What the next request sends for one branch, by category (each count saturates at
-/// `u32::MAX`).
-#[frb]
+/// One row of the context breakdown (A-SE); `kind` is a fixed id the app maps to its words.
 #[derive(Debug, Clone)]
-pub struct FfiContextUsage {
-    pub system_tokens: u32,
-    pub story_tokens: u32,
-    pub tools_tokens: u32,
-    pub attachments_tokens: u32,
-    pub attachments_count: u32,
-    pub history_tokens: u32,
-    pub history_turns: u32,
-    pub draft_tokens: u32,
-    pub total_tokens: u32,
+pub struct FfiContextCategory {
+    pub kind: String,
+    pub tokens: u64,
+    pub count: Option<u32>,
+    pub sent: bool,
 }
 
-/// What the next request sends for the branch ending at `leaf_node_id`, with `draft` as the
-/// message about to be sent.
+/// One MCP tool's schema in the breakdown.
+#[derive(Debug, Clone)]
+pub struct FfiMcpToolUsage {
+    pub name: String,
+    pub tokens: u64,
+    pub deferred: bool,
+}
+
+/// One MCP server and its tools in the breakdown.
+#[derive(Debug, Clone)]
+pub struct FfiMcpServerUsage {
+    pub server_id: String,
+    pub label: String,
+    pub tools: Vec<FfiMcpToolUsage>,
+}
+
+/// What fills the next request, by category, with the window and the kept-free reserve.
+#[derive(Debug, Clone)]
+pub struct FfiContextBreakdown {
+    pub categories: Vec<FfiContextCategory>,
+    pub total_sent: u64,
+    pub limit_tokens: Option<u64>,
+    pub reserve_tokens: u64,
+    pub mcp: Vec<FfiMcpServerUsage>,
+    pub mcp_truncated: bool,
+}
+
+/// The breakdown for the branch ending at `leaf_node_id`, with `draft` as the message about to
+/// be sent.
 #[frb]
-pub async fn context_usage(
+pub async fn context_breakdown(
     thread_id: String,
     leaf_node_id: String,
     draft: String,
-) -> Result<FfiContextUsage, String> {
-    let usage = current_engine()?
-        .context_usage(thread_id, leaf_node_id, draft)
+) -> Result<FfiContextBreakdown, String> {
+    let b = current_engine()?
+        .context_breakdown(thread_id, leaf_node_id, draft)
         .await
         .map_err(crate::dto_mapping::ffi_err)?;
-    let clamp = |n: u64| u32::try_from(n).unwrap_or(u32::MAX);
-    Ok(FfiContextUsage {
-        system_tokens: clamp(usage.system_tokens),
-        story_tokens: clamp(usage.story_tokens),
-        tools_tokens: clamp(usage.tools_tokens),
-        attachments_tokens: clamp(usage.attachments_tokens),
-        attachments_count: usage.attachments_count,
-        history_tokens: clamp(usage.history_tokens),
-        history_turns: usage.history_turns,
-        draft_tokens: clamp(usage.draft_tokens),
-        total_tokens: clamp(usage.total()),
+    Ok(FfiContextBreakdown {
+        total_sent: b.total_sent(),
+        categories: b
+            .categories
+            .iter()
+            .map(|c| FfiContextCategory {
+                kind: c.kind.as_str().to_owned(),
+                tokens: c.tokens,
+                count: c.count,
+                sent: c.sent,
+            })
+            .collect(),
+        limit_tokens: b.limit_tokens,
+        reserve_tokens: b.reserve_tokens,
+        mcp: b
+            .mcp
+            .into_iter()
+            .map(|srv| FfiMcpServerUsage {
+                server_id: srv.server_id,
+                label: srv.label,
+                tools: srv
+                    .tools
+                    .into_iter()
+                    .map(|t| FfiMcpToolUsage {
+                        name: t.name,
+                        tokens: t.tokens,
+                        deferred: t.deferred,
+                    })
+                    .collect(),
+            })
+            .collect(),
+        mcp_truncated: b.mcp_truncated,
     })
 }
 

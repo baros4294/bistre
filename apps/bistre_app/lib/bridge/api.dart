@@ -8,7 +8,7 @@ import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `blank`, `current_engine`, `delta`, `diagnostic`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 /// Initializes the in-process Rust core engine pointing at `data_dir`. `vault_key` is the
 /// 32-byte Android Keystore-unwrapped vault data key (Android only); pass `None` elsewhere.
@@ -27,6 +27,19 @@ Future<FfiHealthSnapshot> getHealth() =>
 /// Lists built-in (Big 3) and user-added custom provider profiles.
 Future<List<FfiProviderProfile>> listProviders() =>
     BistreRustLib.instance.api.crateApiListProviders();
+
+/// Every API format with its default server URL and chat endpoint path.
+List<FfiDialectDescriptor> providerDialectDescriptors() =>
+    BistreRustLib.instance.api.crateApiProviderDialectDescriptors();
+
+/// Resolves a provider's URLs exactly as requests build them (empty server URL: the default).
+FfiResolvedEndpoint resolveProviderEndpoint({
+  required String dialect,
+  required String baseUrl,
+}) => BistreRustLib.instance.api.crateApiResolveProviderEndpoint(
+  dialect: dialect,
+  baseUrl: baseUrl,
+);
 
 /// Updates non-secret provider metadata (name, base URL, default model, enabled, cache toggle, icon).
 Future<FfiProviderProfile> updateProvider({
@@ -440,13 +453,13 @@ Future<FfiAgentRunRecord> resolveIndeterminateRun({
 Future<int?> modelContextTokens({required String model}) =>
     BistreRustLib.instance.api.crateApiModelContextTokens(model: model);
 
-/// What the next request sends for the branch ending at `leaf_node_id`, with `draft` as the
-/// message about to be sent.
-Future<FfiContextUsage> contextUsage({
+/// The breakdown for the branch ending at `leaf_node_id`, with `draft` as the message about to
+/// be sent.
+Future<FfiContextBreakdown> contextBreakdown({
   required String threadId,
   required String leafNodeId,
   required String draft,
-}) => BistreRustLib.instance.api.crateApiContextUsage(
+}) => BistreRustLib.instance.api.crateApiContextBreakdown(
   threadId: threadId,
   leafNodeId: leafNodeId,
   draft: draft,
@@ -782,57 +795,105 @@ class FfiAssistantRecord {
           createdAtMs == other.createdAtMs;
 }
 
-/// What the next request sends for one branch, by category (each count saturates at
-/// `u32::MAX`).
-class FfiContextUsage {
-  final int systemTokens;
-  final int storyTokens;
-  final int toolsTokens;
-  final int attachmentsTokens;
-  final int attachmentsCount;
-  final int historyTokens;
-  final int historyTurns;
-  final int draftTokens;
-  final int totalTokens;
+/// What fills the next request, by category, with the window and the kept-free reserve.
+class FfiContextBreakdown {
+  final List<FfiContextCategory> categories;
+  final BigInt totalSent;
+  final BigInt? limitTokens;
+  final BigInt reserveTokens;
+  final List<FfiMcpServerUsage> mcp;
+  final bool mcpTruncated;
 
-  const FfiContextUsage({
-    required this.systemTokens,
-    required this.storyTokens,
-    required this.toolsTokens,
-    required this.attachmentsTokens,
-    required this.attachmentsCount,
-    required this.historyTokens,
-    required this.historyTurns,
-    required this.draftTokens,
-    required this.totalTokens,
+  const FfiContextBreakdown({
+    required this.categories,
+    required this.totalSent,
+    this.limitTokens,
+    required this.reserveTokens,
+    required this.mcp,
+    required this.mcpTruncated,
   });
 
   @override
   int get hashCode =>
-      systemTokens.hashCode ^
-      storyTokens.hashCode ^
-      toolsTokens.hashCode ^
-      attachmentsTokens.hashCode ^
-      attachmentsCount.hashCode ^
-      historyTokens.hashCode ^
-      historyTurns.hashCode ^
-      draftTokens.hashCode ^
-      totalTokens.hashCode;
+      categories.hashCode ^
+      totalSent.hashCode ^
+      limitTokens.hashCode ^
+      reserveTokens.hashCode ^
+      mcp.hashCode ^
+      mcpTruncated.hashCode;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is FfiContextUsage &&
+      other is FfiContextBreakdown &&
           runtimeType == other.runtimeType &&
-          systemTokens == other.systemTokens &&
-          storyTokens == other.storyTokens &&
-          toolsTokens == other.toolsTokens &&
-          attachmentsTokens == other.attachmentsTokens &&
-          attachmentsCount == other.attachmentsCount &&
-          historyTokens == other.historyTokens &&
-          historyTurns == other.historyTurns &&
-          draftTokens == other.draftTokens &&
-          totalTokens == other.totalTokens;
+          categories == other.categories &&
+          totalSent == other.totalSent &&
+          limitTokens == other.limitTokens &&
+          reserveTokens == other.reserveTokens &&
+          mcp == other.mcp &&
+          mcpTruncated == other.mcpTruncated;
+}
+
+/// One row of the context breakdown (A-SE); `kind` is a fixed id the app maps to its words.
+class FfiContextCategory {
+  final String kind;
+  final BigInt tokens;
+  final int? count;
+  final bool sent;
+
+  const FfiContextCategory({
+    required this.kind,
+    required this.tokens,
+    this.count,
+    required this.sent,
+  });
+
+  @override
+  int get hashCode =>
+      kind.hashCode ^ tokens.hashCode ^ count.hashCode ^ sent.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FfiContextCategory &&
+          runtimeType == other.runtimeType &&
+          kind == other.kind &&
+          tokens == other.tokens &&
+          count == other.count &&
+          sent == other.sent;
+}
+
+/// The facts the provider settings show for one API format (P7): one source, in core.
+class FfiDialectDescriptor {
+  final String id;
+  final String defaultBaseUrl;
+  final String endpointPath;
+  final bool requiresApiKey;
+
+  const FfiDialectDescriptor({
+    required this.id,
+    required this.defaultBaseUrl,
+    required this.endpointPath,
+    required this.requiresApiKey,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      defaultBaseUrl.hashCode ^
+      endpointPath.hashCode ^
+      requiresApiKey.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FfiDialectDescriptor &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          defaultBaseUrl == other.defaultBaseUrl &&
+          endpointPath == other.endpointPath &&
+          requiresApiKey == other.requiresApiKey;
 }
 
 /// Thin FFI DTO mirror of `DraftRecord`.
@@ -969,6 +1030,88 @@ class FfiHealthSnapshot {
           statusKey == other.statusKey;
 }
 
+/// One MCP server and its tools in the breakdown.
+class FfiMcpServerUsage {
+  final String serverId;
+  final String label;
+  final List<FfiMcpToolUsage> tools;
+
+  const FfiMcpServerUsage({
+    required this.serverId,
+    required this.label,
+    required this.tools,
+  });
+
+  @override
+  int get hashCode => serverId.hashCode ^ label.hashCode ^ tools.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FfiMcpServerUsage &&
+          runtimeType == other.runtimeType &&
+          serverId == other.serverId &&
+          label == other.label &&
+          tools == other.tools;
+}
+
+/// One MCP tool's schema in the breakdown.
+class FfiMcpToolUsage {
+  final String name;
+  final BigInt tokens;
+  final bool deferred_;
+
+  const FfiMcpToolUsage({
+    required this.name,
+    required this.tokens,
+    required this.deferred_,
+  });
+
+  @override
+  int get hashCode => name.hashCode ^ tokens.hashCode ^ deferred_.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FfiMcpToolUsage &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          tokens == other.tokens &&
+          deferred_ == other.deferred_;
+}
+
+/// One file sent with a message (P1). `blob_rel_path` is relative to the data directory.
+class FfiNodeAttachment {
+  final String name;
+  final String mimeType;
+  final BigInt sizeBytes;
+  final String blobRelPath;
+
+  const FfiNodeAttachment({
+    required this.name,
+    required this.mimeType,
+    required this.sizeBytes,
+    required this.blobRelPath,
+  });
+
+  @override
+  int get hashCode =>
+      name.hashCode ^
+      mimeType.hashCode ^
+      sizeBytes.hashCode ^
+      blobRelPath.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FfiNodeAttachment &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          mimeType == other.mimeType &&
+          sizeBytes == other.sizeBytes &&
+          blobRelPath == other.blobRelPath;
+}
+
 /// Thin FFI DTO mirror of `NodeRecord`.
 class FfiNodeRecord {
   final String id;
@@ -979,6 +1122,9 @@ class FfiNodeRecord {
   final String? providerMetaJson;
   final PlatformInt64 createdAtMs;
 
+  /// Files sent with this message (P1), parsed once in core from its metadata.
+  final List<FfiNodeAttachment> attachments;
+
   const FfiNodeRecord({
     required this.id,
     required this.threadId,
@@ -987,6 +1133,7 @@ class FfiNodeRecord {
     required this.content,
     this.providerMetaJson,
     required this.createdAtMs,
+    required this.attachments,
   });
 
   @override
@@ -997,7 +1144,8 @@ class FfiNodeRecord {
       role.hashCode ^
       content.hashCode ^
       providerMetaJson.hashCode ^
-      createdAtMs.hashCode;
+      createdAtMs.hashCode ^
+      attachments.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1010,7 +1158,8 @@ class FfiNodeRecord {
           role == other.role &&
           content == other.content &&
           providerMetaJson == other.providerMetaJson &&
-          createdAtMs == other.createdAtMs;
+          createdAtMs == other.createdAtMs &&
+          attachments == other.attachments;
 }
 
 /// Thin FFI DTO mirror of `PowerGuardStatus`.
@@ -1160,6 +1309,25 @@ class FfiProviderProfile {
           createdAtMs == other.createdAtMs &&
           updatedAtMs == other.updatedAtMs &&
           isLocal == other.isLocal;
+}
+
+/// The chat and model-list URLs a provider with this format and server URL is called at (P8).
+class FfiResolvedEndpoint {
+  final String chatUrl;
+  final String modelsUrl;
+
+  const FfiResolvedEndpoint({required this.chatUrl, required this.modelsUrl});
+
+  @override
+  int get hashCode => chatUrl.hashCode ^ modelsUrl.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FfiResolvedEndpoint &&
+          runtimeType == other.runtimeType &&
+          chatUrl == other.chatUrl &&
+          modelsUrl == other.modelsUrl;
 }
 
 /// Thin FFI DTO mirror of `SearchHit`.

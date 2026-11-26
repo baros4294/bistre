@@ -485,6 +485,7 @@ class EngineNode {
     required this.content,
     this.providerMetaJson,
     required this.createdAtMs,
+    this.attachments = const <EngineNodeAttachment>[],
   });
 
   final String id;
@@ -495,7 +496,40 @@ class EngineNode {
   final String? providerMetaJson;
   final int createdAtMs;
 
-  NodeUsageMeta? get usageMeta => NodeUsageMeta.tryParse(providerMetaJson);
+  /// Files sent with this message (P1), parsed once by core.
+  final List<EngineNodeAttachment> attachments;
+
+  /// Parsed once per node and cached (R39: it was parsed on every access in every build).
+  NodeUsageMeta? get usageMeta {
+    final cached = _usageCache[this];
+    if (cached != null) return cached.meta;
+    final meta = NodeUsageMeta.tryParse(providerMetaJson);
+    _usageCache[this] = _UsageBox(meta);
+    return meta;
+  }
+
+  static final Expando<_UsageBox> _usageCache = Expando<_UsageBox>('usageMeta');
+}
+
+/// Holds a parsed [NodeUsageMeta] (which may be null) for [EngineNode]'s cache.
+class _UsageBox {
+  const _UsageBox(this.meta);
+  final NodeUsageMeta? meta;
+}
+
+/// One file sent with a message (P1); [blobRelPath] is relative to the data directory.
+class EngineNodeAttachment {
+  const EngineNodeAttachment({
+    required this.name,
+    required this.mimeType,
+    required this.sizeBytes,
+    required this.blobRelPath,
+  });
+
+  final String name;
+  final String mimeType;
+  final int sizeBytes;
+  final String blobRelPath;
 }
 
 /// Immutable FTS5 search hit mirrored from Rust SQLite.
@@ -994,60 +1028,6 @@ class EngineCronJob {
   final String lastStatus;
 }
 
-/// What the next request sends for one branch, by category, from core (`context_usage`).
-/// Counted offline with universal `o200k_base` BPE tokenizer.
-class EngineContextUsage {
-  const EngineContextUsage({
-    this.systemTokens = 0,
-    this.storyTokens = 0,
-    this.toolsTokens = 0,
-    this.attachmentsTokens = 0,
-    this.attachmentsCount = 0,
-    this.historyTokens = 0,
-    this.historyTurns = 0,
-    this.draftTokens = 0,
-    this.totalTokens = 0,
-  });
-
-  static const EngineContextUsage empty = EngineContextUsage();
-
-  final int systemTokens;
-  final int storyTokens;
-  final int toolsTokens;
-  final int attachmentsTokens;
-  final int attachmentsCount;
-  final int historyTokens;
-  final int historyTurns;
-  final int draftTokens;
-  final int totalTokens;
-
-  @override
-  bool operator ==(Object other) =>
-      other is EngineContextUsage &&
-      other.systemTokens == systemTokens &&
-      other.storyTokens == storyTokens &&
-      other.toolsTokens == toolsTokens &&
-      other.attachmentsTokens == attachmentsTokens &&
-      other.attachmentsCount == attachmentsCount &&
-      other.historyTokens == historyTokens &&
-      other.historyTurns == historyTurns &&
-      other.draftTokens == draftTokens &&
-      other.totalTokens == totalTokens;
-
-  @override
-  int get hashCode => Object.hash(
-    systemTokens,
-    storyTokens,
-    toolsTokens,
-    attachmentsTokens,
-    attachmentsCount,
-    historyTokens,
-    historyTurns,
-    draftTokens,
-    totalTokens,
-  );
-}
-
 /// Live catalog metadata returned for a single model (`Fill from catalog`).
 class EngineModelCatalogInfo {
   const EngineModelCatalogInfo({
@@ -1095,4 +1075,187 @@ class EngineStorageFileEntry {
   final int sizeBytes;
   final int modifiedMs;
   final bool deletable;
+}
+
+/// One hook from the workspace's `.bistre/hooks.json`, shown for review.
+class EngineWorkspaceHook {
+  const EngineWorkspaceHook({
+    required this.event,
+    required this.command,
+    this.toolFilter,
+  });
+
+  /// `pre_tool_use`, `post_tool_use`, `run_finished`, or `run_failed`.
+  final String event;
+  final String command;
+  final String? toolFilter;
+}
+
+/// The workspace's hooks file and whether the user approved exactly this file (by digest).
+class EngineWorkspaceHooksStatus {
+  const EngineWorkspaceHooksStatus({
+    required this.hooks,
+    required this.digest,
+    required this.approved,
+  });
+
+  final List<EngineWorkspaceHook> hooks;
+  final String digest;
+  final bool approved;
+}
+
+/// One web page a reply used (B2); parsed and bounded in core, `http(s)` only.
+class EngineGroundingSource {
+  const EngineGroundingSource({
+    required this.nodeId,
+    required this.url,
+    required this.title,
+    this.citedText,
+  });
+
+  final String nodeId;
+  final String url;
+  final String title;
+  final String? citedText;
+
+  /// The site's host name, shown under the title.
+  String get host => Uri.tryParse(url)?.host ?? url;
+}
+
+/// What core knows about one API format (P7): its default server URL and chat endpoint.
+class EngineDialectDescriptor {
+  const EngineDialectDescriptor({
+    required this.id,
+    required this.defaultBaseUrl,
+    required this.endpointPath,
+    required this.requiresApiKey,
+  });
+
+  final String id;
+  final String defaultBaseUrl;
+  final String endpointPath;
+  final bool requiresApiKey;
+}
+
+/// The exact URLs core calls a provider at (P8), shown in settings and connection tests.
+class EngineResolvedEndpoint {
+  const EngineResolvedEndpoint({
+    required this.chatUrl,
+    required this.modelsUrl,
+  });
+
+  final String chatUrl;
+  final String modelsUrl;
+}
+
+/// One row of the context breakdown (A-SE). [kind] is a fixed id from core
+/// (`messages`, `built_in_tools`, `mcp_tools`, `system_prompt`, `workspace_instructions`,
+/// `story`, `attachments`, `draft`, `deferred_mcp_tools`); the app maps it to its own words.
+class EngineContextCategory {
+  const EngineContextCategory({
+    required this.kind,
+    required this.tokens,
+    this.count,
+    this.sent = true,
+  });
+
+  final String kind;
+  final int tokens;
+  final int? count;
+  final bool sent;
+
+  @override
+  bool operator ==(Object other) =>
+      other is EngineContextCategory &&
+      other.kind == kind &&
+      other.tokens == tokens &&
+      other.count == count &&
+      other.sent == sent;
+
+  @override
+  int get hashCode => Object.hash(kind, tokens, count, sent);
+}
+
+/// One MCP tool's schema size in the breakdown.
+class EngineMcpToolUsage {
+  const EngineMcpToolUsage({
+    required this.name,
+    required this.tokens,
+    required this.deferred,
+  });
+
+  final String name;
+  final int tokens;
+  final bool deferred;
+}
+
+/// One MCP server and its tools in the breakdown.
+class EngineMcpServerUsage {
+  const EngineMcpServerUsage({
+    required this.serverId,
+    required this.label,
+    required this.tools,
+  });
+
+  final String serverId;
+  final String label;
+  final List<EngineMcpToolUsage> tools;
+
+  int get tokens => tools.fold(0, (sum, t) => sum + t.tokens);
+}
+
+/// What fills the next request, from core (A-SE): rows, the window, and the kept-free
+/// reserve. Core owns every number.
+class EngineContextBreakdown {
+  const EngineContextBreakdown({
+    this.categories = const <EngineContextCategory>[],
+    this.totalSent = 0,
+    this.limitTokens,
+    this.reserveTokens = 0,
+    this.mcp = const <EngineMcpServerUsage>[],
+    this.mcpTruncated = false,
+  });
+
+  static const EngineContextBreakdown empty = EngineContextBreakdown();
+
+  final List<EngineContextCategory> categories;
+  final int totalSent;
+  final int? limitTokens;
+  final int reserveTokens;
+  final List<EngineMcpServerUsage> mcp;
+  final bool mcpTruncated;
+
+  int tokensOf(String kind) =>
+      categories.where((c) => c.kind == kind).firstOrNull?.tokens ?? 0;
+
+  int? countOf(String kind) =>
+      categories.where((c) => c.kind == kind).firstOrNull?.count;
+
+  @override
+  bool operator ==(Object other) =>
+      other is EngineContextBreakdown &&
+      other.totalSent == totalSent &&
+      other.limitTokens == limitTokens &&
+      other.reserveTokens == reserveTokens &&
+      other.mcpTruncated == mcpTruncated &&
+      other.mcp.length == mcp.length &&
+      _listEquals(other.categories, categories);
+
+  @override
+  int get hashCode => Object.hash(
+    totalSent,
+    limitTokens,
+    reserveTokens,
+    mcpTruncated,
+    mcp.length,
+    Object.hashAll(categories),
+  );
+
+  static bool _listEquals(List<Object?> a, List<Object?> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
 }

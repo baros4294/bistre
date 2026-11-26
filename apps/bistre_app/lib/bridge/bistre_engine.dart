@@ -136,7 +136,13 @@ abstract interface class BistreEngineGateway {
   Future<String> exportAllThreadsJson();
   Future<int> importThreadsJson(String rawJson);
   Future<String> exportSettingsJson();
-  Future<EngineSettings> importSettingsJson(String rawJson);
+
+  /// Imports settings JSON; a file that would loosen trust or the spending limit fails with
+  /// `diag.import.loosens_safety` unless [allowLoosening] (the user confirmed).
+  Future<EngineSettings> importSettingsJson(
+    String rawJson, {
+    bool allowLoosening = false,
+  });
   Future<List<EngineStorageFileEntry>> listStorageFiles();
   Future<bool> deleteStorageFile(String relPath);
   Future<int> cleanUnusedStorageFiles();
@@ -232,7 +238,7 @@ abstract interface class BistreEngineGateway {
   /// applies compaction and the context pin exactly as a run does).
   /// What the next request sends for the branch ending at [leafNodeId], by category, with
   /// [draft] as the message about to be sent.
-  Future<EngineContextUsage> contextUsage(
+  Future<EngineContextBreakdown> contextBreakdown(
     String threadId,
     String leafNodeId, {
     String draft = '',
@@ -245,9 +251,45 @@ abstract interface class BistreEngineGateway {
     required Map<String, Object?> arguments,
   });
 
-  /// Delivers a live tool-approval decision (`approve_once` / `approve_for_thread` / `deny`).
+  /// "Allow once": the chat's next run may send requests whose price is unknown while a
+  /// spending cap is active (`diag.wallet.price_unknown`).
+  Future<void> allowUnpricedOnce(String threadId);
+
+  /// "Allow once" for the next read-aloud or live-voice request whose price is unknown.
+  Future<void> allowUnpricedMediaOnce();
+
+  /// The workspace's `.bistre/hooks.json` for review; `null` when the folder has none.
+  Future<EngineWorkspaceHooksStatus?> workspaceHooksStatus(
+    String workspaceRoot,
+  );
+
+  /// Core's facts for every API format (default server URL, endpoint path).
+  List<EngineDialectDescriptor> dialectDescriptors();
+
+  /// The URLs a provider with this format and server URL is called at (P8).
+  EngineResolvedEndpoint resolveProviderEndpoint(
+    String dialect,
+    String baseUrl,
+  );
+
+  /// Web sources of every reply in a chat (B2), oldest reply first.
+  Future<List<EngineGroundingSource>> listThreadGrounding(String threadId);
+
+  /// Approves the hooks file the user reviewed (by [digest]); a changed file is refused.
+  Future<void> approveWorkspaceHooks(String workspaceRoot, String digest);
+
+  /// Validates and saves a provider's custom headers and body fields (JSON objects).
+  Future<void> saveProviderOverrides({
+    required String providerId,
+    required String headersJson,
+    required String bodyJson,
+  });
+
+  /// Delivers a live tool-approval decision (`approve_once` / `approve_for_thread` / `deny` /
+  /// `stop`) to the run [runId] of [threadId] paused at [callId].
   Future<bool> respondToolApproval({
     required String threadId,
+    required String runId,
     required String callId,
     required String decision,
   });
@@ -681,50 +723,7 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
 
   @override
   Future<EngineSettings> saveSettings(EngineSettings settings) async =>
-      _mapSettings(
-        await frb.saveSettings(
-          settings: frb.FfiAppSettings(
-            theme: settings.theme,
-            layoutMode: settings.layoutMode,
-            locale: settings.locale,
-            trustPreset: settings.trustPreset,
-            walletDailyCeilingMicros: settings.walletDailyCeilingMicros,
-            walletLocalFirst: settings.walletLocalFirst,
-            providerStatelessDefault: settings.providerStatelessDefault,
-            fontScaleBps: settings.fontScaleBps,
-            fontSizePx: settings.fontSizePx,
-            lineHeightBps: settings.lineHeightBps,
-            readingWidthPx: settings.readingWidthPx,
-            proseFontFamily: settings.proseFontFamily,
-            proseFontPath: settings.proseFontPath,
-            monoFontFamily: settings.monoFontFamily,
-            monoFontPath: settings.monoFontPath,
-            accentPreset: settings.accentPreset,
-            customAccentHex: settings.customAccentHex,
-            sidebarOpen: settings.sidebarOpen,
-            sendOnEnter: settings.sendOnEnter,
-            reduceMotionOverride: settings.reduceMotionOverride,
-            showTokenMetrics: settings.showTokenMetrics,
-            activeProviderId: settings.activeProviderId,
-            activeModelId: settings.activeModelId,
-            otaFeedUrl: settings.otaFeedUrl,
-            otaChannel: settings.otaChannel,
-            otaAutoCheck: settings.otaAutoCheck,
-            windowBoundsJson: settings.windowBoundsJson,
-            customShortcutsJson: settings.customShortcutsJson,
-            keepAwakeWhileRunning: settings.keepAwakeWhileRunning,
-            windowsKeepAwakeOnBattery: settings.windowsKeepAwakeOnBattery,
-            daemonKeepAliveWhenActive: settings.daemonKeepAliveWhenActive,
-            unattendedPolicy: settings.unattendedPolicy,
-            retryWatchdogMaxWaitSecs: settings.retryWatchdogMaxWaitSecs,
-            reasoningEffort: settings.reasoningEffort,
-            termuxBridgeEnabled: settings.termuxBridgeEnabled,
-            codeWrapMode: settings.codeWrapMode,
-            pricingAutoRefresh: settings.pricingAutoRefresh,
-            userDisplayName: settings.userDisplayName,
-          ),
-        ),
-      );
+      _mapSettings(await frb.saveSettings(settings: _toFfiSettings(settings)));
 
   @override
   Future<int> getWalletSpendMicros() async =>
@@ -851,28 +850,17 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
       frb.modelContextTokens(model: model);
 
   @override
-  Future<EngineContextUsage> contextUsage(
+  Future<EngineContextBreakdown> contextBreakdown(
     String threadId,
     String leafNodeId, {
     String draft = '',
-  }) async {
-    final u = await frb.contextUsage(
+  }) async => _mapContextBreakdown(
+    await frb.contextBreakdown(
       threadId: threadId,
       leafNodeId: leafNodeId,
       draft: draft,
-    );
-    return EngineContextUsage(
-      systemTokens: u.systemTokens,
-      storyTokens: u.storyTokens,
-      toolsTokens: u.toolsTokens,
-      attachmentsTokens: u.attachmentsTokens,
-      attachmentsCount: u.attachmentsCount,
-      historyTokens: u.historyTokens,
-      historyTurns: u.historyTurns,
-      draftTokens: u.draftTokens,
-      totalTokens: u.totalTokens,
-    );
-  }
+    ),
+  );
 
   @override
   Future<String> approveToolCall({
@@ -886,12 +874,74 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
   );
 
   @override
+  Future<void> allowUnpricedOnce(String threadId) =>
+      frb.allowUnpricedOnce(threadId: threadId);
+
+  @override
+  Future<void> allowUnpricedMediaOnce() => frb.allowUnpricedMediaOnce();
+
+  @override
+  Future<EngineWorkspaceHooksStatus?> workspaceHooksStatus(
+    String workspaceRoot,
+  ) async {
+    final s = await frb.workspaceHooksStatus(workspaceRoot: workspaceRoot);
+    return s == null ? null : _mapWorkspaceHooks(s);
+  }
+
+  @override
+  Future<void> approveWorkspaceHooks(String workspaceRoot, String digest) =>
+      frb.approveWorkspaceHooks(workspaceRoot: workspaceRoot, digest: digest);
+
+  @override
+  List<EngineDialectDescriptor> dialectDescriptors() => frb
+      .providerDialectDescriptors()
+      .map(
+        (d) => EngineDialectDescriptor(
+          id: d.id,
+          defaultBaseUrl: d.defaultBaseUrl,
+          endpointPath: d.endpointPath,
+          requiresApiKey: d.requiresApiKey,
+        ),
+      )
+      .toList(growable: false);
+
+  @override
+  EngineResolvedEndpoint resolveProviderEndpoint(
+    String dialect,
+    String baseUrl,
+  ) {
+    final r = frb.resolveProviderEndpoint(dialect: dialect, baseUrl: baseUrl);
+    return EngineResolvedEndpoint(chatUrl: r.chatUrl, modelsUrl: r.modelsUrl);
+  }
+
+  @override
+  Future<List<EngineGroundingSource>> listThreadGrounding(
+    String threadId,
+  ) async {
+    final rows = await frb.listThreadGrounding(threadId: threadId);
+    return rows.map(_mapGroundingSource).toList(growable: false);
+  }
+
+  @override
+  Future<void> saveProviderOverrides({
+    required String providerId,
+    required String headersJson,
+    required String bodyJson,
+  }) => frb.saveProviderOverrides(
+    providerId: providerId,
+    headersJson: headersJson,
+    bodyJson: bodyJson,
+  );
+
+  @override
   Future<bool> respondToolApproval({
     required String threadId,
+    required String runId,
     required String callId,
     required String decision,
   }) => frb.respondToolApproval(
     threadId: threadId,
+    runId: runId,
     callId: callId,
     decision: decision,
   );
@@ -1000,17 +1050,6 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
     return items.map(_mapMemoryEntry).toList(growable: false);
   }
 
-  static EngineMemoryEntry _mapMemoryEntry(frb.FfiMemoryEntry m) =>
-      EngineMemoryEntry(
-        id: m.id,
-        scope: m.scope,
-        scopeId: m.scopeId,
-        key: m.key,
-        content: m.content,
-        pinned: m.pinned,
-        updatedAtMs: m.updatedAtMs,
-      );
-
   @override
   Future<EngineMemoryEntry> upsertMemoryEntry({
     String? id,
@@ -1077,22 +1116,6 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
         lastStatus: job.lastStatus,
       ),
     ),
-  );
-
-  static EngineCronJob _mapCronJob(frb.FfiCronJob j) => EngineCronJob(
-    id: j.id,
-    name: j.name,
-    workspaceId: j.workspaceId,
-    assistantId: j.assistantId,
-    scheduleExpr: j.scheduleExpr,
-    prompt: j.prompt,
-    mode: j.mode,
-    unattendedPolicy: j.unattendedPolicy,
-    useWorktree: j.useWorktree,
-    enabled: j.enabled,
-    nextRunMs: j.nextRunMs,
-    lastRunId: j.lastRunId,
-    lastStatus: j.lastStatus,
   );
 
   @override
@@ -1373,8 +1396,15 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
   Future<String> exportSettingsJson() => frb.exportSettingsJson();
 
   @override
-  Future<EngineSettings> importSettingsJson(String rawJson) async =>
-      _mapSettings(await frb.importSettingsJson(rawJson: rawJson));
+  Future<EngineSettings> importSettingsJson(
+    String rawJson, {
+    bool allowLoosening = false,
+  }) async => _mapSettings(
+    await frb.importSettingsJson(
+      rawJson: rawJson,
+      allowLoosening: allowLoosening,
+    ),
+  );
 
   @override
   Future<List<EngineStorageFileEntry>> listStorageFiles() async {

@@ -216,14 +216,28 @@ pub(crate) fn map_thread(t: ThreadSummary) -> FfiThreadSummary {
 }
 
 pub(crate) fn map_node(n: NodeRecord) -> FfiNodeRecord {
+    let attachments =
+        bistre_core::attachments::parse_node_attachments(n.provider_meta_json.as_deref())
+            .into_iter()
+            .map(|a| crate::api::FfiNodeAttachment {
+                name: a.name,
+                mime_type: a.mime_type,
+                size_bytes: a.size_bytes,
+                blob_rel_path: a.blob_rel_path,
+            })
+            .collect();
     FfiNodeRecord {
         id: n.id,
         thread_id: n.thread_id,
         parent_id: n.parent_id,
         role: n.role.as_str().to_owned(),
         content: n.content,
-        provider_meta_json: n.provider_meta_json,
+        // R39: slim metadata; the opaque replay payload stays in core.
+        provider_meta_json: bistre_core::replay_policy::ui_node_meta(
+            n.provider_meta_json.as_deref(),
+        ),
         created_at_ms: n.created_at_ms,
+        attachments,
     }
 }
 
