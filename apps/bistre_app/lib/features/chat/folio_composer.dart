@@ -13,6 +13,7 @@ import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../../platform/desktop_host.dart';
 import '../shell/folio_controller.dart';
+import 'composer_toolbar_layout.dart';
 import 'composer_tools_control.dart';
 import 'composer_trigger_menu.dart';
 import 'context_gauge_ring.dart';
@@ -393,8 +394,7 @@ class _FolioComposerState extends State<FolioComposer> {
     // rows while streaming or at >= 130% text.
     final scale = textScaleOf(context);
     final twoRowToolbar =
-        MediaQuery.sizeOf(context).width / scale < 600 &&
-        (ctrl.isStreaming || scale >= kComposerTwoRowTextScale);
+        MediaQuery.sizeOf(context).width / scale < 600 && ctrl.isStreaming;
 
     return Center(
       child: ConstrainedBox(
@@ -960,25 +960,32 @@ class _FolioComposerState extends State<FolioComposer> {
                       ),
                       child: _ComposerToolbar(
                         twoRows: twoRowToolbar,
-                        gauge: ValueListenableBuilder<EngineContextBreakdown>(
-                          valueListenable: ctrl.contextBreakdown,
-                          builder: (context, usage, _) => ContextGaugeRing(
-                            usage: usage,
-                            limitTokens: ctrl.activeContextLimitOrFetch,
-                            sessionSpendMicros: ctrl.activeThreadSpendMicros,
-                            uploadedFilesCount: ctrl.attachments.length,
-                            showLabel:
-                                MediaQuery.sizeOf(context).width / scale >= 600,
-                            loadWithDraft: () => ctrl.contextBreakdownWithDraft(
-                              _textController.text,
-                            ),
-                            onShorten: () =>
-                                unawaited(ctrl.compactActiveThread()),
-                            onOpenPrices: () =>
-                                ctrl.openSettings(SettingsTab.trust),
-                          ),
+                        measureKey: (
+                          scale,
+                          l10n.activeLocale,
+                          ctrl.isStreaming,
                         ),
-                        leading: <Widget>[
+                        gauge: (compact) =>
+                            ValueListenableBuilder<EngineContextBreakdown>(
+                              valueListenable: ctrl.contextBreakdown,
+                              builder: (context, usage, _) => ContextGaugeRing(
+                                usage: usage,
+                                limitTokens: ctrl.activeContextLimitOrFetch,
+                                sessionSpendMicros:
+                                    ctrl.activeThreadSpendMicros,
+                                uploadedFilesCount: ctrl.attachments.length,
+                                showLabel: !compact,
+                                loadWithDraft: () =>
+                                    ctrl.contextBreakdownWithDraft(
+                                      _textController.text,
+                                    ),
+                                onShorten: () =>
+                                    unawaited(ctrl.compactActiveThread()),
+                                onOpenPrices: () =>
+                                    ctrl.openSettings(SettingsTab.trust),
+                              ),
+                            ),
+                        leading: (compact) => <Widget>[
                           BistreIconButton(
                             icon: BistreUiIcon.paperclip,
                             size: 15,
@@ -994,13 +1001,11 @@ class _FolioComposerState extends State<FolioComposer> {
                           const SizedBox(width: 4),
                           ComposerToolsControl(
                             controller: ctrl,
-                            compact:
-                                MediaQuery.sizeOf(context).width / scale < 600,
+                            compact: compact,
                           ),
                           const SizedBox(width: 4),
                           ThinkingControl(
-                            compact:
-                                MediaQuery.sizeOf(context).width / scale < 600,
+                            compact: compact,
                             value: ctrl.settings.reasoningEffort,
                             reduceMotionOverride: ctrl.reduceMotionOverride,
                             onChanged: (v) =>
@@ -1023,7 +1028,7 @@ class _FolioComposerState extends State<FolioComposer> {
                                 : const SizedBox.shrink(),
                           ),
                         ],
-                        trailing: <Widget>[
+                        trailing: (compact) => <Widget>[
                           if (ctrl.isStreaming) ...[
                             EngravedButton(
                               label: l10n.t(L10nKey.composerSteerNowAction),
@@ -1093,8 +1098,7 @@ class _FolioComposerState extends State<FolioComposer> {
                             ),
                             const SizedBox(width: 4),
                             EngravedButton(
-                              label:
-                                  MediaQuery.sizeOf(context).width / scale < 600
+                              label: compact
                                   ? ''
                                   : l10n.t(L10nKey.composerLiveVoicePill),
                               semanticsLabel: l10n.t(
@@ -1140,72 +1144,101 @@ class _FolioComposerState extends State<FolioComposer> {
   }
 }
 
-/// Bottom composer controls: one row normally; two rows on compact phones while streaming or
-/// at large text so `Stop` / `Queue` / `Send` never squeeze the leading tools.
-class _ComposerToolbar extends StatelessWidget {
+/// Bottom composer controls, measured rather than guessed (any locale, any text size). The
+/// first form that fits in one row wins:
+/// 0. full labels;
+/// 1. the context ring without its numbers (they stay in its hover card);
+/// 2. compact labels (icon-only Tools and Live, short thinking label);
+/// then two rows, or two rows on phones while a reply streams (Stop / Queue / Steer).
+/// Each form's width is measured whenever it is on screen and remembered for the current
+/// text size, locale, and reply state, so widening the window brings the fuller form back.
+class _ComposerToolbar extends StatefulWidget {
   const _ComposerToolbar({
     required this.twoRows,
+    required this.measureKey,
     required this.leading,
     required this.trailing,
     required this.gauge,
   });
 
   final bool twoRows;
-  final List<Widget> leading;
-  final List<Widget> trailing;
-  final Widget gauge;
+
+  /// Anything that changes the controls' widths (text size, locale, streaming).
+  final Object measureKey;
+  final List<Widget> Function(bool compact) leading;
+  final List<Widget> Function(bool compact) trailing;
+  final Widget Function(bool compact) gauge;
+
+  @override
+  State<_ComposerToolbar> createState() => _ComposerToolbarState();
+}
+
+class _ComposerToolbarState extends State<_ComposerToolbar> {
+  /// Forms measured so far: full labels, then the ring without numbers.
+  static const int _measuredForms = 2;
+
+  /// Bound on remembered states (text size x locale x replying), cleared when exceeded.
+  static const int _maxKeys = 8;
+
+  /// One-row width each form needs, per [_ComposerToolbar.measureKey].
+  final Map<Object, List<double?>> _needs = <Object, List<double?>>{};
+
+  /// The toolbar's width at the last layout.
+  double _width = double.infinity;
+
+  List<double?> get _need {
+    if (_needs.length >= _maxKeys && !_needs.containsKey(widget.measureKey)) {
+      _needs.clear();
+    }
+    return _needs.putIfAbsent(
+      widget.measureKey,
+      () => List<double?>.filled(_measuredForms, null),
+    );
+  }
+
+  int get _form {
+    final need = _need;
+    for (var form = 0; form < need.length; form++) {
+      final w = need[form];
+      if (w == null || _width >= w) return form;
+    }
+    return need.length;
+  }
+
+  /// After each layout: remember the width this form needs and the toolbar width; rebuild
+  /// only when that changes the form. No `LayoutBuilder`, so streaming never lays the shell
+  /// out again.
+  void _onMeasured(double need, double width) {
+    final form = _form;
+    _width = width;
+    if (form < _measuredForms) _need[form] = need;
+    if (_form == form) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final scale = textScaleOf(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final effectiveWidth = constraints.maxWidth / scale;
-        final split = twoRows || effectiveWidth < 580;
-        if (!split) {
-          // Leading controls wrap inside the flexible start group, so the gauge and the
-          // trailing actions never push the row past its width.
-          return Row(
-            children: [
-              Expanded(
-                child: Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  runSpacing: BistreSpacing.s4,
-                  children: leading,
-                ),
-              ),
-              gauge,
-              const SizedBox(width: BistreSpacing.s8),
-              ...trailing,
-            ],
-          );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    runSpacing: BistreSpacing.s4,
-                    children: leading,
-                  ),
-                ),
-                gauge,
-              ],
-            ),
-            const SizedBox(height: BistreSpacing.s8),
-            Wrap(
-              alignment: WrapAlignment.end,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              runSpacing: BistreSpacing.s4,
-              children: trailing,
-            ),
-          ],
-        );
-      },
+    final form = _form;
+    final compact = form >= 2;
+    return ComposerToolbarLayout(
+      forceTwoRows: widget.twoRows,
+      onMeasured: _onMeasured,
+      leading: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        runSpacing: BistreSpacing.s4,
+        children: widget.leading(compact),
+      ),
+      gauge: widget.gauge(form >= 1),
+      // Wraps (end-aligned) when even its own row is too narrow: Steer, Queue, and Stop
+      // on a phone.
+      trailing: Wrap(
+        alignment: WrapAlignment.end,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        runSpacing: BistreSpacing.s4,
+        children: widget.trailing(compact),
+      ),
     );
   }
 }

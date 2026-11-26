@@ -8,6 +8,7 @@ import 'package:bistre_app/features/shell/folio_controller.dart';
 import 'package:bistre_app/features/sidebar/folio_sidebar.dart';
 import 'package:bistre_app/l10n/l10n_keys.g.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -23,6 +24,7 @@ Future<ShellHarness> _chat(
   WidgetTester tester,
   UiDisplayPrefs prefs, {
   ShellLayout layout = ShellLayout.desktop,
+  String locale = 'en',
 }) async {
   // A fresh tree each time, so no widget keeps state from the previous settings.
   await tester.pumpWidget(const SizedBox());
@@ -61,6 +63,7 @@ Future<ShellHarness> _chat(
     tester,
     gateway: gateway,
     layout: layout,
+    locale: locale,
   );
   await shell.controller.saveUiPrefs(prefs, quiet: true);
   await shell.controller.selectThread(thread.id);
@@ -99,10 +102,13 @@ void main() {
       );
       final withProvider = shell.t(
         L10nKey.shellModelOnProvider,
-        <String, Object?>{'model': 'gpt-4.1', 'provider': 'OpenAI'},
+        <String, Object?>{
+          'model': shell.l10n.isolate('gpt-4.1'),
+          'provider': shell.l10n.isolate('OpenAI'),
+        },
       );
       final base = tester.widgetList(_rich(withProvider)).length;
-      final bare = tester.widgetList(find.text('gpt-4.1')).length;
+      final bare = tester.widgetList(_rich('gpt-4.1')).length;
 
       await _chat(tester, const UiDisplayPrefs(), layout: layout);
       expect(tester.widgetList(_rich(withProvider)).length, base + 1);
@@ -113,7 +119,22 @@ void main() {
         layout: layout,
       );
       expect(tester.widgetList(_rich(withProvider)).length, base);
-      expect(tester.widgetList(find.text('gpt-4.1')).length, bare + 1);
+      expect(tester.widgetList(_rich('gpt-4.1')).length, bare + 1);
+
+      // The reply's actions sit at the end of its header row, with no gap after them.
+      final more = _iconButton(shell.t(L10nKey.chatActionMore)).last;
+      final header = find.ancestor(
+        of: more,
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w is Row &&
+              w.children.any((c) => c is Expanded && c.child is Text),
+        ),
+      );
+      expect(
+        tester.getTopRight(more).dx,
+        closeTo(tester.getTopRight(header).dx, 1),
+      );
     });
   }
 
@@ -202,5 +223,41 @@ void main() {
       reason: 'off: one click deletes, with Undo',
     );
     await tester.pump(const Duration(seconds: 9));
+  });
+
+  testWidgets('in Arabic the name stays at the start, before the model label', (
+    tester,
+  ) async {
+    final shell = await _chat(tester, const UiDisplayPrefs(), locale: 'ar');
+    final speaker = shell.controller.activeAssistant!.name;
+    // The reply header: one line holding both the name and the model label.
+    final header = tester.renderObject<RenderParagraph>(
+      find.byWidgetPredicate((w) {
+        if (w is! RichText) return false;
+        final text = w.text.toPlainText();
+        return text.contains(speaker) && text.contains('gpt-4.1');
+      }),
+    );
+    final plain = header.text.toPlainText();
+    TextBox boxOf(String part) {
+      final start = plain.indexOf(part);
+      expect(start, isNonNegative, reason: '$part in "$plain"');
+      return header
+          .getBoxesForSelection(
+            TextSelection(baseOffset: start, extentOffset: start + part.length),
+          )
+          .first;
+    }
+
+    expect(
+      boxOf('gpt-4.1').right,
+      lessThan(boxOf(speaker).left),
+      reason: 'RTL: the model label reads after the name, to its left',
+    );
+    expect(
+      boxOf('OpenAI').right,
+      lessThan(boxOf('gpt-4.1').left),
+      reason: 'RTL: "{model} on {provider}" reads model first, from the right',
+    );
   });
 }

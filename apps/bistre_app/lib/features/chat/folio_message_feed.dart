@@ -1203,13 +1203,15 @@ class _PassageItemState extends State<_PassageItem>
     if (usage == null || usage.modelId.isEmpty || !prefs.showModelName) {
       return null;
     }
+    final l10n = BistreLocalizations.of(context);
+    // Each name is its own direction run; the sentence follows the app's direction.
     if (!prefs.showProviderAfterModel || usage.providerName.isEmpty) {
-      return usage.modelId;
+      return l10n.isolate(usage.modelId);
     }
-    return BistreLocalizations.of(context).t(
-      L10nKey.shellModelOnProvider,
-      <String, Object?>{'model': usage.modelId, 'provider': usage.providerName},
-    );
+    return l10n.t(L10nKey.shellModelOnProvider, <String, Object?>{
+      'model': l10n.isolate(usage.modelId),
+      'provider': l10n.isolate(usage.providerName),
+    });
   }
 
   Widget _buildSpeakerHeader(
@@ -1219,6 +1221,7 @@ class _PassageItemState extends State<_PassageItem>
     NodeUsageMeta? usage,
     Widget actionBar,
   ) {
+    final l10n = BistreLocalizations.of(context);
     return Row(
       children: [
         if (isAssistant)
@@ -1237,29 +1240,35 @@ class _PassageItemState extends State<_PassageItem>
         else
           BistreIcon(BistreUiIcon.edit, size: 14, color: theme.accentBrass),
         const SizedBox(width: BistreSpacing.s8),
-        Flexible(
-          child: InkText(
-            speaker,
-            role: InkTextRole.labelStrong,
-            color: isAssistant ? theme.inkPrimary : theme.inkSecondary,
+        // One line: the name, then the model label, which shortens first. The free room
+        // stays before the actions, so they sit at the end of the row.
+        Expanded(
+          child: Text.rich(
+            TextSpan(
+              children: <InlineSpan>[
+                TextSpan(
+                  text: l10n.isolate(speaker),
+                  style: BistreTypography.labelStrong(
+                    isAssistant ? theme.inkPrimary : theme.inkSecondary,
+                    config: theme.typography,
+                  ),
+                ),
+                if (_modelLabel(usage) case final label?) ...[
+                  const WidgetSpan(child: SizedBox(width: BistreSpacing.s8)),
+                  TextSpan(
+                    text: label,
+                    style: BistreTypography.captionMeta(
+                      theme.inkMuted,
+                      config: theme.typography,
+                    ),
+                  ),
+                ],
+              ],
+            ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        // The model label takes the free room up to the actions (it shortens last).
-        if (_modelLabel(usage) case final label?) ...[
-          const SizedBox(width: BistreSpacing.s8),
-          Expanded(
-            child: InkText(
-              label,
-              role: InkTextRole.captionMeta,
-              color: theme.inkMuted,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ] else
-          const Spacer(),
         actionBar,
       ],
     );
