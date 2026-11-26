@@ -37,9 +37,11 @@ i18n-gen:
 codegen-frb:
   flutter_rust_bridge_codegen generate --config-file apps/bistre_app/flutter_rust_bridge.yaml
 
-# Run all Rust unit & integration tests
+# Run all Rust unit, integration, and doc tests, then smoke-test the daemon and updater binaries
 test-rust:
   dart run tools/bistre_guard/bin/bistre_guard.dart locked cargo nextest run --locked --workspace
+  dart run tools/bistre_guard/bin/bistre_guard.dart locked cargo test --doc --locked --workspace
+  dart run tools/bistre_guard/bin/bistre_guard.dart smoke
 
 # Run Dart workspace tooling unit tests
 test-tools:
