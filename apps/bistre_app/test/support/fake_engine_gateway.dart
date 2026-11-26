@@ -130,6 +130,27 @@ class FakeEngineGateway with _FakeRunsAndPower implements BistreEngineGateway {
     return t;
   }
 
+  /// Records a committed message in [threadId] (with reply metadata for assistant turns).
+  EngineNode seedNode({
+    required String threadId,
+    String? parentId,
+    required String role,
+    required String content,
+    Map<String, Object?>? meta,
+  }) {
+    final n = EngineNode(
+      id: 'node-${_nodes.length + 1}',
+      threadId: threadId,
+      parentId: parentId,
+      role: role,
+      content: content,
+      createdAtMs: ++_clock,
+      providerMetaJson: meta == null ? null : jsonEncode(meta),
+    );
+    _nodes.add(n);
+    return n;
+  }
+
   @override
   Future<EngineHealth> init(String dataDir) async => getHealth();
 

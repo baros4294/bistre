@@ -28,6 +28,8 @@ class MarkdownFolioView extends StatelessWidget {
     required this.onCopyCode,
     this.onSaveCode,
     this.editorialDialogueStyling = false,
+    this.renderMath = true,
+    this.foldCodeBlocks = false,
   });
 
   final String markdown;
@@ -37,18 +39,29 @@ class MarkdownFolioView extends StatelessWidget {
   final void Function(String code, String language)? onSaveCode;
   final bool editorialDialogueStyling;
 
+  /// Settings > Appearance: off shows `$…$` and `$$…$$` exactly as written.
+  final bool renderMath;
+
+  /// Settings > Appearance: code blocks start folded.
+  final bool foldCodeBlocks;
+
   @override
   Widget build(BuildContext context) {
     final parsed = _parseBlocksStreaming(markdown);
     // A message reads in its own direction, not the app's (see [contentDirection]).
     final direction = parsed.direction;
-    Widget blocks(BuildContext context) => direction == null
-        ? _buildBlocks(context, parsed.blocks)
-        : Directionality(
-            textDirection: direction,
-            child: Builder(builder: (ctx) => _buildBlocks(ctx, parsed.blocks)),
-          );
-    if (!parsed.hasMath) return blocks(context);
+    Widget blocks(BuildContext context) => _MdDisplay(
+      renderMath: renderMath,
+      child: direction == null
+          ? _buildBlocks(context, parsed.blocks)
+          : Directionality(
+              textDirection: direction,
+              child: Builder(
+                builder: (ctx) => _buildBlocks(ctx, parsed.blocks),
+              ),
+            ),
+    );
+    if (!parsed.hasMath || !renderMath) return blocks(context);
     // Inline math: load the math face on demand and repaint once it is registered.
     unawaited(MathFontGate.ensureLoaded());
     return ValueListenableBuilder<bool>(
@@ -153,11 +166,12 @@ class MarkdownFolioView extends StatelessWidget {
                 code: block.code,
                 onCopy: () => onCopyCode(block.code),
                 onSave: onSaveCode,
+                startFolded: foldCodeBlocks,
               ),
-      _MdMathBlock() => MathFolioView(
-        latex: block.latex,
-        onCopyLatex: onCopyCode,
-      ),
+      _MdMathBlock() =>
+        renderMath
+            ? MathFolioView(latex: block.latex, onCopyLatex: onCopyCode)
+            : InkText(_typedMath(block.latex), color: theme.inkPrimary),
       _MdTable() => _GfmTableCard(
         headers: block.headers,
         alignments: block.alignments,
@@ -710,12 +724,14 @@ class _FencedCodeCard extends StatefulWidget {
     required this.code,
     required this.onCopy,
     this.onSave,
+    this.startFolded = false,
   });
 
   final String language;
   final String code;
   final VoidCallback onCopy;
   final void Function(String code, String language)? onSave;
+  final bool startFolded;
 
   @override
   State<_FencedCodeCard> createState() => _FencedCodeCardState();
@@ -723,7 +739,7 @@ class _FencedCodeCard extends StatefulWidget {
 
 class _FencedCodeCardState extends State<_FencedCodeCard> {
   bool _copied = false;
-  bool _folded = false;
+  late bool _folded = widget.startFolded;
   bool _previewSvg = false;
   Timer? _copiedTimer;
 
@@ -738,6 +754,15 @@ class _FencedCodeCardState extends State<_FencedCodeCard> {
   String _completeHead = '';
   String _completeTail = '';
   int _lineCount = 1;
+
+  @override
+  void didUpdateWidget(covariant _FencedCodeCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The fold setting changed while this block is on screen: apply it now.
+    if (oldWidget.startFolded != widget.startFolded) {
+      _folded = widget.startFolded;
+    }
+  }
 
   @override
   void dispose() {
@@ -1141,7 +1166,8 @@ class _InlineRichText extends StatelessWidget {
         );
       } else if (raw.startsWith(r'$') &&
           raw.endsWith(r'$') &&
-          raw.length >= 3) {
+          raw.length >= 3 &&
+          _MdDisplay.rendersMath(context)) {
         final renderedMath = MathFolioView.renderInlineUnicode(
           raw.substring(1, raw.length - 1),
         );
@@ -1187,6 +1213,9 @@ class _InlineRichText extends StatelessWidget {
                 : baseStyle,
           ),
         );
+      } else {
+        // Math with math rendering off: shown exactly as written.
+        spans.add(TextSpan(text: raw));
       }
       cursor = match.end;
     }
@@ -1386,4 +1415,22 @@ class _SafeSvgPreviewPainter extends CustomPainter {
       oldDelegate.svgSource != svgSource ||
       oldDelegate.fallbackStroke != fallbackStroke ||
       oldDelegate.fallbackFill != fallbackFill;
+}
+
+/// Display math exactly as the model wrote it (math rendering off).
+String _typedMath(String latex) => '\$\$$latex\$\$';
+
+/// Display settings shared by every block of one [MarkdownFolioView].
+class _MdDisplay extends InheritedWidget {
+  const _MdDisplay({required this.renderMath, required super.child});
+
+  final bool renderMath;
+
+  static bool rendersMath(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_MdDisplay>()?.renderMath ??
+      true;
+
+  @override
+  bool updateShouldNotify(_MdDisplay oldWidget) =>
+      renderMath != oldWidget.renderMath;
 }

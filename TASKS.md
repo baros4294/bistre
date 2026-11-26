@@ -268,6 +268,8 @@ Wave: W8   Slice: W8.1   Next action: wire dead settings (Appendix Phase 3 table
 
 ## W8 Dead settings, strings, accessibility
 - [ ] W8.1 Appendix Phase 3 table
+  - done:  Display group: 9 dead Appearance toggles wired (model/provider label, thinking and tool cards, user Markdown, math, code and thinking folding, chat list dates, delete confirm); red: display_prefs_test 10 cases (sidebar pair re-proved red against the old sidebar); approvals never hidden; settings apply live (2026-11-26)
+  - open:  Send-on-Enter and text-scale toggles; Parchment extras; Desktop, Provider privacy, Provider advanced, Default models, Agent, Updates, Profile groups
 - [ ] W8.2 U29 U41 U20 U21 U24 U25 U28 U31-U33 U38 U39 U42
 - [ ] W8.3 inspector, model resolution order, catalog orphans, registry cache
   - done:  price refresh replaces known prices (red: a_refresh_replaces_known_prices compile; Spec 03 TTL now 24 h as in code), diag.tool.path_denied (red: a_skill_outside_the_workspace_is_a_path_denial compile), Gemini dialect id google_gemini everywhere in the app (red: dialect_ids_test compile; storage badge never showed for Gemini) (2026-11-26)

@@ -404,6 +404,7 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                       thinkingBuffer: turn?.thinking ?? '',
                       toolActivities: ctrl.toolActivities,
                       layoutMode: ctrl.layoutMode,
+                      prefs: ctrl.uiPrefs,
                       reduceMotionOverride: ctrl.reduceMotionOverride,
                       onCopyCode: (code) => unawaited(ctrl.copyText(code)),
                       onQuoteThinking: widget.onReplyToPassage,
@@ -464,6 +465,7 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                       activeProvider: activeProv,
                       layoutMode: ctrl.layoutMode,
                       showTokenMetrics: ctrl.showTokenMetrics,
+                      prefs: ctrl.uiPrefs,
                       editorialDialogueStyling:
                           ctrl.activeThreadMode == 'write' &&
                           ctrl.storyState.dialogueStyling,
@@ -748,6 +750,7 @@ class _PassageItem extends StatefulWidget {
     required this.activeProvider,
     required this.layoutMode,
     required this.showTokenMetrics,
+    this.prefs = const UiDisplayPrefs(),
     this.editorialDialogueStyling = false,
     this.isPinnedContextStart = false,
     required this.branchInfo,
@@ -782,6 +785,9 @@ class _PassageItem extends StatefulWidget {
   final EngineProvider? activeProvider;
   final FolioLayoutMode layoutMode;
   final bool showTokenMetrics;
+
+  /// Settings > Appearance display choices (W8: each one is read here).
+  final UiDisplayPrefs prefs;
   final bool editorialDialogueStyling;
   final bool isPinnedContextStart;
   final bool isPinnedReply;
@@ -872,19 +878,28 @@ class _PassageItemState extends State<_PassageItem>
         : Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (isAssistant && usage != null && usage.hasThinking)
+              if (isAssistant &&
+                  usage != null &&
+                  usage.hasThinking &&
+                  widget.prefs.showThinkingCards)
                 ReasoningBlock(
                   thinkingText: usage.thinkingText,
                   durationMs: usage.thinkingDurationMs,
                   onQuoteIntoComposer: widget.onQuoteThinking,
+                  autoCollapse: widget.prefs.autoCollapseThinking,
                 ),
-              MarkdownFolioView(
-                onSaveCode: (code, language) =>
-                    unawaited(widget.onSaveCode(code, language)),
-                markdown: widget.node.content,
-                onCopyCode: widget.onCopyCode,
-                editorialDialogueStyling: widget.editorialDialogueStyling,
-              ),
+              if (!isAssistant && !widget.prefs.renderUserMarkdown)
+                InkText(widget.node.content, color: theme.inkPrimary)
+              else
+                MarkdownFolioView(
+                  onSaveCode: (code, language) =>
+                      unawaited(widget.onSaveCode(code, language)),
+                  markdown: widget.node.content,
+                  onCopyCode: widget.onCopyCode,
+                  editorialDialogueStyling: widget.editorialDialogueStyling,
+                  renderMath: widget.prefs.renderMathFormulas,
+                  foldCodeBlocks: widget.prefs.autoCollapseCodeBlocks,
+                ),
               // P1: the files sent with this message, each opening its preview.
               if (widget.node.attachments.isNotEmpty)
                 Padding(
@@ -1134,9 +1149,6 @@ class _PassageItemState extends State<_PassageItem>
     NodeUsageMeta usage,
   ) {
     final parts = <String>[];
-    if (usage.modelId.isNotEmpty) {
-      parts.add(usage.modelId);
-    }
     if (usage.hasTokens) {
       parts.add(
         l10n.t(L10nKey.chatTokensMeta, <String, Object?>{
@@ -1185,6 +1197,21 @@ class _PassageItemState extends State<_PassageItem>
     );
   }
 
+  /// The reply's model (and provider) under Settings > Appearance, or null when hidden.
+  String? _modelLabel(NodeUsageMeta? usage) {
+    final prefs = widget.prefs;
+    if (usage == null || usage.modelId.isEmpty || !prefs.showModelName) {
+      return null;
+    }
+    if (!prefs.showProviderAfterModel || usage.providerName.isEmpty) {
+      return usage.modelId;
+    }
+    return BistreLocalizations.of(context).t(
+      L10nKey.shellModelOnProvider,
+      <String, Object?>{'model': usage.modelId, 'provider': usage.providerName},
+    );
+  }
+
   Widget _buildSpeakerHeader(
     BistreThemeData theme,
     String speaker,
@@ -1210,7 +1237,7 @@ class _PassageItemState extends State<_PassageItem>
         else
           BistreIcon(BistreUiIcon.edit, size: 14, color: theme.accentBrass),
         const SizedBox(width: BistreSpacing.s8),
-        Expanded(
+        Flexible(
           child: InkText(
             speaker,
             role: InkTextRole.labelStrong,
@@ -1219,6 +1246,20 @@ class _PassageItemState extends State<_PassageItem>
             overflow: TextOverflow.ellipsis,
           ),
         ),
+        // The model label takes the free room up to the actions (it shortens last).
+        if (_modelLabel(usage) case final label?) ...[
+          const SizedBox(width: BistreSpacing.s8),
+          Expanded(
+            child: InkText(
+              label,
+              role: InkTextRole.captionMeta,
+              color: theme.inkMuted,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ] else
+          const Spacer(),
         actionBar,
       ],
     );
