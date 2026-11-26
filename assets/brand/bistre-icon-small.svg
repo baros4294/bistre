@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="t">
+  <title id="t">Bistre app icon (simplified, for 16 to 32 px)</title>
+  <defs>
+    <linearGradient id="day-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F8F0E2" />
+      <stop offset="100%" stop-color="#E8D7BC" />
+    </linearGradient>
+
+    <radialGradient id="paper-sheen" cx="46%" cy="38%" r="54%">
+      <stop offset="0%" stop-color="#FFFDF8" stop-opacity="0.65" />
+      <stop offset="100%" stop-color="#E8D7BC" stop-opacity="0" />
+    </radialGradient>
+
+    <linearGradient id="leather-cover" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#543422" />
+      <stop offset="100%" stop-color="#2E1B11" />
+    </linearGradient>
+
+    <linearGradient id="page-ivory-l" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#FFFDF8" />
+      <stop offset="80%" stop-color="#F5EBDA" />
+      <stop offset="100%" stop-color="#DFCDB5" />
+    </linearGradient>
+
+    <linearGradient id="page-ivory-r" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#D7C3A7" />
+      <stop offset="22%" stop-color="#F2E6D3" />
+      <stop offset="100%" stop-color="#FAF3E6" />
+    </linearGradient>
+
+    <linearGradient id="brass-l" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#DA8F3D" />
+      <stop offset="55%" stop-color="#F5C478" />
+      <stop offset="100%" stop-color="#E8A955" />
+    </linearGradient>
+
+    <linearGradient id="brass-r" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#9A551B" />
+      <stop offset="60%" stop-color="#C97D33" />
+      <stop offset="100%" stop-color="#B06522" />
+    </linearGradient>
+
+    <linearGradient id="brass-collar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#F0B96A" />
+      <stop offset="50%" stop-color="#CE8337" />
+      <stop offset="100%" stop-color="#8F4E19" />
+    </linearGradient>
+
+    <linearGradient id="ebonite-barrel" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#513626" />
+      <stop offset="45%" stop-color="#311F16" />
+      <stop offset="100%" stop-color="#1C120C" />
+    </linearGradient>
+
+    <linearGradient id="wax-vermilion" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#C24532" />
+      <stop offset="100%" stop-color="#85291D" />
+    </linearGradient>
+
+    <clipPath id="day-folio-clip">
+      <path d="M 154 182 C 200 182 232 188 256 204 C 280 188 312 182 358 182 A 8 8 0 0 1 366 190 V 314 A 8 8 0 0 1 358 322 C 312 322 280 328 256 342 C 232 328 200 322 154 322 A 8 8 0 0 1 146 314 V 190 A 8 8 0 0 1 154 182 Z" />
+    </clipPath>
+  </defs>
+  <g transform="translate(256 256) scale(1.86) translate(-263 -287)">
+    <path d="M 242 344 H 270 V 398 L 256 382 L 242 398 Z" fill="#B23A2A" />
+    <path d="M 134 212 A 8 8 0 0 1 142 204 C 194 204 228 210 256 224 C 284 210 318 204 370 204 A 8 8 0 0 1 378 212 V 332 A 10 10 0 0 1 368 342 C 316 342 282 348 256 362 C 230 348 196 342 144 342 A 10 10 0 0 1 134 332 Z" fill="#3A2216" stroke="#3A2216" stroke-width="6" stroke-linejoin="round" />
+    <path d="M 152 182 C 200 182 232 188 256 204 V 342 C 232 328 200 322 152 322 A 8 8 0 0 1 144 314 V 190 A 8 8 0 0 1 152 182 Z" fill="#FBF4E8" stroke="#4A2F1F" stroke-width="5" stroke-linejoin="round" />
+    <path d="M 256 204 C 280 188 312 182 360 182 A 8 8 0 0 1 368 190 V 314 A 8 8 0 0 1 360 322 C 312 322 280 328 256 342 Z" fill="#F1E4CF" stroke="#4A2F1F" stroke-width="5" stroke-linejoin="round" />
+    <g fill="none" stroke="#6A4A33" stroke-width="10" stroke-linecap="round">
+      <path d="M 168 230 C 196 230 222 236 240 244" />
+      <path d="M 168 262 C 196 262 222 268 240 276" />
+    </g>
+    <g transform="translate(286, 282) rotate(45)">
+      <path d="M 0 0 C -16 -26 -32 -52 -34 -77 C -34 -96 -24 -112 -19 -121 H 19 C 24 -112 34 -96 34 -77 C 32 -52 16 -26 0 0 Z M -21 -121 H 21 V -142 H -21 Z" fill="none" stroke="#FBF4E8" stroke-width="18" stroke-linejoin="round" />
+      <path d="M -21 -121 H 21 V -142 H -21 Z" fill="#24160E" />
+      <path d="M 0 0 C -16 -26 -32 -52 -34 -77 C -34 -96 -24 -112 -19 -121 H 0 Z" fill="#E9A852" />
+      <path d="M 0 0 C 16 -26 32 -52 34 -77 C 34 -96 24 -112 19 -121 H 0 Z" fill="#B66A26" />
+      <path d="M 0 0 C -16 -26 -32 -52 -34 -77 C -34 -96 -24 -112 -19 -121 H 19 C 24 -112 34 -96 34 -77 C 32 -52 16 -26 0 0 Z" fill="none" stroke="#24160E" stroke-width="6" stroke-linejoin="round" />
+      <path d="M 0 -6 V -50" stroke="#24160E" stroke-width="7" stroke-linecap="round" />
+      <circle cx="0" cy="-56" r="9" fill="#24160E" />
+    </g>
+  </g>
+</svg>
