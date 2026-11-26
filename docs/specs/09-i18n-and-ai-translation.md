@@ -34,3 +34,4 @@ Standard Flutter `gen-l10n` compiles static Dart classes and cannot hot-load OTA
 - Switching locale (`en` ↔ `vi` ↔ `ar`) updates `Directionality` (`ltr`/`rtl`) and every visible string in 1 frame with zero restart. Track-A `minisign`-verified JSON locale packs hot-load directly into `BistreLocalizations.applyHotLocalePack(...)` without restarting.
 
 - **`diag.tool.path_denied`** (W8): a path outside what a tool or import may use (a skill outside the workspace, a CHARX entry escaping its folder) has its own key; it reused the edit hash-mismatch key, which pointed the user at the wrong fix.
+- **No orphan strings** (W8, 2026-11-26): 49 keys no code used (old shell headings, topics, welcome prompts, locale labels, retired badges) were removed from every locale. Kept for the W8 settings they belong to: text scale, Send on Enter, the summary and translation model headings, `mode.translate`, and the two live-voice states.

@@ -10,13 +10,6 @@
       "max_chars": 24,
       "placeholders": {}
     },
-    "app.subtitle": {
-      "message": "مساحة ذكاء اصطناعي محلية",
-      "context": "Short subtitle under brand title in sidebar",
-      "tone": "calm_editorial",
-      "max_chars": 48,
-      "placeholders": {}
-    },
     "shell.theme.day": {
       "message": "فاتح",
       "context": "Light sepia theme option",
@@ -44,22 +37,6 @@
       "tone": "concise_action",
       "max_chars": 24,
       "placeholders": {}
-    },
-    "shell.health.wal_ready": {
-      "message": "النواة v{version} · {count, plural, =0{0 رسائل} one{رسالة واحدة} two{رسالتان} other{{count} رسائل}}",
-      "context": "Compact engine and storage status label",
-      "tone": "diagnostic",
-      "max_chars": 120,
-      "placeholders": {
-        "version": {
-          "type": "string",
-          "example": "0.1.0"
-        },
-        "count": {
-          "type": "int",
-          "example": "4"
-        }
-      }
     },
     "shell.search.placeholder": {
       "message": "ابحث في الرسائل...",
@@ -101,20 +78,6 @@
       "max_chars": 40,
       "placeholders": {}
     },
-    "shell.empty.title": {
-      "message": "ابدأ محادثة",
-      "context": "Empty chat heading before first message",
-      "tone": "calm_editorial",
-      "max_chars": 48,
-      "placeholders": {}
-    },
-    "shell.empty.body": {
-      "message": "ذكاء اصطناعي محلي وسريع وخاص. محادثاتك ومفاتيحك مشفرة على هذا الجهاز.",
-      "context": "Empty chat helper subtitle",
-      "tone": "calm_editorial",
-      "max_chars": 128,
-      "placeholders": {}
-    },
     "shell.role.user": {
       "message": "أنت",
       "context": "Speaker label for user messages",
@@ -141,39 +104,6 @@
       "context": "Custom text selection toolbar select-all action",
       "tone": "concise_action",
       "max_chars": 20,
-      "placeholders": {}
-    },
-    "shell.locale.switch_a11y": {
-      "message": "تبديل اللغة إلى {locale}",
-      "context": "Screen reader label for language selector",
-      "tone": "concise_action",
-      "max_chars": 48,
-      "placeholders": {
-        "locale": {
-          "type": "string",
-          "example": "ar"
-        }
-      }
-    },
-    "shell.locale.en": {
-      "message": "EN",
-      "context": "Short label for English",
-      "tone": "concise_action",
-      "max_chars": 8,
-      "placeholders": {}
-    },
-    "shell.locale.vi": {
-      "message": "VI",
-      "context": "Short label for Vietnamese",
-      "tone": "concise_action",
-      "max_chars": 8,
-      "placeholders": {}
-    },
-    "shell.locale.ar": {
-      "message": "AR",
-      "context": "Short label for Arabic RTL",
-      "tone": "concise_action",
-      "max_chars": 8,
       "placeholders": {}
     },
     "shell.thread.default_title": {
@@ -351,34 +281,6 @@
       "max_chars": 36,
       "placeholders": {}
     },
-    "sidebar.section.assistants": {
-      "message": "المساعدون",
-      "context": "Sidebar vertical section for assistants",
-      "tone": "calm_editorial",
-      "max_chars": 24,
-      "placeholders": {}
-    },
-    "sidebar.section.topics": {
-      "message": "المواضيع",
-      "context": "Sidebar vertical section for topic filters",
-      "tone": "calm_editorial",
-      "max_chars": 24,
-      "placeholders": {}
-    },
-    "sidebar.section.pinned": {
-      "message": "المثبتة",
-      "context": "Sidebar vertical section for pinned chats",
-      "tone": "calm_editorial",
-      "max_chars": 24,
-      "placeholders": {}
-    },
-    "sidebar.section.recent": {
-      "message": "الأخيرة",
-      "context": "Sidebar vertical section for recent chats",
-      "tone": "calm_editorial",
-      "max_chars": 28,
-      "placeholders": {}
-    },
     "sidebar.empty_filtered": {
       "message": "لا توجد محادثات مطابقة.",
       "context": "Shown when sidebar search or topic filter finds nothing",
@@ -398,75 +300,6 @@
       "context": "Sidebar footer button to open Settings",
       "tone": "concise_action",
       "max_chars": 24,
-      "placeholders": {}
-    },
-    "sidebar.shortcuts": {
-      "message": "الاختصارات",
-      "context": "Sidebar footer button to view keyboard shortcuts",
-      "tone": "concise_action",
-      "max_chars": 24,
-      "placeholders": {}
-    },
-    "sidebar.wallet_summary": {
-      "message": "{preset} · {spent} / {ceiling}",
-      "context": "Compact permission mode and daily spend summary",
-      "tone": "diagnostic",
-      "max_chars": 64,
-      "placeholders": {
-        "preset": {
-          "type": "string",
-          "example": "متوازن"
-        },
-        "spent": {
-          "type": "string",
-          "example": "$0.00"
-        },
-        "ceiling": {
-          "type": "string",
-          "example": "$5.00"
-        }
-      }
-    },
-    "topic.all": {
-      "message": "كل المحادثات",
-      "context": "Topic filter showing every chat",
-      "tone": "concise_action",
-      "max_chars": 24,
-      "placeholders": {}
-    },
-    "topic.general": {
-      "message": "عام",
-      "context": "General chat topic",
-      "tone": "concise_action",
-      "max_chars": 20,
-      "placeholders": {}
-    },
-    "topic.code": {
-      "message": "برمجة",
-      "context": "Software engineering topic",
-      "tone": "concise_action",
-      "max_chars": 20,
-      "placeholders": {}
-    },
-    "topic.writing": {
-      "message": "كتابة",
-      "context": "Writing and editing topic",
-      "tone": "concise_action",
-      "max_chars": 20,
-      "placeholders": {}
-    },
-    "topic.research": {
-      "message": "بحث",
-      "context": "Research and reading topic",
-      "tone": "concise_action",
-      "max_chars": 20,
-      "placeholders": {}
-    },
-    "topic.translate": {
-      "message": "ترجمة",
-      "context": "Translation topic",
-      "tone": "concise_action",
-      "max_chars": 20,
       "placeholders": {}
     },
     "mode.chat": {
@@ -614,13 +447,6 @@
       "max_chars": 32,
       "placeholders": {}
     },
-    "chat.streaming_badge": {
-      "message": "جارٍ الرد...",
-      "context": "Indicator while AI reply streams",
-      "tone": "diagnostic",
-      "max_chars": 36,
-      "placeholders": {}
-    },
     "chat.branch_indicator": {
       "message": "{current} / {total}",
       "context": "Version indicator on regenerated replies",
@@ -658,13 +484,6 @@
       "max_chars": 24,
       "placeholders": {}
     },
-    "chat.search_toggle": {
-      "message": "بحث السجل",
-      "context": "Toggle chat history search bar",
-      "tone": "concise_action",
-      "max_chars": 28,
-      "placeholders": {}
-    },
     "chat.search_all_scope": {
       "message": "كل المحادثات",
       "context": "Search across every chat",
@@ -677,62 +496,6 @@
       "context": "Search only inside the active chat",
       "tone": "concise_action",
       "max_chars": 24,
-      "placeholders": {}
-    },
-    "chat.welcome.prompt1.title": {
-      "message": "مراجعة أو تصحيح كود",
-      "context": "Starter suggestion 1 title",
-      "tone": "concise_action",
-      "max_chars": 36,
-      "placeholders": {}
-    },
-    "chat.welcome.prompt1.body": {
-      "message": "راجع هذه الدالة لاكتشاف الحالات الحدية وتحسين وضوح البنية.",
-      "context": "Starter suggestion 1 prompt",
-      "tone": "calm_editorial",
-      "max_chars": 120,
-      "placeholders": {}
-    },
-    "chat.welcome.prompt2.title": {
-      "message": "كتابة رسالة واضحة",
-      "context": "Starter suggestion 2 title",
-      "tone": "concise_action",
-      "max_chars": 36,
-      "placeholders": {}
-    },
-    "chat.welcome.prompt2.body": {
-      "message": "ساعدني في كتابة تحديث مشروع موجز وواضح بدون حشو.",
-      "context": "Starter suggestion 2 prompt",
-      "tone": "calm_editorial",
-      "max_chars": 128,
-      "placeholders": {}
-    },
-    "chat.welcome.prompt3.title": {
-      "message": "تبسيط فكرة معقدة",
-      "context": "Starter suggestion 3 title",
-      "tone": "concise_action",
-      "max_chars": 36,
-      "placeholders": {}
-    },
-    "chat.welcome.prompt3.body": {
-      "message": "اشرح ببساطة كيف يعمل تخزين SQLite المحلي وتفريع المحادثات.",
-      "context": "Starter suggestion 3 prompt",
-      "tone": "calm_editorial",
-      "max_chars": 120,
-      "placeholders": {}
-    },
-    "chat.welcome.prompt4.title": {
-      "message": "ترجمة طبيعية",
-      "context": "Starter suggestion 4 title",
-      "tone": "concise_action",
-      "max_chars": 36,
-      "placeholders": {}
-    },
-    "chat.welcome.prompt4.body": {
-      "message": "ترجم هذا النص بين الإنجليزية والفيتنامية والعربية مع الحفاظ على الأسلوب.",
-      "context": "Starter suggestion 4 prompt",
-      "tone": "calm_editorial",
-      "max_chars": 128,
       "placeholders": {}
     },
     "provider.setup.title": {
@@ -770,31 +533,12 @@
       "max_chars": 24,
       "placeholders": {}
     },
-    "provider.status.custom_ready": {
-      "message": "مخصص",
-      "context": "Badge for custom OpenAI-compatible provider",
-      "tone": "concise_action",
-      "max_chars": 24,
-      "placeholders": {}
-    },
     "provider.status.active": {
       "message": "نشط",
       "context": "Badge indicating active selected provider",
       "tone": "concise_action",
       "max_chars": 20,
       "placeholders": {}
-    },
-    "provider.status.count": {
-      "message": "{count, plural, =0{أضف مفتاح API} one{مزود واحد جاهز} two{مزودان جاهزان} other{{count} مزودين جاهزين}}",
-      "context": "Sidebar footer status summary for connected providers",
-      "tone": "concise_action",
-      "max_chars": 48,
-      "placeholders": {
-        "count": {
-          "type": "int",
-          "example": "1"
-        }
-      }
     },
     "provider.field.api_key": {
       "message": "مفتاح API",
@@ -887,20 +631,6 @@
       "max_chars": 24,
       "placeholders": {}
     },
-    "provider.action.add_custom": {
-      "message": "إضافة مزود مخصص",
-      "context": "Button to create a custom OpenAI-compatible provider",
-      "tone": "concise_action",
-      "max_chars": 32,
-      "placeholders": {}
-    },
-    "provider.action.delete_custom": {
-      "message": "حذف المزود",
-      "context": "Button deleting a custom provider",
-      "tone": "concise_action",
-      "max_chars": 28,
-      "placeholders": {}
-    },
     "provider.action.show_key": {
       "message": "إظهار مفتاح API",
       "context": "Accessibility label to reveal typed key",
@@ -967,13 +697,6 @@
       "context": "Subtitle for Custom provider row",
       "tone": "calm_editorial",
       "max_chars": 40,
-      "placeholders": {}
-    },
-    "palette.trigger": {
-      "message": "قائمة الأوامر",
-      "context": "Button opening Ctrl+K command menu",
-      "tone": "concise_action",
-      "max_chars": 28,
       "placeholders": {}
     },
     "palette.placeholder": {
@@ -1221,25 +944,11 @@
       "max_chars": 40,
       "placeholders": {}
     },
-    "settings.trust.local_first": {
-      "message": "تفضيل النماذج المحلية المجانية",
-      "context": "Toggle prioritizing free local endpoints",
-      "tone": "calm_editorial",
-      "max_chars": 40,
-      "placeholders": {}
-    },
     "settings.trust.stateless": {
       "message": "طلبات خاصة (دون حفظ على خوادم المزود)",
       "context": "Toggle setting store: false by default",
       "tone": "calm_editorial",
       "max_chars": 64,
-      "placeholders": {}
-    },
-    "settings.engine.heading": {
-      "message": "التخزين المحلي والمحرك",
-      "context": "Storage and engine tab heading",
-      "tone": "calm_editorial",
-      "max_chars": 44,
       "placeholders": {}
     },
     "settings.engine.telemetry": {
@@ -1557,13 +1266,6 @@
       "context": "Label for primary accent color customization",
       "tone": "calm_editorial",
       "max_chars": 36,
-      "placeholders": {}
-    },
-    "settings.appearance.accent_custom": {
-      "message": "لون مخصص",
-      "context": "Custom hex color option label",
-      "tone": "concise_action",
-      "max_chars": 32,
       "placeholders": {}
     },
     "settings.appearance.accent_wax": {
@@ -2060,13 +1762,6 @@
       "max_chars": 40,
       "placeholders": {}
     },
-    "chat.inspector.toggle": {
-      "message": "إعدادات المحادثة",
-      "context": "Tooltip/semantics for header inspector toggle button",
-      "tone": "concise_action",
-      "max_chars": 40,
-      "placeholders": {}
-    },
     "chat.inspector.override_prompt": {
       "message": "تجاوز تعليمات النظام",
       "context": "Per-chat system prompt override editor label",
@@ -2279,17 +1974,6 @@
       "max_chars": 20,
       "placeholders": {}
     },
-    "studio.running_count": {
-      "message": "{count} قيد التشغيل",
-      "context": "Top-bar badge showing number of active agent runs",
-      "tone": "concise_action",
-      "max_chars": 28,
-      "placeholders": {
-        "count": {
-          "type": "int"
-        }
-      }
-    },
     "studio.power_guard_title": {
       "message": "حماية السكون والانقطاع",
       "context": "Card heading in Studio Runs panel",
@@ -2465,20 +2149,6 @@
     "mode.plan": {
       "message": "خطة",
       "context": "Read-only planning agent mode tab",
-      "tone": "concise_action",
-      "max_chars": 16,
-      "placeholders": {}
-    },
-    "mode.build": {
-      "message": "بناء",
-      "context": "Write-capable coding agent mode tab",
-      "tone": "concise_action",
-      "max_chars": 16,
-      "placeholders": {}
-    },
-    "mode.write_rp": {
-      "message": "كتابة",
-      "context": "Creative writing and roleplay mode tab",
       "tone": "concise_action",
       "max_chars": 16,
       "placeholders": {}
@@ -2662,13 +2332,6 @@
       "max_chars": 32,
       "placeholders": {}
     },
-    "settings.agent.workspace_pick": {
-      "message": "اختيار مجلد",
-      "context": "Button to bind local workspace folder",
-      "tone": "concise_action",
-      "max_chars": 24,
-      "placeholders": {}
-    },
     "settings.agent.mcp_title": {
       "message": "خوادم MCP",
       "context": "Settings section heading for Model Context Protocol servers",
@@ -2745,18 +2408,6 @@
       "tone": "concise_action",
       "max_chars": 24,
       "placeholders": {}
-    },
-    "composer.attachments_count": {
-      "message": "{count} مرفقات",
-      "context": "Summary pill showing number of attached files",
-      "tone": "calm_editorial",
-      "max_chars": 28,
-      "placeholders": {
-        "count": {
-          "type": "int",
-          "example": 2
-        }
-      }
     },
     "composer.mention_title": {
       "message": "إدراج سياق",
@@ -2959,13 +2610,6 @@
       "context": "Placeholder for scheduled task prompt",
       "tone": "calm_editorial",
       "max_chars": 64,
-      "placeholders": {}
-    },
-    "subagents.title": {
-      "message": "الوكلاء بالخلفية",
-      "context": "Heading for isolated worktree background subagents",
-      "tone": "calm_editorial",
-      "max_chars": 32,
       "placeholders": {}
     },
     "story.characters_title": {
@@ -4413,13 +4057,6 @@
       "max_chars": 24,
       "placeholders": {}
     },
-    "chat.tools.stateless": {
-      "message": "خاص (بدون تخزين على الخادم)",
-      "context": "Toggle row inside composer tools popover for stateless requests",
-      "tone": "calm_editorial",
-      "max_chars": 36,
-      "placeholders": {}
-    },
     "chat.tools.prefill_label": {
       "message": "بداية الرد",
       "context": "Label for optional assistant reply prefix input in composer tools popover",
@@ -4519,13 +4156,6 @@
       "context": "Output tokens per second row label in turn usage popover",
       "tone": "calm_editorial",
       "max_chars": 20,
-      "placeholders": {}
-    },
-    "chat.attachment.preview": {
-      "message": "معاينة المرفق",
-      "context": "Title of the modal showing an attached file or image",
-      "tone": "calm_editorial",
-      "max_chars": 28,
       "placeholders": {}
     },
     "chat.svg.preview": {
@@ -4638,13 +4268,6 @@
       "context": "Per-tool permission option disabling the tool",
       "tone": "concise_action",
       "max_chars": 12,
-      "placeholders": {}
-    },
-    "settings.mcp.presets_title": {
-      "message": "إضافة سريعة لخوادم قياسية",
-      "context": "Heading above preset chips in MCP settings",
-      "tone": "calm_editorial",
-      "max_chars": 36,
       "placeholders": {}
     },
     "tool.shell_steps": {
@@ -5783,13 +5406,6 @@
       "context": "Empty state inside searchable model dropdown before fetching models",
       "tone": "calm_editorial",
       "max_chars": 88,
-      "placeholders": {}
-    },
-    "settings.model.pick_action": {
-      "message": "اختيار",
-      "context": "Button opening the searchable model dropdown",
-      "tone": "concise_action",
-      "max_chars": 18,
       "placeholders": {}
     },
     "settings.ota.check_error_title": {

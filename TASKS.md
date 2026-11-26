@@ -272,7 +272,8 @@ Wave: W8   Slice: W8.1   Next action: wire dead settings (Appendix Phase 3 table
 - [ ] W8.3 inspector, model resolution order, catalog orphans, registry cache
   - done:  price refresh replaces known prices (red: a_refresh_replaces_known_prices compile; Spec 03 TTL now 24 h as in code), diag.tool.path_denied (red: a_skill_outside_the_workspace_is_a_path_denial compile), Gemini dialect id google_gemini everywhere in the app (red: dialect_ids_test compile; storage badge never showed for Gemini) (2026-11-26)
   - done:  model order thread -> assistant -> Default models -> last pick -> provider default (owner decision 2026-11-26; red: the_default_model_setting_wins_over_the_last_pick FAIL, picker_sets_chat_model_test compile); picker sets the open chat's model
-  - open:  inspector shows the real request and blocks invalid edits; 57 orphan keys; settings search map
+  - done:  49 orphan keys removed from en/vi/ar (8 kept for W8.1 features); retry notice reason in words (raw key leak)
+  - open:  inspector shows the real request and blocks invalid edits; settings search map
 
 ## W9 CI, packaging, supply chain
 - [ ] W9.1 C2-C9
