@@ -19,12 +19,17 @@ class ReasoningBlock extends StatefulWidget {
     this.durationMs = 0,
     this.isStreaming = false,
     this.onQuoteIntoComposer,
+    this.autoCollapse = true,
   });
 
   final String thinkingText;
   final int durationMs;
   final bool isStreaming;
   final ValueChanged<String>? onQuoteIntoComposer;
+
+  /// Settings > Appearance: fold the thinking once the reply arrives (and keep finished
+  /// thinking folded). Off keeps it open.
+  final bool autoCollapse;
 
   @override
   State<ReasoningBlock> createState() => _ReasoningBlockState();
@@ -38,13 +43,20 @@ class _ReasoningBlockState extends State<ReasoningBlock> {
   @override
   void initState() {
     super.initState();
-    _expanded = widget.isStreaming;
+    _expanded = widget.isStreaming || !widget.autoCollapse;
   }
 
   @override
   void didUpdateWidget(covariant ReasoningBlock oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.isStreaming && !widget.isStreaming && _expanded) {
+    if (oldWidget.autoCollapse != widget.autoCollapse && !widget.isStreaming) {
+      // The setting changed while this reply is on screen: apply it now.
+      _expanded = !widget.autoCollapse;
+    }
+    if (oldWidget.isStreaming &&
+        !widget.isStreaming &&
+        _expanded &&
+        widget.autoCollapse) {
       // Collapse gently once final prose arrives so reading canvas stays calm.
       _expanded = false;
     }

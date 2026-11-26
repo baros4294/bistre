@@ -548,9 +548,10 @@ class _FolioSidebarState extends State<FolioSidebar> {
 
     final entries = <_ChatListEntry>[];
     L10nKey? lastBucket;
+    final showDates = ctrl.uiPrefs.showChatListDates;
     for (final t in threads) {
       final bucket = bucketFor(t);
-      if (bucket != lastBucket) {
+      if (showDates && bucket != lastBucket) {
         lastBucket = bucket;
         entries.add(_ChatListHeader(bucket, isFirst: entries.isEmpty));
       }
@@ -653,8 +654,13 @@ class _FolioSidebarState extends State<FolioSidebar> {
       },
       onTogglePin: () => unawaited(ctrl.togglePinThread(thread.id)),
       onRename: () => _beginRename(thread),
-      // Undo instead of asking: delete at once, restorable from the 8 s Undo toast.
+      // Off (default): delete at once, restorable from the 8 s Undo toast. On (Settings >
+      // Appearance): the first click asks, the second deletes.
       onRequestDelete: () {
+        if (ctrl.uiPrefs.confirmBeforeDeletingChat && !isConfirmingDelete) {
+          setState(() => _pendingDeleteThreadId = thread.id);
+          return;
+        }
         setState(() => _pendingDeleteThreadId = null);
         unawaited(ctrl.deleteThread(thread.id));
       },

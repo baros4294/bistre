@@ -104,6 +104,7 @@ class _StreamingPassageCard extends StatelessWidget {
     this.thinkingBuffer = '',
     this.toolActivities = const <ToolActivityEntry>[],
     required this.layoutMode,
+    this.prefs = const UiDisplayPrefs(),
     required this.reduceMotionOverride,
     required this.onCopyCode,
     this.onQuoteThinking,
@@ -121,6 +122,7 @@ class _StreamingPassageCard extends StatelessWidget {
   final String thinkingBuffer;
   final List<ToolActivityEntry> toolActivities;
   final FolioLayoutMode layoutMode;
+  final UiDisplayPrefs prefs;
   final bool reduceMotionOverride;
   final ValueChanged<String> onCopyCode;
   final ValueChanged<String>? onQuoteThinking;
@@ -133,6 +135,13 @@ class _StreamingPassageCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
+    // Hidden tool cards never hide a question: approvals always show.
+    final shownTools = prefs.showToolCards
+        ? toolActivities
+        : <ToolActivityEntry>[
+            for (final e in toolActivities)
+              if (e.status == 'awaiting_approval') e,
+          ];
     final body = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -156,18 +165,19 @@ class _StreamingPassageCard extends StatelessWidget {
             FolioStreamingCursor(reduceMotionOverride: reduceMotionOverride),
           ],
         ),
-        if (thinkingBuffer.isNotEmpty) ...[
+        if (thinkingBuffer.isNotEmpty && prefs.showThinkingCards) ...[
           const SizedBox(height: 10),
           ReasoningBlock(
             thinkingText: thinkingBuffer,
             isStreaming: buffer.isEmpty,
             onQuoteIntoComposer: onQuoteThinking,
+            autoCollapse: prefs.autoCollapseThinking,
           ),
         ],
-        if (toolActivities.isNotEmpty) ...[
+        if (shownTools.isNotEmpty) ...[
           const SizedBox(height: 6),
           ToolTimelineView(
-            entries: toolActivities,
+            entries: shownTools,
             onApproveOnce: onApproveToolOnce,
             onApproveChat: onApproveToolChat,
             onDeny: onDenyTool,
@@ -177,7 +187,12 @@ class _StreamingPassageCard extends StatelessWidget {
         ],
         if (buffer.isNotEmpty) ...[
           const SizedBox(height: 10),
-          MarkdownFolioView(markdown: buffer, onCopyCode: onCopyCode),
+          MarkdownFolioView(
+            markdown: buffer,
+            onCopyCode: onCopyCode,
+            renderMath: prefs.renderMathFormulas,
+            foldCodeBlocks: prefs.autoCollapseCodeBlocks,
+          ),
         ],
       ],
     );
