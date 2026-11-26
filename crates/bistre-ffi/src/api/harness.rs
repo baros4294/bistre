@@ -21,18 +21,55 @@ pub async fn approve_tool_call(
         .map_err(crate::dto_mapping::ffi_err)
 }
 
+/// "Allow once": the chat's next run may send requests whose price is unknown while a spending
+/// cap is active (`diag.wallet.price_unknown`).
+#[frb]
+pub async fn allow_unpriced_once(thread_id: String) -> Result<(), String> {
+    let engine = current_engine()?;
+    engine
+        .allow_unpriced_once(thread_id)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)
+}
+
+/// Validates and saves a provider's custom headers and body fields (JSON objects); an invalid
+/// header or body is refused with `diag.provider.headers_invalid` / `diag.provider.body_invalid`.
+#[frb]
+pub async fn save_provider_overrides(
+    provider_id: String,
+    headers_json: String,
+    body_json: String,
+) -> Result<(), String> {
+    let engine = current_engine()?;
+    engine
+        .save_provider_overrides(provider_id, headers_json, body_json)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)
+}
+
+/// "Allow once" for the next read-aloud or live-voice request whose price is unknown.
+#[frb]
+pub async fn allow_unpriced_media_once() -> Result<(), String> {
+    let engine = current_engine()?;
+    engine
+        .allow_unpriced_media_once()
+        .await
+        .map_err(crate::dto_mapping::ffi_err)
+}
+
 /// Responds to a live `ToolApprovalRequested` event paused inside an active agent run.
-/// `decision`: `"approve_once"`, `"approve_for_thread"`, or `"deny"`.
+/// `decision`: `"approve_once"`, `"approve_for_thread"`, `"deny"`, or `"stop"`.
 #[frb]
 pub async fn respond_tool_approval(
     thread_id: String,
+    run_id: String,
     call_id: String,
     decision: String,
 ) -> Result<bool, String> {
     let engine = current_engine()?;
     let parsed = bistre_protocol::ToolApprovalDecision::parse(&decision);
     engine
-        .respond_tool_approval(thread_id, call_id, parsed)
+        .respond_tool_approval(thread_id, run_id, call_id, parsed)
         .await
         .map_err(crate::dto_mapping::ffi_err)
 }
@@ -389,4 +426,93 @@ pub async fn prepare_subagent_sandbox_json(workspace_root: String) -> Result<Str
         .await
         .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&sb).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
+}
+
+/// One hook from `.bistre/hooks.json`, as shown for review.
+#[derive(Debug, Clone)]
+pub struct FfiWorkspaceHook {
+    /// `pre_tool_use`, `post_tool_use`, `run_finished`, or `run_failed`.
+    pub event: String,
+    pub command: String,
+    pub tool_filter: Option<String>,
+}
+
+/// The workspace's hooks file, its digest, and whether the user approved exactly this file.
+#[derive(Debug, Clone)]
+pub struct FfiWorkspaceHooksStatus {
+    pub hooks: Vec<FfiWorkspaceHook>,
+    pub digest: String,
+    pub approved: bool,
+}
+
+/// The hooks of `workspace_root` for review; `None` when the folder has no hooks file.
+#[frb]
+pub async fn workspace_hooks_status(
+    workspace_root: String,
+) -> Result<Option<FfiWorkspaceHooksStatus>, String> {
+    let engine = current_engine()?;
+    let status = engine
+        .workspace_hooks_status(workspace_root)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)?;
+    Ok(status.map(|s| FfiWorkspaceHooksStatus {
+        hooks: s
+            .hooks
+            .into_iter()
+            .map(|h| FfiWorkspaceHook {
+                event: match h.event {
+                    bistre_core::hooks::HookEventKind::PreToolUse => "pre_tool_use",
+                    bistre_core::hooks::HookEventKind::PostToolUse => "post_tool_use",
+                    bistre_core::hooks::HookEventKind::RunFinished => "run_finished",
+                    bistre_core::hooks::HookEventKind::RunFailed => "run_failed",
+                }
+                .to_owned(),
+                command: h.command,
+                tool_filter: h.tool_filter,
+            })
+            .collect(),
+        digest: s.digest,
+        approved: s.approved,
+    }))
+}
+
+/// Approves the hooks file the user reviewed (by its `digest`); a changed file is refused.
+#[frb]
+pub async fn approve_workspace_hooks(workspace_root: String, digest: String) -> Result<(), String> {
+    let engine = current_engine()?;
+    engine
+        .approve_workspace_hooks(workspace_root, digest)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)
+}
+
+/// One web page a reply used (B2): `http(s)` only, bounded text.
+#[derive(Debug, Clone)]
+pub struct FfiGroundingSource {
+    pub node_id: String,
+    pub url: String,
+    pub title: String,
+    pub cited_text: Option<String>,
+}
+
+/// Web sources of every reply in `thread_id`, oldest reply first.
+#[frb]
+pub async fn list_thread_grounding(thread_id: String) -> Result<Vec<FfiGroundingSource>, String> {
+    let engine = current_engine()?;
+    let replies = engine
+        .list_thread_grounding(thread_id)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)?;
+    Ok(replies
+        .into_iter()
+        .flat_map(|reply| {
+            let node_id = reply.node_id;
+            reply.sources.into_iter().map(move |s| FfiGroundingSource {
+                node_id: node_id.clone(),
+                url: s.url().to_owned(),
+                title: s.title().to_owned(),
+                cited_text: s.cited_text().map(str::to_owned),
+            })
+        })
+        .collect())
 }

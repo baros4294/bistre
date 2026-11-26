@@ -185,6 +185,15 @@ EngineNode _mapNode(frb.FfiNodeRecord n) => EngineNode(
   content: n.content,
   providerMetaJson: n.providerMetaJson,
   createdAtMs: n.createdAtMs.toInt(),
+  attachments: <EngineNodeAttachment>[
+    for (final a in n.attachments)
+      EngineNodeAttachment(
+        name: a.name,
+        mimeType: a.mimeType,
+        sizeBytes: a.sizeBytes.toInt(),
+        blobRelPath: a.blobRelPath,
+      ),
+  ],
 );
 
 EngineSearchHit _mapHit(frb.FfiSearchHit h) => EngineSearchHit(
@@ -328,3 +337,133 @@ int _parsePendingCount(String? raw) {
   }
   return 0;
 }
+
+EngineMemoryEntry _mapMemoryEntry(frb.FfiMemoryEntry m) => EngineMemoryEntry(
+  id: m.id,
+  scope: m.scope,
+  scopeId: m.scopeId,
+  key: m.key,
+  content: m.content,
+  pinned: m.pinned,
+  updatedAtMs: m.updatedAtMs,
+);
+
+EngineCronJob _mapCronJob(frb.FfiCronJob j) => EngineCronJob(
+  id: j.id,
+  name: j.name,
+  workspaceId: j.workspaceId,
+  assistantId: j.assistantId,
+  scheduleExpr: j.scheduleExpr,
+  prompt: j.prompt,
+  mode: j.mode,
+  unattendedPolicy: j.unattendedPolicy,
+  useWorktree: j.useWorktree,
+  enabled: j.enabled,
+  nextRunMs: j.nextRunMs,
+  lastRunId: j.lastRunId,
+  lastStatus: j.lastStatus,
+);
+
+EngineWorkspaceHooksStatus _mapWorkspaceHooks(frb.FfiWorkspaceHooksStatus s) =>
+    EngineWorkspaceHooksStatus(
+      hooks: s.hooks
+          .map(
+            (h) => EngineWorkspaceHook(
+              event: h.event,
+              command: h.command,
+              toolFilter: h.toolFilter,
+            ),
+          )
+          .toList(growable: false),
+      digest: s.digest,
+      approved: s.approved,
+    );
+
+/// App settings -> FFI DTO for `saveSettings`.
+frb.FfiAppSettings _toFfiSettings(EngineSettings settings) =>
+    frb.FfiAppSettings(
+      theme: settings.theme,
+      layoutMode: settings.layoutMode,
+      locale: settings.locale,
+      trustPreset: settings.trustPreset,
+      walletDailyCeilingMicros: settings.walletDailyCeilingMicros,
+      walletLocalFirst: settings.walletLocalFirst,
+      providerStatelessDefault: settings.providerStatelessDefault,
+      fontScaleBps: settings.fontScaleBps,
+      fontSizePx: settings.fontSizePx,
+      lineHeightBps: settings.lineHeightBps,
+      readingWidthPx: settings.readingWidthPx,
+      proseFontFamily: settings.proseFontFamily,
+      proseFontPath: settings.proseFontPath,
+      monoFontFamily: settings.monoFontFamily,
+      monoFontPath: settings.monoFontPath,
+      accentPreset: settings.accentPreset,
+      customAccentHex: settings.customAccentHex,
+      sidebarOpen: settings.sidebarOpen,
+      sendOnEnter: settings.sendOnEnter,
+      reduceMotionOverride: settings.reduceMotionOverride,
+      showTokenMetrics: settings.showTokenMetrics,
+      activeProviderId: settings.activeProviderId,
+      activeModelId: settings.activeModelId,
+      otaFeedUrl: settings.otaFeedUrl,
+      otaChannel: settings.otaChannel,
+      otaAutoCheck: settings.otaAutoCheck,
+      windowBoundsJson: settings.windowBoundsJson,
+      customShortcutsJson: settings.customShortcutsJson,
+      keepAwakeWhileRunning: settings.keepAwakeWhileRunning,
+      windowsKeepAwakeOnBattery: settings.windowsKeepAwakeOnBattery,
+      daemonKeepAliveWhenActive: settings.daemonKeepAliveWhenActive,
+      unattendedPolicy: settings.unattendedPolicy,
+      retryWatchdogMaxWaitSecs: settings.retryWatchdogMaxWaitSecs,
+      reasoningEffort: settings.reasoningEffort,
+      termuxBridgeEnabled: settings.termuxBridgeEnabled,
+      codeWrapMode: settings.codeWrapMode,
+      pricingAutoRefresh: settings.pricingAutoRefresh,
+      userDisplayName: settings.userDisplayName,
+    );
+
+EngineGroundingSource _mapGroundingSource(frb.FfiGroundingSource r) =>
+    EngineGroundingSource(
+      nodeId: r.nodeId,
+      url: r.url,
+      title: r.title,
+      citedText: r.citedText,
+    );
+
+int _clampInt(BigInt n) =>
+    n > BigInt.from(0x7fffffffffffffff) ? 0x7fffffffffffffff : n.toInt();
+
+EngineContextBreakdown _mapContextBreakdown(frb.FfiContextBreakdown b) =>
+    EngineContextBreakdown(
+      categories: b.categories
+          .map(
+            (c) => EngineContextCategory(
+              kind: c.kind,
+              tokens: _clampInt(c.tokens),
+              count: c.count,
+              sent: c.sent,
+            ),
+          )
+          .toList(growable: false),
+      totalSent: _clampInt(b.totalSent),
+      limitTokens: b.limitTokens == null ? null : _clampInt(b.limitTokens!),
+      reserveTokens: _clampInt(b.reserveTokens),
+      mcp: b.mcp
+          .map(
+            (srv) => EngineMcpServerUsage(
+              serverId: srv.serverId,
+              label: srv.label,
+              tools: srv.tools
+                  .map(
+                    (t) => EngineMcpToolUsage(
+                      name: t.name,
+                      tokens: _clampInt(t.tokens),
+                      deferred: t.deferred_,
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          )
+          .toList(growable: false),
+      mcpTruncated: b.mcpTruncated,
+    );

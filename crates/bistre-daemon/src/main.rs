@@ -24,8 +24,8 @@ use bistre_core::ipc_client::{daemon_ipc_endpoint, read_ipc_frame, write_ipc_fra
 use bistre_core::power::PowerGuardBackend;
 use bistre_core::{EngineClient, InProcessEngine};
 use bistre_protocol::{
-    BistreError, BistreResult, DaemonRpcRequest, DaemonRpcResponse, DiagnosticKey, NodeRole,
-    SystemPowerEvent, ThreadMode,
+    BistreError, BistreResult, DaemonRpcRequest, DaemonRpcResponse, DiagnosticKey, EngineEvent,
+    NodeRole, SystemPowerEvent, ThreadMode,
 };
 use fs2::FileExt;
 use tokio::sync::Notify;
@@ -132,6 +132,37 @@ fn unix_now_ms() -> i64 {
         .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
 }
 
+/// Shortest housekeeping sleep: a due job that could not be advanced never makes the loop spin.
+const MIN_SCHEDULE_SLEEP: Duration = Duration::from_secs(1);
+
+/// Why the housekeeping loop woke up.
+enum Wake {
+    Deadline,
+    Event,
+    Closed,
+}
+
+/// How long the housekeeping sleeps: until the next cron deadline, within
+/// [`MIN_SCHEDULE_SLEEP`]..=[`MAX_SCHEDULE_SLEEP`] (and [`IDLE_EXIT_GRACE`] when idle).
+fn housekeeping_wait(until_cron: Duration, idle: bool) -> Duration {
+    let cap = if idle {
+        MAX_SCHEDULE_SLEEP.min(IDLE_EXIT_GRACE)
+    } else {
+        MAX_SCHEDULE_SLEEP
+    };
+    until_cron.clamp(MIN_SCHEDULE_SLEEP, cap)
+}
+
+/// Events that change whether work is running (and so the idle exit); deltas do not.
+const fn wakes_housekeeping(event: &EngineEvent) -> bool {
+    matches!(
+        event,
+        EngineEvent::RunStarted { .. }
+            | EngineEvent::RunFinished { .. }
+            | EngineEvent::RunStateChanged { .. }
+    )
+}
+
 /// Earliest `next_run_ms` among enabled cron jobs.
 fn next_cron_due_ms(engine: &InProcessEngine) -> Option<i64> {
     match engine.storage().list_cron_jobs() {
@@ -163,6 +194,28 @@ fn spawn_idle_and_cron_task(
             match bistre_core::cron::poll_due_cron_jobs(&engine.storage(), now_ms) {
                 Ok(due) if !due.is_empty() => {
                     tracing::info!(count = due.len(), "daemon triggered scheduled cron jobs");
+                    // W7: each due job starts its real run (it was only marked "triggered").
+                    for mut job in due {
+                        match bistre_core::cron::start_job_run(engine.as_ref(), &job).await {
+                            Ok(thread_id) => {
+                                job.last_run_id = Some(thread_id);
+                                "started".clone_into(&mut job.last_status);
+                            }
+                            Err(err) => {
+                                tracing::warn!(
+                                    key = err.key.as_key(),
+                                    "scheduled run did not start"
+                                );
+                                err.key.as_key().clone_into(&mut job.last_status);
+                            }
+                        }
+                        if let Err(err) = engine.storage().upsert_cron_job(job) {
+                            tracing::warn!(
+                                key = err.key.as_key(),
+                                "saving the job's last run failed"
+                            );
+                        }
+                    }
                 }
                 Ok(_) => {}
                 Err(err) => tracing::warn!(key = err.key.as_key(), "cron poll failed"),
@@ -173,13 +226,25 @@ fn spawn_idle_and_cron_task(
             let idle = active_scoped
                 && client.detached.load(Ordering::SeqCst)
                 && engine.active_work_count() == 0;
-            let wait = if idle {
-                until_cron.min(MAX_SCHEDULE_SLEEP).min(IDLE_EXIT_GRACE)
-            } else {
-                until_cron.min(MAX_SCHEDULE_SLEEP)
+            let deadline = tokio::time::Instant::now() + housekeeping_wait(until_cron, idle);
+            // W7: only events that change whether work is running wake the housekeeping;
+            // the stream of deltas during a run does not (each wake re-reads the schedule).
+            let woke = loop {
+                tokio::select! {
+                    () = tokio::time::sleep_until(deadline) => break Wake::Deadline,
+                    recv = events.recv() => match recv {
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                            break Wake::Closed;
+                        }
+                        Ok(ev) if !wakes_housekeeping(&ev) => {}
+                        _ => break Wake::Event,
+                    },
+                    () = client.changed.notified() => break Wake::Event,
+                }
             };
-            tokio::select! {
-                () = tokio::time::sleep(wait) => {
+            match woke {
+                Wake::Closed => break,
+                Wake::Deadline => {
                     let still_idle = active_scoped
                         && client.detached.load(Ordering::SeqCst)
                         && engine.active_work_count() == 0;
@@ -191,12 +256,7 @@ fn spawn_idle_and_cron_task(
                         break;
                     }
                 }
-                recv = events.recv() => {
-                    if matches!(recv, Err(tokio::sync::broadcast::error::RecvError::Closed)) {
-                        break;
-                    }
-                }
-                () = client.changed.notified() => {}
+                Wake::Event => {}
             }
         }
     })
@@ -398,11 +458,15 @@ async fn serve_local_ipc(
         let mut first = true;
         let slots = Arc::new(tokio::sync::Semaphore::new(MAX_IPC_CONNECTIONS));
         let mut backoff = AcceptBackoff::default();
+        // R29: every pipe instance is granted only to this user and SYSTEM, and remote
+        // (network) clients are refused.
+        let mut security = bistre_crypto::pipe_identity::OwnerOnlyPipeSecurity::new()?;
         loop {
-            let server = ServerOptions::new()
+            let mut options = ServerOptions::new();
+            options
                 .first_pipe_instance(first)
-                .create(endpoint)
-                .map_err(|_| BistreError::new(DiagnosticKey::DaemonUnavailable))?;
+                .reject_remote_clients(true);
+            let server = create_owner_only_pipe(&options, endpoint, &mut security)?;
             first = false;
             if server.connect().await.is_err() {
                 backoff.wait().await;
@@ -643,4 +707,57 @@ fn default_data_dir() -> PathBuf {
         }
     }
     std::env::temp_dir().join("bistre-daemon")
+}
+
+/// Creates one named-pipe instance with the owner-only security descriptor (R29).
+#[cfg(windows)]
+#[expect(
+    unsafe_code,
+    reason = "Audited: tokio's raw security-attributes constructor (R29, ADR-0003)."
+)]
+fn create_owner_only_pipe(
+    options: &tokio::net::windows::named_pipe::ServerOptions,
+    endpoint: &str,
+    security: &mut bistre_crypto::pipe_identity::OwnerOnlyPipeSecurity,
+) -> BistreResult<tokio::net::windows::named_pipe::NamedPipeServer> {
+    // SAFETY: `as_raw_attributes` returns a valid SECURITY_ATTRIBUTES pointer whose descriptor
+    // lives as long as `security`, which outlives this call; the kernel copies it.
+    unsafe { options.create_with_security_attributes_raw(endpoint, security.as_raw_attributes()) }
+        .map_err(|_| BistreError::new(DiagnosticKey::DaemonUnavailable))
+}
+
+#[cfg(test)]
+mod housekeeping_tests {
+    use super::*;
+
+    /// W7: the housekeeping never spins (a due job that cannot advance still waits a
+    /// second) and sleeps at most until the next deadline cap.
+    #[test]
+    fn housekeeping_waits_within_its_bounds() {
+        assert_eq!(housekeeping_wait(Duration::ZERO, false), MIN_SCHEDULE_SLEEP);
+        assert_eq!(
+            housekeeping_wait(Duration::from_secs(3600), false),
+            MAX_SCHEDULE_SLEEP
+        );
+        assert_eq!(
+            housekeeping_wait(Duration::from_secs(3600), true),
+            MAX_SCHEDULE_SLEEP.min(IDLE_EXIT_GRACE)
+        );
+    }
+
+    /// W7: streaming deltas do not wake the housekeeping; run start and end do.
+    #[test]
+    fn only_run_state_events_wake_the_housekeeping() {
+        let delta = EngineEvent::DeltaBatch {
+            thread_id: "t".to_owned(),
+            chunks: Vec::new(),
+        };
+        assert!(!wakes_housekeeping(&delta));
+        let finished = EngineEvent::RunFinished {
+            thread_id: "t".to_owned(),
+            node_id: "n".to_owned(),
+            cancelled: false,
+        };
+        assert!(wakes_housekeeping(&finished));
+    }
 }

@@ -131,11 +131,16 @@ pub async fn export_settings_json() -> Result<String, String> {
         .map_err(ffi_err)
 }
 
-/// Imports user settings JSON after untrusted-import sanitization.
+/// Imports user settings JSON after untrusted-import sanitization. A file that would loosen
+/// trust or the spending limit fails with `diag.import.loosens_safety` unless
+/// `allow_loosening` (the user confirmed).
 #[frb]
-pub async fn import_settings_json(raw_json: String) -> Result<FfiAppSettings, String> {
+pub async fn import_settings_json(
+    raw_json: String,
+    allow_loosening: bool,
+) -> Result<FfiAppSettings, String> {
     let saved = current_engine()?
-        .import_settings_json(raw_json)
+        .import_settings_json(raw_json, allow_loosening)
         .await
         .map_err(ffi_err)?;
     Ok(map_settings(saved))
