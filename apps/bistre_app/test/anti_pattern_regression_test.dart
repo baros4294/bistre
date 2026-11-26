@@ -558,7 +558,9 @@ void main() {
   testWidgets(
     'the composer thinking chip opens a slider that sets the effort',
     (WidgetTester tester) async {
-      tester.view.physicalSize = const Size(1320, 820);
+      tester.view.physicalSize = const Size(1700, 820);
+      // Wide enough for the full labels in one row (narrower windows use the compact
+      // labels; see composer_toolbar_test.dart).
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -566,6 +568,7 @@ void main() {
       await tester.pumpWidget(
         BistreApp(l10nController: l10n, folioController: ctrl),
       );
+      await tester.pumpAndSettle();
       await tester.pumpAndSettle();
 
       String chip(L10nKey level) => l10n.t(
@@ -919,13 +922,19 @@ void main() {
       BistreApp(l10nController: l10n, folioController: ctrl),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Ana Lima', skipOffstage: false), findsNothing);
+    expect(
+      find.textContaining('Ana Lima', findRichText: true, skipOffstage: false),
+      findsNothing,
+    );
     await ctrl.updateSettings(
       ctrl.settings.copyWith(userDisplayName: 'Ana Lima'),
     );
     await tester.pumpAndSettle();
     // The chat opens at its newest reply, so the user's turn may sit above the fold.
-    expect(find.text('Ana Lima', skipOffstage: false), findsWidgets);
+    expect(
+      find.textContaining('Ana Lima', findRichText: true, skipOffstage: false),
+      findsWidgets,
+    );
     ctrl.dispose();
     await gw.shutdown();
   });

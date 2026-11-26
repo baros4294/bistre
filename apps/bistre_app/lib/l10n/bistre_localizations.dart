@@ -288,8 +288,12 @@ class BistreLocalizationController extends ChangeNotifier {
   /// keep their order.
   String joinMeta(Iterable<String> parts) => parts
       .where((p) => p.isNotEmpty)
-      .map((p) => '\u2068$p\u2069')
+      .map(isolate)
       .join(t(L10nKey.appMetaSeparator));
+
+  /// [text] as its own direction run (Unicode first-strong isolate), so a Latin name next
+  /// to Arabic text keeps its place in either direction.
+  String isolate(String text) => '\u2068$text\u2069';
 
   /// Loads `en` (plus `initialLocale` when different) at startup and defers other bundled
   /// catalogs (`vi`, `ar`) until selected via [setLocale].

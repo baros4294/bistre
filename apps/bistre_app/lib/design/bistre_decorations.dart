@@ -8,9 +8,6 @@ const double kRubricMarkWidth = 3;
 /// Maximum growth of fixed-width columns at large text scales (`docs/design/DESIGN.md` §7).
 const double kMaxTextScaledWidthFactor = 1.6;
 
-/// Text scale at which the phone composer splits into two rows.
-const double kComposerTwoRowTextScale = 1.3;
-
 /// Text scale at which phone header secondary actions stack below the title.
 const double kHeaderStackTextScale = 1.35;
 

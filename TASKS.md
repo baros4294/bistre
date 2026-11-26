@@ -269,6 +269,7 @@ Wave: W8   Slice: W8.1   Next action: wire dead settings (Appendix Phase 3 table
 ## W8 Dead settings, strings, accessibility
 - [ ] W8.1 Appendix Phase 3 table
   - done:  Display group: 9 dead Appearance toggles wired (model/provider label, thinking and tool cards, user Markdown, math, code and thinking folding, chat list dates, delete confirm); red: display_prefs_test 10 cases (sidebar pair re-proved red against the old sidebar); approvals never hidden; settings apply live (2026-11-26)
+  - done:  review fixes (owner, 2026-11-26): reply header actions sit at the row end (a loose Flexible left the gap); RTL name/model/provider order; composer toolbar measured (one row at 200% on desktop, full labels at the default width where Thinking used to wrap); red: display_prefs_test header + Arabic cases, composer_toolbar_test
   - open:  Send-on-Enter and text-scale toggles; Parchment extras; Desktop, Provider privacy, Provider advanced, Default models, Agent, Updates, Profile groups
 - [ ] W8.2 U29 U41 U20 U21 U24 U25 U28 U31-U33 U38 U39 U42
 - [ ] W8.3 inspector, model resolution order, catalog orphans, registry cache
