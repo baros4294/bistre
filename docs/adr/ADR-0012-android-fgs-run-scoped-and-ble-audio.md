@@ -16,6 +16,13 @@
 4. Expose an opt-in Android Battery Optimization exemption button (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) in Settings → Agent & Sleep without ever nagging or blocking normal chat usage.
 5. For Wave 2/3 voice, route Bluetooth Classic/BLE Audio exclusively via `AudioManager.setCommunicationDevice()` + `OnCommunicationDeviceChangedListener` paired with Oboe low-latency duplex streams, hardware `AcousticEchoCanceler` (with WebRTC APM software AEC3 fallback), and Silero VAD barge-in gating.
 
+## Status Update (2026-11-26, P13-P16)
+- The service follows the number of live runs (`androidServicePlan` in the app): it stays while any run is live (it stopped when any run finished) and its notification counts them.
+- While every live run waits for an approval, the service keeps running but holds no wake or Wi-Fi lock.
+- `START_NOT_STICKY`: after the process is killed the system does not bring back a service with no run behind it (it was `START_REDELIVER_INTENT`); the app starts it again when a run starts.
+- `onTaskRemoved` stops the service when nothing runs.
+- Test: `apps/bistre_app/test/android_service_plan_test.dart`. Device check on Android [UNVERIFIED until run on a device].
+
 ## Rejected Alternatives
 - **Always-on Android foreground service**: Drains battery and triggers OS ANR kills when idle.
 - **Unconditionally relying on `dataSync` FGS**: Hits Android 15+'s hard 6h/24h timeout on multi-hour agent runs.

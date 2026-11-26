@@ -14,6 +14,9 @@
 2. Keep ADR-0006 §Decision 2–4 (dual negotiation `2026-07-28` → `2025-11-25`, no deprecated features, bounded results, deterministic tool order) unchanged.
 3. Remove the unused stdio helpers. When the stdio-MCP slice lands, it re-adds the 64 KiB stderr ring and stdout quarantine with its transport, and re-evaluates `rmcp` then (AGENTS.md §7 keeps those invariants as targets).
 
+## Status Update (2026-11-26)
+- The stdio slice is in (`mcp_stdio.rs`) without an SDK: one long-lived session per server, bounded line reads, server requests answered by method, the stderr ring and stdout quarantine (Spec 04). `rmcp` was re-evaluated and stays out: the transport needs no more than the JSON-RPC framing above.
+
 ## Rejected Alternatives
 - **Keep `rmcp` for one type**: about 85 crates and a duplicated hash stack for a five-field struct.
 - **Adopt `rmcp` fully now**: pulls the stdio slice, OAuth, and MRTR into this change; out of scope for a hardening pass.
