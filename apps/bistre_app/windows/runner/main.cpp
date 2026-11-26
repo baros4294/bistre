@@ -19,22 +19,21 @@ std::wstring ReadEnvVar(const wchar_t* name) {
 }
 
 void ConfigureWindowsRenderer(flutter::DartProject& project) {
-  // Default to Skia GLES + merged UI/platform thread on Windows for tear-free DWM
-  // composition and lower shader/working-set footprint on integrated GPUs; opt-in env
-  // overrides remain available for live A/B profiling (`BISTRE_IMPELLER`,
-  // `BISTRE_UI_THREAD`, `BISTRE_GPU_PREF`, `BISTRE_ANGLE_PLATFORM`).
+  // D7: Impeller by default (owner decision); `BISTRE_IMPELLER=off` falls back to Skia on a
+  // GPU or driver where Impeller misbehaves. Env overrides remain for live A/B profiling
+  // (`BISTRE_IMPELLER`, `BISTRE_UI_THREAD`, `BISTRE_GPU_PREF`, `BISTRE_ANGLE_PLATFORM`).
   const std::wstring angle = ReadEnvVar(L"BISTRE_ANGLE_PLATFORM");
   if (!angle.empty()) {
     ::SetEnvironmentVariableW(L"ANGLE_DEFAULT_PLATFORM", angle.c_str());
   }
 
   const std::wstring impeller = ReadEnvVar(L"BISTRE_IMPELLER");
-  if (impeller == L"on" || impeller == L"true" || impeller == L"1") {
-    project.set_impeller_switch(flutter::ImpellerSwitch::Enabled);
+  if (impeller == L"off" || impeller == L"false" || impeller == L"0") {
+    project.set_impeller_switch(flutter::ImpellerSwitch::Disabled);
   } else if (impeller == L"default") {
     project.set_impeller_switch(flutter::ImpellerSwitch::Default);
   } else {
-    project.set_impeller_switch(flutter::ImpellerSwitch::Disabled);
+    project.set_impeller_switch(flutter::ImpellerSwitch::Enabled);
   }
 
   const std::wstring ui_thread = ReadEnvVar(L"BISTRE_UI_THREAD");
