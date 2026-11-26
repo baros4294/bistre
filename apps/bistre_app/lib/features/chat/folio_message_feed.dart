@@ -66,10 +66,11 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
   void initState() {
     super.initState();
     _lastNodeCount = widget.controller.visibleBranchNodes.length;
-    _lastStreamLen = widget.controller.streamingBuffer.length;
+    _lastStreamLen = _liveSize();
     _lastThreadId = widget.controller.activeThread?.id;
     widget.controller.addListener(_onControllerUpdated);
     widget.controller.liveTurn.addListener(_onLiveTurnGrew);
+    widget.controller.revealRequest.addListener(_onRevealRequested);
     _scrollController.addListener(_onScrollPositionChanged);
     if (widget.controller.visibleBranchNodes.isNotEmpty) {
       _anchorAtBottom();
@@ -80,6 +81,7 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
   void dispose() {
     widget.controller.removeListener(_onControllerUpdated);
     widget.controller.liveTurn.removeListener(_onLiveTurnGrew);
+    widget.controller.revealRequest.removeListener(_onRevealRequested);
     _scrollController.removeListener(_onScrollPositionChanged);
     _scrollController.dispose();
     _codeWrapOverrides.dispose();
@@ -97,9 +99,21 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
     });
   }
 
+  /// How much the live reply shows (P22): its text, its thinking, and its tool rows with
+  /// their output, so growth of any of them keeps the reader at the bottom.
+  int _liveSize() {
+    final ctrl = widget.controller;
+    final turn = ctrl.liveTurn.value;
+    var size = (turn?.text.length ?? 0) + (turn?.thinking.length ?? 0);
+    for (final row in ctrl.toolActivities) {
+      size += 1 + row.outputText.length + (row.diffText?.length ?? 0);
+    }
+    return size;
+  }
+
   /// Follows the live reply without rebuilding the feed (leaf notifier, no setState).
   void _onLiveTurnGrew() {
-    final len = widget.controller.liveTurn.value?.text.length ?? 0;
+    final len = _liveSize();
     final grew = len > _lastStreamLen;
     _lastStreamLen = len;
     if (!grew || !_autoFollow) return;
@@ -113,7 +127,7 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
     final ctrl = widget.controller;
     final threadId = ctrl.activeThread?.id;
     final visibleCount = ctrl.visibleBranchNodes.length;
-    final streamLen = ctrl.streamingBuffer.length;
+    final streamLen = _liveSize();
 
     if (threadId != _lastThreadId) {
       _lastThreadId = threadId;
@@ -145,9 +159,8 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
     if (shouldShow != _showJumpToLatest) {
       setState(() => _showJumpToLatest = shouldShow);
     }
-    if (distFromBottom < 24 && !_autoFollow) {
-      _autoFollow = true;
-    }
+    // U12: following resumes only when a scroll ends near the bottom (idle, below) or on
+    // Jump to latest, never mid-drag, so a slow upward drag is not pulled back down.
   }
 
   bool _handleUserScroll(UserScrollNotification notification) {
@@ -209,6 +222,42 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
     }
   }
 
+  /// The message being revealed (P23) carries this key so it can be scrolled into view once
+  /// the lazy list has built it.
+  final GlobalKey _revealKey = GlobalKey();
+  String? _revealNodeId;
+
+  void _onRevealRequested() {
+    final nodeId = widget.controller.revealRequest.value;
+    if (nodeId == null) return;
+    final index = widget.controller.visibleBranchNodes.indexWhere(
+      (n) => n.id == nodeId,
+    );
+    if (index < 0) return;
+    setState(() => _revealNodeId = nodeId);
+    _autoFollow = false;
+    _revealIndex(index, 6);
+  }
+
+  /// Jumps near the message by its share of the list, then, once it is built, scrolls it into
+  /// view exactly (lazily built items only estimate their extent, so this repeats).
+  void _revealIndex(int index, int attempts) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final target = _revealKey.currentContext;
+      if (target != null) {
+        unawaited(Scrollable.ensureVisible(target, alignment: 0.1));
+        return;
+      }
+      final total = widget.controller.visibleBranchNodes.length;
+      final frac = total <= 1 ? 0.0 : (index / (total - 1)).clamp(0.0, 1.0);
+      _scrollController.jumpTo(
+        frac * _scrollController.position.maxScrollExtent,
+      );
+      if (attempts > 1) _revealIndex(index, attempts - 1);
+    });
+  }
+
   void _jumpToTurnIndex(int index) {
     final total = widget.controller.visibleBranchNodes.length;
     if (total <= 1 || !_scrollController.hasClients) return;
@@ -235,6 +284,7 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                 overrides: _codeWrapOverrides,
                 child: SelectableRegion(
                   selectionControls: _selectionControls,
+                  contextMenuBuilder: buildBistreSelectableContextMenu,
                   child: NotificationListener<UserScrollNotification>(
                     onNotification: _handleUserScroll,
                     child: RawScrollbar(
@@ -323,7 +373,10 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
 
     final visibleNodes = ctrl.visibleBranchNodes;
     if (visibleNodes.isEmpty && !ctrl.isStreaming) {
-      return _buildWelcomeDesk(theme, l10n, ctrl);
+      // A-W 2d: only messages are selectable; clicks on the empty page select nothing.
+      return SelectionContainer.disabled(
+        child: _buildWelcomeDesk(theme, l10n, ctrl),
+      );
     }
 
     final activeProv = ctrl.activeProvider;
@@ -362,6 +415,8 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                       ),
                       onDenyTool: (callId) =>
                           unawaited(ctrl.respondToolApproval(callId, 'deny')),
+                      onStopTool: (callId) =>
+                          unawaited(ctrl.respondToolApproval(callId, 'stop')),
                       onRewindCheckpoint: (cpId) =>
                           unawaited(ctrl.rewindCheckpoint(cpId)),
                     ),
@@ -388,6 +443,7 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
             final isLast = index + 1 == itemCount;
             final isPinnedStart = ctrl.pinnedContextNodeId == node.id;
             return _ReadingColumn(
+              key: node.id == _revealNodeId ? _revealKey : null,
               child: RepaintBoundary(
                 key: ValueKey<String>(node.id),
                 child: Column(
@@ -400,6 +456,7 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                       ),
                     _PassageItem(
                       node: node,
+                      onOpenAttachment: ctrl.openSentAttachment,
                       userName: ctrl.settings.userDisplayName.trim(),
                       assistantName:
                           ctrl.activeAssistant?.name ??
@@ -685,6 +742,7 @@ bool get _isTouchPlatform =>
 class _PassageItem extends StatefulWidget {
   const _PassageItem({
     required this.node,
+    required this.onOpenAttachment,
     this.userName = '',
     required this.assistantName,
     required this.activeProvider,
@@ -714,6 +772,9 @@ class _PassageItem extends StatefulWidget {
   });
 
   final EngineNode node;
+
+  /// Opens a file sent with this message (P1).
+  final ValueChanged<EngineNodeAttachment> onOpenAttachment;
 
   /// Settings > Your name; empty shows the plain `You` label.
   final String userName;
@@ -749,7 +810,8 @@ class _PassageItem extends StatefulWidget {
   State<_PassageItem> createState() => _PassageItemState();
 }
 
-class _PassageItemState extends State<_PassageItem> {
+class _PassageItemState extends State<_PassageItem>
+    with AutomaticKeepAliveClientMixin<_PassageItem> {
   bool _hovered = false;
   bool _focused = false;
   bool _editing = false;
@@ -764,9 +826,19 @@ class _PassageItemState extends State<_PassageItem> {
     super.dispose();
   }
 
+  /// U30: an open inline edit keeps its card alive, so scrolling it out of view (with the
+  /// focus elsewhere) never throws the half-written text away.
+  @override
+  bool get wantKeepAlive => _editing;
+
+  void _setEditing(bool editing) {
+    setState(() => _editing = editing);
+    updateKeepAlive();
+  }
+
   void _startEdit() {
     _editCtrl.text = widget.node.content;
-    setState(() => _editing = true);
+    _setEditing(true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _editFocus.requestFocus();
     });
@@ -777,12 +849,13 @@ class _PassageItemState extends State<_PassageItem> {
     if (cb == null) return;
     final ok = await cb(_editCtrl.text);
     if (ok && mounted) {
-      setState(() => _editing = false);
+      _setEditing(false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);
     final isAssistant = widget.node.role == 'assistant';
@@ -812,6 +885,23 @@ class _PassageItemState extends State<_PassageItem> {
                 onCopyCode: widget.onCopyCode,
                 editorialDialogueStyling: widget.editorialDialogueStyling,
               ),
+              // P1: the files sent with this message, each opening its preview.
+              if (widget.node.attachments.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(top: 8),
+                  child: Wrap(
+                    spacing: BistreSpacing.s8,
+                    runSpacing: BistreSpacing.s4,
+                    children: [
+                      for (final a in widget.node.attachments)
+                        EngravedButton(
+                          label: a.name,
+                          compact: true,
+                          onPressed: () => widget.onOpenAttachment(a),
+                        ),
+                    ],
+                  ),
+                ),
               if (isAssistant &&
                   widget.showTokenMetrics &&
                   usage != null &&
@@ -1023,7 +1113,7 @@ class _PassageItemState extends State<_PassageItem> {
             EngravedButton(
               label: l10n.t(L10nKey.threadCancel),
               compact: true,
-              onPressed: () => setState(() => _editing = false),
+              onPressed: () => _setEditing(false),
             ),
             const SizedBox(width: 8),
             EngravedButton(

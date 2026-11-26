@@ -292,13 +292,16 @@ class _FolioSidebarState extends State<FolioSidebar> {
               widget.onSelectThreadComplete();
             },
           ),
-          BistreIconButton(
-            icon: BistreUiIcon.sidebar,
-            size: 15,
-            dimension: 30,
-            semanticsLabel: l10n.t(L10nKey.sidebarToggle),
-            onPressed: widget.onCloseSidebar ?? ctrl.toggleSidebar,
-          ),
+          // The phone drawer has no header behind it, so it keeps its own close button; the
+          // docked sidebar is toggled only from the chat header (A-W 3b).
+          if (widget.onCloseSidebar case final close?)
+            BistreIconButton(
+              icon: BistreUiIcon.sidebar,
+              size: 15,
+              dimension: 30,
+              semanticsLabel: l10n.t(L10nKey.sidebarToggle),
+              onPressed: close,
+            ),
         ],
       ),
     );
@@ -428,7 +431,9 @@ class _FolioSidebarState extends State<FolioSidebar> {
                 hoverScale: 1,
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: ctrl.togglePinnedPanel,
+                  // P23: a pinned reply opens at that exact message.
+                  onTap: () =>
+                      unawaited(ctrl.revealNode(node.threadId, node.id)),
                   child: FolioSurface(
                     tone: FolioTone.canvas,
                     padding: const EdgeInsetsDirectional.fromSTEB(10, 7, 10, 7),
@@ -527,7 +532,7 @@ class _FolioSidebarState extends State<FolioSidebar> {
       );
     }
 
-    final now = DateTime.now();
+    final now = ctrl.now();
     final startToday = DateTime(now.year, now.month, now.day);
     final startYesterday = startToday.subtract(const Duration(days: 1));
     final startWeek = startToday.subtract(const Duration(days: 7));
@@ -637,6 +642,7 @@ class _FolioSidebarState extends State<FolioSidebar> {
 
     return _ThreadListTile(
       thread: thread,
+      runState: ctrl.threadRunState(thread.id),
       isSelected: isSelected,
       isConfirmingDelete: isConfirmingDelete,
       subtitle: subtitle,
@@ -860,6 +866,7 @@ class _AssistantListTileState extends State<_AssistantListTile> {
 class _ThreadListTile extends StatefulWidget {
   const _ThreadListTile({
     required this.thread,
+    required this.runState,
     required this.isSelected,
     required this.isConfirmingDelete,
     required this.subtitle,
@@ -870,6 +877,9 @@ class _ThreadListTile extends StatefulWidget {
   });
 
   final EngineThread thread;
+
+  /// What the chat's run is doing (U11): a small labelled mark at the row's end.
+  final ThreadRunState runState;
   final bool isSelected;
   final bool isConfirmingDelete;
   final String? subtitle;
@@ -995,6 +1005,8 @@ class _ThreadListTileState extends State<_ThreadListTile> {
                             ],
                           ),
                         ),
+                        if (widget.runState != ThreadRunState.idle)
+                          _RunStateMark(state: widget.runState),
                         if (showActions) ...[
                           BistreIconButton(
                             icon: widget.thread.isPinned
@@ -1190,4 +1202,50 @@ final class _PinnedSidebarThread extends _PinnedSidebarEntry {
 final class _PinnedSidebarNode extends _PinnedSidebarEntry {
   const _PinnedSidebarNode(this.node);
   final EngineNode node;
+}
+
+/// The sidebar's run mark (U11): a 7 px dot whose colour and spoken label say whether the
+/// chat is replying, waiting for an approval, has a new reply, or stopped with a problem.
+class _RunStateMark extends StatelessWidget {
+  const _RunStateMark({required this.state});
+
+  final ThreadRunState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = BistreTheme.of(context);
+    final l10n = BistreLocalizations.of(context);
+    final (color, label) = switch (state) {
+      ThreadRunState.running => (
+        theme.accentBrass,
+        l10n.t(L10nKey.sidebarRunRunning),
+      ),
+      ThreadRunState.awaitingApproval => (
+        theme.statusWarn,
+        l10n.t(L10nKey.sidebarRunAwaiting),
+      ),
+      ThreadRunState.doneUnread => (
+        theme.accentWax,
+        l10n.t(L10nKey.sidebarRunDoneUnread),
+      ),
+      ThreadRunState.failed => (
+        theme.statusErr,
+        l10n.t(L10nKey.sidebarRunFailed),
+      ),
+      ThreadRunState.idle => (theme.inkMuted, ''),
+    };
+    return Semantics(
+      label: label,
+      container: true,
+      child: Padding(
+        padding: const EdgeInsetsDirectional.symmetric(horizontal: 6),
+        child: SizedBox.square(
+          dimension: 7,
+          child: DecoratedBox(
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+        ),
+      ),
+    );
+  }
 }

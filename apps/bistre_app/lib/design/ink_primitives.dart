@@ -317,7 +317,17 @@ class _EngravedButtonState extends State<EngravedButton> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               if (widget.leading != null) ...[
-                                widget.leading!,
+                                // S2: a disabled button's icon takes the muted ink too (a light icon meant
+                                // for the filled primary would vanish on the empty disabled face).
+                                enabled
+                                    ? widget.leading!
+                                    : ColorFiltered(
+                                        colorFilter: ColorFilter.mode(
+                                          fg,
+                                          BlendMode.srcIn,
+                                        ),
+                                        child: widget.leading,
+                                      ),
                                 if (widget.label.isNotEmpty)
                                   const SizedBox(width: 7),
                               ],
@@ -471,6 +481,8 @@ class QuillInput extends StatefulWidget {
     this.obscureText = false,
     this.frameless = false,
     this.compact = false,
+    this.onTapOutside,
+    this.semanticsLabel,
   });
 
   final TextEditingController controller;
@@ -484,6 +496,12 @@ class QuillInput extends StatefulWidget {
   final bool obscureText;
   final bool frameless;
   final bool compact;
+
+  /// A pointer down outside the field while it has focus (commit-on-click-away editors).
+  final TapRegionCallback? onTapOutside;
+
+  /// The field's accessible name; the placeholder when omitted (U27).
+  final String? semanticsLabel;
 
   @override
   State<QuillInput> createState() => _QuillInputState();
@@ -570,6 +588,9 @@ class _QuillInputState extends State<QuillInput>
     final isEmpty = widget.controller.text.isEmpty;
 
     final isMultiline = !widget.obscureText && widget.minLines > 1;
+    // A-W 2a: a one-line field always submits on Enter (`submitOnEnter` only shapes the
+    // multi-line composer, where Enter may also add a line).
+    final singleLine = widget.obscureText || widget.maxLines == 1;
     final editorStack = Stack(
       alignment: isMultiline
           ? AlignmentDirectional.topStart
@@ -577,41 +598,51 @@ class _QuillInputState extends State<QuillInput>
       children: [
         if (isEmpty)
           IgnorePointer(
-            child: InkText(
-              widget.placeholder,
-              role: InkTextRole.bodyCompact,
-              color: theme.inkMuted,
-              maxLines: isMultiline ? widget.maxLines : 1,
-              overflow: TextOverflow.ellipsis,
+            // U27: the field carries the name; the drawn placeholder is not read twice.
+            child: ExcludeSemantics(
+              child: InkText(
+                widget.placeholder,
+                role: InkTextRole.bodyCompact,
+                color: theme.inkMuted,
+                maxLines: isMultiline ? widget.maxLines : 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
-        EditableText(
-          key: _editableTextKey,
-          controller: widget.controller,
-          focusNode: widget.focusNode,
-          style: BistreTypography.bodyProse(
-            theme.inkPrimary,
-            config: theme.typography,
+        Semantics(
+          label: widget.semanticsLabel ?? widget.placeholder,
+          child: EditableText(
+            key: _editableTextKey,
+            controller: widget.controller,
+            focusNode: widget.focusNode,
+            style: BistreTypography.bodyProse(
+              theme.inkPrimary,
+              config: theme.typography,
+            ),
+            cursorColor: theme.accentWax,
+            backgroundCursorColor: theme.bgSurface,
+            selectionColor: theme.selectionFill,
+            selectionControls: _selectionControls,
+            contextMenuBuilder: buildBistreEditableContextMenu,
+            rendererIgnoresPointer: true,
+            mouseCursor: MouseCursor.defer,
+            maxLines: widget.obscureText ? 1 : widget.maxLines,
+            minLines: widget.obscureText ? 1 : widget.minLines,
+            obscureText: widget.obscureText,
+            keyboardType: widget.obscureText
+                ? TextInputType.visiblePassword
+                : singleLine
+                ? TextInputType.text
+                : TextInputType.multiline,
+            textInputAction: singleLine
+                ? TextInputAction.done
+                : TextInputAction.newline,
+            enableSuggestions: !widget.obscureText,
+            autocorrect: !widget.obscureText,
+            onChanged: widget.onChanged,
+            onSubmitted: singleLine ? (_) => widget.onSubmitted() : null,
+            onTapOutside: widget.onTapOutside,
           ),
-          cursorColor: theme.accentWax,
-          backgroundCursorColor: theme.bgSurface,
-          selectionColor: theme.selectionFill,
-          selectionControls: _selectionControls,
-          contextMenuBuilder: buildBistreEditableContextMenu,
-          rendererIgnoresPointer: true,
-          mouseCursor: MouseCursor.defer,
-          maxLines: widget.obscureText ? 1 : widget.maxLines,
-          minLines: widget.obscureText ? 1 : widget.minLines,
-          obscureText: widget.obscureText,
-          keyboardType: widget.obscureText
-              ? TextInputType.visiblePassword
-              : TextInputType.multiline,
-          textInputAction: widget.obscureText
-              ? TextInputAction.done
-              : TextInputAction.newline,
-          enableSuggestions: !widget.obscureText,
-          autocorrect: !widget.obscureText,
-          onChanged: widget.onChanged,
         ),
       ],
     );

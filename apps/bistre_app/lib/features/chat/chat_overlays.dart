@@ -14,6 +14,7 @@ import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
+import '../studio/runs_dock_panel.dart';
 
 /// Modal listing all pinned messages in the active conversation.
 class PinnedRepliesModal extends StatelessWidget {
@@ -76,7 +77,7 @@ class PinnedRepliesModal extends StatelessWidget {
                       BistreIconButton(
                         icon: BistreUiIcon.close,
                         size: 15,
-                        semanticsLabel: l10n.t(L10nKey.threadCancel),
+                        semanticsLabel: l10n.t(L10nKey.shellClose),
                         onPressed: onClose,
                       ),
                     ],
@@ -126,6 +127,20 @@ class PinnedRepliesModal extends StatelessWidget {
                                         ),
                                       ),
                                       EngravedButton(
+                                        label: l10n.t(L10nKey.chatPinnedShow),
+                                        compact: true,
+                                        onPressed: () {
+                                          onClose();
+                                          unawaited(
+                                            controller.revealNode(
+                                              node.threadId,
+                                              node.id,
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                      const SizedBox(width: BistreSpacing.s4),
+                                      EngravedButton(
                                         label: l10n.t(L10nKey.chatActionCopy),
                                         compact: true,
                                         onPressed: () => unawaited(
@@ -166,110 +181,6 @@ class PinnedRepliesModal extends StatelessWidget {
   }
 }
 
-/// Private per-chat notes modal stored locally in `kv_meta` and never sent to any model.
-class ChatNotesModal extends StatefulWidget {
-  const ChatNotesModal({
-    super.key,
-    required this.controller,
-    required this.onClose,
-  });
-
-  final FolioController controller;
-  final VoidCallback onClose;
-
-  @override
-  State<ChatNotesModal> createState() => _ChatNotesModalState();
-}
-
-class _ChatNotesModalState extends State<ChatNotesModal> {
-  final TextEditingController _notesCtrl = TextEditingController();
-  final FocusNode _notesFocus = FocusNode();
-
-  @override
-  void initState() {
-    super.initState();
-    _notesCtrl.text = widget.controller.activeChatNotes;
-  }
-
-  @override
-  void dispose() {
-    unawaited(widget.controller.saveActiveChatNotes(_notesCtrl.text));
-    _notesCtrl.dispose();
-    _notesFocus.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    final l10n = BistreLocalizations.of(context);
-    final media = MediaQuery.sizeOf(context);
-    final maxW = (media.width * 0.92).clamp(280.0, 560.0);
-
-    return FolioModalBackdrop(
-      onDismiss: widget.onClose,
-      reduceMotionOverride: widget.controller.reduceMotionOverride,
-      child: FocusScope(
-        autofocus: true,
-        child: GestureDetector(
-          onTap: () {},
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: maxW,
-              maxHeight: media.height * 0.72,
-            ),
-            child: FolioSurface(
-              tone: FolioTone.elevated,
-              borderRadius: 12,
-              padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
-              boxShadow: theme.floatingShadow,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      BistreIcon(
-                        BistreUiIcon.document,
-                        size: 16,
-                        color: theme.accentBrass,
-                      ),
-                      const SizedBox(width: BistreSpacing.s8),
-                      Expanded(
-                        child: InkText(
-                          l10n.t(L10nKey.chatNotesTitle),
-                          role: InkTextRole.titleMedium,
-                        ),
-                      ),
-                      BistreIconButton(
-                        icon: BistreUiIcon.close,
-                        size: 15,
-                        semanticsLabel: l10n.t(L10nKey.threadCancel),
-                        onPressed: widget.onClose,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: BistreSpacing.s12),
-                  QuillInput(
-                    controller: _notesCtrl,
-                    focusNode: _notesFocus,
-                    placeholder: l10n.t(L10nKey.chatNotesPlaceholder),
-                    maxLines: 10,
-                    submitOnEnter: false,
-                    onSubmitted: () {},
-                    onChanged: (v) =>
-                        unawaited(widget.controller.saveActiveChatNotes(v)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Modal displaying extracted web source citations and collapsible raw turn metadata JSON.
 class TurnDetailsModal extends StatefulWidget {
   const TurnDetailsModal({
@@ -290,20 +201,6 @@ class TurnDetailsModal extends StatefulWidget {
 class _TurnDetailsModalState extends State<TurnDetailsModal> {
   bool _showRaw = true;
 
-  static final RegExp _urlPattern = RegExp(
-    r'https?://[^\s\)\]>"]+',
-    caseSensitive: false,
-  );
-
-  List<String> _extractUrls() {
-    final found = <String>{};
-    for (final m in _urlPattern.allMatches(widget.node.content)) {
-      final raw = m.group(0)?.replaceAll(RegExp(r'[.,;:]+$'), '') ?? '';
-      if (raw.isNotEmpty) found.add(raw);
-    }
-    return found.toList(growable: false);
-  }
-
   String _prettyMeta() {
     final raw = widget.node.providerMetaJson?.trim() ?? '';
     if (raw.isEmpty) return '{}';
@@ -319,7 +216,8 @@ class _TurnDetailsModalState extends State<TurnDetailsModal> {
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);
-    final urls = _extractUrls();
+    // B2: the sources core parsed from the provider's response, not URLs scraped from text.
+    final sources = widget.controller.groundingFor(widget.node.id);
     final pretty = _prettyMeta();
     final media = MediaQuery.sizeOf(context);
     final maxW = (media.width * 0.92).clamp(280.0, 620.0);
@@ -369,7 +267,7 @@ class _TurnDetailsModalState extends State<TurnDetailsModal> {
                       BistreIconButton(
                         icon: BistreUiIcon.close,
                         size: 15,
-                        semanticsLabel: l10n.t(L10nKey.threadCancel),
+                        semanticsLabel: l10n.t(L10nKey.shellClose),
                         onPressed: widget.onClose,
                       ),
                     ],
@@ -384,52 +282,21 @@ class _TurnDetailsModalState extends State<TurnDetailsModal> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            if (urls.isNotEmpty) ...[
+                            if (sources.isNotEmpty) ...[
                               InkText(
                                 l10n.t(
                                   L10nKey.chatTurnSources,
-                                  <String, Object?>{'count': urls.length},
+                                  <String, Object?>{'count': sources.length},
                                 ),
                                 role: InkTextRole.labelStrong,
                                 color: theme.accentBrass,
                               ),
                               const SizedBox(height: BistreSpacing.s8),
-                              for (final url in urls) ...[
-                                FolioSurface(
-                                  borderRadius: 8,
-                                  padding:
-                                      const EdgeInsetsDirectional.symmetric(
-                                        horizontal: 10,
-                                        vertical: 8,
-                                      ),
-                                  child: Row(
-                                    children: [
-                                      BistreIcon(
-                                        BistreUiIcon.globe,
-                                        size: 13,
-                                        color: theme.accentBrass,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: InkText(
-                                          url,
-                                          role: InkTextRole.captionMeta,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      BistreIconButton(
-                                        icon: BistreUiIcon.copy,
-                                        size: 13,
-                                        dimension: 28,
-                                        semanticsLabel: l10n.t(
-                                          L10nKey.chatActionCopy,
-                                        ),
-                                        onPressed: () => unawaited(
-                                          widget.controller.copyText(url),
-                                        ),
-                                      ),
-                                    ],
+                              for (final source in sources) ...[
+                                GroundingSourceRow(
+                                  source: source,
+                                  onCopyLink: () => unawaited(
+                                    widget.controller.copyText(source.url),
                                   ),
                                 ),
                                 const SizedBox(height: BistreSpacing.s4),
@@ -509,7 +376,8 @@ class AttachmentViewerModal extends StatelessWidget {
     final media = MediaQuery.sizeOf(context);
     final maxW = (media.width * 0.92).clamp(280.0, 720.0);
     final file = File(attachment.path);
-    final fileExists = attachment.path.isNotEmpty && file.existsSync();
+    // U23: no disk check in build; a missing file shows its name through errorBuilder.
+    final fileExists = attachment.path.isNotEmpty;
 
     return FolioModalBackdrop(
       onDismiss: onClose,
@@ -564,7 +432,7 @@ class AttachmentViewerModal extends StatelessWidget {
                       BistreIconButton(
                         icon: BistreUiIcon.close,
                         size: 15,
-                        semanticsLabel: l10n.t(L10nKey.threadCancel),
+                        semanticsLabel: l10n.t(L10nKey.shellClose),
                         onPressed: onClose,
                       ),
                     ],
@@ -576,8 +444,15 @@ class AttachmentViewerModal extends StatelessWidget {
                     child: _isImage && fileExists
                         ? ClipRRect(
                             borderRadius: BorderRadius.circular(8),
-                            child: Image.file(
-                              file,
+                            // U23: decoded at most 2560 px on its long side (a 48 MP
+                            // photo decoded in full is about 190 MB).
+                            child: Image(
+                              image: ResizeImage(
+                                FileImage(file),
+                                width: kMaxPreviewDecodePx,
+                                height: kMaxPreviewDecodePx,
+                                policy: ResizeImagePolicy.fit,
+                              ),
                               fit: BoxFit.contain,
                               errorBuilder: (_, _, _) => Center(
                                 child: InkText(
@@ -612,3 +487,6 @@ class AttachmentViewerModal extends StatelessWidget {
     );
   }
 }
+
+/// Longest side an attachment preview is decoded at (U23).
+const int kMaxPreviewDecodePx = 2560;

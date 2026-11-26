@@ -492,10 +492,12 @@ class LabIcon extends StatelessWidget {
     if (customPath.isNotEmpty && _customIconExists(customPath)) {
       mark = ClipRRect(
         borderRadius: BorderRadius.circular(4),
+        // U23: decoded at the size it is drawn, never the file's full size.
         child: Image.file(
           File(customPath),
           width: size,
           height: size,
+          cacheWidth: (size * MediaQuery.devicePixelRatioOf(context)).ceil(),
           fit: BoxFit.contain,
           errorBuilder: (_, _, _) =>
               BistreIcon(BistreUiIcon.server, size: size),

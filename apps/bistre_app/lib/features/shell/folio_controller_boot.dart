@@ -30,7 +30,8 @@ extension FolioBootActions on FolioController {
   }
 
   void _onEventStreamLost(Object? error) {
-    if (_disposed) return;
+    // A stream closed by our own shutdown is not a lost connection: never resubscribe.
+    if (_disposed || _engineShutDown) return;
     if (_eventResubscribesLeft <= 0) {
       _lastDiagnosticKey = error == null
           ? 'diag.runtime.not_initialized'

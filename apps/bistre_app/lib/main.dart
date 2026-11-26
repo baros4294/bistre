@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui' show FrameTiming;
+import 'dart:ui' show AppExitResponse, FrameTiming;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -229,8 +229,33 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       unawaited(widget.folioController.persistCurrentWindowBounds());
+      // P27: a phone may kill the app once it is in the background.
+      unawaited(widget.folioController.flushPendingDraft());
+    }
+    // U7: on desktop `inactive` fires on every focus loss (Alt-Tab), so pending deletes are
+    // committed only when the app is really going away; a phone may be killed once paused.
+    final mobile = Platform.isAndroid || Platform.isIOS;
+    if (state == AppLifecycleState.detached ||
+        (mobile && state == AppLifecycleState.paused)) {
       unawaited(widget.folioController.flushPendingDeletes());
     }
+    // P19: back from the background: core ends streams that died meanwhile, and the
+    // chats' live state is rechecked against core's run list.
+    if (state == AppLifecycleState.resumed) {
+      unawaited(widget.folioController.onAppResumed());
+    }
+    // The process is going away without an exit request (Android activity destroyed).
+    if (state == AppLifecycleState.detached) {
+      unawaited(widget.folioController.shutdownEngine());
+    }
+  }
+
+  /// Desktop window close: finish pending work and shut the engine down before exiting, so
+  /// the WAL is checkpointed and running chats record their final state (A-S11).
+  @override
+  Future<AppExitResponse> didRequestAppExit() async {
+    await widget.folioController.shutdownEngine();
+    return AppExitResponse.exit;
   }
 
   void _syncSystemBrightness() {

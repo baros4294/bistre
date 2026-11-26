@@ -46,6 +46,11 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
     _workspaceCtrl.text = widget.controller.workspaceRootPath;
     _webSearchCtrl.text = widget.controller.webSearchEndpoint;
     unawaited(_probeTermux());
+    // After the first frame: a refresh can notify the controller, which must never happen
+    // while this view is still being built.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(widget.controller.refreshWorkspaceHooks());
+    });
   }
 
   @override
@@ -307,6 +312,53 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
             ),
             const SizedBox(height: 16),
 
+            // 1c. Workspace hooks (A-S5): shown for review, run only once allowed.
+            if (ctrl.workspaceHooks case final hooks?) ...[
+              BistreSettingsSection(
+                title: l10n.t(L10nKey.settingsAgentHooksTitle),
+                children: [
+                  Padding(
+                    padding: const EdgeInsetsDirectional.fromSTEB(
+                      16,
+                      12,
+                      16,
+                      4,
+                    ),
+                    child: InkText(
+                      l10n.t(L10nKey.settingsAgentHooksBody),
+                      role: InkTextRole.captionMeta,
+                      color: theme.inkMuted,
+                    ),
+                  ),
+                  for (final hook in hooks.hooks)
+                    BistreSettingRow(
+                      label: l10n.joinMeta(<String>[
+                        hook.event,
+                        if (hook.toolFilter case final f? when f.isNotEmpty) f,
+                      ]),
+                      description: hook.command,
+                    ),
+                  BistreSettingRow(
+                    label: l10n.t(
+                      hooks.approved
+                          ? L10nKey.settingsAgentHooksAllowed
+                          : L10nKey.settingsAgentHooksPending,
+                    ),
+                    trailing: hooks.approved
+                        ? null
+                        : EngravedButton(
+                            label: l10n.t(L10nKey.settingsAgentHooksAllow),
+                            primary: true,
+                            compact: true,
+                            onPressed: () =>
+                                unawaited(ctrl.approveWorkspaceHooks()),
+                          ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+            ],
+
             // 2. MCP Server Manager (2026-07-28 + 2025-11-25 fallback)
             FolioSurface(
               tone: FolioTone.elevated,
@@ -385,22 +437,31 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
                     ],
                     const SizedBox(height: 6),
                   ],
-                  Row(
+                  // Wraps below 720 dp so the import button never overflows a phone.
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
-                      InkChip(
-                        label: _kMcpTransportHttp,
-                        selected: _mcpTransport == 'http',
-                        onSelected: () =>
-                            setState(() => _mcpTransport = 'http'),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          InkChip(
+                            label: _kMcpTransportHttp,
+                            selected: _mcpTransport == 'http',
+                            onSelected: () =>
+                                setState(() => _mcpTransport = 'http'),
+                          ),
+                          InkChip(
+                            label: _kMcpTransportStdio,
+                            selected: _mcpTransport == 'stdio',
+                            onSelected: () =>
+                                setState(() => _mcpTransport = 'stdio'),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 6),
-                      InkChip(
-                        label: _kMcpTransportStdio,
-                        selected: _mcpTransport == 'stdio',
-                        onSelected: () =>
-                            setState(() => _mcpTransport = 'stdio'),
-                      ),
-                      const Spacer(),
                       EngravedButton(
                         label: l10n.t(L10nKey.settingsAgentImportMcpJson),
                         compact: true,
@@ -571,19 +632,29 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
+                      // Wraps below 720 dp so the mode switch never overflows a phone.
+                      Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 8,
                         children: [
-                          BistreIcon(
-                            BistreUiIcon.globe,
-                            size: 16,
-                            color: theme.accentBrass,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: InkText(
-                              l10n.t(L10nKey.settingsAgentWebSearch),
-                              role: InkTextRole.titleMedium,
-                            ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              BistreIcon(
+                                BistreUiIcon.globe,
+                                size: 16,
+                                color: theme.accentBrass,
+                              ),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: InkText(
+                                  l10n.t(L10nKey.settingsAgentWebSearch),
+                                  role: InkTextRole.titleMedium,
+                                ),
+                              ),
+                            ],
                           ),
                           BistreSegmentedControl<String>(
                             selected: mode,

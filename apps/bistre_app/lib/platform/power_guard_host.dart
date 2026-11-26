@@ -60,12 +60,17 @@ class BistrePowerGuardHost {
   static Future<AndroidPowerState> startAndroidAgentService({
     required int activeCount,
     required String summary,
+    bool holdLocks = true,
   }) async {
     if (!Platform.isAndroid) return const AndroidPowerState();
     try {
       final raw = await _powerChannel.invokeMethod<Map<Object?, Object?>>(
         'startAgentService',
-        <String, Object?>{'activeCount': activeCount, 'summary': summary},
+        <String, Object?>{
+          'activeCount': activeCount,
+          'summary': summary,
+          'holdLocks': holdLocks,
+        },
       );
       return _decodePowerState(raw);
     } on PlatformException {

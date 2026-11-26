@@ -18,6 +18,7 @@ import '../shell/folio_controller.dart';
 /// - `[Files]`: Touched workspace files / checkpoints with 1-click Rewind & inline `"Comment in chat"`
 ///   chips (`@file:L1-L20` attached straight into composer).
 /// - `[Story]` & `[Prompt]`: Story Bible & Live Prompt Inspector tabs.
+/// - `[Sources]`: web pages the chat's replies used (B2), parsed in core.
 class RunsDockPanel extends StatelessWidget {
   const RunsDockPanel({
     super.key,
@@ -36,6 +37,7 @@ class RunsDockPanel extends StatelessWidget {
         (StudioTab.files, L10nKey.studioTabFiles, BistreUiIcon.folder),
         (StudioTab.story, L10nKey.studioTabStory, BistreUiIcon.bookOpen),
         (StudioTab.prompt, L10nKey.studioTabPrompt, BistreUiIcon.eye),
+        (StudioTab.sources, L10nKey.studioTabSources, BistreUiIcon.globe),
       ];
 
   @override
@@ -76,7 +78,7 @@ class RunsDockPanel extends StatelessWidget {
                     icon: BistreUiIcon.close,
                     size: 14,
                     dimension: 28,
-                    semanticsLabel: l10n.t(L10nKey.threadCancel),
+                    semanticsLabel: l10n.t(L10nKey.shellClose),
                     onPressed: controller.toggleStudioPane,
                   ),
                 ],
@@ -117,6 +119,7 @@ class RunsDockPanel extends StatelessWidget {
                         titleKey: L10nKey.storyInspectorTitle,
                         bodyKey: L10nKey.storyInspectorLoreTrace,
                       ),
+                StudioTab.sources => _SourcesTabBody(controller: controller),
               },
             ),
           ],
@@ -176,7 +179,7 @@ class _RunsTabBody extends StatelessWidget {
                         icon: BistreUiIcon.close,
                         size: 12,
                         dimension: 24,
-                        semanticsLabel: l10n.t(L10nKey.threadCancel),
+                        semanticsLabel: l10n.t(L10nKey.shellRemove),
                         onPressed: () =>
                             unawaited(controller.removeSteeringMessage(msg.id)),
                       ),
@@ -318,6 +321,115 @@ class _FilesTabBody extends StatelessWidget {
               ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The web pages the open chat's replies used, newest reply last (B2).
+class _SourcesTabBody extends StatelessWidget {
+  const _SourcesTabBody({required this.controller});
+
+  final FolioController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final sources = controller.threadGrounding;
+    if (sources.isEmpty) {
+      return const _StoryPlaceholderBody(
+        titleKey: L10nKey.studioTabSources,
+        bodyKey: L10nKey.studioSourcesEmpty,
+      );
+    }
+    return SmoothScrollable(
+      builder: (_, scroll) => ListView.builder(
+        controller: scroll,
+        padding: const EdgeInsetsDirectional.all(12),
+        itemCount: sources.length,
+        itemBuilder: (context, index) => Padding(
+          padding: const EdgeInsetsDirectional.only(bottom: BistreSpacing.s8),
+          child: GroundingSourceRow(
+            source: sources[index],
+            onCopyLink: () =>
+                unawaited(controller.copyText(sources[index].url)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One source: title, site, the cited passage, and Copy link.
+class GroundingSourceRow extends StatelessWidget {
+  const GroundingSourceRow({
+    super.key,
+    required this.source,
+    required this.onCopyLink,
+  });
+
+  final EngineGroundingSource source;
+  final VoidCallback onCopyLink;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = BistreTheme.of(context);
+    final l10n = BistreLocalizations.of(context);
+    final cited = source.citedText;
+    return FolioSurface(
+      tone: FolioTone.elevated,
+      borderRadius: 8,
+      padding: const EdgeInsetsDirectional.fromSTEB(10, 8, 4, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsetsDirectional.only(top: 2),
+            child: BistreIcon(
+              BistreUiIcon.globe,
+              size: 13,
+              color: theme.accentBrass,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                InkText(
+                  source.title.isEmpty ? source.url : source.title,
+                  role: InkTextRole.labelStrong,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                InkText(
+                  source.host,
+                  role: InkTextRole.captionMeta,
+                  color: theme.inkMuted,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (cited != null && cited.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  InkText(
+                    cited,
+                    role: InkTextRole.bodyCompact,
+                    color: theme.inkSecondary,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          BistreIconButton(
+            icon: BistreUiIcon.copy,
+            size: 13,
+            dimension: 28,
+            semanticsLabel: l10n.t(L10nKey.chatActionCopy),
+            onPressed: onCopyLink,
+          ),
+        ],
       ),
     );
   }

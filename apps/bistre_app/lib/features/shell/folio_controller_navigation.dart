@@ -78,22 +78,37 @@ extension FolioNavigationAndSettingsActions on FolioController {
     showToast(L10nKey.toastSettingsSaved);
   }
 
+  /// The app is going to the background or closing: the bounds are saved at once.
   Future<void> persistCurrentWindowBounds() async {
     final bounds = await BistreDesktopHost.readWindowBounds();
     if (bounds == null) return;
-    await persistWindowBounds(bounds);
+    await persistWindowBounds(bounds, immediate: true);
   }
 
-  Future<void> persistWindowBounds(DesktopWindowBounds bounds) async {
+  /// U22: a resize sends bounds on every tick; they join the quiet, debounced settings save
+  /// (one write after the window settles), and the save always carries the latest settings,
+  /// so a change made meanwhile is never undone.
+  Future<void> persistWindowBounds(
+    DesktopWindowBounds bounds, {
+    bool immediate = false,
+  }) async {
     final encoded = bounds.toJsonString();
-    if (encoded == _settings.windowBoundsJson) return;
-    try {
-      _settings = await _gateway.saveSettings(
-        _settings.copyWith(windowBoundsJson: encoded),
-      );
-    } catch (e) {
-      _noteNonFatal('window_bounds_save', e);
+    if (encoded == _settings.windowBoundsJson && _pendingQuietSettings == null)
+      return;
+    final seq = ++_settingsSeq;
+    final next = _settings.copyWith(windowBoundsJson: encoded);
+    _settings = next;
+    _settingsSaveTimer?.cancel();
+    if (immediate) {
+      _pendingQuietSettings = null;
+      await _persistSettings(seq, next, quiet: true);
+      return;
     }
+    _pendingQuietSettings = next;
+    _settingsSaveTimer = Timer(FolioController.settingsSaveDebounce, () {
+      _pendingQuietSettings = null;
+      unawaited(_persistSettings(seq, next, quiet: true));
+    });
   }
 
   // --- Shortcuts ---
@@ -323,10 +338,6 @@ extension FolioNavigationAndSettingsActions on FolioController {
       closePinnedPanel();
       return;
     }
-    if (_chatNotesOpen) {
-      closeChatNotes();
-      return;
-    }
     if (_tabSwitcherOpen) {
       closeTabSwitcher();
       return;
@@ -343,10 +354,8 @@ extension FolioNavigationAndSettingsActions on FolioController {
       closeSettings();
       return;
     }
-    if (isStreaming) {
-      unawaited(cancelStreaming());
-      return;
-    }
+    // D3/U6: Esc never stops a reply from here (it may come from any text field); only the
+    // empty composer, the Stop button, and the stop shortcut do.
     if (_quotedExcerpt != null) {
       clearQuote();
       return;

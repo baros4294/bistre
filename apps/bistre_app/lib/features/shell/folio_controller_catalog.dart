@@ -131,10 +131,13 @@ extension FolioCatalogActions on FolioController {
     }
   }
 
+  /// [forOpenChat]: picked in the chat's model picker, so it becomes that chat's own model
+  /// (owner decision 2026-11-26: Settings > Default models is the default for other chats).
   Future<void> setActiveProviderAndModel(
     String providerId,
-    String modelId,
-  ) async {
+    String modelId, {
+    bool forOpenChat = false,
+  }) async {
     try {
       final cleanModel = modelId.trim();
       if (cleanModel.isNotEmpty) {
@@ -156,7 +159,8 @@ extension FolioCatalogActions on FolioController {
       final assistant = activeAssistant;
       final hasOverride =
           active != null &&
-          ((active.providerIdOverride?.trim().isNotEmpty ?? false) ||
+          (forOpenChat ||
+              (active.providerIdOverride?.trim().isNotEmpty ?? false) ||
               (active.modelIdOverride?.trim().isNotEmpty ?? false) ||
               (assistant?.defaultProviderId.trim().isNotEmpty ?? false) ||
               (assistant?.defaultModelId.trim().isNotEmpty ?? false));
@@ -166,7 +170,7 @@ extension FolioCatalogActions on FolioController {
           providerIdOverride: providerId,
           modelIdOverride: cleanModel,
         );
-        _activeThread = updated;
+        if (_activeThread?.id == updated.id) _activeThread = updated;
         _threads = _threads
             .map((t) => t.id == updated.id ? updated : t)
             .toList(growable: false);
@@ -217,8 +221,8 @@ extension FolioCatalogActions on FolioController {
   Future<void> checkForUpdates({String? feedUrlOverride}) async {
     if (_checkingUpdates) return;
     _checkingUpdates = true;
-    _lastOtaError = null;
-    _lastDiagnosticKey = null;
+    _lastOtaDiagnostic = null;
+    _lastOtaDetail = null;
     _notify();
     try {
       _updateCheck = await _gateway.checkForUpdates(
@@ -228,9 +232,8 @@ extension FolioCatalogActions on FolioController {
       _notify();
     } catch (e) {
       _checkingUpdates = false;
-      final diag = FolioController.extractDiagnosticKey(e);
-      _lastOtaError = e.toString().replaceFirst('Exception: ', '').trim();
-      _lastDiagnosticKey = diag;
+      _lastOtaDiagnostic = FolioController.extractDiagnosticKey(e);
+      _lastOtaDetail = FolioController.extractDiagnosticDetail(e);
       _notify();
     }
   }
@@ -239,7 +242,8 @@ extension FolioCatalogActions on FolioController {
     final check = _updateCheck;
     if (check == null || _stagingUpdate) return;
     _stagingUpdate = true;
-    _lastDiagnosticKey = null;
+    _lastOtaDiagnostic = null;
+    _lastOtaDetail = null;
     _notify();
     try {
       _stagedUpdatePath = await _gateway.stageUpdate(check);
@@ -247,8 +251,17 @@ extension FolioCatalogActions on FolioController {
       showToast(L10nKey.toastUpdateStaged);
       _notify();
     } catch (e) {
+      // A-W 7d: the reason goes to Updates; the banner's download gets a way there.
       _stagingUpdate = false;
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
+      _lastOtaDiagnostic = FolioController.extractDiagnosticKey(e);
+      _lastOtaDetail = FolioController.extractDiagnosticDetail(e);
+      showToast(
+        L10nKey.toastUpdateStageFailed,
+        tone: ToastTone.error,
+        actionKey: L10nKey.settingsOtaOpenUpdates,
+        onAction: () => openSettings(SettingsTab.updates),
+        duration: const Duration(seconds: 6),
+      );
       _notify();
     }
   }
@@ -363,7 +376,7 @@ extension FolioCatalogActions on FolioController {
           assistantId: assistant.id,
         );
         _threads = _withoutPendingDeletes(await _gateway.listThreads());
-        _activeThread = updated;
+        if (_activeThread?.id == updated.id) _activeThread = updated;
       } catch (e) {
         _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
       }
@@ -495,6 +508,9 @@ extension FolioCatalogActions on FolioController {
       const Duration(seconds: 8),
       () => unawaited(_commitThreadDelete(threadId)),
     );
+    // U5: a deleted chat stops spending now, not when the Undo window ends; Undo restores the
+    // chat and its messages, not the stopped reply.
+    unawaited(_cancelRunOf(threadId));
     _openTabIds.remove(threadId);
     final remaining = _threads.where((t) => t.id != threadId).toList();
     _threads = remaining;
@@ -513,6 +529,14 @@ extension FolioCatalogActions on FolioController {
       duration: const Duration(seconds: 8),
     );
     _notify();
+  }
+
+  Future<void> _cancelRunOf(String threadId) async {
+    try {
+      await _gateway.cancelActiveRun(threadId);
+    } catch (e) {
+      _noteNonFatal('delete_cancel_run', e);
+    }
   }
 
   /// Permanently deletes all chats and opens a fresh empty chat with 1 clean tab.

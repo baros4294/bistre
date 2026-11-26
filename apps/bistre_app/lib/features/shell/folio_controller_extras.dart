@@ -457,6 +457,76 @@ class WorkspaceProject {
 }
 
 extension FolioExtrasActions on FolioController {
+  /// The workspace's `.bistre/hooks.json` and whether it is approved; `null` when none.
+  EngineWorkspaceHooksStatus? get workspaceHooks => _workspaceHooks;
+
+  /// The URLs a provider is called at (P8), for the settings preview.
+  EngineResolvedEndpoint resolveProviderEndpoint(
+    String dialect,
+    String baseUrl,
+  ) => _gateway.resolveProviderEndpoint(dialect, baseUrl);
+
+  /// Core's descriptor for an API format id (P7); `null` for an unknown id.
+  EngineDialectDescriptor? dialectDescriptor(String dialect) {
+    return _gateway
+        .dialectDescriptors()
+        .where((d) => d.id == dialect)
+        .firstOrNull;
+  }
+
+  /// Web sources of the open chat's replies (B2), oldest first.
+  List<EngineGroundingSource> get threadGrounding => _threadGrounding;
+
+  /// The sources one reply used.
+  List<EngineGroundingSource> groundingFor(String nodeId) =>
+      _threadGrounding.where((s) => s.nodeId == nodeId).toList(growable: false);
+
+  /// Reloads the open chat's sources; a reply for a chat that is no longer open is dropped.
+  Future<void> refreshThreadGrounding() async {
+    final threadId = _activeThread?.id;
+    if (threadId == null) return;
+    try {
+      final sources = await _gateway.listThreadGrounding(threadId);
+      if (_disposed || _activeThread?.id != threadId) return;
+      _threadGrounding = sources;
+      _notify();
+    } catch (e) {
+      _noteNonFatal('thread_grounding', e);
+    }
+  }
+
+  /// Reloads the hooks of the current workspace folder (A-S5).
+  Future<void> refreshWorkspaceHooks() async {
+    final root = _workspaceRootPath;
+    if (root.isEmpty) {
+      if (_workspaceHooks == null) return;
+      _workspaceHooks = null;
+      _notify();
+      return;
+    }
+    try {
+      _workspaceHooks = await _gateway.workspaceHooksStatus(root);
+    } catch (e) {
+      _workspaceHooks = null;
+      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
+    }
+    _notify();
+  }
+
+  /// Approves the hooks file exactly as shown; a file changed meanwhile is refused by core.
+  Future<void> approveWorkspaceHooks() async {
+    final status = _workspaceHooks;
+    final root = _workspaceRootPath;
+    if (status == null || root.isEmpty) return;
+    try {
+      await _gateway.approveWorkspaceHooks(root, status.digest);
+      showToast(L10nKey.toastSettingsSaved);
+    } catch (e) {
+      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
+    }
+    await refreshWorkspaceHooks();
+  }
+
   DefaultModelsConfig get defaultModels => _defaultModels;
   UiDisplayPrefs get uiPrefs => _uiPrefs;
   String get messageNavVisibility => _uiPrefs.messageNavVisibility;
@@ -585,7 +655,17 @@ extension FolioExtrasActions on FolioController {
         tone: ToastTone.ok,
       );
     } else {
-      showToast(L10nKey.toastProviderConnectionFailed, tone: ToastTone.error);
+      // P8: name the URL that was tried; the typed reason shows with the provider.
+      final p = providers.where((x) => x.id == providerId).firstOrNull;
+      final url = p == null
+          ? ''
+          : _gateway.resolveProviderEndpoint(p.dialect, p.baseUrl).modelsUrl;
+      showToast(
+        L10nKey.toastProviderConnectionFailed,
+        args: <String, Object?>{'url': url},
+        tone: ToastTone.error,
+        duration: const Duration(seconds: 6),
+      );
     }
   }
 

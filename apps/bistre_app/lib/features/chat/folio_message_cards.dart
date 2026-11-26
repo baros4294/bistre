@@ -110,6 +110,7 @@ class _StreamingPassageCard extends StatelessWidget {
     this.onApproveToolOnce,
     this.onApproveToolChat,
     this.onDenyTool,
+    this.onStopTool,
     this.onRewindCheckpoint,
   });
 
@@ -126,6 +127,7 @@ class _StreamingPassageCard extends StatelessWidget {
   final ValueChanged<String>? onApproveToolOnce;
   final ValueChanged<String>? onApproveToolChat;
   final ValueChanged<String>? onDenyTool;
+  final ValueChanged<String>? onStopTool;
   final ValueChanged<String>? onRewindCheckpoint;
 
   @override
@@ -169,6 +171,7 @@ class _StreamingPassageCard extends StatelessWidget {
             onApproveOnce: onApproveToolOnce,
             onApproveChat: onApproveToolChat,
             onDeny: onDenyTool,
+            onStop: onStopTool,
             onRewindCheckpoint: onRewindCheckpoint,
           ),
         ],
@@ -205,7 +208,7 @@ class _StreamingPassageCard extends StatelessWidget {
 
 /// Centers one feed item inside the reading measure while the scroll surface stays full width.
 class _ReadingColumn extends StatelessWidget {
-  const _ReadingColumn({required this.child});
+  const _ReadingColumn({super.key, required this.child});
 
   final Widget child;
 

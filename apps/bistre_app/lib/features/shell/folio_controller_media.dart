@@ -3,8 +3,13 @@ part of 'folio_controller.dart';
 /// Multi-key vault management, hidden model filters, live catalog fill, export/import,
 /// storage file manager, immediate steering, OS dictation, Live TTS, and Live Voice sessions.
 extension FolioControllerMedia on FolioController {
-  String? get lastOtaError => _lastOtaError;
+  /// The last update error (A-W 7c): shown only in Updates, never in the chat composer.
+  String? get lastOtaDiagnostic => _lastOtaDiagnostic;
+  String? get lastOtaDetail => _lastOtaDetail;
   String? get retryReasonDetail => _retryReasonDetail;
+
+  /// Which automatic try the current wait follows (P20); `null` when core did not say.
+  int? get backoffAttempt => _backoffAttempt;
   List<EngineStorageFileEntry> get storageFiles => _storageFiles;
   String? get speakingNodeId => _speakingNodeId;
   bool get dictatingActive => _dictatingActive;
@@ -195,15 +200,47 @@ extension FolioControllerMedia on FolioController {
   }
 
   Future<bool> importSettingsFromFile(String filePath) async {
+    final String raw;
     try {
-      final raw = await File(filePath).readAsString();
-      _settings = await _gateway.importSettingsJson(raw);
+      raw = await File(filePath).readAsString();
+    } catch (e) {
+      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
+      _notify();
+      return false;
+    }
+    return importSettingsJson(raw);
+  }
+
+  /// Imports settings JSON. A file that would loosen trust or the spending limit is not
+  /// applied; a toast explains it and offers "Import anyway" (A-S3).
+  Future<bool> importSettingsJson(
+    String raw, {
+    bool allowLoosening = false,
+  }) async {
+    try {
+      _settings = await _gateway.importSettingsJson(
+        raw,
+        allowLoosening: allowLoosening,
+      );
       _onLocaleSynced?.call(_settings.locale);
       showToast(L10nKey.toastImported);
       _notify();
       return true;
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
+      final key = FolioController.extractDiagnosticKey(e);
+      if (key == 'diag.import.loosens_safety' && !allowLoosening) {
+        showToast(
+          L10nKey.diagImportLoosensSafety,
+          actionKey: L10nKey.settingsImportAnyway,
+          duration: const Duration(seconds: 12),
+          onAction: () {
+            dismissToast();
+            unawaited(importSettingsJson(raw, allowLoosening: true));
+          },
+        );
+        return false;
+      }
+      _lastDiagnosticKey = key;
       _notify();
       return false;
     }

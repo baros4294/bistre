@@ -89,7 +89,11 @@ class _ModelPickerPopoverState extends State<ModelPickerPopover> {
       return;
     }
     unawaited(
-      widget.controller.setActiveProviderAndModel(opt.provider.id, opt.modelId),
+      widget.controller.setActiveProviderAndModel(
+        opt.provider.id,
+        opt.modelId,
+        forOpenChat: true,
+      ),
     );
   }
 
@@ -402,11 +406,7 @@ class _ModelOptionRowState extends State<_ModelOptionRow> {
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);
     final p = widget.option.provider;
-    final showStorageBadge =
-        !p.isLocal &&
-        (p.dialect == 'openai' ||
-            p.dialect == 'gemini' ||
-            p.useServerStateCache);
+    final showStorageBadge = providerMayStoreReplies(p);
     return Semantics(
       button: true,
       selected: widget.selected,
@@ -642,3 +642,11 @@ class _ManageProvidersRowState extends State<_ManageProvidersRow> {
     );
   }
 }
+
+/// Whether a provider may keep replies on its servers (the picker's storage badge). Dialect
+/// ids are core's (`google_gemini`, never `gemini`: the badge never showed for Gemini).
+bool providerMayStoreReplies(EngineProvider p) =>
+    !p.isLocal &&
+    (p.dialect == 'openai' ||
+        p.dialect == 'google_gemini' ||
+        p.useServerStateCache);

@@ -134,14 +134,6 @@ class _CommandPaletteState extends State<CommandPalette> {
       ),
       _PaletteEntry(
         section: actionsSection,
-        icon: BistreUiIcon.edit,
-        label: l10n.t(L10nKey.chatNotesTitle),
-        shortcut: '',
-        isKeyCombo: false,
-        onRun: ctrl.toggleChatNotes,
-      ),
-      _PaletteEntry(
-        section: actionsSection,
         icon: BistreUiIcon.server,
         label: l10n.t(L10nKey.studioTitle),
         shortcut: '',
@@ -232,7 +224,11 @@ class _CommandPaletteState extends State<CommandPalette> {
         ),
         child: Focus(
           onKeyEvent: (_, event) {
-            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            // U18: arrows and Enter belong to the IME while it composes.
+            if (event is! KeyDownEvent ||
+                _queryController.value.composing.isValid) {
+              return KeyEventResult.ignored;
+            }
             if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
                 entries.isNotEmpty) {
               setState(

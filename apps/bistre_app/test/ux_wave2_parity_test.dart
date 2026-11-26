@@ -368,11 +368,16 @@ void main() {
             child: Padding(
               padding: EdgeInsetsDirectional.only(bottom: 24),
               child: ContextGaugeRing(
-                usage: EngineContextUsage(
-                  systemTokens: 120,
-                  historyTokens: 480,
-                  historyTurns: 4,
-                  totalTokens: 600,
+                usage: EngineContextBreakdown(
+                  categories: <EngineContextCategory>[
+                    EngineContextCategory(kind: 'system_prompt', tokens: 120),
+                    EngineContextCategory(
+                      kind: 'messages',
+                      tokens: 480,
+                      count: 4,
+                    ),
+                  ],
+                  totalSent: 600,
                 ),
                 limitTokens: 128000,
                 sessionSpendMicros: 50000,
@@ -763,8 +768,6 @@ void main() {
         await ctrl.togglePinNode(assistantNode.id);
         expect(ctrl.isNodePinned(assistantNode.id), isTrue);
       }
-      await ctrl.saveActiveChatNotes('Remember local constraints.');
-      expect(ctrl.activeChatNotes, 'Remember local constraints.');
       await ctrl.setActiveChatSpendLimitMicros(2500000);
       expect(ctrl.activeChatSpendLimitMicros, 2500000);
       await ctrl.setToolPermission('shell', 'off');
@@ -782,14 +785,6 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text(l10n.t(L10nKey.chatToolsTitle)), findsOneWidget);
       expect(find.text(l10n.t(L10nKey.chatToolsPrefillLabel)), findsOneWidget);
-
-      // Open ChatNotesModal and confirm Escape closes cleanly.
-      ctrl.toggleChatNotes();
-      await tester.pumpAndSettle();
-      expect(find.text(l10n.t(L10nKey.chatNotesTitle)), findsOneWidget);
-      ctrl.handleEscape();
-      await tester.pumpAndSettle();
-      expect(ctrl.chatNotesOpen, isFalse);
 
       ctrl.dispose();
       await gw.shutdown();

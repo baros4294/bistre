@@ -22,6 +22,7 @@ part 'folio_controller_catalog.dart';
 part 'folio_controller_extras.dart';
 part 'folio_controller_media.dart';
 part 'folio_controller_navigation.dart';
+part 'folio_controller_runs.dart';
 part 'folio_controller_threads.dart';
 part 'folio_controller_studio.dart';
 
@@ -29,7 +30,7 @@ enum FolioLayoutMode { bubbles, openFolio }
 
 enum SidebarTab { assistant, chat, pinned }
 
-enum StudioTab { runs, files, story, prompt }
+enum StudioTab { runs, files, story, prompt, sources }
 
 /// Attached file or inline file-range reference held in the composer prior to send.
 class ComposerAttachment {
@@ -137,6 +138,11 @@ class ShortcutActionSpec {
       labelKey: L10nKey.shortcutJumpPrompt,
       defaultCombo: 'Ctrl+Alt+G',
     ),
+    ShortcutActionSpec(
+      id: 'stop_reply',
+      labelKey: L10nKey.shortcutStopReply,
+      defaultCombo: 'Ctrl+.',
+    ),
   ];
 }
 
@@ -161,10 +167,10 @@ class FolioController extends ChangeNotifier {
     super.notifyListeners();
   }
 
-  /// What the next request sends for the visible branch, by category, from core. Only the
-  /// composer's context ring listens.
-  final ValueNotifier<EngineContextUsage> contextUsage =
-      ValueNotifier<EngineContextUsage>(EngineContextUsage.empty);
+  /// What the next request sends for the visible branch, by category, from core (A-SE). Only
+  /// the composer's context ring listens.
+  final ValueNotifier<EngineContextBreakdown> contextBreakdown =
+      ValueNotifier<EngineContextBreakdown>(EngineContextBreakdown.empty);
   String? _contextUsageKey;
   int _contextUsageSeq = 0;
 
@@ -178,16 +184,16 @@ class FolioController extends ChangeNotifier {
     _contextUsageKey = key;
     final seq = ++_contextUsageSeq;
     if (thread == null || leaf == null) {
-      contextUsage.value = EngineContextUsage.empty;
+      contextBreakdown.value = EngineContextBreakdown.empty;
       return;
     }
     unawaited(
       _gateway
-          .contextUsage(thread, leaf)
+          .contextBreakdown(thread, leaf)
           .then(
             (usage) {
               if (seq != _contextUsageSeq || _disposed) return;
-              contextUsage.value = usage;
+              contextBreakdown.value = usage;
             },
             onError: (Object e) {
               if (seq != _contextUsageSeq || _disposed) return;
@@ -227,11 +233,19 @@ class FolioController extends ChangeNotifier {
     required String defaultThreadTitle,
     void Function(String locale)? onLocaleSynced,
     this.isDevEnvironment = false,
+    DateTime Function() clock = DateTime.now,
   }) : _gateway = gateway,
        _defaultThreadTitle = defaultThreadTitle,
-       _onLocaleSynced = onLocaleSynced;
+       _onLocaleSynced = onLocaleSynced,
+       _clock = clock;
 
   final BistreEngineGateway _gateway;
+
+  /// Wall clock for date-relative UI (sidebar day groups); tests inject a fixed instant.
+  final DateTime Function() _clock;
+
+  /// The current local time from the injected clock.
+  DateTime now() => _clock();
   final String _defaultThreadTitle;
   final void Function(String locale)? _onLocaleSynced;
   final bool isDevEnvironment;
@@ -262,8 +276,21 @@ class FolioController extends ChangeNotifier {
 
   // Streaming state driven by Rust 16ms coalesced DeltaBatch events. Text/thinking deltas
   // update ONLY the leaf `liveTurn` notifier (zero shell/sidebar rebuilds per delta).
-  String? _streamingThreadId;
-  String? _streamingNodeId;
+  /// Live run per chat: thread id -> its streaming node id (U11).
+  final Map<String, String> _liveRuns = <String, String>{};
+
+  /// Live text of chats replying in the background, shown when one is opened mid-reply.
+  final Map<String, LiveTurn> _backgroundTurns = <String, LiveTurn>{};
+
+  /// P23: the message a search hit or a pinned reply asked to show; the feed scrolls to it.
+  final ValueNotifier<String?> revealRequest = ValueNotifier<String?>(null);
+
+  /// Chats whose reply finished while another chat was open (U11).
+  final Set<String> _unreadDone = <String>{};
+
+  /// Tool rows per chat (U4, U9).
+  final Map<String, List<ToolActivityEntry>> _toolActivitiesByThread =
+      <String, List<ToolActivityEntry>>{};
 
   /// Leaf notifier read only by the streaming message widget.
   /// Paced unless low memory or Reduce motion (the OS setting is checked by the notifier).
@@ -289,10 +316,19 @@ class FolioController extends ChangeNotifier {
 
   // Agent workspace binding, MCP servers, context compaction, pin, and tool timeline.
   String _workspaceRootPath = '';
+
+  /// The workspace's top-level entries for the `@` menu (U19), read once per root, off the
+  /// keystroke path: `(name, isFolder)`, at most [kMaxWorkspaceEntries].
+  List<(String, bool)> _workspaceEntries = const <(String, bool)>[];
+  String? _workspaceEntriesRoot;
+  Future<void>? _workspaceEntriesLoading;
+  int _workspaceEntryLoads = 0;
+  EngineWorkspaceHooksStatus? _workspaceHooks;
+  List<EngineGroundingSource> _threadGrounding =
+      const <EngineGroundingSource>[];
   String _webSearchEndpoint = '';
   List<EngineMcpServerConfig> _mcpServers = const <EngineMcpServerConfig>[];
   String? _pinnedContextNodeId;
-  List<ToolActivityEntry> _toolActivities = const <ToolActivityEntry>[];
   List<EngineCheckpoint> _checkpoints = const <EngineCheckpoint>[];
 
   // Rich studio tabs, attachments, session tree, and provider overrides.
@@ -329,10 +365,14 @@ class FolioController extends ChangeNotifier {
   bool _stagingUpdate = false;
   String? _stagedUpdatePath;
   bool _updateBannerDismissed = false;
-  String? _lastOtaError;
+  String? _lastOtaDiagnostic;
+  String? _lastOtaDetail;
 
   // Extended media, storage manager, hidden models, retry detail, TTS, and Live Voice state.
   String? _retryReasonDetail;
+
+  /// Which automatic try the current wait follows (P20), from the notice's `attempt=`.
+  int? _backoffAttempt;
   final Map<String, Set<String>> _hiddenModelsByProvider =
       <String, Set<String>>{};
   List<EngineStorageFileEntry> _storageFiles = const <EngineStorageFileEntry>[];
@@ -363,10 +403,8 @@ class FolioController extends ChangeNotifier {
   bool _commandPaletteOpen = false;
   bool _tabSwitcherOpen = false;
   bool _pinnedPanelOpen = false;
-  bool _chatNotesOpen = false;
   String _replyPrefill = '';
   Set<String> _pinnedNodeIds = <String>{};
-  String _activeChatNotes = '';
   int _threadExtrasVersion = 0;
   String _profileAvatarPath = '';
   int? _activeChatSpendLimitMicros;
@@ -393,7 +431,13 @@ class FolioController extends ChangeNotifier {
   /// Whether the composer draft is saved; only the composer's "Draft saved" label listens.
   final ValueNotifier<bool> draftSavedState = ValueNotifier<bool>(false);
   String? _lastDiagnosticKey;
+
+  /// The provider's own words for the last error (P4), from the diagnostic's `reason=` detail.
+  String? _lastDiagnosticReason;
   Timer? _draftDebounce;
+
+  /// The draft waiting in [_draftDebounce], saved at once on pause, dispose, or shutdown (P27).
+  ({String threadId, String text})? _pendingDraft;
   StreamSubscription<BistreEvent>? _eventSub;
 
   EngineSettings get settings => _settings;
@@ -507,17 +551,17 @@ class FolioController extends ChangeNotifier {
     return _assistants.isEmpty ? null : _assistants.first;
   }
 
-  bool get isStreaming =>
-      _streamingThreadId != null && _streamingThreadId == _activeThread?.id;
+  bool get isStreaming {
+    final active = _activeThread?.id;
+    return active != null && _liveRuns.containsKey(active);
+  }
 
   /// Whether [threadId] currently has a live streaming reply (`activeStreamsBySession`).
-  bool isThreadStreaming(String threadId) => _streamingThreadId == threadId;
+  bool isThreadStreaming(String threadId) => _liveRuns.containsKey(threadId);
 
   /// Count of background chats currently streaming other than the active chat.
   int get backgroundStreamingCount =>
-      _streamingThreadId != null && _streamingThreadId != _activeThread?.id
-      ? 1
-      : 0;
+      _liveRuns.keys.where((t) => t != _activeThread?.id).length;
 
   /// Total recorded cost in micro-USD for the active conversation (`SessionSpend.kt`).
   int get activeThreadSpendMicros =>
@@ -533,10 +577,8 @@ class FolioController extends ChangeNotifier {
 
   bool get tabSwitcherOpen => _tabSwitcherOpen;
   bool get pinnedPanelOpen => _pinnedPanelOpen;
-  bool get chatNotesOpen => _chatNotesOpen;
   String get replyPrefill => _replyPrefill;
   Set<String> get pinnedNodeIds => _pinnedNodeIds;
-  String get activeChatNotes => _activeChatNotes;
   String get profileAvatarPath => _profileAvatarPath;
   int? get activeChatSpendLimitMicros => _activeChatSpendLimitMicros;
   Map<String, String> get toolPermissions => _toolPermissions;
@@ -552,11 +594,15 @@ class FolioController extends ChangeNotifier {
   ];
 
   bool get hasAnyActiveRun =>
-      _streamingThreadId != null || _agentRuns.any((r) => r.isActive);
+      _liveRuns.isNotEmpty || _agentRuns.any((r) => r.isActive);
   int get activeRunCount => _agentRuns.where((r) => r.isActive).length;
   String get streamingBuffer => liveTurn.value?.text ?? '';
   String get streamingThinkingBuffer => liveTurn.value?.thinking ?? '';
-  String? get streamingNodeId => _streamingNodeId;
+  String? get streamingNodeId {
+    final active = _activeThread?.id;
+    return active == null ? null : _liveRuns[active];
+  }
+
   List<EngineAgentRun> get agentRuns => _agentRuns;
   List<EngineSteeringMessage> get pendingSteering => _pendingSteering;
   EnginePowerGuardStatus get powerStatus => _powerStatus;
@@ -607,8 +653,8 @@ class FolioController extends ChangeNotifier {
 
   /// Ends the backoff wait immediately (`Retry now`).
   Future<void> retryNow() async {
-    final threadId = _streamingThreadId;
-    if (threadId == null) return;
+    final threadId = _activeThread?.id;
+    if (threadId == null || !_liveRuns.containsKey(threadId)) return;
     _backoffRetryAt = null;
     notifyListeners();
     try {
@@ -633,6 +679,14 @@ class FolioController extends ChangeNotifier {
     final match = _diagKeyPattern.firstMatch(error.toString());
     return match?.group(0) ?? 'diag.internal.error';
   }
+
+  static final RegExp _diagDetailPattern = RegExp(
+    r'\bdiag\.[a-z0-9_.]+(?::|\s\()([A-Za-z0-9_.:-]+)',
+  );
+
+  /// The detail code after a diagnostic key (`diag.x:detail` or `diag.x (detail)`), if any.
+  static String? extractDiagnosticDetail(Object error) =>
+      _diagDetailPattern.firstMatch(error.toString())?.group(1);
 
   /// Formats integer micro-USD (`1 USD = 1_000_000`) deterministically with zero floats.
   static String formatMicrosUsd(int micros, {bool showSubCent = false}) {
@@ -678,8 +732,13 @@ class FolioController extends ChangeNotifier {
   void clearDiagnostic() {
     if (_lastDiagnosticKey == null) return;
     _lastDiagnosticKey = null;
+    _lastDiagnosticReason = null;
     notifyListeners();
   }
+
+  /// What the provider itself said about the last error (P4), when it said anything.
+  String? get lastDiagnosticReason =>
+      _lastDiagnosticKey == null ? null : _lastDiagnosticReason;
 
   List<EngineThread> get filteredThreads {
     final q = sidebarFilterQuery.value.trim().toLowerCase();
@@ -699,7 +758,7 @@ class FolioController extends ChangeNotifier {
   /// sibling branch at every fork point (defaulting to the newest sibling).
   List<EngineNode> get visibleBranchNodes {
     if (_nodes.isEmpty) return const <EngineNode>[];
-    final childrenByParent = _groupChildrenByParent(_nodes);
+    final childrenByParent = _childrenByParent;
     final result = <EngineNode>[];
     String? currentParent;
     final visited = <String>{};
@@ -720,7 +779,7 @@ class FolioController extends ChangeNotifier {
 
   BranchSlotInfo? branchInfoFor(EngineNode node) {
     final parentKey = node.parentId ?? '__root__';
-    final siblings = _groupChildrenByParent(_nodes)[parentKey];
+    final siblings = _childrenByParent[parentKey];
     if (siblings == null || siblings.length <= 1) return null;
     final idx = siblings.indexWhere((n) => n.id == node.id);
     if (idx < 0) return null;
@@ -732,7 +791,7 @@ class FolioController extends ChangeNotifier {
   }
 
   void selectSiblingBranch(String parentKey, int delta) {
-    final siblings = _groupChildrenByParent(_nodes)[parentKey];
+    final siblings = _childrenByParent[parentKey];
     if (siblings == null || siblings.length <= 1) return;
     final current = _selectedChildIndex[parentKey] ?? (siblings.length - 1);
     final next = (current + delta).clamp(0, siblings.length - 1);
@@ -743,13 +802,33 @@ class FolioController extends ChangeNotifier {
   /// Selects a specific sibling node under [parentKey] by its [nodeId] (e.g., 1-click undo after
   /// regenerating a reply while keeping the previous branch intact).
   void selectSiblingNodeById(String parentKey, String nodeId) {
-    final siblings = _groupChildrenByParent(_nodes)[parentKey];
+    final siblings = _childrenByParent[parentKey];
     if (siblings == null) return;
     final idx = siblings.indexWhere((n) => n.id == nodeId);
     if (idx < 0) return;
     _selectedChildIndex[parentKey] = idx;
     notifyListeners();
   }
+
+  /// U15: the children-by-parent index of the open chat, built once per node list (the
+  /// list is replaced, never changed in place), instead of once per message per build.
+  List<EngineNode>? _branchIndexFor;
+  Map<String, List<EngineNode>> _branchIndex =
+      const <String, List<EngineNode>>{};
+  int _branchIndexBuilds = 0;
+
+  Map<String, List<EngineNode>> get _childrenByParent {
+    if (!identical(_branchIndexFor, _nodes)) {
+      _branchIndex = _groupChildrenByParent(_nodes);
+      _branchIndexFor = _nodes;
+      _branchIndexBuilds++;
+    }
+    return _branchIndex;
+  }
+
+  /// How many times the branch index was built (tests check it is reused).
+  @visibleForTesting
+  int get debugBranchIndexBuilds => _branchIndexBuilds;
 
   static Map<String, List<EngineNode>> _groupChildrenByParent(
     List<EngineNode> allNodes,
@@ -804,32 +883,20 @@ class FolioController extends ChangeNotifier {
   void _handleEngineEvent(BistreEvent event) {
     switch (event) {
       case RunStartedEvent():
-        _streamingThreadId = event.threadId;
-        _streamingNodeId = event.nodeId;
-        _backoffRetryAt = null;
-        liveTurn.start(event.threadId, event.nodeId);
-        if (BistrePowerGuardHost.isAndroid && _settings.keepAwakeWhileRunning) {
-          unawaited(_syncAndroidFgs(active: true));
-        }
+        if (event.threadId == _activeThread?.id) _backoffRetryAt = null;
+        _onRunStarted(event.threadId, event.nodeId);
+        unawaited(_syncAndroidService());
         unawaited(_refreshRunsAndPower());
         notifyListeners();
       case DeltaBatchEvent():
         // Leaf-only update: no notifyListeners() on the hot path.
-        if (_backoffRetryAt != null) {
+        if (_backoffRetryAt != null && event.threadId == _activeThread?.id) {
           _backoffRetryAt = null;
           notifyListeners();
         }
-        liveTurn.appendText(
-          event.threadId,
-          event.textDelta,
-          nodeId: event.nodeId,
-        );
+        _onTextDelta(event.threadId, event.textDelta, event.nodeId);
       case ThinkingDeltaEvent():
-        liveTurn.appendThinking(
-          event.threadId,
-          event.delta,
-          nodeId: event.nodeId,
-        );
+        _onThinkingDelta(event.threadId, event.delta, event.nodeId);
       case RunStateChangedEvent():
         unawaited(_refreshRunsAndPower());
       case RunStepUpdatedEvent():
@@ -846,7 +913,7 @@ class FolioController extends ChangeNotifier {
           if (!exists) {
             _nodes = <EngineNode>[..._nodes, event.node];
             final parentKey = event.node.parentId ?? '__root__';
-            final siblings = _groupChildrenByParent(_nodes)[parentKey];
+            final siblings = _childrenByParent[parentKey];
             if (siblings != null && siblings.isNotEmpty) {
               _selectedChildIndex[parentKey] = siblings.length - 1;
             }
@@ -854,21 +921,15 @@ class FolioController extends ChangeNotifier {
           notifyListeners();
         }
       case RunFinishedEvent():
-        final matchesActiveStream =
-            _streamingThreadId == event.threadId &&
-            (_streamingNodeId == null ||
-                event.nodeId.isEmpty ||
-                _streamingNodeId == event.nodeId);
-        if (matchesActiveStream) {
-          _streamingThreadId = null;
-          _streamingNodeId = null;
-          _backoffRetryAt = null;
-          _retryReasonDetail = null;
-          liveTurn.clear();
+        _onRunFinished(
+          event.threadId,
+          event.nodeId,
+          cancelled: event.cancelled,
+        );
+        if (event.threadId == _activeThread?.id) {
+          unawaited(refreshThreadGrounding());
         }
-        if (BistrePowerGuardHost.isAndroid) {
-          unawaited(_syncAndroidFgs(active: false));
-        }
+        unawaited(_syncAndroidService());
         if (!event.cancelled && _uiPrefs.desktopNotifyOnComplete) {
           final finishedTitle =
               _threads
@@ -900,6 +961,9 @@ class FolioController extends ChangeNotifier {
             RegExp(r'retry_in_ms=(\d+)').firstMatch(raw)?.group(1) ?? '',
           );
           final reason = RegExp(r'reason=([^;]+)').firstMatch(raw)?.group(1);
+          _backoffAttempt = int.tryParse(
+            RegExp(r'(?:^|;)attempt=(\d+)').firstMatch(raw)?.group(1) ?? '',
+          );
           final detail = RegExp(r'detail=([^;]+)').firstMatch(raw)?.group(1);
           _backoffRetryAt = ms == null
               ? null
@@ -911,6 +975,9 @@ class FolioController extends ChangeNotifier {
           }
         } else {
           _lastDiagnosticKey = event.key;
+          _lastDiagnosticReason = RegExp(r'(?:^|;)reason=([^;]+)')
+              .firstMatch(event.detailCode ?? '')
+              ?.group(1);
         }
         notifyListeners();
       case LiveVoiceStateEvent():
@@ -920,20 +987,21 @@ class FolioController extends ChangeNotifier {
       case LiveVoiceAudioEvent():
         _handleLiveVoiceAudioEvent(event);
       case ToolApprovalRequestedEvent():
-        if (_activeThread?.id == event.threadId) {
-          recordToolActivity(
-            ToolActivityEntry(
-              id: event.callId,
-              toolName: event.toolName,
-              summary: event.argumentsJson,
-              status: 'awaiting_approval',
-              riskTier: event.riskTier,
-              outputText: event.argumentsJson,
-            ),
-          );
-        }
+        // U4: recorded for its own chat, open or not; it waits there until answered.
+        recordToolActivity(
+          ToolActivityEntry(
+            id: event.callId,
+            toolName: event.toolName,
+            summary: event.argumentsJson,
+            status: 'awaiting_approval',
+            riskTier: event.riskTier,
+            outputText: event.argumentsJson,
+            threadId: event.threadId,
+            runId: event.runId,
+          ),
+        );
       case ToolExecutionUpdatedEvent():
-        if (_activeThread?.id == event.threadId) {
+        {
           recordToolActivity(
             ToolActivityEntry(
               id: event.callId,
@@ -945,6 +1013,8 @@ class FolioController extends ChangeNotifier {
               diffText: event.diffText,
               checkpointId: event.checkpointId,
               durationMs: event.durationMs,
+              threadId: event.threadId,
+              runId: event.runId,
             ),
           );
         }
@@ -953,6 +1023,7 @@ class FolioController extends ChangeNotifier {
       case EventsLaggedEvent():
         final threadId = _activeThread?.id;
         if (threadId != null) unawaited(_refreshAfterRun(threadId));
+        unawaited(_reconcileLiveRuns());
       case UnknownEngineEvent():
         debugPrint('Ignoring unknown engine event kind: ${event.kind}');
     }
@@ -999,24 +1070,6 @@ class FolioController extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _noteNonFatal('steering_refresh', e);
-    }
-  }
-
-  Future<void> _syncAndroidFgs({required bool active}) async {
-    final state = active
-        ? await BistrePowerGuardHost.startAndroidAgentService(
-            activeCount: activeRunCount > 0 ? activeRunCount : 1,
-            summary: _activeThread?.title ?? _defaultThreadTitle,
-          )
-        : await BistrePowerGuardHost.stopAndroidAgentService();
-    try {
-      _powerStatus = await _gateway.setAndroidPowerState(
-        fgsActive: state.fgsActive,
-        batteryUnrestricted: state.batteryUnrestricted,
-      );
-      notifyListeners();
-    } catch (e) {
-      _noteNonFatal('android_fgs_sync', e);
     }
   }
 
@@ -1094,16 +1147,36 @@ class FolioController extends ChangeNotifier {
   final List<String> _openTabIds = <String>[];
   static const int _kMaxOpenTabs = 8;
 
+  /// The chat being opened while its messages and draft load; sending waits for it (U1).
+  String? _switchingToThreadId;
+
+  /// True while a chat switch is loading: the composer must not send yet.
+  bool get isSwitchingThread => _switchingToThreadId != null;
+
+  /// Whether async work started for [threadId] at [generation] may still change chat state:
+  /// the same chat is open and no switch happened since (U2).
+  bool _isStillOn(String threadId, int generation) =>
+      !_disposed &&
+      generation == _threadGeneration &&
+      _activeThread?.id == threadId;
+
+  /// Opens [thread]. Its messages, draft, pins and checkpoints load first and are committed
+  /// together with the active chat, so nothing can act on a half-switched state (U1).
   Future<void> _activateThread(EngineThread thread) async {
     final generation = ++_threadGeneration;
     if (!_openTabIds.contains(thread.id)) {
       _openTabIds.add(thread.id);
       if (_openTabIds.length > _kMaxOpenTabs) _openTabIds.removeAt(0);
     }
-    _activeThread = thread;
-    _activeAssistantId = thread.assistantId;
-    _selectedChildIndex.clear();
-    _quotedExcerpt = null;
+    _switchingToThreadId = thread.id;
+    try {
+      await _loadAndCommitThread(thread, generation);
+    } finally {
+      if (generation == _threadGeneration) _switchingToThreadId = null;
+    }
+  }
+
+  Future<void> _loadAndCommitThread(EngineThread thread, int generation) async {
     final nodes = await _gateway.listNodes(thread.id);
     final steering = await _gateway.listPendingSteering(thread.id);
     final pin = await _gateway.getContextStartPin(thread.id);
@@ -1114,6 +1187,12 @@ class FolioController extends ChangeNotifier {
         ? await _gateway.searchNodes(query, threadId: thread.id)
         : null;
     if (generation != _threadGeneration || _disposed) return;
+    _swapLiveTurnFor(_activeThread?.id, thread.id);
+    _unreadDone.remove(thread.id);
+    _activeThread = thread;
+    _activeAssistantId = thread.assistantId;
+    _selectedChildIndex.clear();
+    _quotedExcerpt = null;
     _nodes = nodes;
     _pendingSteering = steering;
     _pinnedContextNodeId = pin;
@@ -1129,6 +1208,7 @@ class FolioController extends ChangeNotifier {
     draftSavedState.value = _restoredDraft.isNotEmpty;
     if (hits != null && search.query == query) search.update(hits: hits);
     unawaited(_loadThreadKvExtras(thread.id, generation));
+    unawaited(refreshThreadGrounding());
   }
 
   Future<void> selectThread(String threadId) async {
@@ -1177,7 +1257,7 @@ class FolioController extends ChangeNotifier {
       );
       _threads = _withoutPendingDeletes(await _gateway.listThreads());
       if (_activeThread?.id == threadId) {
-        _activeThread = updated;
+        if (_activeThread?.id == updated.id) _activeThread = updated;
       }
       showToast(nextPinned ? L10nKey.toastPinned : L10nKey.toastUnpinned);
       notifyListeners();
@@ -1197,7 +1277,7 @@ class FolioController extends ChangeNotifier {
       );
       _threads = _withoutPendingDeletes(await _gateway.listThreads());
       if (_activeThread?.id == threadId) {
-        _activeThread = updated;
+        if (_activeThread?.id == updated.id) _activeThread = updated;
       }
       notifyListeners();
     } catch (e) {
@@ -1239,7 +1319,7 @@ class FolioController extends ChangeNotifier {
         clearTopP: clearTopP,
       );
       _threads = _withoutPendingDeletes(await _gateway.listThreads());
-      _activeThread = updated;
+      if (_activeThread?.id == updated.id) _activeThread = updated;
       notifyListeners();
     } catch (e) {
       _lastDiagnosticKey = extractDiagnosticKey(e);
@@ -1266,17 +1346,44 @@ class FolioController extends ChangeNotifier {
   Timer? _settingsSaveTimer;
   EngineSettings? _pendingQuietSettings;
 
+  bool _engineShutDown = false;
+
+  /// Flushes pending work (deleted chats, window bounds, quiet settings) and shuts the engine
+  /// down, which checkpoints the WAL and lets cancelled runs record their final state (A-S11).
+  /// Called once on app exit; later calls do nothing.
+  Future<void> shutdownEngine() async {
+    if (_engineShutDown) return;
+    _engineShutDown = true;
+    _settingsSaveTimer?.cancel();
+    final unsaved = _pendingQuietSettings;
+    _pendingQuietSettings = null;
+    try {
+      await flushPendingDraft();
+      await flushPendingDeletes();
+      await persistCurrentWindowBounds();
+      if (unsaved != null) await _gateway.saveSettings(unsaved);
+    } catch (e) {
+      _noteNonFatal('shutdown_flush', e);
+    }
+    try {
+      await _gateway.shutdown();
+    } catch (e) {
+      _noteNonFatal('engine_shutdown', e);
+    }
+  }
+
   @override
   void dispose() {
     _disposed = true;
-    _draftDebounce?.cancel();
+    revealRequest.dispose();
+    unawaited(flushPendingDraft());
     _settingsSaveTimer?.cancel();
     final unsaved = _pendingQuietSettings;
     if (unsaved != null) unawaited(_gateway.saveSettings(unsaved));
     toast.dispose();
     search.dispose();
     sidebarFilterQuery.dispose();
-    contextUsage.dispose();
+    contextBreakdown.dispose();
     draftSavedState.dispose();
     // The user deleted these chats; closing the app inside the Undo window must not bring
     // them back.

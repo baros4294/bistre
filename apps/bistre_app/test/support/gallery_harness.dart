@@ -8,6 +8,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:bistre_app/bridge/bistre_engine.dart';
+
 import 'package:bistre_app/design/math_font_gate.dart';
 import 'package:bistre_app/l10n/bistre_localizations.dart';
 import 'package:flutter/foundation.dart';
@@ -15,6 +16,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'fake_context.dart';
 
 /// Deterministic visual gallery test harness (`just ui-gallery`).
 /// Loads real bundled OFL fonts (`Inter`, `JetBrainsMono`, `NotoSansMath`) and captures
@@ -143,9 +146,13 @@ Future<void> capturePng(
 final List<String> _goldenProblems = <String>[];
 bool _goldenCheckRegistered = false;
 
+/// Fixed gallery instant, so day-relative UI (sidebar groups, dates) never drifts with the
+/// wall clock and Linux baselines stay byte-identical (CI10).
+DateTime galleryClock() => DateTime(2026, 3, 14, 10, 30);
+
 class GalleryGateway implements BistreEngineGateway {
   GalleryGateway({required bool connected, bool seedConversation = true}) {
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final nowMs = galleryClock().millisecondsSinceEpoch;
     _providers.addAll(<EngineProvider>[
       EngineProvider(
         id: 'openai',
@@ -557,8 +564,8 @@ flowchart LR
       mode: mode,
       topic: topic ?? 'general',
       assistantId: assistantId ?? 'default_assistant',
-      createdAtMs: DateTime.now().millisecondsSinceEpoch,
-      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      createdAtMs: galleryClock().millisecondsSinceEpoch,
+      updatedAtMs: galleryClock().millisecondsSinceEpoch,
     );
     _threads.add(t);
     return t;
@@ -837,32 +844,18 @@ flowchart LR
   @override
   Future<void> refreshPrices() async => refreshPricesCalls++;
 
+  /// When set, the breakdown core would report (tests); otherwise one is estimated.
+  EngineContextBreakdown? contextBreakdownFixture;
+
   @override
-  Future<EngineContextUsage> contextUsage(
+  Future<EngineContextBreakdown> contextBreakdown(
     String threadId,
     String leafNodeId, {
     String draft = '',
   }) async {
-    // Same estimate as core (~4 characters per token) over the leaf's ancestry.
-    final nodes = await listNodes(threadId);
-    final byId = <String, EngineNode>{for (final n in nodes) n.id: n};
-    var chars = 0;
-    var turns = 0;
-    var node = byId[leafNodeId];
-    for (var hops = 0; node != null && hops <= nodes.length; hops++) {
-      chars += node.content.length;
-      turns++;
-      final parent = node.parentId;
-      node = parent == null ? null : byId[parent];
-    }
-    final history = (chars + 3) ~/ 4;
-    final draftTokens = (draft.trim().length + 3) ~/ 4;
-    return EngineContextUsage(
-      historyTokens: history,
-      historyTurns: turns,
-      draftTokens: draftTokens,
-      totalTokens: history + draftTokens,
-    );
+    final fixture = contextBreakdownFixture;
+    if (fixture != null) return fixture;
+    return estimateFakeBreakdown(await listNodes(threadId), leafNodeId, draft);
   }
 
   @override
@@ -876,8 +869,54 @@ flowchart LR
   }) async => 'permit-$toolName';
 
   @override
+  Future<void> allowUnpricedOnce(String threadId) async {}
+
+  @override
+  Future<void> allowUnpricedMediaOnce() async {}
+
+  @override
+  Future<EngineWorkspaceHooksStatus?> workspaceHooksStatus(
+    String workspaceRoot,
+  ) async => null;
+
+  @override
+  List<EngineDialectDescriptor> dialectDescriptors() => kTestDialectDescriptors;
+
+  @override
+  EngineResolvedEndpoint resolveProviderEndpoint(
+    String dialect,
+    String baseUrl,
+  ) {
+    final d = kTestDialectDescriptors.firstWhere((x) => x.id == dialect);
+    final base = baseUrl.trim().isEmpty ? d.defaultBaseUrl : baseUrl.trim();
+    return EngineResolvedEndpoint(
+      chatUrl: '$base${d.endpointPath}',
+      modelsUrl: '$base/models',
+    );
+  }
+
+  @override
+  Future<List<EngineGroundingSource>> listThreadGrounding(
+    String threadId,
+  ) async => const <EngineGroundingSource>[];
+
+  @override
+  Future<void> approveWorkspaceHooks(
+    String workspaceRoot,
+    String digest,
+  ) async {}
+
+  @override
+  Future<void> saveProviderOverrides({
+    required String providerId,
+    required String headersJson,
+    required String bodyJson,
+  }) async {}
+
+  @override
   Future<bool> respondToolApproval({
     required String threadId,
+    required String runId,
     required String callId,
     required String decision,
   }) async => true;
@@ -1349,7 +1388,10 @@ flowchart LR
   Future<String> exportSettingsJson() async => '{}';
 
   @override
-  Future<EngineSettings> importSettingsJson(String rawJson) async => _settings;
+  Future<EngineSettings> importSettingsJson(
+    String rawJson, {
+    bool allowLoosening = false,
+  }) async => _settings;
 
   @override
   Future<List<EngineStorageFileEntry>> listStorageFiles() async =>
@@ -1400,3 +1442,32 @@ flowchart LR
     await _events.close();
   }
 }
+
+/// Test fixture mirroring core's `ProviderDialect` descriptors (`bistre-protocol`).
+const List<EngineDialectDescriptor> kTestDialectDescriptors =
+    <EngineDialectDescriptor>[
+      EngineDialectDescriptor(
+        id: 'openai',
+        defaultBaseUrl: 'https://api.openai.com/v1',
+        endpointPath: '/responses',
+        requiresApiKey: true,
+      ),
+      EngineDialectDescriptor(
+        id: 'google_gemini',
+        defaultBaseUrl: 'https://generativelanguage.googleapis.com',
+        endpointPath: '/v1beta/interactions',
+        requiresApiKey: true,
+      ),
+      EngineDialectDescriptor(
+        id: 'anthropic',
+        defaultBaseUrl: 'https://api.anthropic.com/v1',
+        endpointPath: '/messages',
+        requiresApiKey: true,
+      ),
+      EngineDialectDescriptor(
+        id: 'custom_openai',
+        defaultBaseUrl: 'http://127.0.0.1:11434/v1',
+        endpointPath: '/chat/completions',
+        requiresApiKey: false,
+      ),
+    ];
