@@ -964,15 +964,12 @@ class FolioController extends ChangeNotifier {
           _backoffAttempt = int.tryParse(
             RegExp(r'(?:^|;)attempt=(\d+)').firstMatch(raw)?.group(1) ?? '',
           );
-          final detail = RegExp(r'detail=([^;]+)').firstMatch(raw)?.group(1);
           _backoffRetryAt = ms == null
               ? null
               : DateTime.now().add(Duration(milliseconds: ms));
-          if (detail != null && detail.isNotEmpty) {
-            _retryReasonDetail = reason != null ? '$reason ($detail)' : detail;
-          } else {
-            _retryReasonDetail = reason;
-          }
+          // W8: only the reason's key is kept; the notice shows it in words (the raw
+          // technical detail was shown verbatim).
+          _retryReasonDetail = reason;
         } else {
           _lastDiagnosticKey = event.key;
           _lastDiagnosticReason = RegExp(r'(?:^|;)reason=([^;]+)')

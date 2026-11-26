@@ -27,6 +27,12 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(find.text(notice(2, 1)), findsOneWidget);
+      // W8: the reason reads as words, never as a raw diagnostic key.
+      expect(find.text('diag.provider.rate_limited'), findsNothing);
+      expect(
+        find.text(shell.l10n.tRawKey('diag.provider.rate_limited')),
+        findsOneWidget,
+      );
 
       // The first wait runs out (its ticker stops), then a second, longer one starts.
       await tester.pump(const Duration(milliseconds: 2600));
