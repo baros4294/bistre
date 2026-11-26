@@ -1313,8 +1313,8 @@ class _BackoffNoticeState extends State<_BackoffNotice> {
                   if (widget.reasonDetail != null &&
                       widget.reasonDetail!.trim().isNotEmpty)
                     InkText(
-                      widget.reasonDetail!,
-                      role: InkTextRole.codeBlock,
+                      l10n.tRawKey(widget.reasonDetail!),
+                      role: InkTextRole.captionMeta,
                       color: theme.inkMuted,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
