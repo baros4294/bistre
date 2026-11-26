@@ -33,17 +33,31 @@ static void my_application_activate(GApplication* application) {
   // gtk_header_bar_set_show_close_button(header_bar, TRUE);
   // gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
 
-  gtk_window_set_title(window, "bistre_app");
+  // U40: the product name, not the template's binary name.
+  gtk_window_set_title(window, "Bistre");
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
+  // D7: Impeller by default, as on Windows; BISTRE_IMPELLER=off falls back to Skia on a GPU
+  // or driver where Impeller misbehaves (for example some virtual machines).
+  const gchar* impeller = g_getenv("BISTRE_IMPELLER");
+  const gboolean impeller_off =
+      impeller != nullptr && (g_strcmp0(impeller, "off") == 0 ||
+                              g_strcmp0(impeller, "false") == 0 ||
+                              g_strcmp0(impeller, "0") == 0);
+  fl_dart_project_set_enable_impeller(project, !impeller_off);
 
   FlView* view = fl_view_new(project);
   GdkRGBA background_color;
-  // Background defaults to black, override it here if necessary, e.g. #00000000
-  // for transparent.
-  gdk_rgba_parse(&background_color, "#000000");
+  // U40: the window opens on the app's paper colour (day theme `bgCanvas`, as the Windows
+  // frame does), never a black flash before the first frame; night when GTK prefers dark.
+  gboolean prefer_dark = FALSE;
+  GtkSettings* gtk_settings = gtk_settings_get_default();
+  if (gtk_settings != nullptr) {
+    g_object_get(gtk_settings, "gtk-application-prefer-dark-theme", &prefer_dark, nullptr);
+  }
+  gdk_rgba_parse(&background_color, prefer_dark ? "#19120D" : "#F6EFE2");
   fl_view_set_background_color(view, &background_color);
   gtk_widget_show(GTK_WIDGET(view));
   gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));

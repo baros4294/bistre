@@ -35,6 +35,7 @@ class BistreAgentService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var lastActiveCount = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -49,6 +50,8 @@ class BistreAgentService : Service() {
         }
 
         val activeCount = intent?.getIntExtra(EXTRA_ACTIVE_COUNT, 1) ?: 1
+        val holdLocks = intent?.getBooleanExtra(EXTRA_HOLD_LOCKS, true) ?: true
+        lastActiveCount = activeCount
         val summary = intent?.getStringExtra(EXTRA_SUMMARY) ?: "AI agent running in background"
         ensureNotificationChannel()
         val notification = buildNotification(activeCount, summary)
@@ -64,9 +67,23 @@ class BistreAgentService : Service() {
         }
 
         isRunning = true
-        acquireLocks()
+        // P15: no wake lock while every run waits for the user.
+        if (holdLocks) acquireLocks() else releaseLocks()
         registerNetworkWatcher()
-        return START_REDELIVER_INTENT
+        // P14: never restarted by the system after the process is killed (a phantom service
+        // with no run behind it); the app restarts it when a run starts.
+        return START_NOT_STICKY
+    }
+
+    // P16: the app was swiped away; with nothing running the service goes too.
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (lastActiveCount <= 0) {
+            isRunning = false
+            releaseLocks()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onTimeout(startId: Int, fgsType: Int) {
@@ -196,16 +213,18 @@ class BistreAgentService : Service() {
         const val ACTION_STOP = "dev.bistre.action.STOP_AGENT_FGS"
         const val EXTRA_ACTIVE_COUNT = "active_count"
         const val EXTRA_SUMMARY = "summary"
+        const val EXTRA_HOLD_LOCKS = "hold_locks"
 
         @Volatile
         var isRunning: Boolean = false
             private set
 
-        fun start(context: Context, activeCount: Int, summary: String) {
+        fun start(context: Context, activeCount: Int, summary: String, holdLocks: Boolean = true) {
             val intent = Intent(context, BistreAgentService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_ACTIVE_COUNT, activeCount)
                 putExtra(EXTRA_SUMMARY, summary)
+                putExtra(EXTRA_HOLD_LOCKS, holdLocks)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)

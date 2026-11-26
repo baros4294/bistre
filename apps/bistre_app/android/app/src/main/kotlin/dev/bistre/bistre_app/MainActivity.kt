@@ -90,7 +90,8 @@ class MainActivity : FlutterActivity() {
                 "startAgentService" -> {
                     val count = call.argument<Int>("activeCount") ?: 1
                     val summary = call.argument<String>("summary") ?: "AI agent active"
-                    BistreAgentService.start(this, count, summary)
+                    val holdLocks = call.argument<Boolean>("holdLocks") ?: true
+                    BistreAgentService.start(this, count, summary, holdLocks)
                     result.success(currentPowerState())
                 }
                 "stopAgentService" -> {

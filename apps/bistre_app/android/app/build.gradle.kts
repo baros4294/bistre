@@ -14,6 +14,16 @@ val keystoreProps = Properties().apply {
 val envKeystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
     ?: keystoreProps.getProperty("storeFile")
 val hasReleaseSigning = !envKeystorePath.isNullOrBlank() && file(envKeystorePath).isFile
+// C1: on CI a release build never silently falls back to the debug key. Only a job that
+// explicitly builds a debug-signed intermediate (re-signed later by the release signing job,
+// or the unshipped CI check build) sets BISTRE_ALLOW_DEBUG_SIGNING=1.
+val onCi = System.getenv("CI") == "true"
+val debugSigningAllowed = System.getenv("BISTRE_ALLOW_DEBUG_SIGNING") == "1"
+if (onCi && !hasReleaseSigning && !debugSigningAllowed) {
+    throw GradleException(
+        "Release signing keystore missing on CI (set ANDROID_KEYSTORE_PATH, or BISTRE_ALLOW_DEBUG_SIGNING=1 for an unshipped build)",
+    )
+}
 
 android {
     namespace = "dev.bistre.bistre_app"
@@ -72,8 +82,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            // Uses provisioned release keystore when available (CI secrets or local key.properties);
-            // falls back to debug keystore for unsigned local verification builds.
+            // Uses the provisioned release keystore when available (local key.properties); otherwise
+            // the debug key, which CI allows only for builds that are never shipped as-is (above).
             signingConfig = if (hasReleaseSigning) {
                 signingConfigs.getByName("release")
             } else {
