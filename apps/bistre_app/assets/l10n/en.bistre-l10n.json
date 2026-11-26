@@ -10,13 +10,6 @@
       "max_chars": 24,
       "placeholders": {}
     },
-    "app.subtitle": {
-      "message": "Local AI Workspace",
-      "context": "Short subtitle under brand title in sidebar",
-      "tone": "calm_editorial",
-      "max_chars": 48,
-      "placeholders": {}
-    },
     "shell.theme.day": {
       "message": "Light",
       "context": "Light sepia theme option",
@@ -44,22 +37,6 @@
       "tone": "concise_action",
       "max_chars": 24,
       "placeholders": {}
-    },
-    "shell.health.wal_ready": {
-      "message": "Core v{version} · {count, plural, =0{0 messages} one{1 message} other{{count} messages}}",
-      "context": "Compact engine and storage status label",
-      "tone": "diagnostic",
-      "max_chars": 120,
-      "placeholders": {
-        "version": {
-          "type": "string",
-          "example": "0.1.0"
-        },
-        "count": {
-          "type": "int",
-          "example": "4"
-        }
-      }
     },
     "shell.search.placeholder": {
       "message": "Search messages...",
@@ -101,20 +78,6 @@
       "max_chars": 40,
       "placeholders": {}
     },
-    "shell.empty.title": {
-      "message": "Start a conversation",
-      "context": "Empty chat heading before first message",
-      "tone": "calm_editorial",
-      "max_chars": 48,
-      "placeholders": {}
-    },
-    "shell.empty.body": {
-      "message": "Fast, private, local-first AI. Your chats and API keys stay encrypted on this device.",
-      "context": "Empty chat helper subtitle",
-      "tone": "calm_editorial",
-      "max_chars": 128,
-      "placeholders": {}
-    },
     "shell.role.user": {
       "message": "You",
       "context": "Speaker label for user messages",
@@ -141,39 +104,6 @@
       "context": "Custom text selection toolbar select-all action",
       "tone": "concise_action",
       "max_chars": 20,
-      "placeholders": {}
-    },
-    "shell.locale.switch_a11y": {
-      "message": "Switch language to {locale}",
-      "context": "Screen reader label for language selector",
-      "tone": "concise_action",
-      "max_chars": 48,
-      "placeholders": {
-        "locale": {
-          "type": "string",
-          "example": "vi"
-        }
-      }
-    },
-    "shell.locale.en": {
-      "message": "EN",
-      "context": "Short label for English",
-      "tone": "concise_action",
-      "max_chars": 8,
-      "placeholders": {}
-    },
-    "shell.locale.vi": {
-      "message": "VI",
-      "context": "Short label for Vietnamese",
-      "tone": "concise_action",
-      "max_chars": 8,
-      "placeholders": {}
-    },
-    "shell.locale.ar": {
-      "message": "AR",
-      "context": "Short label for Arabic RTL",
-      "tone": "concise_action",
-      "max_chars": 8,
       "placeholders": {}
     },
     "shell.thread.default_title": {
@@ -351,34 +281,6 @@
       "max_chars": 36,
       "placeholders": {}
     },
-    "sidebar.section.assistants": {
-      "message": "Assistants",
-      "context": "Sidebar vertical section for assistants",
-      "tone": "calm_editorial",
-      "max_chars": 24,
-      "placeholders": {}
-    },
-    "sidebar.section.topics": {
-      "message": "Topics",
-      "context": "Sidebar vertical section for topic filters",
-      "tone": "calm_editorial",
-      "max_chars": 24,
-      "placeholders": {}
-    },
-    "sidebar.section.pinned": {
-      "message": "Pinned",
-      "context": "Sidebar vertical section for pinned chats",
-      "tone": "calm_editorial",
-      "max_chars": 24,
-      "placeholders": {}
-    },
-    "sidebar.section.recent": {
-      "message": "Recent",
-      "context": "Sidebar vertical section for recent chats",
-      "tone": "calm_editorial",
-      "max_chars": 28,
-      "placeholders": {}
-    },
     "sidebar.empty_filtered": {
       "message": "No matching chats.",
       "context": "Shown when sidebar search or topic filter finds nothing",
@@ -398,75 +300,6 @@
       "context": "Sidebar footer button to open Settings",
       "tone": "concise_action",
       "max_chars": 24,
-      "placeholders": {}
-    },
-    "sidebar.shortcuts": {
-      "message": "Shortcuts",
-      "context": "Sidebar footer button to view keyboard shortcuts",
-      "tone": "concise_action",
-      "max_chars": 24,
-      "placeholders": {}
-    },
-    "sidebar.wallet_summary": {
-      "message": "{preset} · {spent} / {ceiling}",
-      "context": "Compact permission mode and daily spend summary",
-      "tone": "diagnostic",
-      "max_chars": 64,
-      "placeholders": {
-        "preset": {
-          "type": "string",
-          "example": "Balanced"
-        },
-        "spent": {
-          "type": "string",
-          "example": "$0.00"
-        },
-        "ceiling": {
-          "type": "string",
-          "example": "$5.00"
-        }
-      }
-    },
-    "topic.all": {
-      "message": "All chats",
-      "context": "Topic filter showing every chat",
-      "tone": "concise_action",
-      "max_chars": 24,
-      "placeholders": {}
-    },
-    "topic.general": {
-      "message": "General",
-      "context": "General chat topic",
-      "tone": "concise_action",
-      "max_chars": 20,
-      "placeholders": {}
-    },
-    "topic.code": {
-      "message": "Coding",
-      "context": "Software engineering topic",
-      "tone": "concise_action",
-      "max_chars": 20,
-      "placeholders": {}
-    },
-    "topic.writing": {
-      "message": "Writing",
-      "context": "Writing and editing topic",
-      "tone": "concise_action",
-      "max_chars": 20,
-      "placeholders": {}
-    },
-    "topic.research": {
-      "message": "Research",
-      "context": "Research and reading topic",
-      "tone": "concise_action",
-      "max_chars": 20,
-      "placeholders": {}
-    },
-    "topic.translate": {
-      "message": "Translation",
-      "context": "Translation topic",
-      "tone": "concise_action",
-      "max_chars": 20,
       "placeholders": {}
     },
     "mode.chat": {
@@ -614,13 +447,6 @@
       "max_chars": 32,
       "placeholders": {}
     },
-    "chat.streaming_badge": {
-      "message": "Responding...",
-      "context": "Indicator while AI reply streams",
-      "tone": "diagnostic",
-      "max_chars": 36,
-      "placeholders": {}
-    },
     "chat.branch_indicator": {
       "message": "{current} / {total}",
       "context": "Version indicator on regenerated replies",
@@ -658,13 +484,6 @@
       "max_chars": 24,
       "placeholders": {}
     },
-    "chat.search_toggle": {
-      "message": "Search history",
-      "context": "Toggle chat history search bar",
-      "tone": "concise_action",
-      "max_chars": 28,
-      "placeholders": {}
-    },
     "chat.search_all_scope": {
       "message": "All chats",
       "context": "Search across every chat",
@@ -677,62 +496,6 @@
       "context": "Search only inside the active chat",
       "tone": "concise_action",
       "max_chars": 24,
-      "placeholders": {}
-    },
-    "chat.welcome.prompt1.title": {
-      "message": "Debug or review code",
-      "context": "Starter suggestion 1 title",
-      "tone": "concise_action",
-      "max_chars": 36,
-      "placeholders": {}
-    },
-    "chat.welcome.prompt1.body": {
-      "message": "Review this function for edge cases, race conditions, and cleaner structure.",
-      "context": "Starter suggestion 1 prompt",
-      "tone": "calm_editorial",
-      "max_chars": 120,
-      "placeholders": {}
-    },
-    "chat.welcome.prompt2.title": {
-      "message": "Draft a clear message",
-      "context": "Starter suggestion 2 title",
-      "tone": "concise_action",
-      "max_chars": 36,
-      "placeholders": {}
-    },
-    "chat.welcome.prompt2.body": {
-      "message": "Help me write a concise, thoughtful project update without corporate filler.",
-      "context": "Starter suggestion 2 prompt",
-      "tone": "calm_editorial",
-      "max_chars": 128,
-      "placeholders": {}
-    },
-    "chat.welcome.prompt3.title": {
-      "message": "Break down a hard topic",
-      "context": "Starter suggestion 3 title",
-      "tone": "concise_action",
-      "max_chars": 36,
-      "placeholders": {}
-    },
-    "chat.welcome.prompt3.body": {
-      "message": "Explain how local-first SQLite WAL and branching chat history work in plain English.",
-      "context": "Starter suggestion 3 prompt",
-      "tone": "calm_editorial",
-      "max_chars": 120,
-      "placeholders": {}
-    },
-    "chat.welcome.prompt4.title": {
-      "message": "Translate naturally",
-      "context": "Starter suggestion 4 title",
-      "tone": "concise_action",
-      "max_chars": 36,
-      "placeholders": {}
-    },
-    "chat.welcome.prompt4.body": {
-      "message": "Translate this text between English, Vietnamese, and Arabic while keeping the tone natural.",
-      "context": "Starter suggestion 4 prompt",
-      "tone": "calm_editorial",
-      "max_chars": 128,
       "placeholders": {}
     },
     "provider.setup.title": {
@@ -770,31 +533,12 @@
       "max_chars": 24,
       "placeholders": {}
     },
-    "provider.status.custom_ready": {
-      "message": "Custom",
-      "context": "Badge for custom OpenAI-compatible provider",
-      "tone": "concise_action",
-      "max_chars": 24,
-      "placeholders": {}
-    },
     "provider.status.active": {
       "message": "Active",
       "context": "Badge indicating active selected provider",
       "tone": "concise_action",
       "max_chars": 20,
       "placeholders": {}
-    },
-    "provider.status.count": {
-      "message": "{count, plural, =0{Add API key} one{1 provider ready} other{{count} providers ready}}",
-      "context": "Sidebar footer status summary for connected providers",
-      "tone": "concise_action",
-      "max_chars": 48,
-      "placeholders": {
-        "count": {
-          "type": "int",
-          "example": "1"
-        }
-      }
     },
     "provider.field.api_key": {
       "message": "API key",
@@ -887,20 +631,6 @@
       "max_chars": 24,
       "placeholders": {}
     },
-    "provider.action.add_custom": {
-      "message": "Add custom provider",
-      "context": "Button to create a custom OpenAI-compatible provider",
-      "tone": "concise_action",
-      "max_chars": 32,
-      "placeholders": {}
-    },
-    "provider.action.delete_custom": {
-      "message": "Delete provider",
-      "context": "Button deleting a custom provider",
-      "tone": "concise_action",
-      "max_chars": 28,
-      "placeholders": {}
-    },
     "provider.action.show_key": {
       "message": "Show API key",
       "context": "Accessibility label to reveal typed key",
@@ -967,13 +697,6 @@
       "context": "Subtitle for Custom provider row",
       "tone": "calm_editorial",
       "max_chars": 40,
-      "placeholders": {}
-    },
-    "palette.trigger": {
-      "message": "Command menu",
-      "context": "Button opening Ctrl+K command menu",
-      "tone": "concise_action",
-      "max_chars": 28,
       "placeholders": {}
     },
     "palette.placeholder": {
@@ -1221,25 +944,11 @@
       "max_chars": 40,
       "placeholders": {}
     },
-    "settings.trust.local_first": {
-      "message": "Prefer free local models",
-      "context": "Toggle prioritizing free local endpoints",
-      "tone": "calm_editorial",
-      "max_chars": 40,
-      "placeholders": {}
-    },
     "settings.trust.stateless": {
       "message": "Private requests (do not store on provider servers)",
       "context": "Toggle setting store: false by default",
       "tone": "calm_editorial",
       "max_chars": 64,
-      "placeholders": {}
-    },
-    "settings.engine.heading": {
-      "message": "Local storage and engine",
-      "context": "Storage and engine tab heading",
-      "tone": "calm_editorial",
-      "max_chars": 44,
       "placeholders": {}
     },
     "settings.engine.telemetry": {
@@ -1557,13 +1266,6 @@
       "context": "Label for primary accent color customization",
       "tone": "calm_editorial",
       "max_chars": 36,
-      "placeholders": {}
-    },
-    "settings.appearance.accent_custom": {
-      "message": "Custom hex",
-      "context": "Custom hex color option label",
-      "tone": "concise_action",
-      "max_chars": 32,
       "placeholders": {}
     },
     "settings.appearance.accent_wax": {
@@ -2060,13 +1762,6 @@
       "max_chars": 40,
       "placeholders": {}
     },
-    "chat.inspector.toggle": {
-      "message": "Chat parameters",
-      "context": "Tooltip/semantics for header inspector toggle button",
-      "tone": "concise_action",
-      "max_chars": 40,
-      "placeholders": {}
-    },
     "chat.inspector.override_prompt": {
       "message": "System prompt override",
       "context": "Per-chat system prompt override editor label",
@@ -2279,17 +1974,6 @@
       "max_chars": 20,
       "placeholders": {}
     },
-    "studio.running_count": {
-      "message": "{count} running",
-      "context": "Top-bar badge showing number of active agent runs",
-      "tone": "concise_action",
-      "max_chars": 28,
-      "placeholders": {
-        "count": {
-          "type": "int"
-        }
-      }
-    },
     "studio.power_guard_title": {
       "message": "Sleep & disruption guard",
       "context": "Card heading in Studio Runs panel",
@@ -2465,20 +2149,6 @@
     "mode.plan": {
       "message": "Plan",
       "context": "Read-only planning agent mode tab",
-      "tone": "concise_action",
-      "max_chars": 16,
-      "placeholders": {}
-    },
-    "mode.build": {
-      "message": "Build",
-      "context": "Write-capable coding agent mode tab",
-      "tone": "concise_action",
-      "max_chars": 16,
-      "placeholders": {}
-    },
-    "mode.write_rp": {
-      "message": "Write",
-      "context": "Creative writing and roleplay mode tab",
       "tone": "concise_action",
       "max_chars": 16,
       "placeholders": {}
@@ -2662,13 +2332,6 @@
       "max_chars": 32,
       "placeholders": {}
     },
-    "settings.agent.workspace_pick": {
-      "message": "Choose folder",
-      "context": "Button to bind local workspace folder",
-      "tone": "concise_action",
-      "max_chars": 24,
-      "placeholders": {}
-    },
     "settings.agent.mcp_title": {
       "message": "MCP servers",
       "context": "Settings section heading for Model Context Protocol servers",
@@ -2745,18 +2408,6 @@
       "tone": "concise_action",
       "max_chars": 24,
       "placeholders": {}
-    },
-    "composer.attachments_count": {
-      "message": "{count} attached",
-      "context": "Summary pill showing number of attached files",
-      "tone": "calm_editorial",
-      "max_chars": 28,
-      "placeholders": {
-        "count": {
-          "type": "int",
-          "example": 2
-        }
-      }
     },
     "composer.mention_title": {
       "message": "Insert context",
@@ -2959,13 +2610,6 @@
       "context": "Placeholder for scheduled task prompt",
       "tone": "calm_editorial",
       "max_chars": 64,
-      "placeholders": {}
-    },
-    "subagents.title": {
-      "message": "Background workers",
-      "context": "Heading for isolated worktree background subagents",
-      "tone": "calm_editorial",
-      "max_chars": 32,
       "placeholders": {}
     },
     "story.characters_title": {
@@ -4413,13 +4057,6 @@
       "max_chars": 24,
       "placeholders": {}
     },
-    "chat.tools.stateless": {
-      "message": "Private (no server storage)",
-      "context": "Toggle row inside composer tools popover for stateless requests",
-      "tone": "calm_editorial",
-      "max_chars": 36,
-      "placeholders": {}
-    },
     "chat.tools.prefill_label": {
       "message": "Reply start (prefill)",
       "context": "Label for optional assistant reply prefix input in composer tools popover",
@@ -4519,13 +4156,6 @@
       "context": "Output tokens per second row label in turn usage popover",
       "tone": "calm_editorial",
       "max_chars": 20,
-      "placeholders": {}
-    },
-    "chat.attachment.preview": {
-      "message": "Attachment preview",
-      "context": "Title of the modal showing an attached file or image",
-      "tone": "calm_editorial",
-      "max_chars": 28,
       "placeholders": {}
     },
     "chat.svg.preview": {
@@ -4638,13 +4268,6 @@
       "context": "Per-tool permission option disabling the tool",
       "tone": "concise_action",
       "max_chars": 12,
-      "placeholders": {}
-    },
-    "settings.mcp.presets_title": {
-      "message": "Quick-add standard servers",
-      "context": "Heading above preset chips in MCP settings",
-      "tone": "calm_editorial",
-      "max_chars": 36,
       "placeholders": {}
     },
     "tool.shell_steps": {
@@ -5783,13 +5406,6 @@
       "context": "Empty state inside searchable model dropdown before fetching models",
       "tone": "calm_editorial",
       "max_chars": 88,
-      "placeholders": {}
-    },
-    "settings.model.pick_action": {
-      "message": "Choose",
-      "context": "Button opening the searchable model dropdown",
-      "tone": "concise_action",
-      "max_chars": 18,
       "placeholders": {}
     },
     "settings.ota.check_error_title": {
