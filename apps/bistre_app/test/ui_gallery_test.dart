@@ -28,6 +28,7 @@ void main() {
         defaultThreadTitle: l10n1.t(L10nKey.shellThreadDefaultTitle),
         onLocaleSynced: l10n1.setLocale,
         isDevEnvironment: true,
+        clock: galleryClock,
       );
       await ctrl1.bootstrap('memory');
       final key1 = GlobalKey();
@@ -49,6 +50,7 @@ void main() {
         defaultThreadTitle: l10nReady.t(L10nKey.shellThreadDefaultTitle),
         onLocaleSynced: l10nReady.setLocale,
         isDevEnvironment: true,
+        clock: galleryClock,
       );
       await ctrlReady.bootstrap('memory');
       final keyReady = GlobalKey();
@@ -78,6 +80,7 @@ void main() {
         defaultThreadTitle: l10n2.t(L10nKey.shellThreadDefaultTitle),
         onLocaleSynced: l10n2.setLocale,
         isDevEnvironment: true,
+        clock: galleryClock,
       );
       await ctrl2.bootstrap('memory');
       ctrl2.replyToPassage(
@@ -201,6 +204,7 @@ void main() {
         defaultThreadTitle: l10n3.t(L10nKey.shellThreadDefaultTitle),
         onLocaleSynced: l10n3.setLocale,
         isDevEnvironment: true,
+        clock: galleryClock,
       );
       await ctrl3.bootstrap('memory');
       final key3 = GlobalKey();

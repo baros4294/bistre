@@ -437,7 +437,8 @@ void main() {
       await tester.pump(FolioController.searchDebounce);
       await tester.pumpAndSettle();
       expect(ctrl.searchQuery, 'hel');
-      await ctrl.flushDraftNow('a draft');
+      ctrl.scheduleDraftSave('a draft');
+      await ctrl.flushPendingDraft();
       await tester.pump();
       expect(ctrl.draftSaved, isTrue);
       // The engine echoes every save; the echo changes nothing and must not rebuild.
@@ -464,9 +465,9 @@ void main() {
       await pumpEventQueue();
       final thread = ctrl.activeThread!.id;
       final leaf = ctrl.visibleBranchNodes.last.id;
-      final expected = await gw.contextUsage(thread, leaf);
-      expect(expected.totalTokens, greaterThan(0));
-      expect(ctrl.contextUsage.value, expected);
+      final expected = await gw.contextBreakdown(thread, leaf);
+      expect(expected.totalSent, greaterThan(0));
+      expect(ctrl.contextBreakdown.value, expected);
 
       // A different chat asks core again and shows that chat's number.
       final other = ctrl.threads.firstWhere((t) => t.id != thread).id;
@@ -474,10 +475,10 @@ void main() {
       await pumpEventQueue();
       final otherLeaf = ctrl.visibleBranchNodes.lastOrNull?.id;
       expect(
-        ctrl.contextUsage.value,
+        ctrl.contextBreakdown.value,
         otherLeaf == null
-            ? EngineContextUsage.empty
-            : await gw.contextUsage(other, otherLeaf),
+            ? EngineContextBreakdown.empty
+            : await gw.contextBreakdown(other, otherLeaf),
       );
       ctrl.dispose();
       await gw.shutdown();
@@ -532,15 +533,16 @@ void main() {
     await tester.tap(find.byType(ContextGaugeRing));
     await tester.pumpAndSettle();
     expect(find.text(l10n.t(L10nKey.chatContextTitle)), findsOneWidget);
-    expect(find.text(l10n.t(L10nKey.chatContextInstructions)), findsOneWidget);
-    final turns = ctrl.contextUsage.value.historyTurns;
+    final turns = ctrl.contextBreakdown.value.countOf('messages') ?? 0;
     expect(
       find.text(
-        l10n.t(L10nKey.chatContextHistory, <String, Object?>{'count': turns}),
+        l10n.t(L10nKey.chatContextCatMessages, <String, Object?>{
+          'count': turns,
+        }),
       ),
       findsOneWidget,
     );
-    expect(find.text(l10n.t(L10nKey.chatContextFree)), findsOneWidget);
+    expect(find.text(l10n.t(L10nKey.chatContextCatFree)), findsOneWidget);
 
     // Escape fades the popover out (DESIGN §6) before removing it.
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);

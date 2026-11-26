@@ -169,12 +169,9 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
     return '${raw.substring(0, 4)}••••${raw.substring(raw.length - 4)}';
   }
 
-  static String _defaultBaseUrlForDialect(String dialect) => switch (dialect) {
-    'openai' => 'https://api.openai.com/v1',
-    'google_gemini' => 'https://generativelanguage.googleapis.com',
-    'anthropic' => 'https://api.anthropic.com/v1',
-    _ => 'http://127.0.0.1:11434/v1',
-  };
+  /// Core's default server URL for an API format (P7).
+  String _defaultBaseUrl(String dialect) =>
+      widget.controller.dialectDescriptor(dialect)?.defaultBaseUrl ?? '';
 
   void _openCreateFlow([ProviderPreset? tpl]) {
     setState(() {
@@ -182,7 +179,7 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
       _confirmDelete = false;
       _newNameCtrl.text = tpl?.name ?? '';
       _newDialect = tpl?.dialect ?? 'custom_openai';
-      _newUrlCtrl.text = tpl?.baseUrl ?? 'http://127.0.0.1:11434/v1';
+      _newUrlCtrl.text = _defaultBaseUrl(_newDialect);
       _newModelCtrl.text = tpl?.defaultModel ?? '';
       _newIconSlug = tpl?.iconSlug ?? 'server';
       _newKeyCtrl.clear();
@@ -405,8 +402,7 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
               _TemplateChip(
                 template: tpl,
                 selected:
-                    _newIconSlug == tpl.iconSlug &&
-                    _newUrlCtrl.text == tpl.baseUrl,
+                    _newIconSlug == tpl.iconSlug && _newDialect == tpl.dialect,
                 onTap: () => _openCreateFlow(tpl),
               ),
           ],
@@ -434,7 +430,7 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                 children: [
                   for (final entry in <(String, L10nKey)>[
                     ('openai', L10nKey.providerDialectOpenai),
-                    ('gemini', L10nKey.providerDialectGemini),
+                    ('google_gemini', L10nKey.providerDialectGemini),
                     ('anthropic', L10nKey.providerDialectAnthropic),
                     ('custom_openai', L10nKey.providerDialectCustom),
                   ])
@@ -451,7 +447,7 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
               bottom: QuillInput(
                 controller: _newUrlCtrl,
                 focusNode: _newUrlFocus,
-                placeholder: kExampleBaseUrl,
+                placeholder: _defaultBaseUrl(_newDialect),
                 maxLines: 1,
                 submitOnEnter: false,
                 onSubmitted: () {},
@@ -885,7 +881,7 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                 label: l10n.t(L10nKey.settingsAppearanceFontReset),
                 compact: true,
                 onPressed: () {
-                  final def = _defaultBaseUrlForDialect(p.dialect);
+                  final def = _defaultBaseUrl(p.dialect);
                   setState(() => _baseUrlCtrl.text = def);
                   unawaited(
                     ctrl.saveProviderConfig(providerId: p.id, baseUrl: def),
@@ -895,7 +891,7 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
               bottom: QuillInput(
                 controller: _baseUrlCtrl,
                 focusNode: _baseUrlFocus,
-                placeholder: kExampleBaseUrl,
+                placeholder: _defaultBaseUrl(p.dialect),
                 maxLines: 1,
                 submitOnEnter: false,
                 onSubmitted: () {},
@@ -956,34 +952,31 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxHeight: 168),
                       child: SmoothScrollable(
-                        builder: (_, scroll) => SingleChildScrollView(
+                        // P24: lazy, so every model is reachable (the old list stopped at 60).
+                        builder: (_, scroll) => ListView.builder(
                           controller: scroll,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              for (final m in filteredModels.take(60))
-                                _SelectableModelRow(
-                                  model: m,
-                                  selected: _modelCtrl.text.trim() == m.id,
-                                  onTap: () {
-                                    setState(() => _modelCtrl.text = m.id);
-                                    unawaited(
-                                      ctrl.setActiveProviderAndModel(
-                                        p.id,
-                                        m.id,
-                                      ),
-                                    );
-                                  },
-                                  onConfigure: () => setState(() {
-                                    _editingModelId = m.id;
-                                    _subpage = 'model';
-                                  }),
-                                  onHide: () => unawaited(
-                                    ctrl.hideModelForProvider(p.id, m.id),
-                                  ),
-                                ),
-                            ],
-                          ),
+                          shrinkWrap: true,
+                          itemCount: filteredModels.length,
+                          itemBuilder: (_, index) {
+                            final m = filteredModels[index];
+                            return _SelectableModelRow(
+                              model: m,
+                              selected: _modelCtrl.text.trim() == m.id,
+                              onTap: () {
+                                setState(() => _modelCtrl.text = m.id);
+                                unawaited(
+                                  ctrl.setActiveProviderAndModel(p.id, m.id),
+                                );
+                              },
+                              onConfigure: () => setState(() {
+                                _editingModelId = m.id;
+                                _subpage = 'model';
+                              }),
+                              onHide: () => unawaited(
+                                ctrl.hideModelForProvider(p.id, m.id),
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ),
@@ -1006,28 +999,6 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                   ),
                 ),
               ),
-            BistreSettingRow(
-              label: l10n.t(L10nKey.providerCustomHeaders),
-              bottom: QuillInput(
-                controller: _headersCtrl,
-                focusNode: _headersFocus,
-                placeholder: kExampleHeadersJson,
-                maxLines: 2,
-                submitOnEnter: false,
-                onSubmitted: () {},
-              ),
-            ),
-            BistreSettingRow(
-              label: l10n.t(L10nKey.providerCustomBody),
-              bottom: QuillInput(
-                controller: _bodyCtrl,
-                focusNode: _bodyFocus,
-                placeholder: kExampleBodyJson,
-                maxLines: 2,
-                submitOnEnter: false,
-                onSubmitted: () {},
-              ),
-            ),
             Padding(
               padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
               child: Wrap(
@@ -1043,11 +1014,6 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                         name: _nameCtrl.text.trim(),
                         baseUrl: _baseUrlCtrl.text.trim(),
                         defaultModel: _modelCtrl.text.trim(),
-                      );
-                      await ctrl.saveProviderOverrides(
-                        providerId: p.id,
-                        headersJson: _headersCtrl.text,
-                        bodyJson: _bodyCtrl.text,
                       );
                     },
                   ),

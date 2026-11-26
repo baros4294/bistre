@@ -3,50 +3,29 @@
 /// `/models` endpoint, and any third-party or local server connects through `Custom`.
 library;
 
-/// Starter provider preset (name, API format, server URL, optional initial model, icon).
+/// Starter provider preset (name, API format id, optional initial model, icon). The server
+/// URL and endpoint come from core's dialect descriptor (P7), never from a copy here.
 class ProviderPreset {
   const ProviderPreset({
     required this.name,
     required this.dialect,
-    required this.baseUrl,
     this.defaultModel = '',
     required this.iconSlug,
   });
 
   final String name;
   final String dialect;
-  final String baseUrl;
   final String defaultModel;
   final String iconSlug;
 }
 
-const String kExampleBaseUrl = 'https://api.openai.com/v1';
-const String kExampleHeadersJson = '{"X-Title": "Bistre"}';
-const String kExampleBodyJson = '{"seed": 42}';
-
 const List<ProviderPreset> kProviderPresets = <ProviderPreset>[
-  ProviderPreset(
-    name: 'OpenAI',
-    dialect: 'openai',
-    baseUrl: 'https://api.openai.com/v1',
-    iconSlug: 'openai',
-  ),
+  ProviderPreset(name: 'OpenAI', dialect: 'openai', iconSlug: 'openai'),
   ProviderPreset(
     name: 'Google Gemini',
-    dialect: 'gemini',
-    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    dialect: 'google_gemini',
     iconSlug: 'gemini',
   ),
-  ProviderPreset(
-    name: 'Anthropic',
-    dialect: 'anthropic',
-    baseUrl: 'https://api.anthropic.com/v1',
-    iconSlug: 'claude',
-  ),
-  ProviderPreset(
-    name: 'Custom',
-    dialect: 'custom_openai',
-    baseUrl: '',
-    iconSlug: 'server',
-  ),
+  ProviderPreset(name: 'Anthropic', dialect: 'anthropic', iconSlug: 'claude'),
+  ProviderPreset(name: 'Custom', dialect: 'custom_openai', iconSlug: 'server'),
 ];

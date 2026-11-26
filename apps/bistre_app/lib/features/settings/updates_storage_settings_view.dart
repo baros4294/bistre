@@ -31,6 +31,7 @@ class _UpdatesStorageSettingsViewState
     extends State<UpdatesStorageSettingsView> {
   final TextEditingController _feedUrlCtrl = TextEditingController();
   final FocusNode _feedUrlFocus = FocusNode();
+  bool _showOtaDetails = false;
 
   @override
   void initState() {
@@ -265,7 +266,7 @@ class _UpdatesStorageSettingsViewState
                       ),
                     ),
                   ),
-                if (ctrl.lastOtaError != null)
+                if (ctrl.lastOtaDiagnostic case final otaDiag?)
                   Padding(
                     padding: const EdgeInsetsDirectional.fromSTEB(
                       BistreSpacing.s16,
@@ -293,10 +294,35 @@ class _UpdatesStorageSettingsViewState
                             ),
                             const SizedBox(height: 4),
                             InkText(
-                              ctrl.lastOtaError!,
-                              role: InkTextRole.codeBlock,
+                              l10n.tRawKey(otaDiag),
+                              role: InkTextRole.bodyCompact,
                               color: theme.inkSecondary,
                             ),
+                            const SizedBox(height: 6),
+                            EngravedButton(
+                              label: l10n.t(
+                                L10nKey.settingsOtaTechnicalDetails,
+                              ),
+                              compact: true,
+                              leading: BistreIcon(
+                                _showOtaDetails
+                                    ? BistreUiIcon.chevronUp
+                                    : BistreUiIcon.chevronDown,
+                                size: 12,
+                                color: theme.inkSecondary,
+                              ),
+                              onPressed: () => setState(
+                                () => _showOtaDetails = !_showOtaDetails,
+                              ),
+                            ),
+                            if (_showOtaDetails) ...[
+                              const SizedBox(height: 6),
+                              InkText(
+                                [otaDiag, ?ctrl.lastOtaDetail].join(': '),
+                                role: InkTextRole.codeBlock,
+                                color: theme.inkMuted,
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -337,13 +363,25 @@ class _UpdatesStorageSettingsViewState
                       );
                     },
                   ),
-                  bottom: QuillInput(
-                    controller: _feedUrlCtrl,
-                    focusNode: _feedUrlFocus,
-                    placeholder: _kDefaultRepoSlug,
-                    maxLines: 1,
-                    submitOnEnter: false,
-                    onSubmitted: () => unawaited(_saveFeedAndCheck()),
+                  bottom: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      QuillInput(
+                        controller: _feedUrlCtrl,
+                        focusNode: _feedUrlFocus,
+                        placeholder: _kDefaultRepoSlug,
+                        maxLines: 1,
+                        submitOnEnter: false,
+                        onSubmitted: () => unawaited(_saveFeedAndCheck()),
+                      ),
+                      const SizedBox(height: 4),
+                      // A-W 7a: a browser downloads the feed file instead of showing it.
+                      InkText(
+                        l10n.t(L10nKey.settingsOtaFeedDownloadsHint),
+                        role: InkTextRole.captionMeta,
+                        color: theme.inkMuted,
+                      ),
+                    ],
                   ),
                 ),
               ],

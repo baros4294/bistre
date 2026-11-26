@@ -65,6 +65,13 @@ class LiveTurnNotifier extends ValueNotifier<LiveTurn?> {
     value = LiveTurn(threadId: threadId, nodeId: nodeId);
   }
 
+  /// Shows text a turn already has (a chat opened mid-reply), at once and unpaced.
+  void seed({required String text, required String thinking}) {
+    final turn = value;
+    if (turn == null || (text.isEmpty && thinking.isEmpty)) return;
+    value = turn.copyWith(text: text, thinking: thinking);
+  }
+
   /// Appends a text delta when it belongs to the active live turn (`threadId` and optional `nodeId`).
   void appendText(String threadId, String delta, {String? nodeId}) {
     final turn = value;

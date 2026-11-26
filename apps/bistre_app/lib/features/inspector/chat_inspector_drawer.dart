@@ -13,6 +13,7 @@ import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../chat/reasoning_block.dart';
+import '../settings/model_picker_field.dart';
 import '../shell/folio_controller.dart';
 
 /// Collapsible right-side `312px` Chat Parameters & Export Inspector.
@@ -33,6 +34,11 @@ class _ChatInspectorDrawerState extends State<ChatInspectorDrawer> {
   final FocusNode _modelOverrideFocus = FocusNode();
   String? _syncedThreadId;
 
+  /// Edits typed per chat whose save is not confirmed yet (U36). Switching chats never
+  /// replaces them with an older stored value; an entry goes once the chat stores it.
+  final Map<String, String> _unsavedPrompt = <String, String>{};
+  final Map<String, String> _unsavedModel = <String, String>{};
+
   @override
   void initState() {
     super.initState();
@@ -52,10 +58,21 @@ class _ChatInspectorDrawerState extends State<ChatInspectorDrawer> {
 
   void _syncFromThread() {
     final t = widget.controller.activeThread;
-    if (t == null || t.id == _syncedThreadId) return;
+    if (t == null) return;
+    final storedPrompt = t.systemPromptOverride ?? '';
+    final storedModel = t.modelIdOverride ?? '';
+    if (_unsavedPrompt[t.id]?.trim() == storedPrompt)
+      _unsavedPrompt.remove(t.id);
+    if (_unsavedModel[t.id]?.trim() == storedModel) _unsavedModel.remove(t.id);
+    if (t.id == _syncedThreadId) return;
     _syncedThreadId = t.id;
-    _promptCtrl.text = t.systemPromptOverride ?? '';
-    _modelOverrideCtrl.text = t.modelIdOverride ?? '';
+    _promptCtrl.text = _unsavedPrompt[t.id] ?? storedPrompt;
+    _modelOverrideCtrl.text = _unsavedModel[t.id] ?? storedModel;
+  }
+
+  void _noteUnsaved(Map<String, String> edits, String text) {
+    final id = _syncedThreadId;
+    if (id != null) edits[id] = text;
   }
 
   @override
@@ -147,16 +164,6 @@ class _ChatInspectorDrawerState extends State<ChatInspectorDrawer> {
                               ),
                               onPressed: ctrl.togglePinnedPanel,
                             ),
-                            EngravedButton(
-                              label: l10n.t(L10nKey.chatNotesTitle),
-                              compact: true,
-                              leading: BistreIcon(
-                                BistreUiIcon.document,
-                                size: 12,
-                                color: theme.accentBrass,
-                              ),
-                              onPressed: ctrl.toggleChatNotes,
-                            ),
                           ],
                         ),
                         const SizedBox(height: 14),
@@ -200,24 +207,16 @@ class _ChatInspectorDrawerState extends State<ChatInspectorDrawer> {
                           color: theme.inkMuted,
                         ),
                         const SizedBox(height: 6),
-                        QuillInput(
-                          controller: _modelOverrideCtrl,
+                        ModelPickerField(
+                          controller: ctrl,
+                          providerId: ctrl.activeProvider?.id ?? '',
+                          textController: _modelOverrideCtrl,
                           focusNode: _modelOverrideFocus,
                           placeholder: ctrl.activeModelId.isNotEmpty
                               ? ctrl.activeModelId
                               : l10n.t(L10nKey.providerFieldModelPlaceholder),
-                          maxLines: 1,
-                          compact: true,
-                          onSubmitted: () {
-                            final v = _modelOverrideCtrl.text.trim();
-                            unawaited(
-                              ctrl.updateActiveThreadOverrides(
-                                modelIdOverride: v.isEmpty ? null : v,
-                                clearModelOverride: v.isEmpty,
-                              ),
-                            );
-                          },
-                          onChanged: (v) {
+                          onSelectedModel: (v) {
+                            _noteUnsaved(_unsavedModel, v);
                             final trimmed = v.trim();
                             unawaited(
                               ctrl.updateActiveThreadOverrides(
@@ -248,6 +247,7 @@ class _ChatInspectorDrawerState extends State<ChatInspectorDrawer> {
                           submitOnEnter: false,
                           onSubmitted: () {},
                           onChanged: (v) {
+                            _noteUnsaved(_unsavedPrompt, v);
                             final trimmed = v.trim();
                             unawaited(
                               ctrl.updateActiveThreadOverrides(
@@ -379,6 +379,8 @@ class _ChatInspectorDrawerState extends State<ChatInspectorDrawer> {
                             onPressed: () {
                               _promptCtrl.clear();
                               _modelOverrideCtrl.clear();
+                              _noteUnsaved(_unsavedPrompt, '');
+                              _noteUnsaved(_unsavedModel, '');
                               unawaited(ctrl.resetActiveThreadOverrides());
                             },
                           ),

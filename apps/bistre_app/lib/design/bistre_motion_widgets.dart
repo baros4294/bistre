@@ -114,6 +114,9 @@ class FolioModalBackdrop extends StatefulWidget {
 
 class _FolioModalBackdropState extends State<FolioModalBackdrop>
     with SingleTickerProviderStateMixin {
+  /// U26: Tab cycles inside the modal, and focus goes back where it was when it closes.
+  final FocusScopeNode _scope = FocusScopeNode(debugLabel: 'modal');
+  final FocusNode? _returnFocus = FocusManager.instance.primaryFocus;
   late final AnimationController _controller;
   late final Animation<double> _fade;
   late final Animation<double> _scale;
@@ -153,6 +156,14 @@ class _FolioModalBackdropState extends State<FolioModalBackdrop>
 
   @override
   void dispose() {
+    final back = _returnFocus;
+    // After the frame that removes the modal (and lifts the background's ExcludeFocus).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (back != null && back.context != null && back.canRequestFocus) {
+        back.requestFocus();
+      }
+    });
+    _scope.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -160,35 +171,39 @@ class _FolioModalBackdropState extends State<FolioModalBackdrop>
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
-    return Focus(
+    return FocusScope(
+      node: _scope,
       autofocus: true,
-      onKeyEvent: (_, event) {
-        if (event is KeyDownEvent &&
-            event.logicalKey == LogicalKeyboardKey.escape) {
-          widget.onDismiss();
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.ignored;
-      },
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          FadeTransition(
-            opacity: _fade,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: widget.onDismiss,
-              child: ColoredBox(color: theme.scrim),
-            ),
-          ),
-          Align(
-            alignment: widget.alignment,
-            child: FadeTransition(
+      child: Focus(
+        autofocus: true,
+        onKeyEvent: (_, event) {
+          if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.escape) {
+            widget.onDismiss();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            FadeTransition(
               opacity: _fade,
-              child: ScaleTransition(scale: _scale, child: widget.child),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.onDismiss,
+                child: ColoredBox(color: theme.scrim),
+              ),
             ),
-          ),
-        ],
+            Align(
+              alignment: widget.alignment,
+              child: FadeTransition(
+                opacity: _fade,
+                child: ScaleTransition(scale: _scale, child: widget.child),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

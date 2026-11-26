@@ -3,8 +3,14 @@ import 'dart:convert';
 
 import 'package:bistre_app/bridge/bistre_engine.dart';
 
+import 'fake_context.dart';
+
+import 'gallery_harness.dart' show kTestDialectDescriptors;
+
+part 'fake_engine_gateway_runs.dart';
+
 /// In-memory [BistreEngineGateway] used by widget tests (no native library).
-class FakeEngineGateway implements BistreEngineGateway {
+class FakeEngineGateway with _FakeRunsAndPower implements BistreEngineGateway {
   FakeEngineGateway({bool seedConnectedOpenAi = false}) {
     _providers.addAll(<EngineProvider>[
       EngineProvider(
@@ -82,6 +88,47 @@ class FakeEngineGateway implements BistreEngineGateway {
   int _replySeq = 0;
   final StreamController<BistreEvent> _events =
       StreamController<BistreEvent>.broadcast();
+
+  /// Every recorded call, in order.
+  final List<FakeCall> calls = <FakeCall>[];
+  final Map<String, Completer<void>> _gates = <String, Completer<void>>{};
+
+  /// Holds the next calls of [method] until [release], so a test can act (switch chats,
+  /// press Enter) while an engine call is still in flight.
+  void gate(String method) => _gates.putIfAbsent(method, Completer<void>.new);
+
+  /// Lets held calls of [method] continue and removes the gate.
+  void release(String method) {
+    final gate = _gates.remove(method);
+    if (gate != null && !gate.isCompleted) gate.complete();
+  }
+
+  Future<void> _record(String method, Map<String, Object?> args) async {
+    calls.add(FakeCall(method, args));
+    final gate = _gates[method];
+    if (gate != null) await gate.future;
+  }
+
+  /// Calls of [method], oldest first.
+  Iterable<FakeCall> callsTo(String method) =>
+      calls.where((c) => c.method == method);
+
+  /// Pushes an engine event to every subscriber.
+  void emit(BistreEvent event) => _events.add(event);
+
+  /// Adds a thread with an explicit `updatedAtMs` (day-group and ordering tests).
+  EngineThread seedThread({required String title, required int updatedAtMs}) {
+    final t = EngineThread(
+      id: 'thread-${_threads.length + 1}',
+      workspaceId: 'ws-default',
+      title: title,
+      mode: 'chat',
+      createdAtMs: updatedAtMs,
+      updatedAtMs: updatedAtMs,
+    );
+    _threads.add(t);
+    return t;
+  }
 
   @override
   Future<EngineHealth> init(String dataDir) async => getHealth();
@@ -246,10 +293,30 @@ class FakeEngineGateway implements BistreEngineGateway {
   @override
   Future<List<EngineProviderModel>> fetchProviderModels(
     String providerId,
-  ) async => const <EngineProviderModel>[
-    EngineProviderModel(id: 'gpt-4.1', displayName: 'GPT-4.1'),
-    EngineProviderModel(id: 'o4-mini', displayName: 'o4-mini'),
-  ];
+  ) async {
+    final failure = fetchModelsFailure;
+    if (failure != null) throw Exception(failure);
+    return const <EngineProviderModel>[
+      EngineProviderModel(id: 'gpt-4.1', displayName: 'GPT-4.1'),
+      EngineProviderModel(id: 'o4-mini', displayName: 'o4-mini'),
+    ];
+  }
+
+  /// When set, `fetchProviderModels` fails with this error (a diagnostic key string).
+  String? fetchModelsFailure;
+
+  @override
+  EngineResolvedEndpoint resolveProviderEndpoint(
+    String dialect,
+    String baseUrl,
+  ) {
+    final d = kTestDialectDescriptors.firstWhere((x) => x.id == dialect);
+    final base = baseUrl.trim().isEmpty ? d.defaultBaseUrl : baseUrl.trim();
+    return EngineResolvedEndpoint(
+      chatUrl: '$base${d.endpointPath}',
+      modelsUrl: '$base/models',
+    );
+  }
 
   @override
   Future<List<EngineAssistant>> listAssistants() async =>
@@ -370,6 +437,11 @@ class FakeEngineGateway implements BistreEngineGateway {
     int? topPMilli,
     bool clearTopP = false,
   }) async {
+    await _record('updateThread', <String, Object?>{
+      'threadId': threadId,
+      'title': title,
+      'mode': mode,
+    });
     final idx = _threads.indexWhere((t) => t.id == threadId);
     final old = _threads[idx];
     final updated = EngineThread(
@@ -406,6 +478,7 @@ class FakeEngineGateway implements BistreEngineGateway {
 
   @override
   Future<void> deleteThread(String threadId) async {
+    await _record('deleteThread', <String, Object?>{'threadId': threadId});
     _threads.removeWhere((t) => t.id == threadId);
     _nodes.removeWhere((n) => n.threadId == threadId);
     _drafts.remove(threadId);
@@ -429,6 +502,7 @@ class FakeEngineGateway implements BistreEngineGateway {
     String? parentId,
     required String role,
     required String content,
+    List<EngineNodeAttachment> attachments = const <EngineNodeAttachment>[],
   }) async {
     final n = EngineNode(
       id: 'node-${_nodes.length + 1}',
@@ -437,6 +511,7 @@ class FakeEngineGateway implements BistreEngineGateway {
       role: role,
       content: content,
       createdAtMs: ++_clock,
+      attachments: attachments,
     );
     _nodes.add(n);
     _events.add(NodeCommittedEvent(n));
@@ -449,6 +524,11 @@ class FakeEngineGateway implements BistreEngineGateway {
     String? parentId,
     required String userContent,
   }) async {
+    await _record('sendAndStreamReply', <String, Object?>{
+      'threadId': threadId,
+      'parentId': parentId,
+      'userContent': userContent,
+    });
     if (!_providers.any((p) => p.isReady)) {
       throw StateError('diag.provider.not_configured');
     }
@@ -458,7 +538,8 @@ class FakeEngineGateway implements BistreEngineGateway {
       role: 'user',
       content: userContent,
     );
-    _drafts.remove(threadId);
+    // Like the real engine, sending does not touch the stored draft; the composer saves
+    // its own (now empty) text.
     _emitSimulatedAssistantReply(threadId, userNode.id);
     return userNode;
   }
@@ -493,6 +574,10 @@ class FakeEngineGateway implements BistreEngineGateway {
     required String threadId,
     required String userNodeId,
   }) async {
+    await _record('regenerateReply', <String, Object?>{
+      'threadId': threadId,
+      'userNodeId': userNodeId,
+    });
     if (!_providers.any((p) => p.isReady)) {
       throw StateError('diag.provider.not_configured');
     }
@@ -541,28 +626,41 @@ class FakeEngineGateway implements BistreEngineGateway {
   }
 
   @override
-  Future<bool> cancelActiveRun(String threadId) async => false;
+  Future<bool> cancelActiveRun(String threadId) async {
+    await _record('cancelActiveRun', <String, Object?>{'threadId': threadId});
+    return false;
+  }
 
   @override
   Future<bool> retryRunNow(String threadId) async => false;
 
   @override
-  Future<List<EngineNode>> listNodes(String threadId) async =>
-      _nodes.where((n) => n.threadId == threadId).toList(growable: false);
+  Future<List<EngineNode>> listNodes(String threadId) async {
+    await _record('listNodes', <String, Object?>{'threadId': threadId});
+    return _nodes.where((n) => n.threadId == threadId).toList(growable: false);
+  }
 
   @override
   Future<void> saveDraft(String threadId, String text) async {
+    await _record('saveDraft', <String, Object?>{
+      'threadId': threadId,
+      'text': text,
+    });
     _drafts[threadId] = text;
   }
 
   @override
-  Future<String?> loadDraft(String threadId) async => _drafts[threadId];
+  Future<String?> loadDraft(String threadId) async {
+    await _record('loadDraft', <String, Object?>{'threadId': threadId});
+    return _drafts[threadId];
+  }
 
   @override
   Future<EngineSettings> loadSettings() async => _settings;
 
   @override
   Future<EngineSettings> saveSettings(EngineSettings settings) async {
+    await _record('saveSettings', const <String, Object?>{});
     _settings = settings;
     return _settings;
   }
@@ -594,26 +692,41 @@ class FakeEngineGateway implements BistreEngineGateway {
   @override
   Future<void> backupDatabase(String destPath) async {}
 
-  @override
-  Future<EngineUpdateCheck> checkForUpdates({String? feedUrlOverride}) async =>
-      const EngineUpdateCheck(
-        currentVersion: '0.1.0',
-        latestVersion: '0.2.0',
-        updateAvailable: true,
-        track: 'track_b',
-        ownershipMode: 'direct_github',
-        signatureVerified: true,
-        activeRunsBlocking: false,
-        releaseNotes: 'Native Win11 titlebar + offline color lab icons.',
-        downloadUrl: 'https://example.invalid/bistre-0.2.0.zip',
-        sha256Hex: '0000',
-        downloadSizeBytes: 12400000,
-        checkedAtMs: 1700000000000,
-      );
+  /// When set, the update check fails with this diagnostic (for example
+  /// `diag.ota.integrity_failed:asset_mismatch`).
+  String? updateCheckFailure;
+
+  /// When set, staging the update fails with this diagnostic.
+  String? stageUpdateFailure;
 
   @override
-  Future<String> stageUpdate(EngineUpdateCheck check) async =>
-      '.bistre-dev/updates/bistre-0.2.0.zip';
+  Future<EngineUpdateCheck> checkForUpdates({String? feedUrlOverride}) async {
+    final failure = updateCheckFailure;
+    if (failure != null) throw Exception(failure);
+    return _updateCheckFixture;
+  }
+
+  static const EngineUpdateCheck _updateCheckFixture = EngineUpdateCheck(
+    currentVersion: '0.1.0',
+    latestVersion: '0.2.0',
+    updateAvailable: true,
+    track: 'track_b',
+    ownershipMode: 'direct_github',
+    signatureVerified: true,
+    activeRunsBlocking: false,
+    releaseNotes: 'Native Win11 titlebar + offline color lab icons.',
+    downloadUrl: 'https://example.invalid/bistre-0.2.0.zip',
+    sha256Hex: '0000',
+    downloadSizeBytes: 12400000,
+    checkedAtMs: 1700000000000,
+  );
+
+  @override
+  Future<String> stageUpdate(EngineUpdateCheck check) async {
+    final failure = stageUpdateFailure;
+    if (failure != null) throw Exception(failure);
+    return '.bistre-dev/updates/bistre-0.2.0.zip';
+  }
 
   @override
   Future<List<EngineSearchHit>> searchNodes(
@@ -648,101 +761,6 @@ class FakeEngineGateway implements BistreEngineGateway {
     required List<int> packPayload,
   }) async => '1.0.0';
 
-  final List<EngineAgentRun> _runs = <EngineAgentRun>[];
-  final List<EngineSteeringMessage> _steering = <EngineSteeringMessage>[];
-  EnginePowerGuardStatus _powerStatus = const EnginePowerGuardStatus();
-
-  @override
-  Future<List<EngineAgentRun>> listAgentRuns({
-    String? threadId,
-    bool onlyActive = false,
-    int limit = 50,
-  }) async => _runs
-      .where(
-        (r) =>
-            (threadId == null || r.threadId == threadId) &&
-            (!onlyActive || r.isActive),
-      )
-      .take(limit)
-      .toList(growable: false);
-
-  @override
-  Future<EngineSteeringMessage> enqueueSteering({
-    required String threadId,
-    required String content,
-  }) async {
-    final msg = EngineSteeringMessage(
-      id: 'steer-${_steering.length + 1}',
-      threadId: threadId,
-      content: content,
-      status: 'pending',
-      createdAtMs: ++_clock,
-    );
-    _steering.add(msg);
-    _events.add(
-      SteeringQueueChangedEvent(
-        threadId: threadId,
-        pendingCount: _steering.where((s) => s.threadId == threadId).length,
-      ),
-    );
-    return msg;
-  }
-
-  @override
-  Future<List<EngineSteeringMessage>> listPendingSteering(
-    String threadId,
-  ) async => _steering
-      .where((s) => s.threadId == threadId && s.status == 'pending')
-      .toList(growable: false);
-
-  @override
-  Future<void> deleteSteering(String steeringId) async {
-    _steering.removeWhere((s) => s.id == steeringId);
-  }
-
-  @override
-  Future<EnginePowerGuardStatus> powerGuardStatus() async => _powerStatus;
-
-  @override
-  Future<int> notifyPowerEvent(String eventKind, {bool? onAc}) async => 0;
-
-  @override
-  Future<EnginePowerGuardStatus> setAndroidPowerState({
-    required bool fgsActive,
-    required bool batteryUnrestricted,
-  }) async {
-    _powerStatus = EnginePowerGuardStatus(
-      platform: 'android',
-      androidFgsActive: fgsActive,
-      androidBatteryUnrestricted: batteryUnrestricted,
-    );
-    return _powerStatus;
-  }
-
-  @override
-  Future<EngineAgentRun> resolveIndeterminateRun({
-    required String runId,
-    required bool confirmCompleted,
-  }) async {
-    final idx = _runs.indexWhere((r) => r.id == runId);
-    final old = _runs[idx];
-    final next = EngineAgentRun(
-      id: old.id,
-      threadId: old.threadId,
-      mode: old.mode,
-      status: 'running',
-      stepIndex: old.stepIndex,
-      maxSteps: old.maxSteps,
-      unattendedPolicy: old.unattendedPolicy,
-      lastHeartbeatMs: ++_clock,
-      costMicros: old.costMicros,
-      createdAtMs: old.createdAtMs,
-      updatedAtMs: _clock,
-    );
-    _runs[idx] = next;
-    return next;
-  }
-
   final Map<String, String> _kvMeta = <String, String>{};
   final Map<String, String> _contextPins = <String, String>{};
 
@@ -751,32 +769,18 @@ class FakeEngineGateway implements BistreEngineGateway {
   @override
   Future<void> refreshPrices() async => refreshPricesCalls++;
 
+  /// When set, the breakdown core would report (tests); otherwise one is estimated.
+  EngineContextBreakdown? contextBreakdownFixture;
+
   @override
-  Future<EngineContextUsage> contextUsage(
+  Future<EngineContextBreakdown> contextBreakdown(
     String threadId,
     String leafNodeId, {
     String draft = '',
   }) async {
-    // Same estimate as core (~4 characters per token) over the leaf's ancestry.
-    final nodes = await listNodes(threadId);
-    final byId = <String, EngineNode>{for (final n in nodes) n.id: n};
-    var chars = 0;
-    var turns = 0;
-    var node = byId[leafNodeId];
-    for (var hops = 0; node != null && hops <= nodes.length; hops++) {
-      chars += node.content.length;
-      turns++;
-      final parent = node.parentId;
-      node = parent == null ? null : byId[parent];
-    }
-    final history = (chars + 3) ~/ 4;
-    final draftTokens = (draft.trim().length + 3) ~/ 4;
-    return EngineContextUsage(
-      historyTokens: history,
-      historyTurns: turns,
-      draftTokens: draftTokens,
-      totalTokens: history + draftTokens,
-    );
+    final fixture = contextBreakdownFixture;
+    if (fixture != null) return fixture;
+    return estimateFakeBreakdown(await listNodes(threadId), leafNodeId, draft);
   }
 
   @override
@@ -790,11 +794,83 @@ class FakeEngineGateway implements BistreEngineGateway {
   }) async => 'permit-$toolName';
 
   @override
+  Future<void> allowUnpricedOnce(String threadId) =>
+      _record('allowUnpricedOnce', <String, Object?>{'threadId': threadId});
+
+  /// Hooks reported for any workspace root (`null`: no hooks file).
+  EngineWorkspaceHooksStatus? workspaceHooks;
+
+  @override
+  List<EngineDialectDescriptor> dialectDescriptors() => kTestDialectDescriptors;
+
+  /// Web sources per chat id (B2).
+  final Map<String, List<EngineGroundingSource>> grounding =
+      <String, List<EngineGroundingSource>>{};
+
+  @override
+  Future<List<EngineGroundingSource>> listThreadGrounding(
+    String threadId,
+  ) async {
+    await _record('listThreadGrounding', <String, Object?>{
+      'threadId': threadId,
+    });
+    return grounding[threadId] ?? const <EngineGroundingSource>[];
+  }
+
+  @override
+  Future<EngineWorkspaceHooksStatus?> workspaceHooksStatus(
+    String workspaceRoot,
+  ) async => workspaceHooks;
+
+  @override
+  Future<void> approveWorkspaceHooks(
+    String workspaceRoot,
+    String digest,
+  ) async {
+    await _record('approveWorkspaceHooks', <String, Object?>{
+      'workspaceRoot': workspaceRoot,
+      'digest': digest,
+    });
+    final current = workspaceHooks;
+    if (current != null && current.digest == digest) {
+      workspaceHooks = EngineWorkspaceHooksStatus(
+        hooks: current.hooks,
+        digest: digest,
+        approved: true,
+      );
+    }
+  }
+
+  @override
+  Future<void> saveProviderOverrides({
+    required String providerId,
+    required String headersJson,
+    required String bodyJson,
+  }) => _record('saveProviderOverrides', <String, Object?>{
+    'providerId': providerId,
+    'headersJson': headersJson,
+    'bodyJson': bodyJson,
+  });
+
+  @override
+  Future<void> allowUnpricedMediaOnce() =>
+      _record('allowUnpricedMediaOnce', <String, Object?>{});
+
+  @override
   Future<bool> respondToolApproval({
     required String threadId,
+    required String runId,
     required String callId,
     required String decision,
-  }) async => true;
+  }) async {
+    await _record('respondToolApproval', <String, Object?>{
+      'threadId': threadId,
+      'runId': runId,
+      'callId': callId,
+      'decision': decision,
+    });
+    return true;
+  }
 
   @override
   Future<EngineToolOutput> executeWorkspaceTool({
@@ -1241,7 +1317,21 @@ class FakeEngineGateway implements BistreEngineGateway {
   Future<String> exportSettingsJson() async => '{}';
 
   @override
-  Future<EngineSettings> importSettingsJson(String rawJson) async => _settings;
+  Future<EngineSettings> importSettingsJson(
+    String rawJson, {
+    bool allowLoosening = false,
+  }) async {
+    await _record('importSettingsJson', <String, Object?>{
+      'allowLoosening': allowLoosening,
+    });
+    if (importLoosensSafety && !allowLoosening) {
+      throw StateError('diag.import.loosens_safety');
+    }
+    return _settings;
+  }
+
+  /// When true, an unconfirmed import fails like a file that would loosen safety.
+  bool importLoosensSafety = false;
 
   @override
   Future<List<EngineStorageFileEntry>> listStorageFiles() async =>
@@ -1289,6 +1379,18 @@ class FakeEngineGateway implements BistreEngineGateway {
 
   @override
   Future<void> shutdown() async {
+    await _record('shutdown', <String, Object?>{});
     await _events.close();
   }
+}
+
+/// One recorded gateway call.
+class FakeCall {
+  const FakeCall(this.method, this.args);
+
+  final String method;
+  final Map<String, Object?> args;
+
+  @override
+  String toString() => '$method($args)';
 }

@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../l10n/bistre_localizations.dart';
@@ -6,9 +5,12 @@ import '../l10n/l10n_keys.g.dart';
 import 'bistre_theme.dart';
 import 'ink_primitives.dart';
 
-/// Pure `package:flutter/widgets.dart` text selection controls for `SelectableRegion`
-/// (zero Material/Cupertino dependency, ADR-0001).
-class BistreSelectionControls extends TextSelectionControls {
+/// Pure `package:flutter/widgets.dart` selection handles (zero Material/Cupertino, ADR-0001).
+/// Mixing in [TextSelectionHandleControls] makes Flutter use the `contextMenuBuilder` and its
+/// live Cut/Copy/Paste rules (A-W 1a): Paste only when the clipboard holds text, no Cut or Copy
+/// in a masked field. Without it Flutter falls back to a fixed legacy toolbar.
+class BistreSelectionControls extends TextSelectionControls
+    with TextSelectionHandleControls {
   BistreSelectionControls();
 
   @override
@@ -42,56 +44,6 @@ class BistreSelectionControls extends TextSelectionControls {
 
   @override
   Size getHandleSize(double textLineHeight) => const Size(14, 14);
-
-  @override
-  Widget buildToolbar(
-    BuildContext context,
-    Rect globalEditableRegion,
-    double textLineHeight,
-    Offset selectionMidpoint,
-    List<TextSelectionPoint> endpoints,
-    TextSelectionDelegate delegate,
-    ValueListenable<ClipboardStatus>? clipboardStatus,
-    Offset? lastSecondaryTapDownPosition,
-  ) {
-    final l10n = BistreLocalizations.of(context);
-    final anchor =
-        lastSecondaryTapDownPosition ??
-        Offset(
-          globalEditableRegion.left + selectionMidpoint.dx,
-          globalEditableRegion.top + selectionMidpoint.dy - textLineHeight - 44,
-        );
-
-    return CustomSingleChildLayout(
-      delegate: _ToolbarLayoutDelegate(anchor: anchor),
-      child: FolioSurface(
-        tone: FolioTone.elevated,
-        padding: const EdgeInsetsDirectional.symmetric(
-          horizontal: BistreSpacing.s8,
-          vertical: BistreSpacing.s4,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            EngravedButton(
-              label: l10n.t(L10nKey.shellSelectionCopy),
-              onPressed: () {
-                delegate.copySelection(SelectionChangedCause.toolbar);
-                delegate.hideToolbar();
-              },
-            ),
-            const SizedBox(width: BistreSpacing.s8),
-            EngravedButton(
-              label: l10n.t(L10nKey.shellSelectionSelectAll),
-              onPressed: () {
-                delegate.selectAll(SelectionChangedCause.toolbar);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 /// Pure `package:flutter/widgets.dart` context menu for `EditableText` inside `QuillInput`
@@ -99,9 +51,28 @@ class BistreSelectionControls extends TextSelectionControls {
 Widget buildBistreEditableContextMenu(
   BuildContext context,
   EditableTextState editableTextState,
+) => _bistreContextMenu(
+  context,
+  editableTextState.contextMenuButtonItems,
+  editableTextState.contextMenuAnchors,
+);
+
+/// The same menu for selected message text (`SelectableRegion`): Copy and Select all.
+Widget buildBistreSelectableContextMenu(
+  BuildContext context,
+  SelectableRegionState selectableRegionState,
+) => _bistreContextMenu(
+  context,
+  selectableRegionState.contextMenuButtonItems,
+  selectableRegionState.contextMenuAnchors,
+);
+
+Widget _bistreContextMenu(
+  BuildContext context,
+  List<ContextMenuButtonItem> items,
+  TextSelectionToolbarAnchors anchors,
 ) {
   final l10n = BistreLocalizations.of(context);
-  final items = editableTextState.contextMenuButtonItems;
   if (items.isEmpty) return const SizedBox.shrink();
 
   String? labelFor(ContextMenuButtonType type) => switch (type) {
@@ -122,7 +93,6 @@ Widget buildBistreEditableContextMenu(
   }
   if (visible.isEmpty) return const SizedBox.shrink();
 
-  final anchors = editableTextState.contextMenuAnchors;
   final anchor = anchors.secondaryAnchor ?? anchors.primaryAnchor;
 
   return CustomSingleChildLayout(

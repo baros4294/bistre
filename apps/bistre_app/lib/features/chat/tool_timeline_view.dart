@@ -22,6 +22,8 @@ class ToolActivityEntry {
     this.diffText,
     this.checkpointId,
     this.durationMs = 0,
+    this.threadId = '',
+    this.runId = '',
   });
 
   final String id;
@@ -35,6 +37,39 @@ class ToolActivityEntry {
   final String? diffText;
   final String? checkpointId;
   final int durationMs;
+
+  /// The chat and run that own this call; approvals are answered to exactly this run.
+  final String threadId;
+  final String runId;
+
+  /// This row with its output replaced (the timeline keeps a capped copy, U9).
+  ToolActivityEntry copyWithOutput(String output) => ToolActivityEntry(
+    id: id,
+    toolName: toolName,
+    summary: summary,
+    status: status,
+    riskTier: riskTier,
+    outputText: output,
+    diffText: diffText,
+    checkpointId: checkpointId,
+    durationMs: durationMs,
+    threadId: threadId,
+    runId: runId,
+  );
+
+  ToolActivityEntry withStatus(String next) => ToolActivityEntry(
+    id: id,
+    toolName: toolName,
+    summary: summary,
+    status: next,
+    riskTier: riskTier,
+    outputText: outputText,
+    diffText: diffText,
+    checkpointId: checkpointId,
+    durationMs: durationMs,
+    threadId: threadId,
+    runId: runId,
+  );
 }
 
 /// Tools whose consecutive completed steps fold into one quiet row.
@@ -145,6 +180,7 @@ class ToolTimelineView extends StatefulWidget {
     this.onApproveOnce,
     this.onApproveChat,
     this.onDeny,
+    this.onStop,
     this.onRewindCheckpoint,
   });
 
@@ -152,24 +188,37 @@ class ToolTimelineView extends StatefulWidget {
   final ValueChanged<String>? onApproveOnce;
   final ValueChanged<String>? onApproveChat;
   final ValueChanged<String>? onDeny;
+  final ValueChanged<String>? onStop;
   final ValueChanged<String>? onRewindCheckpoint;
 
   @override
   State<ToolTimelineView> createState() => _ToolTimelineViewState();
+
+  /// How many times rows were folded (tests check the fold is reused across frames).
+  @visibleForTesting
+  static int debugFolds = 0;
 }
 
 class _ToolTimelineViewState extends State<ToolTimelineView> {
   bool _checklistOpen = true;
+
+  /// U14: the folded rows of the entries list they came from. The live reply rebuilds this
+  /// view every frame; the entries list is replaced only when a row changes, so the fold
+  /// (which joins outputs) runs once per change, not once per frame.
+  List<ToolActivityEntry>? _foldedFrom;
+  List<ToolActivityEntry> _folded = const <ToolActivityEntry>[];
 
   @override
   Widget build(BuildContext context) {
     if (widget.entries.isEmpty) return const SizedBox.shrink();
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);
-    final rows = foldReadOnlySteps(
-      widget.entries,
-      joinSummaries: l10n.joinMeta,
-    );
+    if (!identical(_foldedFrom, widget.entries)) {
+      _folded = foldReadOnlySteps(widget.entries, joinSummaries: l10n.joinMeta);
+      _foldedFrom = widget.entries;
+      ToolTimelineView.debugFolds++;
+    }
+    final rows = _folded;
     if (widget.entries.length == 1) {
       return Padding(
         padding: const EdgeInsetsDirectional.only(bottom: BistreSpacing.s12),
@@ -178,6 +227,7 @@ class _ToolTimelineViewState extends State<ToolTimelineView> {
           onApproveOnce: widget.onApproveOnce,
           onApproveChat: widget.onApproveChat,
           onDeny: widget.onDeny,
+          onStop: widget.onStop,
           onRewindCheckpoint: widget.onRewindCheckpoint,
         ),
       );
@@ -261,6 +311,7 @@ class _ToolTimelineViewState extends State<ToolTimelineView> {
                         onApproveOnce: widget.onApproveOnce,
                         onApproveChat: widget.onApproveChat,
                         onDeny: widget.onDeny,
+                        onStop: widget.onStop,
                         onRewindCheckpoint: widget.onRewindCheckpoint,
                       ),
                     ],
@@ -281,6 +332,7 @@ class _ToolActivityRow extends StatefulWidget {
     this.onApproveOnce,
     this.onApproveChat,
     this.onDeny,
+    this.onStop,
     this.onRewindCheckpoint,
   });
 
@@ -288,6 +340,7 @@ class _ToolActivityRow extends StatefulWidget {
   final ValueChanged<String>? onApproveOnce;
   final ValueChanged<String>? onApproveChat;
   final ValueChanged<String>? onDeny;
+  final ValueChanged<String>? onStop;
   final ValueChanged<String>? onRewindCheckpoint;
 
   @override
@@ -472,6 +525,12 @@ class _ToolActivityRowState extends State<_ToolActivityRow> {
                       label: l10n.t(L10nKey.toolDeny),
                       compact: true,
                       onPressed: () => widget.onDeny!(entry.id),
+                    ),
+                  if (widget.onStop != null)
+                    EngravedButton(
+                      label: l10n.t(L10nKey.toolStop),
+                      compact: true,
+                      onPressed: () => widget.onStop!(entry.id),
                     ),
                 ],
               ),

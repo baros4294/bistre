@@ -13,14 +13,14 @@ import '../../design/ink_primitives.dart';
 import '../../design/press_feedback.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
-import '../shell/folio_controller.dart';
+import 'context_breakdown_popover.dart';
 
 /// Compact radial conversation-limit gauge (`docs/design/DESIGN.md` §8) that opens a breakdown
 /// of what fills the conversation context window.
 ///
-/// [usage] comes from core (`context_usage`): what the next request sends, after any compaction
-/// or context pin, so the gauge never counts text the model will not see. Opening the popover
-/// asks core again with the composer draft ([loadWithDraft]).
+/// [usage] comes from core (`context_breakdown`): what the next request sends, after any
+/// compaction or context pin, so the gauge never counts text the model will not see. Opening
+/// the breakdown asks core again with the composer draft ([loadWithDraft]).
 class ContextGaugeRing extends StatefulWidget {
   const ContextGaugeRing({
     super.key,
@@ -39,7 +39,7 @@ class ContextGaugeRing extends StatefulWidget {
   /// label and the popover.
   final bool showLabel;
 
-  final EngineContextUsage usage;
+  final EngineContextBreakdown usage;
   final int? limitTokens;
   final double size;
 
@@ -48,7 +48,7 @@ class ContextGaugeRing extends StatefulWidget {
 
   /// Number of files currently attached to the composer (`ContextWindowBreakdownPopover` L1314).
   final int uploadedFilesCount;
-  final Future<EngineContextUsage> Function()? loadWithDraft;
+  final Future<EngineContextBreakdown> Function()? loadWithDraft;
   final VoidCallback? onShorten;
   final VoidCallback? onOpenPrices;
 
@@ -65,7 +65,7 @@ class ContextGaugeRing extends StatefulWidget {
 class _ContextGaugeRingState extends State<ContextGaugeRing> {
   final FolioOverlayController _popover = FolioOverlayController();
   final LayerLink _link = LayerLink();
-  EngineContextUsage? _withDraft;
+  EngineContextBreakdown? _withDraft;
   int _loadSeq = 0;
   bool _hovered = false;
   bool _focused = false;
@@ -107,8 +107,8 @@ class _ContextGaugeRingState extends State<ContextGaugeRing> {
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);
-    final used = widget.usage.totalTokens;
-    final limit = widget.limitTokens;
+    final used = widget.usage.totalSent;
+    final limit = widget.usage.limitTokens ?? widget.limitTokens;
     final fraction = _fraction(used, limit);
     final ringColor = fraction >= 0.9
         ? theme.statusErr
@@ -216,63 +216,7 @@ class _ContextGaugeRingState extends State<ContextGaugeRing> {
 
   Widget _buildPopover(BuildContext context) {
     final theme = BistreTheme.of(context);
-    final l10n = BistreLocalizations.of(context);
     final dir = Directionality.of(context);
-    final usage = _withDraft ?? widget.usage;
-    final limit = widget.limitTokens;
-    final used = usage.totalTokens;
-    final free = limit == null ? 0 : math.max(0, limit - used);
-    const compact = ContextGaugeRing.compact;
-    final rows = <(L10nKey, Map<String, Object?>, int, Color)>[
-      (
-        L10nKey.chatContextInstructions,
-        const <String, Object?>{},
-        usage.systemTokens,
-        theme.accentBrass,
-      ),
-      if (usage.storyTokens > 0)
-        (
-          L10nKey.chatContextStory,
-          const <String, Object?>{},
-          usage.storyTokens,
-          theme.accentWax,
-        ),
-      if (usage.toolsTokens > 0)
-        (
-          L10nKey.chatContextTools,
-          const <String, Object?>{},
-          usage.toolsTokens,
-          theme.statusWarn,
-        ),
-      if (usage.attachmentsTokens > 0 || usage.attachmentsCount > 0)
-        (
-          L10nKey.chatContextAttachments,
-          <String, Object?>{'count': usage.attachmentsCount},
-          usage.attachmentsTokens,
-          theme.accentWax.withValues(alpha: 0.75),
-        ),
-      (
-        L10nKey.chatContextHistory,
-        <String, Object?>{'count': usage.historyTurns},
-        usage.historyTokens,
-        theme.inkSecondary,
-      ),
-      if (usage.draftTokens > 0)
-        (
-          L10nKey.chatContextDraft,
-          const <String, Object?>{},
-          usage.draftTokens,
-          theme.statusOk,
-        ),
-      if (limit != null)
-        (
-          L10nKey.chatContextFree,
-          const <String, Object?>{},
-          free,
-          theme.borderHairline,
-        ),
-    ];
-    final barTotal = rows.fold<int>(0, (sum, r) => sum + r.$3);
     return Stack(
       children: [
         Positioned.fill(
@@ -291,170 +235,20 @@ class _ContextGaugeRingState extends State<ContextGaugeRing> {
           child: FolioFadeSlide(
             beginOffset: const Offset(0, 0.06),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 300, maxWidth: 340),
+              constraints: const BoxConstraints(minWidth: 300, maxWidth: 360),
               child: FolioSurface(
                 tone: FolioTone.elevated,
                 padding: const EdgeInsetsDirectional.fromSTEB(14, 12, 14, 12),
                 borderRadius: 12,
                 boxShadow: theme.floatingShadow,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Stacked title + usage/cost subtitle (`ContextWindowBreakdownPopover` L1365-L1377).
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        InkText(
-                          l10n.t(L10nKey.chatContextTitle),
-                          role: InkTextRole.labelStrong,
-                        ),
-                        const SizedBox(height: 2),
-                        InkText(
-                          l10n.joinMeta(<String>[
-                            limit == null
-                                ? compact(used)
-                                : l10n.t(
-                                    L10nKey.chatContextGaugeShort,
-                                    <String, Object?>{
-                                      'used': compact(used),
-                                      'limit': compact(limit),
-                                      'percent': (_fraction(used, limit) * 100)
-                                          .round(),
-                                    },
-                                  ),
-                            if (widget.sessionSpendMicros > 0)
-                              l10n.t(
-                                L10nKey.chatContextSessionCost,
-                                <String, Object?>{
-                                  'cost': FolioController.formatMicrosUsd(
-                                    widget.sessionSpendMicros,
-                                    showSubCent: true,
-                                  ),
-                                },
-                              ),
-                          ]),
-                          role: InkTextRole.captionMeta,
-                          color: theme.inkMuted,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: BistreSpacing.s8),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: SizedBox(
-                        height: 8,
-                        child: Row(
-                          children: [
-                            for (final r in rows)
-                              if (r.$3 > 0 && barTotal > 0)
-                                Expanded(
-                                  flex: math.max(1, r.$3 * 1000 ~/ barTotal),
-                                  child: ColoredBox(color: r.$4),
-                                ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: BistreSpacing.s8),
-                    for (final r in rows)
-                      Padding(
-                        padding: const EdgeInsetsDirectional.symmetric(
-                          vertical: 3,
-                        ),
-                        child: Row(
-                          children: [
-                            SizedBox.square(
-                              dimension: 8,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: r.$4,
-                                  borderRadius: BorderRadius.circular(2),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: InkText(
-                                l10n.t(r.$1, r.$2),
-                                role: InkTextRole.bodyCompact,
-                              ),
-                            ),
-                            InkText(
-                              l10n.t(
-                                L10nKey.chatContextTokens,
-                                <String, Object?>{'tokens': compact(r.$3)},
-                              ),
-                              role: InkTextRole.captionMeta,
-                              color: theme.inkMuted,
-                            ),
-                          ],
-                        ),
-                      ),
-                    if (widget.uploadedFilesCount > 0)
-                      Padding(
-                        padding: const EdgeInsetsDirectional.symmetric(
-                          vertical: 3,
-                        ),
-                        child: Row(
-                          children: [
-                            BistreIcon(
-                              BistreUiIcon.paperclip,
-                              size: 11,
-                              color: theme.accentBrass,
-                            ),
-                            const SizedBox(width: 7),
-                            Expanded(
-                              child: InkText(
-                                l10n.t(
-                                  L10nKey.chatContextFiles,
-                                  <String, Object?>{
-                                    'count': widget.uploadedFilesCount,
-                                  },
-                                ),
-                                role: InkTextRole.bodyCompact,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    const SizedBox(height: BistreSpacing.s8),
-                    InkText(
-                      l10n.t(L10nKey.chatContextEstimateHint),
-                      role: InkTextRole.captionMeta,
-                      color: theme.inkMuted,
-                    ),
-                    if (widget.onShorten != null ||
-                        widget.onOpenPrices != null) ...[
-                      const SizedBox(height: BistreSpacing.s8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 6,
-                        children: [
-                          if (widget.onShorten != null &&
-                              usage.historyTurns > 2)
-                            EngravedButton(
-                              label: l10n.t(L10nKey.chatCompactAction),
-                              compact: true,
-                              onPressed: () {
-                                _popover.hide();
-                                widget.onShorten!();
-                              },
-                            ),
-                          if (widget.onOpenPrices != null)
-                            EngravedButton(
-                              label: l10n.t(L10nKey.chatContextPrices),
-                              compact: true,
-                              onPressed: () {
-                                _popover.hide();
-                                widget.onOpenPrices!();
-                              },
-                            ),
-                        ],
-                      ),
-                    ],
-                  ],
+                child: ContextBreakdownPanel(
+                  breakdown: _withDraft ?? widget.usage,
+                  limitTokens: widget.limitTokens,
+                  sessionSpendMicros: widget.sessionSpendMicros,
+                  uploadedFilesCount: widget.uploadedFilesCount,
+                  onClose: _popover.hide,
+                  onShorten: widget.onShorten,
+                  onOpenPrices: widget.onOpenPrices,
                 ),
               ),
             ),

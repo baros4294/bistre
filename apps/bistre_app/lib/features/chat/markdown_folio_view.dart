@@ -210,6 +210,29 @@ class MarkdownFolioView extends StatelessWidget {
   static final Map<String, _ParsedDoc> _parsedBlocks = <String, _ParsedDoc>{};
   static const int _kParsedCacheEntries = 256;
 
+  /// U13: the cache is also bounded by the text it holds (a streaming reply used to leave
+  /// one near-copy per frame, up to 256 of them).
+  static const int parseCacheMaxChars = 4 * 1024 * 1024;
+  static int _parsedChars = 0;
+
+  /// Test hooks: parse [source] as the view does, and inspect the cache.
+  @visibleForTesting
+  static void debugParse(String source) => _parseBlocksStreaming(source);
+  @visibleForTesting
+  static int get debugParseCacheEntries => _parsedBlocks.length;
+  @visibleForTesting
+  static int get debugParseCacheChars => _parsedChars;
+  @visibleForTesting
+  static void debugClearParseCache() {
+    _parsedBlocks.clear();
+    _openFenceMemos.clear();
+    _parsedChars = 0;
+  }
+
+  static void _evictParsed(String key) {
+    if (_parsedBlocks.remove(key) != null) _parsedChars -= key.length;
+  }
+
   static final RegExp _tableRulePattern = RegExp(r'^:?-{2,}:?$');
   static final RegExp _headingPattern = RegExp(r'^(#{1,3})\s+(.*)$');
   static final RegExp _bulletPattern = RegExp(r'^[-*]\s+(.*)$');
@@ -262,7 +285,7 @@ class MarkdownFolioView extends StatelessWidget {
     }
     final cached = _parsedBlocks.remove(source);
     if (cached != null) {
-      // Re-insert to mark it most recently used.
+      // Re-insert to mark it most recently used (the size is unchanged).
       _parsedBlocks[source] = cached;
       return cached;
     }
@@ -272,9 +295,19 @@ class MarkdownFolioView extends StatelessWidget {
       contentDirection(source),
       source.contains(r'$'),
     );
+    // A growing reply replaces its previous frame instead of adding a near-copy (U13).
+    if (_parsedBlocks.isNotEmpty) {
+      final newest = _parsedBlocks.keys.last;
+      if (newest.length < source.length && _matchesPrefixFast(source, newest)) {
+        _evictParsed(newest);
+      }
+    }
     _parsedBlocks[source] = doc;
-    if (_parsedBlocks.length > _kParsedCacheEntries) {
-      _parsedBlocks.remove(_parsedBlocks.keys.first);
+    _parsedChars += source.length;
+    while (_parsedBlocks.length > 1 &&
+        (_parsedBlocks.length > _kParsedCacheEntries ||
+            _parsedChars > parseCacheMaxChars)) {
+      _evictParsed(_parsedBlocks.keys.first);
     }
     final codeStart = _openFenceCodeStart(source, blocks);
     if (codeStart >= 0) {

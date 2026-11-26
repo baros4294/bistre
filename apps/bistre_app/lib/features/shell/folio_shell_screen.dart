@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../app/shell_notifiers.dart';
-import '../../bridge/bistre_engine.dart';
 import '../../design/bistre_decorations.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_motion_widgets.dart';
@@ -30,6 +29,7 @@ import '../story/story_bible_panel.dart';
 import '../studio/runs_dock_panel.dart';
 import 'chat_tab_strip.dart';
 import 'folio_controller.dart';
+import 'inline_title_editor.dart';
 import 'model_picker_popover.dart';
 import 'split_secondary_pane.dart';
 import 'tab_switcher_modal.dart';
@@ -74,6 +74,10 @@ class _JumpPromptIntent extends Intent {
   const _JumpPromptIntent();
 }
 
+class _StopReplyIntent extends Intent {
+  const _StopReplyIntent();
+}
+
 class _NextTabIntent extends Intent {
   const _NextTabIntent();
 }
@@ -102,13 +106,10 @@ class _FolioShellScreenState extends State<FolioShellScreen>
   final FocusNode _composerFocus = FocusNode();
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
-  final TextEditingController _titleRenameCtrl = TextEditingController();
-  final FocusNode _titleRenameFocus = FocusNode();
   final FolioOverlayController _providerPopoverCtrl = FolioOverlayController();
   final LayerLink _providerPillLink = LayerLink();
   bool _narrowDrawerOpen = false;
   bool _isWideViewport = true;
-  bool _renamingTitle = false;
 
   @override
   void initState() {
@@ -128,8 +129,6 @@ class _FolioShellScreenState extends State<FolioShellScreen>
       ctrl.closeTurnDetails();
     } else if (ctrl.pinnedPanelOpen) {
       ctrl.closePinnedPanel();
-    } else if (ctrl.chatNotesOpen) {
-      ctrl.closeChatNotes();
     } else if (ctrl.commandPaletteOpen) {
       ctrl.closeCommandPalette();
     } else if (ctrl.tabSwitcherOpen) {
@@ -158,8 +157,6 @@ class _FolioShellScreenState extends State<FolioShellScreen>
     _composerFocus.dispose();
     _searchController.dispose();
     _searchFocus.dispose();
-    _titleRenameCtrl.dispose();
-    _titleRenameFocus.dispose();
     super.dispose();
   }
 
@@ -193,27 +190,7 @@ class _FolioShellScreenState extends State<FolioShellScreen>
     }
   }
 
-  void _startInlineTitleRename(EngineThread thread) {
-    _titleRenameCtrl.text = thread.title;
-    setState(() => _renamingTitle = true);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _titleRenameFocus.requestFocus();
-    });
-  }
-
-  void _commitInlineTitleRename(EngineThread thread) {
-    final next = _titleRenameCtrl.text.trim();
-    setState(() => _renamingTitle = false);
-    if (next.isNotEmpty && next != thread.title) {
-      unawaited(widget.controller.renameThread(thread.id, next));
-    }
-  }
-
   void _handleEscape() {
-    if (_renamingTitle) {
-      setState(() => _renamingTitle = false);
-      return;
-    }
     if (_narrowDrawerOpen) {
       setState(() => _narrowDrawerOpen = false);
       return;
@@ -250,6 +227,7 @@ class _FolioShellScreenState extends State<FolioShellScreen>
     bind('theme', const _ToggleThemeIntent());
     bind('layout', const _ToggleLayoutIntent());
     bind('jump_prompt', const _JumpPromptIntent());
+    bind('stop_reply', const _StopReplyIntent());
     return map;
   }
 
@@ -387,6 +365,12 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                   return null;
                 },
               ),
+              _StopReplyIntent: CallbackAction<_StopReplyIntent>(
+                onInvoke: (_) {
+                  if (ctrl.isStreaming) unawaited(ctrl.cancelStreaming());
+                  return null;
+                },
+              ),
               _JumpPromptIntent: CallbackAction<_JumpPromptIntent>(
                 onInvoke: (_) {
                   ctrl.openSessionTree(onlyUserPrompts: true);
@@ -445,7 +429,7 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                       if (ctrl.searchPanelOpen) {
                         ctrl.toggleSearchPanel();
                       }
-                      unawaited(ctrl.selectThread(hit.threadId));
+                      unawaited(ctrl.revealNode(hit.threadId, hit.nodeId));
                     },
                   );
                   final isWriteMode = ctrl.activeThreadMode == 'write';
@@ -477,7 +461,7 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                           ),
                     actionLabel: l10n.t(L10nKey.settingsUpdatesStage),
                     onAction: () => unawaited(ctrl.stageAvailableUpdate()),
-                    dismissLabel: l10n.t(L10nKey.threadCancel),
+                    dismissLabel: l10n.t(L10nKey.shellDismiss),
                     onDismiss: ctrl.dismissUpdateBanner,
                   );
 
@@ -506,16 +490,52 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                         PromptInspectorPanel(controller: ctrl),
                   );
 
+                  final mainArea = Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: workspace),
+                      if (canDockInspector && ctrl.splitViewOpen) ...[
+                        const FolioDivider(vertical: true),
+                        Expanded(child: SplitSecondaryPane(controller: ctrl)),
+                      ],
+                      if (canDockInspector)
+                        SidebarSlideReveal(
+                          open: ctrl.inspectorOpen,
+                          fromTrailingEdge: true,
+                          reduceMotionOverride: ctrl.reduceMotionOverride,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const FolioDivider(vertical: true),
+                              ChatInspectorDrawer(controller: ctrl),
+                            ],
+                          ),
+                        ),
+                      if (canDockInspector)
+                        SidebarSlideReveal(
+                          open: ctrl.studioPaneOpen,
+                          fromTrailingEdge: true,
+                          reduceMotionOverride: ctrl.reduceMotionOverride,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const FolioDivider(vertical: true),
+                              runsDock,
+                            ],
+                          ),
+                        ),
+                    ],
+                  );
+                  // A-W 3a: the docked sidebar slides without re-laying out the chat.
                   final baseLayout = ColoredBox(
                     color: theme.bgCanvas,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (isWide)
-                          SidebarSlideReveal(
+                    child: isWide
+                        ? SidebarDock(
                             open: ctrl.sidebarOpen,
                             reduceMotionOverride: ctrl.reduceMotionOverride,
-                            child: Row(
+                            sidebar: Row(
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
@@ -526,42 +546,9 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                                 const FolioDivider(vertical: true),
                               ],
                             ),
-                          ),
-                        Expanded(child: workspace),
-                        if (canDockInspector && ctrl.splitViewOpen) ...[
-                          const FolioDivider(vertical: true),
-                          Expanded(child: SplitSecondaryPane(controller: ctrl)),
-                        ],
-                        if (canDockInspector)
-                          SidebarSlideReveal(
-                            open: ctrl.inspectorOpen,
-                            fromTrailingEdge: true,
-                            reduceMotionOverride: ctrl.reduceMotionOverride,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                const FolioDivider(vertical: true),
-                                ChatInspectorDrawer(controller: ctrl),
-                              ],
-                            ),
-                          ),
-                        if (canDockInspector)
-                          SidebarSlideReveal(
-                            open: ctrl.studioPaneOpen,
-                            fromTrailingEdge: true,
-                            reduceMotionOverride: ctrl.reduceMotionOverride,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                const FolioDivider(vertical: true),
-                                runsDock,
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
+                            child: mainArea,
+                          )
+                        : mainArea,
                   );
 
                   // Modals and drawers hide the occluded background from screen readers.
@@ -574,7 +561,6 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                           ctrl.tabSwitcherOpen ||
                           ctrl.sessionTreeOpen ||
                           ctrl.pinnedPanelOpen ||
-                          ctrl.chatNotesOpen ||
                           ctrl.inspectingTurnNode != null ||
                           ctrl.previewingAttachment != null);
                   return Stack(
@@ -583,9 +569,13 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                       if (ctrl.settingsOpen)
                         SettingsWorkspace(controller: ctrl)
                       else
+                        // DESIGN §7: what a modal covers is hidden from screen readers and Tab.
                         ExcludeSemantics(
                           excluding: modalOpen,
-                          child: baseLayout,
+                          child: ExcludeFocus(
+                            excluding: modalOpen,
+                            child: baseLayout,
+                          ),
                         ),
                       if (!ctrl.settingsOpen && !isWide && _narrowDrawerOpen)
                         FolioDrawerFrame(
@@ -640,11 +630,6 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                           controller: ctrl,
                           onClose: ctrl.closePinnedPanel,
                         ),
-                      if (ctrl.chatNotesOpen)
-                        ChatNotesModal(
-                          controller: ctrl,
-                          onClose: ctrl.closeChatNotes,
-                        ),
                       if (ctrl.inspectingTurnNode case final inspected?)
                         TurnDetailsModal(
                           node: inspected,
@@ -680,7 +665,7 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                                     ? null
                                     : l10n.t(toast.actionKey!),
                                 onAction: toast.onAction,
-                                dismissLabel: l10n.t(L10nKey.threadCancel),
+                                dismissLabel: l10n.t(L10nKey.shellDismiss),
                                 onDismiss: ctrl.dismissToast,
                               ),
                       ),
@@ -702,7 +687,6 @@ class _FolioShellScreenState extends State<FolioShellScreen>
     required bool isWide,
   }) {
     final active = ctrl.activeThread;
-    final showSidebarButton = !isWide || !ctrl.sidebarOpen;
     final modelDisplay = ctrl.activeProviderModelDisplay;
     final hasProvider = ctrl.hasConfiguredProvider;
     final activeProv = ctrl.activeProvider;
@@ -728,14 +712,14 @@ class _FolioShellScreenState extends State<FolioShellScreen>
               // subtitle; trailing new chat, Studio, and settings. Mode, branches, inspector,
               // search, and the palette live in the composer, Ctrl+K, and shortcuts.
               final leading = <Widget>[
-                if (showSidebarButton) ...[
-                  BistreIconButton(
-                    icon: BistreUiIcon.sidebar,
-                    semanticsLabel: l10n.t(L10nKey.sidebarToggle),
-                    onPressed: _toggleSidebarAdaptive,
-                  ),
-                  const SizedBox(width: BistreSpacing.s8),
-                ],
+                // A-W 3b: the one sidebar toggle, always first in the header, open or closed.
+                BistreIconButton(
+                  icon: BistreUiIcon.sidebar,
+                  active: isWide && ctrl.sidebarOpen,
+                  semanticsLabel: l10n.t(L10nKey.sidebarToggle),
+                  onPressed: _toggleSidebarAdaptive,
+                ),
+                const SizedBox(width: BistreSpacing.s8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -743,35 +727,28 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                     children: [
                       Row(
                         children: [
-                          if (_renamingTitle && active != null)
-                            Expanded(
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: 320,
-                                ),
-                                child: QuillInput(
-                                  controller: _titleRenameCtrl,
-                                  focusNode: _titleRenameFocus,
-                                  placeholder: l10n.t(
-                                    L10nKey.threadRenamePlaceholder,
-                                  ),
-                                  maxLines: 1,
-                                  submitOnEnter: false,
-                                  onSubmitted: () =>
-                                      _commitInlineTitleRename(active),
-                                ),
-                              ),
-                            )
-                          else
-                            Flexible(
+                          InlineTitleEditor(
+                            // One editor per chat (and per Settings visit): switching ends
+                            // an edit without saving it into the next chat (A-W 2b).
+                            key: ValueKey<String>(
+                              '${active?.id}|${ctrl.settingsOpen}',
+                            ),
+                            title: active?.title ?? '',
+                            placeholder: l10n.t(
+                              L10nKey.threadRenamePlaceholder,
+                            ),
+                            onRename: (next) {
+                              if (active != null) {
+                                unawaited(ctrl.renameThread(active.id, next));
+                              }
+                            },
+                            displayBuilder: (context, startEditing) => Flexible(
                               child: _HeaderPressable(
                                 semanticsLabel: l10n.t(
                                   L10nKey.threadRenamePlaceholder,
                                 ),
                                 cursor: SystemMouseCursors.text,
-                                onPressed: active != null
-                                    ? () => _startInlineTitleRename(active)
-                                    : null,
+                                onPressed: active != null ? startEditing : null,
                                 child: InkText(
                                   active?.title ??
                                       l10n.t(L10nKey.shellThreadDefaultTitle),
@@ -781,7 +758,8 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                                 ),
                               ),
                             ),
-                          if (active != null && !_renamingTitle) ...[
+                          ),
+                          if (active != null) ...[
                             const SizedBox(width: 4),
                             BistreIconButton(
                               icon: active.isPinned
@@ -872,34 +850,22 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                   const SizedBox(width: 4),
                 ],
                 BistreIconButton(
-                  icon: BistreUiIcon.edit,
-                  active:
-                      ctrl.chatNotesOpen ||
-                      ctrl.activeChatNotes.trim().isNotEmpty ||
-                      (active?.systemPromptOverride?.trim().isNotEmpty ??
-                          false),
-                  semanticsLabel: l10n.t(L10nKey.chatNotesTitle),
-                  onPressed: ctrl.toggleChatNotes,
-                ),
-                BistreIconButton(
                   icon: BistreUiIcon.newChat,
                   semanticsLabel: l10n.t(L10nKey.sidebarNewFolio),
                   onPressed: () => unawaited(ctrl.createNewFolio()),
                 ),
-                if (ctrl.studioPaneOpen ||
-                    ctrl.agentRuns.any((r) => r.isActive))
-                  BistreIconButton(
-                    icon: BistreUiIcon.server,
-                    active: ctrl.studioPaneOpen,
-                    semanticsLabel: l10n.t(L10nKey.studioTitle),
-                    onPressed: ctrl.toggleStudioPane,
-                  ),
-                if (!(isWide && ctrl.sidebarOpen))
-                  BistreIconButton(
-                    icon: BistreUiIcon.settings,
-                    semanticsLabel: l10n.t(L10nKey.sidebarSettings),
-                    onPressed: ctrl.openSettings,
-                  ),
+                // A-W 4a: Studio is always reachable, not only during a run.
+                BistreIconButton(
+                  icon: BistreUiIcon.server,
+                  active: ctrl.studioPaneOpen,
+                  semanticsLabel: l10n.t(L10nKey.studioTitle),
+                  onPressed: ctrl.toggleStudioPane,
+                ),
+                BistreIconButton(
+                  icon: BistreUiIcon.settings,
+                  semanticsLabel: l10n.t(L10nKey.sidebarSettings),
+                  onPressed: ctrl.openSettings,
+                ),
               ];
               if (stackActions) {
                 return Column(
@@ -978,7 +944,7 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                             icon: BistreUiIcon.close,
                             size: 14,
                             dimension: 30,
-                            semanticsLabel: l10n.t(L10nKey.threadCancel),
+                            semanticsLabel: l10n.t(L10nKey.shellClose),
                             onPressed: _toggleSearch,
                           ),
                         ],

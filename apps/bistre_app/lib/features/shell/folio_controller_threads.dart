@@ -4,21 +4,29 @@ part of 'folio_controller.dart';
 extension FolioThreadActions on FolioController {
   // --- Drafts, Messages, Branch Edit & Delete ---
 
+  /// Saves [text] as the open chat's draft after a short pause in typing. The composer calls
+  /// this for every change to its text, including its own clears after a send or a command
+  /// (U35), so a stored draft never outlives the text it came from.
   void scheduleDraftSave(String text) {
     final tid = _activeThread?.id;
     if (tid == null) return;
     draftSavedState.value = false;
+    _pendingDraft = (threadId: tid, text: text);
     _draftDebounce?.cancel();
-    _draftDebounce = Timer(const Duration(milliseconds: 220), () async {
-      await _persistDraftNow(tid, text);
-    });
+    _draftDebounce = Timer(
+      const Duration(milliseconds: 220),
+      () => unawaited(flushPendingDraft()),
+    );
   }
 
-  Future<void> flushDraftNow(String text) async {
-    final tid = _activeThread?.id;
-    if (tid == null) return;
+  /// Saves the draft still waiting in the debounce now (P27: the app is paused, closing, or
+  /// the composer goes away), so the last keystrokes are never lost.
+  Future<void> flushPendingDraft() async {
     _draftDebounce?.cancel();
-    await _persistDraftNow(tid, text);
+    final pending = _pendingDraft;
+    _pendingDraft = null;
+    if (pending == null) return;
+    await _persistDraftNow(pending.threadId, pending.text);
   }
 
   Future<void> _persistDraftNow(String threadId, String text) async {
@@ -36,6 +44,9 @@ extension FolioThreadActions on FolioController {
     final body = rawText.trim();
     final active = _activeThread;
     if ((body.isEmpty && _attachments.isEmpty) || active == null) return false;
+    // U1: never send while another chat is loading; the text stays in the composer.
+    if (isSwitchingThread) return false;
+    final generation = _threadGeneration;
     if (isStreaming) {
       if (body.isEmpty) return false;
       return enqueueSteeringMessage(body);
@@ -61,7 +72,6 @@ extension FolioThreadActions on FolioController {
         : '$refPrefix$body';
 
     try {
-      _draftDebounce?.cancel();
       _lastDiagnosticKey = null;
       final visible = visibleBranchNodes;
       final parentId = visible.isEmpty ? null : visible.last.id;
@@ -87,15 +97,18 @@ extension FolioThreadActions on FolioController {
           threadId: active.id,
           title: shortTitle,
         );
-        _activeThread = renamed;
+        if (_isStillOn(active.id, generation)) _activeThread = renamed;
       }
 
-      if (!_nodes.any((n) => n.id == committed.id)) {
-        _nodes = <EngineNode>[..._nodes, committed];
+      // U2: the user may have switched chats while this send was in flight.
+      if (_isStillOn(active.id, generation)) {
+        if (!_nodes.any((n) => n.id == committed.id)) {
+          _nodes = <EngineNode>[..._nodes, committed];
+        }
+        _quotedExcerpt = null;
+        _attachments = const <ComposerAttachment>[];
+        draftSavedState.value = false;
       }
-      _quotedExcerpt = null;
-      _attachments = const <ComposerAttachment>[];
-      draftSavedState.value = false;
       _threads = _withoutPendingDeletes(await _gateway.listThreads());
       _health = await _gateway.getHealth();
       _notify();
@@ -118,11 +131,11 @@ extension FolioThreadActions on FolioController {
         nodeId: nodeId,
         newContent: clean,
       );
-      _nodes = await _gateway.listNodes(active.id);
+      final reloaded = await _gateway.listNodes(active.id);
+      // U2: write only into the chat that is still open.
+      if (_activeThread?.id == active.id) _nodes = reloaded;
       final parentKey = committed.parentId ?? '__root__';
-      final siblings = FolioController._groupChildrenByParent(
-        _nodes,
-      )[parentKey];
+      final siblings = _childrenByParent[parentKey];
       if (siblings != null && siblings.isNotEmpty) {
         _selectedChildIndex[parentKey] = siblings.length - 1;
       }
@@ -140,7 +153,9 @@ extension FolioThreadActions on FolioController {
     if (active == null) return;
     try {
       await _gateway.deleteNode(threadId: active.id, nodeId: nodeId);
-      _nodes = await _gateway.listNodes(active.id);
+      final reloaded = await _gateway.listNodes(active.id);
+      // U2: write only into the chat that is still open.
+      if (_activeThread?.id == active.id) _nodes = reloaded;
       _selectedChildIndex.clear();
       _storageStats = await _gateway.getStorageStats();
       showToast(L10nKey.toastNodeDeleted);
@@ -166,7 +181,7 @@ extension FolioThreadActions on FolioController {
         duration: const Duration(seconds: 8),
         onAction: () {
           dismissToast();
-          if (_streamingThreadId == tid) {
+          if (_liveRuns.containsKey(tid)) {
             unawaited(cancelStreaming());
           }
           selectSiblingNodeById(parentUserId, previousNodeId);
@@ -178,8 +193,27 @@ extension FolioThreadActions on FolioController {
     }
   }
 
+  /// "Allow once" for `diag.wallet.price_unknown`: lets this chat's next run send requests
+  /// whose price is unknown under a spending cap, then retries the last message.
+  Future<void> allowUnpricedOnceAndRetry() async {
+    final tid = _activeThread?.id;
+    final lastUser = visibleBranchNodes.reversed
+        .where((n) => n.role == 'user')
+        .firstOrNull;
+    if (tid == null || lastUser == null) return;
+    try {
+      _lastDiagnosticKey = null;
+      _notify();
+      await _gateway.allowUnpricedOnce(tid);
+      await _gateway.regenerateReply(threadId: tid, userNodeId: lastUser.id);
+    } catch (e) {
+      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
+      _notify();
+    }
+  }
+
   Future<void> cancelStreaming() async {
-    final tid = _streamingThreadId ?? _activeThread?.id;
+    final tid = _activeThread?.id;
     if (tid == null) return;
     try {
       await _gateway.cancelActiveRun(tid);
@@ -224,7 +258,9 @@ extension FolioThreadActions on FolioController {
 
   String? get pinnedContextNodeId => _pinnedContextNodeId;
 
-  List<ToolActivityEntry> get toolActivities => _toolActivities;
+  /// The open chat's tool rows (U4, U9): never another chat's.
+  List<ToolActivityEntry> get toolActivities =>
+      _toolActivitiesByThread[_activeThread?.id] ?? const <ToolActivityEntry>[];
 
   List<EngineCheckpoint> get checkpoints => _checkpoints;
 
@@ -265,7 +301,6 @@ extension FolioThreadActions on FolioController {
     final startVersion = ++_threadExtrasVersion;
     try {
       final rawPins = await _gateway.getKvMeta('thread_pinned_nodes:$threadId');
-      final rawNotes = await _gateway.getKvMeta('thread_notes:$threadId');
       final rawLimit = await _gateway.getKvMeta('thread_spend_limit:$threadId');
       final rawPrefill = await _gateway.getKvMeta(
         'thread_reply_prefill:$threadId',
@@ -285,7 +320,6 @@ extension FolioThreadActions on FolioController {
         }
       }
       _pinnedNodeIds = pins;
-      _activeChatNotes = rawNotes ?? '';
       _replyPrefill = rawPrefill ?? '';
       _activeChatSpendLimitMicros =
           rawLimit != null && rawLimit.trim().isNotEmpty
@@ -333,7 +367,6 @@ extension FolioThreadActions on FolioController {
 
   void togglePinnedPanel() {
     _pinnedPanelOpen = !_pinnedPanelOpen;
-    if (_pinnedPanelOpen) _chatNotesOpen = false;
     _notify();
   }
 
@@ -341,30 +374,6 @@ extension FolioThreadActions on FolioController {
     if (!_pinnedPanelOpen) return;
     _pinnedPanelOpen = false;
     _notify();
-  }
-
-  void toggleChatNotes() {
-    _chatNotesOpen = !_chatNotesOpen;
-    if (_chatNotesOpen) _pinnedPanelOpen = false;
-    _notify();
-  }
-
-  void closeChatNotes() {
-    if (!_chatNotesOpen) return;
-    _chatNotesOpen = false;
-    _notify();
-  }
-
-  Future<void> saveActiveChatNotes(String text) async {
-    final tid = _activeThread?.id;
-    _threadExtrasVersion++;
-    _activeChatNotes = text;
-    if (tid == null) return;
-    try {
-      await _gateway.setKvMeta('thread_notes:$tid', text);
-    } catch (e) {
-      _noteNonFatal('save_chat_notes', e);
-    }
   }
 
   Future<void> setProfileAvatarPath(String path) async {
@@ -414,6 +423,23 @@ extension FolioThreadActions on FolioController {
     }
   }
 
+  /// P1: opens a file that was sent with a message, from the data directory.
+  void openSentAttachment(EngineNodeAttachment attachment) {
+    final dir = _storageStats?.dataDir ?? _bootDataDir ?? '';
+    final sep = Platform.pathSeparator;
+    final rel = attachment.blobRelPath.replaceAll('/', sep);
+    openAttachmentPreview(
+      ComposerAttachment(
+        id: attachment.blobRelPath,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        path: dir.isEmpty ? rel : '$dir$sep$rel',
+        sizeBytes: attachment.sizeBytes,
+        isImage: attachment.mimeType.startsWith('image/'),
+      ),
+    );
+  }
+
   void openAttachmentPreview(ComposerAttachment attachment) {
     _previewingAttachment = attachment;
     _notify();
@@ -449,12 +475,57 @@ extension FolioThreadActions on FolioController {
     _notify();
   }
 
+  /// The workspace's top-level entries for the `@` menu, as last read (U19).
+  List<(String, bool)> get workspaceEntries =>
+      _workspaceEntriesRoot == _workspaceRootPath.trim()
+      ? _workspaceEntries
+      : const <(String, bool)>[];
+
+  /// How many times the workspace was read for the `@` menu (tests check it stays at one).
+  int get workspaceEntryLoads => _workspaceEntryLoads;
+
+  /// Reads the workspace's top-level entries once per root, asynchronously (U19: the old
+  /// `listSync` per keystroke froze the window on Windows, where the UI and platform
+  /// threads are one).
+  Future<void> loadWorkspaceEntries() {
+    final root = _workspaceRootPath.trim();
+    if (root.isEmpty || !BistreDesktopHost.isSafeLocalFolder(root)) {
+      return Future<void>.value();
+    }
+    if (_workspaceEntriesRoot == root) return Future<void>.value();
+    return _workspaceEntriesLoading ??= () async {
+      _workspaceEntryLoads++;
+      final found = <(String, bool)>[];
+      try {
+        await for (final ent in Directory(root).list(followLinks: false)) {
+          final name = ent.path
+              .replaceAll(r'\', '/')
+              .split('/')
+              .where((p) => p.isNotEmpty)
+              .lastOrNull;
+          if (name == null || name.startsWith('.')) continue;
+          found.add((name, ent is Directory));
+          if (found.length >= kMaxWorkspaceEntries) break;
+        }
+      } on FileSystemException catch (e) {
+        _noteNonFatal('workspace_entries', e);
+      }
+      _workspaceEntries = found;
+      _workspaceEntriesRoot = root;
+      _workspaceEntriesLoading = null;
+      _notify();
+    }();
+  }
+
   Future<void> setWorkspaceRootPath(String path) async {
     final clean = path.trim();
     _workspaceRootPath = clean;
+    _workspaceEntriesRoot = null;
+    _workspaceEntries = const <(String, bool)>[];
     try {
       await _gateway.setKvMeta('agent.workspace_root', clean);
       showToast(L10nKey.toastSettingsSaved);
+      unawaited(refreshWorkspaceHooks());
       _notify();
     } catch (e) {
       _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
@@ -538,12 +609,15 @@ extension FolioThreadActions on FolioController {
         threadId: active.id,
         mode: mode,
       );
-      _activeThread = updated;
       _threads = _withoutPendingDeletes(await _gateway.listThreads());
-      if (mode == 'write') {
-        await refreshStoryStudio();
-      } else {
-        _manuscriptViewActive = false;
+      // U2: the mode belongs to the chat it was set on; another chat may be open by now.
+      if (_activeThread?.id == updated.id) {
+        _activeThread = updated;
+        if (mode == 'write') {
+          await refreshStoryStudio();
+        } else {
+          _manuscriptViewActive = false;
+        }
       }
       _notify();
     } catch (e) {
@@ -554,11 +628,11 @@ extension FolioThreadActions on FolioController {
 
   /// The context breakdown with [draft] counted as the next message (the ring's popover).
   /// Falls back to the last known usage without a draft when there is no visible branch.
-  Future<EngineContextUsage> contextUsageWithDraft(String draft) async {
+  Future<EngineContextBreakdown> contextBreakdownWithDraft(String draft) async {
     final thread = _activeThread?.id;
     final leaf = visibleBranchNodes.lastOrNull?.id;
-    if (thread == null || leaf == null) return contextUsage.value;
-    return _gateway.contextUsage(thread, leaf, draft: draft);
+    if (thread == null || leaf == null) return contextBreakdown.value;
+    return _gateway.contextBreakdown(thread, leaf, draft: draft);
   }
 
   Future<void> compactActiveThread({int keepRecentTurns = 4}) async {
@@ -569,7 +643,9 @@ extension FolioThreadActions on FolioController {
         threadId: active.id,
         keepRecentTurns: keepRecentTurns,
       );
-      _nodes = await _gateway.listNodes(active.id);
+      final reloaded = await _gateway.listNodes(active.id);
+      // U2: write only into the chat that is still open.
+      if (_activeThread?.id == active.id) _nodes = reloaded;
       _lastDiagnosticKey = null;
       _notify();
     } catch (e) {
@@ -586,7 +662,9 @@ extension FolioThreadActions on FolioController {
         threadId: active.id,
         compactionNodeId: compactionNodeId,
       );
-      _nodes = await _gateway.listNodes(active.id);
+      final reloaded = await _gateway.listNodes(active.id);
+      // U2: write only into the chat that is still open.
+      if (_activeThread?.id == active.id) _nodes = reloaded;
       showToast(L10nKey.toastNodeDeleted);
       _notify();
     } catch (e) {

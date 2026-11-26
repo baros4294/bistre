@@ -41,7 +41,7 @@ extension FolioStudioActions on FolioController {
   /// Selects every ancestor branch index needed so `targetNodeId` appears on the active visible branch.
   void focusBranchNode(String targetNodeId) {
     final byId = <String, EngineNode>{for (final n in _nodes) n.id: n};
-    final grouped = FolioController._groupChildrenByParent(_nodes);
+    final grouped = _childrenByParent;
     var cursor = byId[targetNodeId];
     var guard = 0;
     while (cursor != null && guard < _nodes.length + 1) {
@@ -188,12 +188,11 @@ extension FolioStudioActions on FolioController {
     required String bodyJson,
   }) async {
     try {
-      await _gateway.setKvMeta(
-        'provider.overrides:$providerId',
-        jsonEncode(<String, Object?>{
-          'headers_json': headersJson.trim(),
-          'body_json': bodyJson.trim(),
-        }),
+      // Rust validates both fields and binds the headers to the provider's origin (A-S8).
+      await _gateway.saveProviderOverrides(
+        providerId: providerId,
+        headersJson: headersJson,
+        bodyJson: bodyJson,
       );
       showToast(L10nKey.toastSettingsSaved);
       _notify();
@@ -363,50 +362,31 @@ extension FolioStudioActions on FolioController {
     }
   }
 
-  void recordToolActivity(ToolActivityEntry entry) {
-    final idx = _toolActivities.indexWhere((e) => e.id == entry.id);
-    if (idx >= 0) {
-      final copy = List<ToolActivityEntry>.of(_toolActivities);
-      copy[idx] = entry;
-      _toolActivities = copy;
-    } else {
-      _toolActivities = <ToolActivityEntry>[..._toolActivities, entry];
-    }
-    _notify();
-  }
+  void recordToolActivity(ToolActivityEntry entry) =>
+      _recordToolActivityFor(entry);
 
+  /// Answers the paused call [callId] with `approve_once`, `approve_for_thread`, `deny`, or
+  /// `stop`, addressed to the exact chat and run that asked (never the active chat).
   Future<void> respondToolApproval(String callId, String decision) async {
-    final threadId = _activeThread?.id;
-    if (threadId == null || callId.isEmpty) return;
+    final rows = toolActivities;
+    final idx = rows.indexWhere((e) => e.id == callId);
+    if (idx < 0) return;
+    final entry = rows[idx];
+    if (entry.threadId.isEmpty || entry.runId.isEmpty) return;
     try {
       await _gateway.respondToolApproval(
-        threadId: threadId,
+        threadId: entry.threadId,
+        runId: entry.runId,
         callId: callId,
         decision: decision,
       );
-      final idx = _toolActivities.indexWhere((e) => e.id == callId);
-      if (idx >= 0) {
-        final cur = _toolActivities[idx];
-        recordToolActivity(
-          ToolActivityEntry(
-            id: cur.id,
-            toolName: cur.toolName,
-            summary: cur.summary,
-            status: decision == 'deny' ? 'failed' : 'running',
-            riskTier: cur.riskTier,
-            outputText: cur.outputText,
-            diffText: cur.diffText,
-            checkpointId: cur.checkpointId,
-            durationMs: cur.durationMs,
-          ),
-        );
-      }
+      final refused = decision == 'deny' || decision == 'stop';
+      recordToolActivity(entry.withStatus(refused ? 'failed' : 'running'));
     } catch (e) {
       _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
       _notify();
     }
   }
-
   // --- Writing & Roleplay Studio State & Actions ---
 
   List<EngineCharacterCard> get characterCards => _characterCards;
@@ -502,7 +482,9 @@ extension FolioStudioActions on FolioController {
         role: 'assistant',
         content: greetings[idx],
       );
-      _nodes = await _gateway.listNodes(active.id);
+      final reloaded = await _gateway.listNodes(active.id);
+      // U2: write only into the chat that is still open.
+      if (_activeThread?.id == active.id) _nodes = reloaded;
       _notify();
     } catch (e) {
       _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);

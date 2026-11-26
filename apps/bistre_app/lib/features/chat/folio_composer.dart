@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -40,6 +39,12 @@ class FolioComposer extends StatefulWidget {
 
 class _FolioComposerState extends State<FolioComposer> {
   final TextEditingController _textController = TextEditingController();
+
+  /// The text last handed to the draft save, so selection-only changes save nothing.
+  String _lastDraftText = '';
+
+  /// Text that was sent while the IME was still composing; removed once it commits (U17).
+  String? _sentWhileComposing;
   int _syncedDraftEpoch = -1;
   bool _focused = false;
   String _triggerPrefix = '';
@@ -146,32 +151,15 @@ class _FolioComposerState extends State<FolioComposer> {
       ),
     ];
     final root = ctrl.workspaceRootPath.trim();
-    if (root.isNotEmpty && BistreDesktopHost.isSafeLocalFolder(root)) {
-      try {
-        final dir = Directory(root);
-        var added = 0;
-        for (final ent in dir.listSync(followLinks: false)) {
-          if (added >= 12) break;
-          final name = ent.path
-              .replaceAll(r'\', '/')
-              .split('/')
-              .where((p) => p.isNotEmpty)
-              .lastOrNull;
-          if (name == null || name.startsWith('.')) continue;
-          final isDir = ent is Directory;
-          items.add(
-            ComposerTriggerItem(
-              token: '@file $name ',
-              label: name,
-              description: root,
-              icon: isDir ? BistreUiIcon.folder : BistreUiIcon.document,
-            ),
-          );
-          added++;
-        }
-      } on FileSystemException {
-        // Unreadable folder: keep static mention options.
-      }
+    for (final (name, isDir) in ctrl.workspaceEntries) {
+      items.add(
+        ComposerTriggerItem(
+          token: '@file $name ',
+          label: name,
+          description: root,
+          icon: isDir ? BistreUiIcon.folder : BistreUiIcon.document,
+        ),
+      );
     }
     if (q.isEmpty) return items;
     return items
@@ -183,8 +171,26 @@ class _FolioComposerState extends State<FolioComposer> {
         .toList();
   }
 
-  void _handleTextChanged(String text) {
+  /// Every change to the text, typed or programmatic (a clear after sending, a slash command,
+  /// an inserted skill), updates the saved draft (U35). A restored draft is not saved back.
+  void _onComposerTextChanged() {
+    // U17: edits skipped during an IME composition run as soon as it ends.
+    if (!_textController.value.composing.isValid) {
+      final sent = _sentWhileComposing;
+      if (sent != null) {
+        _sentWhileComposing = null;
+        _clearSentText(sent);
+        return;
+      }
+      _syncDraftIfEpochChanged();
+    }
+    final text = _textController.text;
+    if (text == _lastDraftText) return;
+    _lastDraftText = text;
     widget.controller.scheduleDraftSave(text);
+  }
+
+  void _handleTextChanged(String text) {
     final trimmedStart = text.trimLeft();
     String nextTrigger = '';
     String nextQuery = '';
@@ -197,6 +203,10 @@ class _FolioComposerState extends State<FolioComposer> {
         nextTrigger = '@';
         nextQuery = match.group(1) ?? '';
       }
+    }
+    if (nextTrigger == '@' && _triggerPrefix != '@') {
+      // U19: the workspace is read once, asynchronously, when the menu opens.
+      unawaited(widget.controller.loadWorkspaceEntries());
     }
     if (nextTrigger != _triggerPrefix || nextQuery != _triggerQuery) {
       setState(() {
@@ -279,12 +289,15 @@ class _FolioComposerState extends State<FolioComposer> {
     widget.controller.addListener(_syncDraftIfEpochChanged);
     widget.focusNode.addListener(_onFocusChanged);
     _syncDraftIfEpochChanged();
+    _textController.addListener(_onComposerTextChanged);
   }
 
   @override
   void dispose() {
     widget.controller.removeListener(_syncDraftIfEpochChanged);
     widget.focusNode.removeListener(_onFocusChanged);
+    _textController.removeListener(_onComposerTextChanged);
+    unawaited(widget.controller.flushPendingDraft());
     _textController.dispose();
     super.dispose();
   }
@@ -302,6 +315,7 @@ class _FolioComposerState extends State<FolioComposer> {
 
     _syncedDraftEpoch = epoch;
     final restored = widget.controller.restoredDraft;
+    _lastDraftText = restored;
     if (_textController.text != restored) {
       _textController.value = TextEditingValue(
         text: restored,
@@ -314,7 +328,10 @@ class _FolioComposerState extends State<FolioComposer> {
   /// stays, and the field is never edited during IME composition.
   void _clearSentText(String sent) {
     final value = _textController.value;
-    if (value.composing.isValid) return;
+    if (value.composing.isValid) {
+      _sentWhileComposing = sent;
+      return;
+    }
     final current = value.text;
     if (current == sent) {
       _textController.clear();
@@ -328,6 +345,22 @@ class _FolioComposerState extends State<FolioComposer> {
   }
 
   Future<void> _submit() async {
+    // The text field takes Enter before the menu's key handler sees it: while the `/` or `@`
+    // menu is open, Enter picks the highlighted entry and never sends the typed command.
+    if (_triggerPrefix.isNotEmpty) {
+      // U18: never pick while the IME is composing (the Send button can still be tapped).
+      if (_textController.value.composing.isValid) return;
+      final items = _buildTriggerItems(
+        BistreLocalizations.of(context),
+        widget.controller,
+      );
+      if (items.isNotEmpty) {
+        _applyTriggerOption(
+          items[_triggerSelectedIndex.clamp(0, items.length - 1)].token,
+        );
+        return;
+      }
+    }
     final text = _textController.text;
     final ok = await widget.controller.submitPassage(text);
     if (ok && mounted) {
@@ -346,11 +379,16 @@ class _FolioComposerState extends State<FolioComposer> {
     final readingWidth = theme.typography.readingWidthPx.clamp(600.0, 1120.0);
     final needsProviderKey =
         diag == 'diag.provider.not_configured' ||
+        diag == 'diag.provider.pinned_unavailable' ||
         diag == 'diag.provider.model_required' ||
         diag == 'diag.provider.auth_failed' ||
         diag == 'diag.provider.quota_exhausted';
     final needsShorten = diag == 'diag.provider.context_overflow';
     final needsSpendingLimit = diag == 'diag.wallet.ceiling_exceeded';
+    final needsPriceAllowance = diag == 'diag.wallet.price_unknown';
+    final needsHookReview = diag == 'diag.hooks.approval_required';
+    final needsContinue = diag == 'diag.provider.reply_truncated';
+    final providerReason = ctrl.lastDiagnosticReason;
     // Narrow layouts (effective width / text scale < 600 px) split the toolbar into two
     // rows while streaming or at >= 130% text.
     final scale = textScaleOf(context);
@@ -379,6 +417,7 @@ class _FolioComposerState extends State<FolioComposer> {
                   ),
                   child: _BackoffNotice(
                     retryAt: ctrl.backoffRetryAt!,
+                    attempt: ctrl.backoffAttempt,
                     reasonDetail: ctrl.retryReasonDetail,
                     onRetryNow: () => unawaited(ctrl.retryNow()),
                   ),
@@ -485,9 +524,27 @@ class _FolioComposerState extends State<FolioComposer> {
                             Expanded(
                               child: Semantics(
                                 liveRegion: true,
-                                child: InkText(
-                                  l10n.tRawKey(diag),
-                                  role: InkTextRole.bodyCompact,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    InkText(
+                                      l10n.tRawKey(diag),
+                                      role: InkTextRole.bodyCompact,
+                                    ),
+                                    // P4: the provider's own reason, as it said it.
+                                    if (providerReason != null)
+                                      InkText(
+                                        l10n.t(
+                                          L10nKey.chatDiagProviderReason,
+                                          <String, Object?>{
+                                            'reason': providerReason,
+                                          },
+                                        ),
+                                        role: InkTextRole.captionMeta,
+                                        color: theme.inkSecondary,
+                                      ),
+                                  ],
                                 ),
                               ),
                             ),
@@ -511,6 +568,39 @@ class _FolioComposerState extends State<FolioComposer> {
                                 },
                               ),
                             ],
+                            if (needsHookReview) ...[
+                              const SizedBox(width: BistreSpacing.s8),
+                              EngravedButton(
+                                label: l10n.t(L10nKey.chatFixReviewHooks),
+                                compact: true,
+                                onPressed: () =>
+                                    ctrl.openSettings(SettingsTab.agent),
+                              ),
+                            ],
+                            if (needsContinue) ...[
+                              const SizedBox(width: BistreSpacing.s8),
+                              EngravedButton(
+                                label: l10n.t(L10nKey.chatFixContinue),
+                                compact: true,
+                                onPressed: () {
+                                  ctrl.clearDiagnostic();
+                                  unawaited(
+                                    ctrl.submitPassage(
+                                      l10n.t(L10nKey.chatFixContinueMessage),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                            if (needsPriceAllowance) ...[
+                              const SizedBox(width: BistreSpacing.s8),
+                              EngravedButton(
+                                label: l10n.t(L10nKey.chatFixAllowUnpricedOnce),
+                                compact: true,
+                                onPressed: () =>
+                                    unawaited(ctrl.allowUnpricedOnceAndRetry()),
+                              ),
+                            ],
                             if (needsSpendingLimit) ...[
                               const SizedBox(width: BistreSpacing.s8),
                               EngravedButton(
@@ -525,7 +615,7 @@ class _FolioComposerState extends State<FolioComposer> {
                               icon: BistreUiIcon.close,
                               size: 13,
                               dimension: 26,
-                              semanticsLabel: l10n.t(L10nKey.threadCancel),
+                              semanticsLabel: l10n.t(L10nKey.shellDismiss),
                               onPressed: ctrl.clearDiagnostic,
                             ),
                           ],
@@ -613,7 +703,7 @@ class _FolioComposerState extends State<FolioComposer> {
                                         size: 12,
                                         dimension: 22,
                                         semanticsLabel: l10n.t(
-                                          L10nKey.threadCancel,
+                                          L10nKey.shellRemove,
                                         ),
                                         onPressed: () => unawaited(
                                           ctrl.removeSteeringMessage(item.id),
@@ -765,7 +855,7 @@ class _FolioComposerState extends State<FolioComposer> {
                                         size: 10,
                                         dimension: 18,
                                         semanticsLabel: l10n.t(
-                                          L10nKey.threadCancel,
+                                          L10nKey.shellRemove,
                                         ),
                                         onPressed: () =>
                                             ctrl.removeAttachment(att.id),
@@ -788,8 +878,21 @@ class _FolioComposerState extends State<FolioComposer> {
                       ),
                       child: Focus(
                         onKeyEvent: (_, event) {
+                          // D3: Esc in the empty composer (not mid-IME, no menu open) stops
+                          // the reply; with text in it Esc does nothing to the reply.
+                          if (event is KeyDownEvent &&
+                              event.logicalKey == LogicalKeyboardKey.escape &&
+                              _triggerPrefix.isEmpty &&
+                              ctrl.isStreaming &&
+                              _textController.text.isEmpty &&
+                              !_textController.value.composing.isValid) {
+                            unawaited(ctrl.cancelStreaming());
+                            return KeyEventResult.handled;
+                          }
+                          // U18: arrows, Tab, and Enter belong to the IME while it composes.
                           if (_triggerPrefix.isEmpty ||
-                              event is! KeyDownEvent) {
+                              event is! KeyDownEvent ||
+                              _textController.value.composing.isValid) {
                             return KeyEventResult.ignored;
                           }
                           final items = _buildTriggerItems(l10n, ctrl);
@@ -857,8 +960,8 @@ class _FolioComposerState extends State<FolioComposer> {
                       ),
                       child: _ComposerToolbar(
                         twoRows: twoRowToolbar,
-                        gauge: ValueListenableBuilder<EngineContextUsage>(
-                          valueListenable: ctrl.contextUsage,
+                        gauge: ValueListenableBuilder<EngineContextBreakdown>(
+                          valueListenable: ctrl.contextBreakdown,
                           builder: (context, usage, _) => ContextGaugeRing(
                             usage: usage,
                             limitTokens: ctrl.activeContextLimitOrFetch,
@@ -866,7 +969,7 @@ class _FolioComposerState extends State<FolioComposer> {
                             uploadedFilesCount: ctrl.attachments.length,
                             showLabel:
                                 MediaQuery.sizeOf(context).width / scale >= 600,
-                            loadWithDraft: () => ctrl.contextUsageWithDraft(
+                            loadWithDraft: () => ctrl.contextBreakdownWithDraft(
                               _textController.text,
                             ),
                             onShorten: () =>
@@ -1113,10 +1216,14 @@ class _BackoffNotice extends StatefulWidget {
   const _BackoffNotice({
     required this.retryAt,
     required this.onRetryNow,
+    this.attempt,
     this.reasonDetail,
   });
 
   final DateTime retryAt;
+
+  /// Which automatic try failed (P20).
+  final int? attempt;
   final VoidCallback onRetryNow;
   final String? reasonDetail;
 
@@ -1130,12 +1237,28 @@ class _BackoffNoticeState extends State<_BackoffNotice> {
   @override
   void initState() {
     super.initState();
+    _startTicker();
+  }
+
+  /// U37: a new wait (a later try) restarts the countdown; the ticker of a wait that ran
+  /// out has stopped, which froze the next one.
+  @override
+  void didUpdateWidget(_BackoffNotice oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.retryAt != widget.retryAt) _startTicker();
+  }
+
+  /// Seconds left, counted down by the ticker from the wait's length when it started.
+  int _seconds = 0;
+
+  void _startTicker() {
+    _ticker?.cancel();
+    final ms = widget.retryAt.difference(DateTime.now()).inMilliseconds;
+    _seconds = ms <= 0 ? 0 : (ms + 999) ~/ 1000;
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      if (DateTime.now().isAfter(widget.retryAt)) {
-        _ticker?.cancel();
-      }
-      setState(() {});
+      setState(() => _seconds = _seconds > 0 ? _seconds - 1 : 0);
+      if (_seconds == 0) _ticker?.cancel();
     });
   }
 
@@ -1149,8 +1272,7 @@ class _BackoffNoticeState extends State<_BackoffNotice> {
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);
-    final remaining = widget.retryAt.difference(DateTime.now()).inSeconds;
-    final seconds = remaining < 0 ? 0 : remaining + 1;
+    final seconds = _seconds;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: theme.bgElevated,
@@ -1174,9 +1296,17 @@ class _BackoffNoticeState extends State<_BackoffNotice> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   InkText(
-                    l10n.t(L10nKey.chatBackoffNotice, <String, Object?>{
-                      'seconds': seconds,
-                    }),
+                    widget.attempt == null
+                        ? l10n.t(L10nKey.chatBackoffNotice, <String, Object?>{
+                            'seconds': seconds,
+                          })
+                        : l10n.t(
+                            L10nKey.chatBackoffNoticeAttempt,
+                            <String, Object?>{
+                              'seconds': seconds,
+                              'attempt': widget.attempt,
+                            },
+                          ),
                     role: InkTextRole.captionMeta,
                     color: theme.inkSecondary,
                   ),

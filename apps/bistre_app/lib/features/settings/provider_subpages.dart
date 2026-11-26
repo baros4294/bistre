@@ -49,7 +49,6 @@ class ProviderAdvancedSubpage extends StatefulWidget {
 }
 
 class _ProviderAdvancedSubpageState extends State<ProviderAdvancedSubpage> {
-  static const String _kEndpointExample = '/v1/responses';
   late ProviderAdvancedConfig _cfg;
   final TextEditingController _endpointCtrl = TextEditingController();
   final FocusNode _endpointFocus = FocusNode();
@@ -84,8 +83,10 @@ class _ProviderAdvancedSubpageState extends State<ProviderAdvancedSubpage> {
     final isGemini = p.dialect == 'google_gemini';
     final isCustom = p.dialect == 'custom_openai';
     final effortIdx = thinkingStopIndex(_cfg.defaultThinkingEffort);
-    final pageTitle =
-        '${p.name} — ${l10n.t(L10nKey.settingsProviderAdvancedTitle)}';
+    final pageTitle = l10n.t(
+      L10nKey.settingsProviderAdvancedPageTitle,
+      <String, Object?>{'name': p.name},
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -124,26 +125,36 @@ class _ProviderAdvancedSubpageState extends State<ProviderAdvancedSubpage> {
                   selected: _cfg.customDialect,
                   onSelected: (v) =>
                       unawaited(_persist(_cfg.copyWith(customDialect: v))),
-                  options: const <BistreSegmentedOption<String>>[
+                  options: <BistreSegmentedOption<String>>[
                     BistreSegmentedOption<String>(
                       value: 'openai_chat',
-                      label: 'Chat',
+                      label: l10n.t(L10nKey.settingsProviderFormatChat),
                     ),
                     BistreSegmentedOption<String>(
                       value: 'openai_responses',
-                      label: 'Responses',
+                      label: l10n.t(L10nKey.settingsProviderFormatResponses),
                     ),
                     BistreSegmentedOption<String>(
                       value: 'anthropic_messages',
-                      label: 'Anthropic',
+                      label: l10n.t(L10nKey.settingsProviderFormatAnthropic),
                     ),
                     BistreSegmentedOption<String>(
                       value: 'gemini_interactions',
-                      label: 'Gemini',
+                      label: l10n.t(L10nKey.settingsProviderFormatGemini),
                     ),
                   ],
                 ),
               ),
+            BistreSettingRow(
+              label: l10n.t(
+                L10nKey.settingsProviderRequestsGoTo,
+                <String, Object?>{
+                  'url': ctrl
+                      .resolveProviderEndpoint(p.dialect, p.baseUrl)
+                      .chatUrl,
+                },
+              ),
+            ),
             BistreSettingRow(
               label: l10n.t(L10nKey.settingsProviderEndpointOverride),
               bottom: Row(
@@ -152,7 +163,8 @@ class _ProviderAdvancedSubpageState extends State<ProviderAdvancedSubpage> {
                     child: QuillInput(
                       controller: _endpointCtrl,
                       focusNode: _endpointFocus,
-                      placeholder: _kEndpointExample,
+                      placeholder:
+                          ctrl.dialectDescriptor(p.dialect)?.endpointPath ?? '',
                       maxLines: 1,
                       submitOnEnter: false,
                       onSubmitted: () => unawaited(

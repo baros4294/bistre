@@ -25,6 +25,7 @@ void main() {
       defaultThreadTitle: l10n.t(L10nKey.shellThreadDefaultTitle),
       onLocaleSynced: l10n.setLocale,
       isDevEnvironment: true,
+      clock: galleryClock,
     );
     await ctrl.bootstrap('memory');
     return (ctrl, gw);
