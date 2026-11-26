@@ -22,11 +22,19 @@ pub(crate) struct StreamServices {
     pub(crate) data_dir: std::path::PathBuf,
     pub(crate) reasoning_unsupported:
         Arc<std::sync::Mutex<std::collections::HashSet<(String, String)>>>,
+    pub(crate) provider_backoff: Arc<crate::provider_backoff::ProviderBackoff>,
     pub(crate) read_ledger: Arc<crate::tools::ReadLedger>,
     pub(crate) broker: Arc<approval::ToolApprovalBroker>,
     pub(crate) pending_approvals: crate::agent_tools::PendingApprovalMap,
     pub(crate) thread_auto_approvals: crate::agent_tools::ThreadAutoApprovals,
+    /// Released while the run waits for the user (`PowerCoordinator::pause_for_user`).
+    pub(crate) power: Arc<crate::power::PowerCoordinator>,
+    /// Chats whose next run may send unpriced requests while a cap is active (A-S6).
+    pub(crate) unpriced_allowed: UnpricedAllowances,
 }
+
+/// Chat ids allowed one run of unpriced requests (`allow_unpriced_once`); cleared when the run ends.
+pub(crate) type UnpricedAllowances = Arc<std::sync::Mutex<std::collections::HashSet<String>>>;
 
 /// Rate limits, transient server failures (including transient HTTP 400), and streams that died
 /// before any output retry automatically; auth, quota/billing, spend caps, and bad requests never do.
@@ -74,29 +82,43 @@ pub(crate) async fn execute_durable_stream_loop(
     let mut cancelled = false;
     let mut failed_key: Option<String> = None;
     let mut retry_attempt: u32 = 0;
-    let mut waited_secs: u64 = 0;
+    // When the current streak of retryable failures began (the retry budget is wall-clock).
+    let mut retry_started: Option<std::time::Instant> = None;
     let mut overflow_compacted = false;
     let mut consecutive_tool_failures: u32 = 0;
     let is_local = crate::net::is_loopback_url(&provider.base_url);
 
+    // R10/P3: set when the next step resumes a paused turn (its reply is sent back as-is).
+    let mut resume_paused = false;
     loop {
         // A storage failure here stops the run before any request: never send a paid request
         // with a silently empty or partial history.
-        let (history, thread_mode, effective_system_prompt) =
-            match load_turn_context(storage, thread_id, &current_parent_id, system_prompt) {
-                Ok(ctx) => ctx,
-                Err(err) => {
-                    failed_key = Some(err.key.as_key().to_owned());
-                    emit(
-                        events_tx,
-                        EngineEvent::DiagnosticRaised {
-                            key: err.key,
-                            detail_code: err.detail_code,
-                        },
-                    );
-                    break;
-                }
-            };
+        let (history, thread_mode, effective_system_prompt) = match load_turn_context_with(
+            storage,
+            thread_id,
+            &current_parent_id,
+            system_prompt,
+            core::mem::take(&mut resume_paused),
+            services
+                .pricing
+                .snapshot()
+                .lookup(model)
+                .and_then(|r| r.context_tokens)
+                .map(u64::from),
+        ) {
+            Ok(ctx) => ctx,
+            Err(err) => {
+                failed_key = Some(err.key.as_key().to_owned());
+                emit(
+                    events_tx,
+                    EngineEvent::DiagnosticRaised {
+                        key: err.key,
+                        detail_code: err.detail_code,
+                    },
+                );
+                break;
+            }
+        };
         let is_write_mode = thread_mode == ThreadMode::Write;
         let tool_catalog =
             match crate::agent_tools::resolve_active_tool_catalog(storage, thread_mode) {
@@ -111,7 +133,24 @@ pub(crate) async fn execute_durable_stream_loop(
             };
         let tools_wire = tool_catalog.wire_tools_for_dialect(provider.dialect);
         let tools_canonical = tool_catalog.canonical_json();
+        // Custom headers/body are validated before anything is reserved or sent (A-S8).
+        let prov_overrides =
+            match crate::provider_prefs::load_provider_overrides(storage, &provider.id) {
+                Ok(o) => o,
+                Err(err) => {
+                    failed_key = Some(err.key.as_key().to_owned());
+                    emit(
+                        events_tx,
+                        EngineEvent::DiagnosticRaised {
+                            key: err.key,
+                            detail_code: err.detail_code,
+                        },
+                    );
+                    break;
+                }
+            };
         // Wallet Shield: reserve spend for this paid request before it is sent (fail closed).
+        let mut estimated_input_tokens = 0_u64;
         let mut reservation = if is_local {
             None
         } else {
@@ -126,7 +165,10 @@ pub(crate) async fn execute_durable_stream_loop(
             )
             .await
             {
-                Ok(r) => Some(r),
+                Ok((r, input_estimate)) => {
+                    estimated_input_tokens = input_estimate;
+                    Some(r)
+                }
                 Err(err) => {
                     failed_key = Some(err.key.as_key().to_owned());
                     emit(
@@ -170,10 +212,12 @@ pub(crate) async fn execute_durable_stream_loop(
         // CHECKPOINT_MIN_BYTES arrived (whole-buffer rewrites per chunk were quadratic).
         let mut unsaved_suffix = String::new();
         let mut last_checkpoint = std::time::Instant::now();
-        // Coalesce deltas to one event per frame (DELTA_FRAME) so a fast stream cannot overrun
-        // the bounded event bus.
-        let mut pending_delta = String::new();
-        let mut last_delta_emit = std::time::Instant::now();
+        // Coalesce text and thinking deltas to one event each per frame (DELTA_FRAME) so a fast
+        // stream cannot overrun the bounded event bus. A frame ticker beside the stream flushes
+        // them, so the last text of a burst is shown within a frame even when the provider then
+        // pauses (R33, R34).
+        let pending_delta = std::sync::Mutex::new(String::new());
+        let pending_thinking = std::sync::Mutex::new(String::new());
 
         let replay_ctx = crate::replay_policy::ReplayContext::new(
             provider.dialect,
@@ -184,26 +228,12 @@ pub(crate) async fn execute_durable_stream_loop(
             Some(thread_id),
         );
         let prov_adv = crate::provider_prefs::load_provider_advanced(storage, &provider.id);
-        let prov_overrides = crate::provider_prefs::load_provider_overrides(storage, &provider.id);
         let reply_prefill = crate::provider_prefs::load_thread_reply_prefill(storage, thread_id);
         let store_enabled =
             !stateless_default && (provider.use_server_state_cache || prov_adv.store_server_side);
-        let previous_server_id = if store_enabled && prov_adv.use_stateful_chaining {
-            history
-                .iter()
-                .rev()
-                .find(|n| n.role == NodeRole::Assistant)
-                .and_then(|n| {
-                    let meta =
-                        crate::replay_policy::parse_turn_wire_meta(n.provider_meta_json.as_deref());
-                    crate::replay_policy::eligible_server_chain_id(
-                        meta.origin.as_ref(),
-                        meta.server_state.as_ref(),
-                        &replay_ctx,
-                        crate::replay_policy::history_has_client_compaction(&history),
-                    )
-                    .map(str::to_owned)
-                })
+        // R7: chain only when this request stores, and then send only the new items.
+        let chain = if prov_adv.use_stateful_chaining {
+            crate::replay_policy::chain_plan(&history, &replay_ctx, store_enabled)
         } else {
             None
         };
@@ -215,16 +245,21 @@ pub(crate) async fn execute_durable_stream_loop(
                 .lookup(model)
                 .and_then(|r| r.context_tokens)
         {
+            // R26: the tool schemas are part of every request too.
             let est_tokens = compaction::estimate_branch_tokens_for_model(
                 &effective_system_prompt,
                 &history,
                 Some(model),
-            );
-            if compaction::should_auto_compact(est_tokens, u64::from(ctx_limit), 15) {
+            )
+            .saturating_add(tool_catalog.schema_tokens(Some(model)));
+            if compaction::should_auto_compact(
+                est_tokens,
+                u64::from(ctx_limit),
+                compaction::AUTO_COMPACT_RESERVE_PERCENT,
+            ) {
                 overflow_compacted = true;
-                match storage.list_nodes(thread_id) {
-                    Ok(all_nodes) => {
-                        let branch = collect_branch_ancestry(&all_nodes, &current_parent_id);
+                match storage.list_branch(thread_id, &current_parent_id) {
+                    Ok(branch) => {
                         match compaction::create_reversible_compaction(
                             storage, thread_id, &branch, 4, None,
                         ) {
@@ -251,10 +286,27 @@ pub(crate) async fn execute_durable_stream_loop(
                 }
             }
         }
+        // A wait another run was told about for this provider holds this run too; `Retry now`
+        // (the wake) sends at once.
+        if let Some(wait) = services
+            .provider_backoff
+            .remaining(&provider.id, std::time::Instant::now())
+        {
+            tokio::select! {
+                () = tokio::time::sleep(wait) => {}
+                () = services.wake.notified() => services.provider_backoff.clear(&provider.id),
+            }
+            if cancel_flag.load(Ordering::SeqCst) {
+                cancelled = true;
+                break;
+            }
+        }
         let stream_opts = providers::StreamRequestOptions {
             replay_ctx: Some(&replay_ctx),
             tools_wire: (!tools_wire.is_empty()).then_some(tools_wire.as_slice()),
-            previous_server_id: previous_server_id.as_deref(),
+            previous_server_id: chain.as_ref().map(|c| c.previous_id.as_str()),
+            chain_first_new_index: chain.as_ref().map_or(0, |c| c.first_new_index),
+            store: Some(store_enabled),
             anthropic_cache_1h: prov_adv.anthropic_cache_1h,
             anthropic_server_compaction: prov_adv.enable_server_compaction,
             disable_legacy_fallback: !prov_adv.use_legacy_fallback,
@@ -263,53 +315,75 @@ pub(crate) async fn execute_durable_stream_loop(
             extra_headers: prov_overrides.headers,
             extra_body_fields: prov_overrides.body_fields,
         };
-        let outcome = providers::stream_completion_with_options(
-            &services.http,
-            provider,
-            keys,
-            model,
-            &effective_system_prompt,
-            &history,
-            gen_params,
-            stateless_default,
-            Some(&services.data_dir),
-            &stream_opts,
-            cancel_flag,
-            |chunk| {
-                activity.tick();
-                unsaved_suffix.push_str(chunk);
-                if unsaved_suffix.len() >= CHECKPOINT_MIN_BYTES
-                    && last_checkpoint.elapsed() >= CHECKPOINT_INTERVAL
-                {
-                    note_write(
-                        "agent_run_checkpoint",
-                        buf_storage.append_agent_run_partial_text(
-                            buf_run_id.clone(),
-                            std::mem::take(&mut unsaved_suffix),
-                        ),
-                    );
-                    last_checkpoint = std::time::Instant::now();
-                }
-                pending_delta.push_str(chunk);
-                if last_delta_emit.elapsed() >= DELTA_FRAME {
-                    emit_delta(&delta_tx, &delta_thread, &delta_node, &mut pending_delta);
-                    last_delta_emit = std::time::Instant::now();
-                }
-            },
-            |thinking_chunk| {
+        let flush_frame = || {
+            let text = core::mem::take(&mut *bistre_protocol::lock_or_recover(
+                &pending_delta,
+                "pending_delta",
+            ));
+            emit_delta(&delta_tx, &delta_thread, &delta_node, text);
+            let thinking = core::mem::take(&mut *bistre_protocol::lock_or_recover(
+                &pending_thinking,
+                "pending_thinking",
+            ));
+            if !thinking.is_empty() {
                 emit(
                     &think_tx,
                     EngineEvent::ThinkingDelta {
                         thread_id: think_thread.clone(),
                         node_id: think_node.clone(),
-                        delta: thinking_chunk.to_owned(),
+                        delta: thinking,
                     },
                 );
-            },
-        )
-        .await;
+            }
+        };
+        let outcome = {
+            let stream = providers::stream_completion_with_options(
+                &services.http,
+                provider,
+                keys,
+                model,
+                &effective_system_prompt,
+                &history,
+                gen_params,
+                stateless_default,
+                Some(&services.data_dir),
+                &stream_opts,
+                cancel_flag,
+                |chunk| {
+                    activity.tick();
+                    unsaved_suffix.push_str(chunk);
+                    if unsaved_suffix.len() >= CHECKPOINT_MIN_BYTES
+                        && last_checkpoint.elapsed() >= CHECKPOINT_INTERVAL
+                    {
+                        note_write(
+                            "agent_run_checkpoint",
+                            buf_storage.append_agent_run_partial_text(
+                                buf_run_id.clone(),
+                                std::mem::take(&mut unsaved_suffix),
+                            ),
+                        );
+                        last_checkpoint = std::time::Instant::now();
+                    }
+                    bistre_protocol::lock_or_recover(&pending_delta, "pending_delta")
+                        .push_str(chunk);
+                },
+                |thinking_chunk| {
+                    bistre_protocol::lock_or_recover(&pending_thinking, "pending_thinking")
+                        .push_str(thinking_chunk);
+                },
+            );
+            tokio::pin!(stream);
+            let mut frame = tokio::time::interval(DELTA_FRAME);
+            frame.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                tokio::select! {
+                    out = &mut stream => break out,
+                    _ = frame.tick() => flush_frame(),
+                }
+            }
+        };
         // Flush the last partial frame and checkpoint.
-        emit_delta(&delta_tx, &delta_thread, &delta_node, &mut pending_delta);
+        flush_frame();
         if !unsaved_suffix.is_empty() {
             note_write(
                 "agent_run_checkpoint",
@@ -320,11 +394,32 @@ pub(crate) async fn execute_durable_stream_loop(
         let elapsed_ms = activity.finish_ms();
         let mut committed_assistant_id: Option<String> = None;
         let mut pending_tool_calls: Vec<crate::replay_policy::StoredToolCall> = Vec::new();
+        let mut paused_turn = false;
 
         match outcome {
             Ok(mut res) => {
                 retry_attempt = 0;
+                retry_started = None;
                 pending_tool_calls.clone_from(&res.tool_calls);
+                if !is_local {
+                    let counted_output = [res.full_text.as_str(), res.thinking_text.as_str()]
+                        .into_iter()
+                        .chain(res.tool_calls.iter().map(|c| c.arguments_json.as_str()))
+                        .map(|t| compaction::estimate_tokens_for_model(t, Some(model)))
+                        .fold(0_u64, u64::saturating_add);
+                    let (billable, estimated) =
+                        wallet::billable_usage(&res.usage, estimated_input_tokens, counted_output);
+                    if estimated {
+                        emit(
+                            events_tx,
+                            EngineEvent::DiagnosticRaised {
+                                key: DiagnosticKey::WalletUsageEstimated,
+                                detail_code: Some(run_id.to_owned()),
+                            },
+                        );
+                    }
+                    res.usage = billable;
+                }
                 let rates = services.pricing.rates_for(model).await;
                 let cost = providers::estimate_cost_micros(provider, rates, &res.usage);
                 res.usage.estimated_cost_micros = cost.unwrap_or(MoneyMicros::ZERO);
@@ -350,6 +445,27 @@ pub(crate) async fn execute_durable_stream_loop(
                     let ev = EngineEvent::DiagnosticRaised {
                         key: DiagnosticKey::ProviderStreamInterrupted,
                         detail_code: Some("eof_without_finish".to_owned()),
+                    };
+                    emit_logged(storage, events_tx, Some(thread_id.to_owned()), ev);
+                }
+                // R10/P3: how the reply ended is never a silent "complete".
+                let finish_notice = match res.finish {
+                    Some(crate::finish::FinishKind::Length) => {
+                        Some(DiagnosticKey::ProviderReplyTruncated)
+                    }
+                    Some(crate::finish::FinishKind::Refusal) => {
+                        Some(DiagnosticKey::ProviderReplyRefused)
+                    }
+                    Some(crate::finish::FinishKind::PauseTurn) => {
+                        paused_turn = true;
+                        None
+                    }
+                    _ => None,
+                };
+                if let Some(key) = finish_notice {
+                    let ev = EngineEvent::DiagnosticRaised {
+                        key,
+                        detail_code: None,
                     };
                     emit_logged(storage, events_tx, Some(thread_id.to_owned()), ev);
                 }
@@ -443,6 +559,13 @@ pub(crate) async fn execute_durable_stream_loop(
                             && let Ok(v) = serde_json::to_value(&res.tool_calls)
                         {
                             map.insert("tool_calls".to_owned(), v);
+                        }
+                        // B2: web sources stay with the reply (UI only, never replayed).
+                        if !res.grounding.is_empty() {
+                            map.insert(
+                                "grounding".to_owned(),
+                                crate::grounding::grounding_meta(&res.grounding),
+                            );
                         }
                         if !res.thinking_text.trim().is_empty() {
                             map.insert(
@@ -555,8 +678,8 @@ pub(crate) async fn execute_durable_stream_loop(
                         ),
                     );
                 }
-                let branch = match storage.list_nodes(thread_id) {
-                    Ok(nodes) => collect_branch_ancestry(&nodes, &current_parent_id),
+                let branch = match storage.list_branch(thread_id, &current_parent_id) {
+                    Ok(nodes) => nodes,
                     Err(read_err) => {
                         failed_key = Some(read_err.key.as_key().to_owned());
                         emit(
@@ -595,9 +718,17 @@ pub(crate) async fn execute_durable_stream_loop(
                     .map_or(300, |s| s.retry_watchdog_max_wait_secs);
                 let hint_secs = error_policy::retry_after_from_detail(err.detail_code.as_deref())
                     .map(|ms| ms.div_ceil(1000));
-                let Some(wait_ms) =
-                    agent::compute_backoff_wait_ms(retry_attempt, hint_secs, waited_secs, budget)
-                else {
+                // Wall-clock since the first failure (oh-my-pi): `Retry now` and early wakes
+                // spend only the time that actually passed.
+                let first_failure = *retry_started.get_or_insert_with(std::time::Instant::now);
+                let waited_secs = first_failure.elapsed().as_secs();
+                let Some(wait_ms) = agent::compute_backoff_wait_ms(
+                    retry_attempt,
+                    hint_secs,
+                    waited_secs,
+                    budget,
+                    agent::jitter_seed(run_id),
+                ) else {
                     failed_key = Some(err.key.as_key().to_owned());
                     emit(
                         events_tx,
@@ -609,7 +740,6 @@ pub(crate) async fn execute_durable_stream_loop(
                     break;
                 };
                 retry_attempt = retry_attempt.saturating_add(1);
-                waited_secs = waited_secs.saturating_add(wait_ms.div_ceil(1000));
                 if let Some(ref st) = step_rec {
                     note_write("run_step_complete", storage.complete_run_step(
                         st.id.clone(),
@@ -627,15 +757,20 @@ pub(crate) async fn execute_durable_stream_loop(
                 let ev = EngineEvent::DiagnosticRaised {
                     key: DiagnosticKey::RunBackoffWaiting,
                     detail_code: Some(format!(
-                        "retry_in_ms={wait_ms};reason={}{detail_suffix}",
+                        "retry_in_ms={wait_ms};attempt={retry_attempt};reason={}{detail_suffix}",
                         err.key.as_key()
                     )),
                 };
                 emit_logged(storage, events_tx, Some(thread_id.to_owned()), ev);
+                services.provider_backoff.note(
+                    &provider.id,
+                    std::time::Instant::now(),
+                    std::time::Duration::from_millis(wait_ms),
+                );
                 // `Retry now` and cancel both notify `wake`, ending the wait immediately.
                 tokio::select! {
                     () = tokio::time::sleep(std::time::Duration::from_millis(wait_ms)) => {}
-                    () = services.wake.notified() => {}
+                    () = services.wake.notified() => services.provider_backoff.clear(&provider.id),
                 }
                 if cancel_flag.load(Ordering::SeqCst) {
                     cancelled = true;
@@ -665,8 +800,38 @@ pub(crate) async fn execute_durable_stream_loop(
             }
         }
 
-        if cancelled || step_index >= MAX_RUN_STEPS {
+        if cancelled {
             break;
+        }
+        if step_index >= MAX_RUN_STEPS {
+            // R18: the model still wanted to go on; the run says why it stopped.
+            if !pending_tool_calls.is_empty() || paused_turn {
+                failed_key = Some(DiagnosticKey::RunStepLimitReached.as_key().to_owned());
+                let ev = EngineEvent::DiagnosticRaised {
+                    key: DiagnosticKey::RunStepLimitReached,
+                    detail_code: Some(format!("max_steps={MAX_RUN_STEPS}")),
+                };
+                emit_logged(storage, events_tx, Some(thread_id.to_owned()), ev);
+            }
+            break;
+        }
+
+        // R10/P3: a paused server-side turn (Anthropic `pause_turn`) continues by itself: the
+        // paused reply goes back as the last assistant turn, bounded by the step limit.
+        if pending_tool_calls.is_empty()
+            && paused_turn
+            && let Some(asst_id) = committed_assistant_id.clone()
+        {
+            current_parent_id = asst_id;
+            resume_paused = true;
+            step_index = step_index.saturating_add(1);
+            current_stream_node_id = Uuid::now_v7().to_string();
+            let next_start = EngineEvent::RunStarted {
+                thread_id: thread_id.to_owned(),
+                node_id: current_stream_node_id.clone(),
+            };
+            emit_logged(storage, events_tx, Some(thread_id.to_owned()), next_start);
+            continue;
         }
 
         // If the model emitted tool calls, execute the full tool batch (with approval pausing,
@@ -708,6 +873,14 @@ pub(crate) async fn execute_durable_stream_loop(
                             detail_code: Some("tool_failure_breaker".to_owned()),
                         },
                     );
+                } else if !cancelled && step_index >= MAX_RUN_STEPS {
+                    // R18: tools ran but no step is left for the model to use their results.
+                    failed_key = Some(DiagnosticKey::RunStepLimitReached.as_key().to_owned());
+                    let ev = EngineEvent::DiagnosticRaised {
+                        key: DiagnosticKey::RunStepLimitReached,
+                        detail_code: Some(format!("max_steps={MAX_RUN_STEPS}")),
+                    };
+                    emit_logged(storage, events_tx, Some(thread_id.to_owned()), ev);
                 }
                 break;
             }
@@ -876,38 +1049,16 @@ pub(crate) fn compile_write_mode_system_prompt(
     thread_id: &str,
     base_system_prompt: &str,
     history: &[NodeRecord],
+    context_window: Option<u64>,
 ) -> BistreResult<String> {
-    let state = storage.load_story_thread_state(thread_id)?;
-    let all_cards = storage.list_character_cards()?;
-    let active_cards: Vec<_> = if state.active_character_ids.is_empty() {
-        all_cards.into_iter().take(1).collect()
-    } else {
-        all_cards
-            .into_iter()
-            .filter(|c| state.active_character_ids.contains(&c.id))
-            .collect()
-    };
-    let personas = storage.list_user_personas()?;
-    let active_persona = state
-        .user_persona_id
-        .as_deref()
-        .and_then(|pid| personas.iter().find(|p| p.id == pid))
-        .or_else(|| personas.iter().find(|p| p.is_default));
-    let entries = storage.list_story_entries(None)?;
-    let progressions = storage.list_story_progressions(None)?;
-    let chapters = storage.list_story_chapters(thread_id)?;
-    let report = story::prompt_assembler::assemble_story_prompt(
+    let report = crate::engine_story::story_prompt_report(
+        storage,
+        thread_id,
         base_system_prompt,
-        &state,
-        &active_cards,
-        active_persona,
-        &entries,
-        &progressions,
-        &chapters,
         history,
         None,
-        32_000,
-    );
+        context_window,
+    )?;
     let combined = report
         .blocks
         .iter()
@@ -950,13 +1101,8 @@ const CHECKPOINT_MIN_BYTES: usize = 4 * 1024;
 /// One display frame: deltas inside it are sent as one event.
 const DELTA_FRAME: std::time::Duration = std::time::Duration::from_millis(16);
 
-fn emit_delta(
-    tx: &broadcast::Sender<EngineEvent>,
-    thread_id: &str,
-    node_id: &str,
-    pending: &mut String,
-) {
-    if pending.is_empty() {
+fn emit_delta(tx: &broadcast::Sender<EngineEvent>, thread_id: &str, node_id: &str, text: String) {
+    if text.is_empty() {
         return;
     }
     emit(
@@ -965,7 +1111,7 @@ fn emit_delta(
             thread_id: thread_id.to_owned(),
             chunks: vec![StreamChunk {
                 node_id: node_id.to_owned(),
-                text_delta: std::mem::take(pending),
+                text_delta: text,
             }],
         },
     );
@@ -974,18 +1120,44 @@ fn emit_delta(
 /// Loads everything one model turn needs: the branch history (respecting the context pin),
 /// the thread's `ThreadMode`, and the effective system prompt (including workspace `AGENTS.md`
 /// in `Code` / `Plan` modes).
-fn load_turn_context(
-    storage: &Arc<StorageHandle>,
+pub(crate) fn load_turn_context(
+    storage: &StorageHandle,
     thread_id: &str,
     parent_id: &str,
     system_prompt: &str,
+    context_window: Option<u64>,
 ) -> BistreResult<(Vec<NodeRecord>, ThreadMode, String)> {
-    let history = project_turn_history(storage, thread_id, parent_id)?;
+    load_turn_context_with(
+        storage,
+        thread_id,
+        parent_id,
+        system_prompt,
+        false,
+        context_window,
+    )
+}
+
+/// [`load_turn_context`]; `resume_paused` keeps the trailing assistant turn (R10/P3).
+pub(crate) fn load_turn_context_with(
+    storage: &StorageHandle,
+    thread_id: &str,
+    parent_id: &str,
+    system_prompt: &str,
+    resume_paused: bool,
+    context_window: Option<u64>,
+) -> BistreResult<(Vec<NodeRecord>, ThreadMode, String)> {
+    let history = project_turn_history(storage, thread_id, parent_id, resume_paused)?;
     let mode = storage
         .get_thread(thread_id)?
         .map_or(ThreadMode::Chat, |t| t.mode);
     let mut prompt = if mode == ThreadMode::Write {
-        compile_write_mode_system_prompt(storage, thread_id, system_prompt, &history)?
+        compile_write_mode_system_prompt(
+            storage,
+            thread_id,
+            system_prompt,
+            &history,
+            context_window,
+        )?
     } else {
         system_prompt.to_owned()
     };
@@ -1026,13 +1198,29 @@ fn project_turn_history(
     storage: &StorageHandle,
     thread_id: &str,
     leaf_id: &str,
+    keep_assistant_tail: bool,
 ) -> BistreResult<Vec<NodeRecord>> {
-    let all_nodes = storage.list_nodes(thread_id)?;
-    let raw_history = collect_branch_ancestry(&all_nodes, leaf_id);
+    // R37: only this branch is read, not every node of the thread.
+    let raw_history = storage.list_branch(thread_id, leaf_id)?;
     let pinned_start = storage.get_kv_meta(&format!("thread_context_start:{thread_id}"))?;
     let effective = compaction::project_effective_history(&raw_history, pinned_start.as_deref());
     let quantized = compaction::compact_tool_outputs_quantized(&effective, 2_000);
-    Ok(compaction::enforce_role_alternation(quantized))
+    // R13: an assistant turn with no text and no tool call (a stopped reply that only
+    // thought) is never sent back: providers reject an empty assistant message.
+    let sendable: Vec<NodeRecord> = crate::replay_policy::answer_dangling_tool_calls(quantized)
+        .into_iter()
+        .filter(|n| {
+            n.role != NodeRole::Assistant
+                || !n.content.trim().is_empty()
+                || !crate::replay_policy::parse_turn_wire_meta(n.provider_meta_json.as_deref())
+                    .tool_calls
+                    .is_empty()
+        })
+        .collect();
+    Ok(compaction::enforce_role_alternation_with(
+        sendable,
+        keep_assistant_tail,
+    ))
 }
 
 /// Longest user name told to the model, in characters.
@@ -1059,80 +1247,6 @@ pub(crate) fn with_user_name(system_prompt: String, name: &str, mode: ThreadMode
     }
 }
 
-/// What the next request sends for this branch, by category (the composer's context gauge
-/// and breakdown). Uses the same system prompt, Write-mode story prompt, and history projection
-/// as a run, so a compaction or a context pin lowers it exactly as it lowers the real request.
-pub(crate) fn branch_context_usage(
-    storage: &StorageHandle,
-    data_dir: Option<&std::path::Path>,
-    thread_id: &str,
-    leaf_id: &str,
-    draft: &str,
-) -> BistreResult<crate::ContextUsage> {
-    let thread = storage
-        .get_thread(thread_id)?
-        .ok_or_else(|| BistreError::new(DiagnosticKey::StorageNotFound))?;
-    let settings = storage.load_settings()?;
-    let assistant = storage
-        .list_assistants()?
-        .into_iter()
-        .find(|a| a.id == thread.assistant_id);
-    let base_prompt = match thread.system_prompt_override.clone() {
-        Some(prompt) => prompt,
-        None => assistant
-            .as_ref()
-            .map_or_default(|a| a.system_prompt.clone()),
-    };
-    let active_model = thread
-        .model_id_override
-        .as_deref()
-        .filter(|m| !m.trim().is_empty())
-        .or_else(|| {
-            assistant
-                .as_ref()
-                .map(|a| a.default_model_id.as_str())
-                .filter(|m| !m.trim().is_empty())
-        })
-        .or_else(|| {
-            let m = settings.active_model_id.as_str();
-            (!m.trim().is_empty()).then_some(m)
-        });
-    let base_prompt = with_user_name(base_prompt, &settings.user_display_name, thread.mode);
-    let history = project_turn_history(storage, thread_id, leaf_id)?;
-    let system_tokens = compaction::estimate_tokens_for_model(&base_prompt, active_model);
-    let story_tokens = if thread.mode == ThreadMode::Write {
-        let compiled =
-            compile_write_mode_system_prompt(storage, thread_id, &base_prompt, &history)?;
-        compaction::estimate_tokens_for_model(&compiled, active_model).saturating_sub(system_tokens)
-    } else {
-        0
-    };
-    let tools_tokens =
-        crate::agent_tools::exact_active_tools_tokens(storage, thread.mode, active_model)?;
-    let mut attachments_tokens = 0_u64;
-    let mut attachments_count = 0_u32;
-    for node in &history {
-        let atts = crate::attachments::parse_node_attachments(node.provider_meta_json.as_deref());
-        for att in &atts {
-            attachments_count = attachments_count.saturating_add(1);
-            let est = data_dir.map_or(512, |dir| {
-                crate::attachments::estimate_attachment_tokens(dir, att)
-            });
-            attachments_tokens = attachments_tokens.saturating_add(est);
-        }
-    }
-    Ok(crate::ContextUsage {
-        system_tokens,
-        story_tokens,
-        tools_tokens,
-        attachments_tokens,
-        attachments_count,
-        history_tokens: compaction::estimate_branch_tokens_for_model("", &history, active_model),
-        history_turns: u32::try_from(history.len()).unwrap_or(u32::MAX),
-        draft_tokens: compaction::estimate_tokens_for_model(draft.trim(), active_model),
-    })
-}
-
 /// Reserves Wallet Shield spend for one paid request. Prices the prompt's model-matched BPE
 /// input tokens when live rates are known; output is settled afterwards.
 async fn reserve_paid_request(
@@ -1143,21 +1257,13 @@ async fn reserve_paid_request(
     model: &str,
     system_prompt: &str,
     history: &[NodeRecord],
-) -> BistreResult<wallet::SpendReservation> {
+) -> BistreResult<(wallet::SpendReservation, u64)> {
     let settings = storage.load_settings().map_err(|err| {
         BistreError::with_detail(DiagnosticKey::WalletCheckUnavailable, err.key.as_key())
     })?;
-    // Fail-closed per-thread spend cap check (runs alongside the daily Wallet Shield ceiling).
-    if let Some(thread_cap) = crate::provider_prefs::load_thread_spend_limit(storage, thread_id) {
-        let spent_thread =
-            crate::provider_prefs::sum_thread_recorded_spend_micros(storage, thread_id);
-        if spent_thread >= thread_cap {
-            return Err(BistreError::with_detail(
-                DiagnosticKey::WalletCeilingExceeded,
-                "thread_spend_limit",
-            ));
-        }
-    }
+    // Per-chat cap: fails closed on a storage error or a malformed value (A-S1); checked in the
+    // reservation transaction against the chat's ledger spend.
+    let chat_cap = crate::provider_prefs::load_thread_spend_limit(storage, thread_id)?;
     let mut attachment_tokens = 0_u64;
     for node in history {
         for att in crate::attachments::parse_node_attachments(node.provider_meta_json.as_deref()) {
@@ -1176,9 +1282,20 @@ async fn reserve_paid_request(
         ..UsageMetrics::default()
     };
     let rates = services.pricing.rates_for(model).await;
-    let estimate = providers::estimate_cost_micros(provider, rates, &estimate_usage)
-        .unwrap_or(MoneyMicros::ZERO);
-    wallet::SpendReservation::reserve(
+    let capped = settings.wallet_daily_ceiling_micros.is_some() || chat_cap.is_some();
+    let estimate = match providers::estimate_cost_micros(provider, rates, &estimate_usage) {
+        Some(cost) => cost,
+        // A-S6: an unpriced request cannot be checked against a cap, so it is blocked while
+        // any cap is active, unless the user allowed this chat's next run once.
+        None if capped && !unpriced_allowed(services, thread_id) => {
+            return Err(BistreError::with_detail(
+                DiagnosticKey::WalletPriceUnknown,
+                "price_unknown",
+            ));
+        }
+        None => MoneyMicros::ZERO,
+    };
+    wallet::SpendReservation::reserve_with_chat_cap(
         storage,
         Some(thread_id.to_owned()),
         provider.id.clone(),
@@ -1186,11 +1303,19 @@ async fn reserve_paid_request(
         estimate,
         settings.wallet_daily_ceiling_micros,
         utc_day_start_unix_ms(),
+        chat_cap,
     )
+    .map(|r| (r, estimate_usage.input_tokens))
     .map_err(|err| match err.key {
         DiagnosticKey::WalletCeilingExceeded => err,
         other => BistreError::with_detail(DiagnosticKey::WalletCheckUnavailable, other.as_key()),
     })
+}
+
+/// Whether the user allowed this chat's current run to send requests whose price is unknown.
+fn unpriced_allowed(services: &StreamServices, thread_id: &str) -> bool {
+    bistre_protocol::lock_or_recover(&services.unpriced_allowed, "unpriced_allowed")
+        .contains(thread_id)
 }
 
 pub(crate) fn collect_branch_ancestry(nodes: &[NodeRecord], leaf_id: &str) -> Vec<NodeRecord> {

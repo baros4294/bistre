@@ -143,6 +143,18 @@ pub fn delete_storage_file(data_dir: &Path, rel_path: &str) -> BistreResult<bool
     Ok(true)
 }
 
+/// R41: an update slot (`ota_staging/<version>/`) is stale only once that version is no
+/// longer newer than the running one; a staged, newer update is kept for install.
+fn is_stale_update(rel_path: &str) -> bool {
+    let mut parts = rel_path.split('/');
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some("ota_staging"), Some(version), Some(_)) => {
+            !crate::ota::is_semver_newer(version, crate::CORE_VERSION)
+        }
+        _ => false,
+    }
+}
+
 /// Removes unreferenced attachment blobs and stale temporary/staged files, returning bytes freed.
 pub fn clean_unused_storage_files(data_dir: &Path, storage: &StorageHandle) -> BistreResult<u64> {
     let mut referenced_attachments: HashSet<String> = HashSet::new();
@@ -164,12 +176,10 @@ pub fn clean_unused_storage_files(data_dir: &Path, storage: &StorageHandle) -> B
         }
         let is_orphan_attachment =
             entry.category == "attachments" && !referenced_attachments.contains(&entry.rel_path);
-        let is_temp = Path::new(&entry.rel_path)
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("tmp"))
-            || entry.rel_path.contains("/.tmp-")
-            || entry.category == "updates";
-        if is_orphan_attachment || is_temp {
+        let is_temp = Path::new(&entry.rel_path).extension().is_some_and(|ext| {
+            ext.eq_ignore_ascii_case("tmp") || ext.eq_ignore_ascii_case("partial")
+        }) || entry.rel_path.contains("/.tmp-");
+        if is_orphan_attachment || is_temp || is_stale_update(&entry.rel_path) {
             let full = data_dir.join(&entry.rel_path);
             if std::fs::remove_file(&full).is_ok() {
                 freed = freed.saturating_add(entry.size_bytes);
@@ -342,19 +352,46 @@ pub fn export_settings_json(storage: &StorageHandle) -> BistreResult<String> {
         .map_err(|_| BistreError::with_detail(DiagnosticKey::InternalError, "export_settings_json"))
 }
 
-/// Imports user settings JSON safely: rejects UNC paths and preserves current sensitive paths.
-pub fn import_settings_json(storage: &StorageHandle, raw_json: &str) -> BistreResult<AppSettings> {
+/// Imports user settings JSON safely (A-S3).
+///
+/// - Only known settings fields are accepted (an unknown field is refused, so a file from a
+///   different build cannot smuggle in values this build does not show).
+/// - A file that would loosen safety (a more permissive trust preset, or a higher or removed
+///   daily spending limit) is refused with `diag.import.loosens_safety` unless
+///   `allow_loosening` says the user confirmed it; an unreadable current settings row counts
+///   as "would loosen".
+/// - UNC paths are cleared. The engine revokes outstanding tool permits after every import.
+pub fn import_settings_json(
+    storage: &StorageHandle,
+    raw_json: &str,
+    allow_loosening: bool,
+) -> BistreResult<AppSettings> {
     if raw_json.len() > MAX_IMPORT_JSON_BYTES {
         return Err(BistreError::with_detail(
             DiagnosticKey::InvalidInput,
             "import_too_large",
         ));
     }
-    let mut incoming: AppSettings = serde_json::from_str(raw_json).map_err(|_| {
-        BistreError::with_detail(DiagnosticKey::InvalidInput, "import_settings_invalid_json")
-    })?;
-    // Fail-closed import policy: never allow untrusted settings JSON to inject UNC paths or
-    // silently weaken OTA/trust guardrails.
+    let invalid =
+        || BistreError::with_detail(DiagnosticKey::InvalidInput, "import_settings_invalid_json");
+    let value: serde_json::Value = serde_json::from_str(raw_json).map_err(|_| invalid())?;
+    let known = serde_json::to_value(AppSettings::default()).map_err(|_| invalid())?;
+    let (Some(fields), Some(known_fields)) = (value.as_object(), known.as_object()) else {
+        return Err(invalid());
+    };
+    if fields.keys().any(|k| !known_fields.contains_key(k)) {
+        return Err(BistreError::with_detail(
+            DiagnosticKey::InvalidInput,
+            "import_unknown_field",
+        ));
+    }
+    let mut incoming: AppSettings = serde_json::from_value(value).map_err(|_| invalid())?;
+    let loosens = storage
+        .load_settings()
+        .map_or(true, |current| loosens_safety(&current, &incoming));
+    if loosens && !allow_loosening {
+        return Err(BistreError::new(DiagnosticKey::ImportLoosensSafety));
+    }
     if is_windows_unc_path(&incoming.prose_font_path) {
         incoming.prose_font_path.clear();
     }
@@ -367,9 +404,60 @@ pub fn import_settings_json(storage: &StorageHandle, raw_json: &str) -> BistreRe
     storage.save_settings(incoming)
 }
 
+/// How much a trust preset lets tools run without asking (higher is looser).
+const fn trust_looseness(preset: bistre_protocol::TrustPreset) -> u8 {
+    match preset {
+        bistre_protocol::TrustPreset::Off => 0,
+        bistre_protocol::TrustPreset::Strict => 1,
+        bistre_protocol::TrustPreset::GuidedCraft => 2,
+        bistre_protocol::TrustPreset::UnchainedSandbox => 3,
+    }
+}
+
+/// Whether `incoming` allows more than `current`: a looser trust preset, or a removed or
+/// higher daily spending limit.
+fn loosens_safety(current: &AppSettings, incoming: &AppSettings) -> bool {
+    let looser_trust =
+        trust_looseness(incoming.trust_preset) > trust_looseness(current.trust_preset);
+    let looser_cap = match (
+        current.wallet_daily_ceiling_micros,
+        incoming.wallet_daily_ceiling_micros,
+    ) {
+        (Some(_), None) => true,
+        (Some(cur), Some(new)) => new > cur,
+        (None, _) => false,
+    };
+    looser_trust || looser_cap
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// R41: cleaning never deletes an update that is staged to install; it removes only
+    /// unfinished downloads and slots for versions already installed.
+    #[test]
+    fn cleaning_keeps_a_staged_update() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let storage = StorageHandle::open(dir.path().join("bistre.sqlite"))?;
+        let staged = dir.path().join("ota_staging").join("999.0.0");
+        std::fs::create_dir_all(&staged)?;
+        std::fs::write(staged.join("payload.bin"), b"signed payload")?;
+        std::fs::write(staged.join("payload.bin.partial"), b"half")?;
+        let old = dir.path().join("ota_staging").join("0.0.1");
+        std::fs::create_dir_all(&old)?;
+        std::fs::write(old.join("payload.bin"), b"installed long ago")?;
+        clean_unused_storage_files(dir.path(), &storage)?;
+        assert!(
+            staged.join("payload.bin").exists(),
+            "the staged update stays"
+        );
+        assert!(!staged.join("payload.bin.partial").exists());
+        assert!(
+            !old.join("payload.bin").exists(),
+            "an installed version's slot goes"
+        );
+        Ok(())
+    }
 
     #[test]
     fn live_sqlite_db_is_never_deletable() -> Result<(), Box<dyn std::error::Error>> {
@@ -436,6 +524,70 @@ mod tests {
         let nodes = storage.list_nodes(&imported.id)?;
         let restored_meta = nodes[0].provider_meta_json.as_deref().unwrap_or("");
         assert!(restored_meta.contains("thinking_text"));
+        Ok(())
+    }
+
+    fn engine_storage()
+    -> Result<(tempfile::TempDir, std::sync::Arc<StorageHandle>), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let storage = StorageHandle::open(dir.path().join("s.sqlite"))?;
+        Ok((dir, storage))
+    }
+
+    /// A-S3: an imported settings file can never loosen trust or the spending limit unless the
+    /// user confirms, and unknown fields are refused.
+    #[test]
+    fn settings_import_never_loosens_safety_without_confirmation()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (_dir, storage) = engine_storage()?;
+        let mut current = storage.load_settings()?;
+        current.trust_preset = bistre_protocol::TrustPreset::Strict;
+        current.wallet_daily_ceiling_micros =
+            Some(bistre_protocol::MoneyMicros::from_micros(1_000_000));
+        storage.save_settings(current.clone())?;
+
+        let mut looser = current.clone();
+        looser.trust_preset = bistre_protocol::TrustPreset::UnchainedSandbox;
+        let raw = serde_json::to_string(&looser)?;
+        assert_eq!(
+            import_settings_json(&storage, &raw, false)
+                .err()
+                .map(|e| e.key),
+            Some(DiagnosticKey::ImportLoosensSafety)
+        );
+        assert_eq!(
+            storage.load_settings()?.trust_preset,
+            bistre_protocol::TrustPreset::Strict
+        );
+
+        let mut uncapped = current.clone();
+        uncapped.wallet_daily_ceiling_micros = None;
+        let raw_uncapped = serde_json::to_string(&uncapped)?;
+        assert!(import_settings_json(&storage, &raw_uncapped, false).is_err());
+
+        let mut stricter = current.clone();
+        stricter.trust_preset = bistre_protocol::TrustPreset::Off;
+        assert!(import_settings_json(&storage, &serde_json::to_string(&stricter)?, false).is_ok());
+
+        assert!(
+            import_settings_json(&storage, &raw, true).is_ok(),
+            "confirmed import applies"
+        );
+        assert_eq!(
+            storage.load_settings()?.trust_preset,
+            bistre_protocol::TrustPreset::UnchainedSandbox
+        );
+
+        let mut extra: serde_json::Value = serde_json::to_value(&current)?;
+        if let Some(obj) = extra.as_object_mut() {
+            obj.insert("unknown_switch".to_owned(), serde_json::Value::Bool(true));
+        }
+        assert_eq!(
+            import_settings_json(&storage, &extra.to_string(), true)
+                .err()
+                .and_then(|e| e.detail_code),
+            Some("import_unknown_field".to_owned())
+        );
         Ok(())
     }
 }

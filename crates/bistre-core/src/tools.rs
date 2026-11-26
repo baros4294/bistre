@@ -23,7 +23,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::process_util::{ShellKind, decode_clixml, preferred_shell, run_bounded, shell_command};
+use crate::process_util::{ShellKind, decode_clixml, preferred_shell, shell_command};
 
 const MAX_READ_FILE_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_TOOL_OUTPUT_BYTES: usize = 256 * 1024;
@@ -784,6 +784,16 @@ pub async fn tool_shell(
     command_str: &str,
     timeout_secs: u64,
 ) -> BistreResult<ToolExecutionOutput> {
+    tool_shell_with_progress(workspace_root, command_str, timeout_secs, None).await
+}
+
+/// [`tool_shell`], sending output pieces to `progress` while the command runs (P21).
+pub async fn tool_shell_with_progress(
+    workspace_root: &Path,
+    command_str: &str,
+    timeout_secs: u64,
+    progress: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
+) -> BistreResult<ToolExecutionOutput> {
     let started = Instant::now();
     if classify_tool_risk("shell", &json!({ "command": command_str })) == ToolRiskTier::Tier3Blocked
     {
@@ -795,9 +805,10 @@ pub async fn tool_shell(
 
     let clamped_timeout = Duration::from_secs(timeout_secs.clamp(1, 300));
     let shell = preferred_shell();
-    let output = run_bounded(
+    let output = crate::process_util::run_bounded_with_progress(
         shell_command(shell, command_str, workspace_root),
         clamped_timeout,
+        progress,
     )
     .await
     .map_err(|err| {

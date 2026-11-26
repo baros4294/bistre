@@ -1,0 +1,164 @@
+{
+  "first_item": null,
+  "system": "You are Bistre, a careful assistant.",
+  "tools": [
+    {
+      "description": "Compute a unified diff between two text snippets.",
+      "name": "diff",
+      "parameters": {
+        "properties": {
+          "after": {
+            "type": "string"
+          },
+          "before": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "before",
+          "after"
+        ],
+        "type": "object"
+      },
+      "type": "function"
+    },
+    {
+      "description": "Capability-scoped workspace file edit verified by blake3 anchor hash with automatic rewind checkpoint.",
+      "name": "edit",
+      "parameters": {
+        "properties": {
+          "expected_hash": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "replacement": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "target",
+          "replacement"
+        ],
+        "type": "object"
+      },
+      "type": "function"
+    },
+    {
+      "description": "Find workspace files matching a glob pattern respecting .gitignore.",
+      "name": "glob",
+      "parameters": {
+        "properties": {
+          "pattern": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pattern"
+        ],
+        "type": "object"
+      },
+      "type": "function"
+    },
+    {
+      "description": "Search workspace text files using ripgrep regex engine respecting .gitignore.",
+      "name": "grep",
+      "parameters": {
+        "properties": {
+          "pattern": {
+            "type": "string"
+          },
+          "subpath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pattern"
+        ],
+        "type": "object"
+      },
+      "type": "function"
+    },
+    {
+      "description": "Read a workspace UTF-8 file with line numbers and blake3 line-hash anchors.",
+      "name": "read",
+      "parameters": {
+        "properties": {
+          "end_line": {
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          },
+          "start_line": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "type": "function"
+    },
+    {
+      "description": "Run a bounded shell command inside the bound workspace directory.",
+      "name": "shell",
+      "parameters": {
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "timeout_secs": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "type": "function"
+    },
+    {
+      "description": "Fetch a public HTTP/HTTPS URL and extract clean readable text.",
+      "name": "web_fetch",
+      "parameters": {
+        "properties": {
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
+      "type": "function"
+    },
+    {
+      "description": "Search the public web for up-to-date information and return ranked results with titles, URLs, and snippets.",
+      "name": "web_search",
+      "parameters": {
+        "properties": {
+          "max_results": {
+            "type": "integer"
+          },
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      },
+      "type": "function"
+    }
+  ]
+}

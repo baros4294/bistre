@@ -6,7 +6,7 @@
 //! - `stdin` is null and `kill_on_drop(true)` is set, so dropped futures never leak children.
 //! - Lifetime containment (`bistre_crypto::containment`): Linux/Android children get
 //!   `PR_SET_PDEATHSIG(SIGKILL)`; on Windows [`spawn_contained`] assigns every child to the
-//!   process-wide `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` Job Object, so a crashed Bistre never
+//!   process-wide `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` (+ `DIE_ON_UNHANDLED_EXCEPTION`) Job Object, so a crashed Bistre never
 //!   leaves tool, hook, or git children running. Spawning goes through [`spawn_contained`]
 //!   (`clippy.toml` bans direct `spawn` / `output` / `status`).
 //!
@@ -259,7 +259,10 @@ fn decode_clixml_text(raw: &str) -> String {
 /// chatty child can never block on a full pipe or grow Bistre's memory without bound.
 pub const MAX_CAPTURE_BYTES: u64 = 32 * 1024 * 1024;
 
-async fn capture_pipe<R>(pipe: Option<R>) -> std::io::Result<Vec<u8>>
+async fn capture_pipe<R>(
+    pipe: Option<R>,
+    progress: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
+) -> std::io::Result<Vec<u8>>
 where
     R: tokio::io::AsyncRead + Unpin,
 {
@@ -269,17 +272,40 @@ where
         return Ok(Vec::new());
     };
     let mut buf = Vec::new();
-    (&mut pipe)
-        .take(MAX_CAPTURE_BYTES)
-        .read_to_end(&mut buf)
-        .await?;
+    let mut chunk = vec![0_u8; 8 * 1024];
+    let cap = usize::try_from(MAX_CAPTURE_BYTES).unwrap_or(usize::MAX);
+    while buf.len() < cap {
+        let n = pipe.read(&mut chunk).await?;
+        if n == 0 {
+            return Ok(buf);
+        }
+        let take = n.min(cap - buf.len());
+        buf.extend_from_slice(&chunk[..take]);
+        // P21: a full channel drops a progress copy, never the captured output itself.
+        if let Some(tx) = &progress
+            && tx.try_send(chunk[..take].to_vec()).is_err()
+        {
+            tracing::trace!("progress channel full; output still captured");
+        }
+    }
     tokio::io::copy(&mut pipe, &mut tokio::io::sink()).await?;
     Ok(buf)
 }
 
 /// Spawns `cmd`, waits up to `timeout`, and on expiry kills the whole process tree while the root
 /// is still alive (so the tree walk can find every descendant) before reaping it.
-pub async fn run_bounded(mut cmd: Command, timeout: Duration) -> BistreResult<Output> {
+pub async fn run_bounded(cmd: Command, timeout: Duration) -> BistreResult<Output> {
+    run_bounded_with_progress(cmd, timeout, None).await
+}
+
+/// [`run_bounded`], also sending each piece of stdout and stderr to `progress` as it arrives
+/// (P21: a long shell command shows its output while it runs). A slow reader loses progress
+/// copies, never output.
+pub async fn run_bounded_with_progress(
+    mut cmd: Command,
+    timeout: Duration,
+    progress: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
+) -> BistreResult<Output> {
     let wait_err = |_| BistreError::with_detail(DiagnosticKey::InternalError, "process_wait");
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     let (mut child, containment) = spawn_contained(&mut cmd)
@@ -288,7 +314,11 @@ pub async fn run_bounded(mut cmd: Command, timeout: Duration) -> BistreResult<Ou
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let finished = tokio::time::timeout(timeout, async {
-        tokio::join!(child.wait(), capture_pipe(stdout), capture_pipe(stderr))
+        tokio::join!(
+            child.wait(),
+            capture_pipe(stdout, progress.clone()),
+            capture_pipe(stderr, progress)
+        )
     })
     .await;
     if let Ok((status, stdout, stderr)) = finished {
@@ -407,6 +437,45 @@ mod tests {
         assert!(validate_web_link("file:///etc/passwd").is_err());
         assert!(validate_web_link("javascript:alert(1)").is_err());
         assert!(validate_web_link("ms-settings:privacy").is_err());
+    }
+
+    /// P21: a running command's output reaches the progress channel while it runs, not only
+    /// when it ends.
+    #[tokio::test]
+    async fn output_arrives_while_the_command_still_runs() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = std::env::temp_dir();
+        let shell = preferred_shell();
+        let script = if cfg!(windows) {
+            "echo first && ping -n 3 127.0.0.1 > NUL && echo second"
+        } else {
+            "echo first; sleep 2; echo second"
+        };
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(16);
+        let run = run_bounded_with_progress(
+            shell_command(shell, script, &dir),
+            Duration::from_secs(30),
+            Some(tx),
+        );
+        let watch = async {
+            let mut first_seen = None;
+            while let Some(chunk) = rx.recv().await {
+                if first_seen.is_none() && String::from_utf8_lossy(&chunk).contains("first") {
+                    first_seen = Some(std::time::Instant::now());
+                }
+            }
+            first_seen
+        };
+        let (out, first_seen) = tokio::join!(run, watch);
+        let finished = std::time::Instant::now();
+        let out = out?;
+        assert!(String::from_utf8_lossy(&out.stdout).contains("second"));
+        let first_seen = first_seen.ok_or("no progress arrived")?;
+        assert!(
+            finished.duration_since(first_seen) >= Duration::from_millis(800),
+            "the first line arrived only at the end"
+        );
+        Ok(())
     }
 
     #[tokio::test]

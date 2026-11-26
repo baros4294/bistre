@@ -45,7 +45,7 @@ fn spawn_mock_sse_server(listener: TcpListener) -> tokio::task::JoinHandle<()> {
 async fn unconfigured_provider_returns_diagnostic_and_local_sse_streams_real_http() -> TestResult {
     let dir = tempdir()?;
 
-    let engine = InProcessEngine::open(dir.path(), Some(VaultKey::generate()?))?;
+    let engine = InProcessEngine::open_for_test(dir.path(), http_clients::provider_client()?)?;
 
     let thread = engine
         .create_thread(
@@ -150,7 +150,7 @@ async fn unconfigured_provider_returns_diagnostic_and_local_sse_streams_real_htt
 async fn wallet_shield_enforces_daily_cap_and_unlimited_bypasses_and_ota_checks_loopback()
 -> TestResult {
     let dir = tempdir()?;
-    let engine = InProcessEngine::open(dir.path(), Some(VaultKey::generate()?))?;
+    let engine = InProcessEngine::open_for_test(dir.path(), http_clients::provider_client()?)?;
 
     // Save a key on OpenAI (non-loopback) and set daily ceiling to $0.00 to verify Wallet Shield hard block.
     assert!(
@@ -253,7 +253,7 @@ async fn wallet_shield_enforces_daily_cap_and_unlimited_bypasses_and_ota_checks_
 async fn suspend_resume_reconciles_tier2_indeterminate_halt_and_wallet_shield_precedence()
 -> TestResult {
     let dir = tempdir()?;
-    let engine = InProcessEngine::open(dir.path(), Some(VaultKey::generate()?))?;
+    let engine = InProcessEngine::open_for_test(dir.path(), http_clients::provider_client()?)?;
 
     let thread = engine
         .create_thread(
@@ -352,8 +352,18 @@ async fn suspend_resume_reconciles_tier2_indeterminate_halt_and_wallet_shield_pr
     assert_eq!(status_of(&run1.id)?, Some(RunStatus::Failed));
 
     // Verify backoff watchdog respects Retry-After and stops once total budget expires.
-    assert!(agent::compute_backoff_wait_ms(0, Some(12), 0, 60).is_some_and(|ms| ms >= 12_000));
-    assert_eq!(agent::compute_backoff_wait_ms(4, None, 60, 60), None);
+    assert!(agent::compute_backoff_wait_ms(0, Some(12), 0, 60, 0).is_some_and(|ms| ms >= 12_000));
+    assert_eq!(agent::compute_backoff_wait_ms(4, None, 60, 60, 0), None);
+    // R32: a provider asking for longer than the budget left is not retried early.
+    assert_eq!(
+        agent::compute_backoff_wait_ms(0, Some(400), 0, 300, 0),
+        None
+    );
+    // R32: jitter differs per run, so runs failing together do not retry together.
+    let waits: std::collections::HashSet<u64> = (0..8_u64)
+        .filter_map(|seed| agent::compute_backoff_wait_ms(1, None, 0, 300, seed))
+        .collect();
+    assert!(waits.len() > 1, "{waits:?}");
     assert!(engine.shutdown().await.is_ok());
     Ok(())
 }
@@ -361,7 +371,7 @@ async fn suspend_resume_reconciles_tier2_indeterminate_halt_and_wallet_shield_pr
 #[tokio::test]
 async fn mid_stream_steering_queue_drives_follow_up_turn_without_cancel() -> TestResult {
     let dir = tempdir()?;
-    let engine = InProcessEngine::open(dir.path(), Some(VaultKey::generate()?))?;
+    let engine = InProcessEngine::open_for_test(dir.path(), http_clients::provider_client()?)?;
 
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;
@@ -458,7 +468,7 @@ async fn mid_stream_steering_queue_drives_follow_up_turn_without_cancel() -> Tes
 #[tokio::test]
 async fn non_read_only_tools_require_an_exact_user_approval() -> BistreResult<()> {
     let dir = tempdir().map_err(|_| BistreError::new(DiagnosticKey::InternalError))?;
-    let engine = InProcessEngine::open(dir.path(), Some(VaultKey::generate()?))?;
+    let engine = InProcessEngine::open_for_test(dir.path(), http_clients::provider_client()?)?;
     let ws = dir.path().join("ws");
     std::fs::create_dir_all(&ws).map_err(|_| BistreError::new(DiagnosticKey::InternalError))?;
     std::fs::write(ws.join("a.txt"), "one\n")
@@ -513,7 +523,7 @@ async fn trust_preset_off_denies_all_tools_and_strict_requires_permit_for_reads(
     std::fs::write(ws.join("note.txt"), "hello\n")
         .map_err(|_| BistreError::new(DiagnosticKey::InternalError))?;
 
-    let engine = InProcessEngine::open(tmp.path(), Some(VaultKey::generate()?))?;
+    let engine = InProcessEngine::open_for_test(tmp.path(), http_clients::provider_client()?)?;
     let root = ws.to_string_lossy().into_owned();
     let read_args = r#"{"path":"note.txt"}"#.to_owned();
 

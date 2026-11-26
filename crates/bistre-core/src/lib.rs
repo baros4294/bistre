@@ -7,29 +7,39 @@
 //! - Streams real responses over pure `rustls` + `reqwest 0.13` across Big 3 + Custom dialects (Spec 02).
 
 pub mod agent;
+pub mod agent_approvals;
 pub mod agent_tools;
 pub mod approval;
 pub mod attachments;
 pub mod compaction;
+pub mod context_breakdown;
 pub mod credentials;
 pub mod cron;
+pub mod custom_headers;
+mod engine_grounding;
 pub mod error_policy;
 mod events;
+pub mod finish;
+pub mod grounding;
 pub mod hooks;
 pub mod http_clients;
 pub mod import_policy;
 pub mod ipc_client;
 pub mod mcp;
 pub mod mcp_stdio;
+pub mod mime_sniff;
 pub mod net;
 mod off_worker;
 pub mod ota;
+pub mod ota_manifest;
 pub mod power;
 pub mod process_util;
+pub mod provider_backoff;
 pub mod provider_prefs;
 pub mod providers;
 pub mod registry;
 pub mod replay_policy;
+mod shell_progress;
 pub mod skills;
 pub mod sse;
 pub mod ssrf;
@@ -37,6 +47,7 @@ pub mod storage_files;
 pub mod story;
 pub mod subagents;
 pub mod tokenizer;
+mod tool_spill;
 pub mod tools;
 pub mod vault_key;
 pub mod voice;
@@ -45,16 +56,27 @@ pub mod wire_history;
 pub mod wire_parse;
 pub mod wire_stream;
 
+#[cfg(test)]
+mod egress_tests;
 mod engine_client;
 mod engine_extras;
 mod engine_impl;
 mod engine_runs;
+mod engine_story;
+#[cfg(test)]
+mod gemini_signature_tests;
+#[cfg(test)]
+pub(crate) mod test_support;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod wallet_flow_tests;
 
 pub use bistre_crypto::VaultKey;
 use bistre_protocol::lock_or_recover;
-pub use engine_client::{ContextUsage, EngineClient};
+pub use context_breakdown::ContextBreakdown;
+pub use engine_client::EngineClient;
+pub use engine_grounding::NodeGrounding;
 use engine_runs::{StreamServices, execute_durable_stream_loop, utc_day_start_unix_ms};
 
 use std::collections::HashMap;
@@ -88,6 +110,9 @@ use zeroize::Zeroizing;
 /// Crate semver exposed in health diagnostics.
 pub const CORE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Longest a new run waits for the previous run in the same chat to stop (R30).
+pub(crate) const PREVIOUS_RUN_STOP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
 const EVENT_BUS_CAPACITY: usize = 256;
 
 /// Boxed future type for object-safe async `EngineClient` implementations.
@@ -99,6 +124,8 @@ pub struct InProcessEngine {
     storage: Arc<StorageHandle>,
     vault: Arc<dyn SecretVault>,
     http: reqwest::Client,
+    /// Update feeds and artifacts (`http_clients::ota_client`); never carries credentials.
+    ota_http: reqwest::Client,
     /// Hardened transport for every model-directed fetch (never the provider client).
     web: ssrf::PublicWebTransport,
     /// Loopback-or-public MCP HTTP transport (redirects refused, per-call timeout).
@@ -109,6 +136,8 @@ pub struct InProcessEngine {
     reasoning_unsupported: Arc<Mutex<std::collections::HashSet<(String, String)>>>,
     /// Per-thread backoff wakers (`Retry now` and cancel wake a waiting run instantly).
     wakers: Arc<Mutex<HashMap<String, Arc<Notify>>>>,
+    /// One backoff per provider shared by every run (opencode #55075).
+    provider_backoff: Arc<provider_backoff::ProviderBackoff>,
     /// Run-scoped stale-read guard for workspace edits.
     read_ledger: Arc<tools::ReadLedger>,
     /// Single tool dispatch gate (one-use permits, synchronous revocation).
@@ -117,10 +146,13 @@ pub struct InProcessEngine {
     pending_approvals: agent_tools::PendingApprovalMap,
     /// Thread-scoped auto-approved tool names granted via `ApproveForThread`.
     thread_auto_approvals: agent_tools::ThreadAutoApprovals,
+    unpriced_allowed: engine_runs::UnpricedAllowances,
     power: Arc<PowerCoordinator>,
     events_tx: broadcast::Sender<EngineEvent>,
     active_runs: Arc<AtomicU32>,
     cancellations: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
+    /// Per-chat completion signal of the latest run; a new run waits on it (R30).
+    run_done: Arc<Mutex<HashMap<String, tokio::sync::watch::Receiver<bool>>>>,
     /// The last signature-verified OTA manifest; `stage_update` acts only on this, never on
     /// fields round-tripped through the UI.
     verified_update: Arc<Mutex<Option<ota::VerifiedManifest>>>,
@@ -157,13 +189,45 @@ impl InProcessEngine {
         power_backend: Arc<dyn PowerGuardBackend>,
         vault_key: Option<VaultKey>,
     ) -> BistreResult<Arc<Self>> {
+        Self::open_with_http(
+            data_dir,
+            power_backend,
+            vault_key,
+            providers::build_http_client()?,
+        )
+    }
+
+    /// Opens the engine over a test provider client (`http_clients::provider_client_resolving`).
+    #[cfg(test)]
+    pub(crate) fn open_for_test(
+        data_dir: impl AsRef<Path>,
+        http: reqwest::Client,
+    ) -> BistreResult<Arc<Self>> {
+        let engine = Self::open_with_http(
+            data_dir,
+            Arc::new(NoopPowerGuardBackend),
+            Some(VaultKey::generate()?),
+            http,
+        )?;
+        // Tests are hermetic: never fetch live price lists from the internet.
+        let mut settings = engine.storage.load_settings()?;
+        settings.pricing_auto_refresh = false;
+        engine.storage.save_settings(settings)?;
+        Ok(engine)
+    }
+
+    fn open_with_http(
+        data_dir: impl AsRef<Path>,
+        power_backend: Arc<dyn PowerGuardBackend>,
+        vault_key: Option<VaultKey>,
+        http: reqwest::Client,
+    ) -> BistreResult<Arc<Self>> {
         let dir = data_dir.as_ref().to_path_buf();
         let db_path = dir.join("bistre.sqlite");
         let storage = StorageHandle::open(db_path)?;
         // No run exists yet, so any outstanding reservation is from a crash; release it.
         storage.release_all_wallet_reservations()?;
         let vault: Arc<dyn SecretVault> = Arc::new(LocalSecretVault::open(&dir, vault_key)?);
-        let http = providers::build_http_client()?;
         let power = PowerCoordinator::new(power_backend);
         // Unreadable settings must not block opening (the user can fix them in Settings); keep
         // the default power policy and skip the automatic price refresh.
@@ -201,19 +265,23 @@ impl InProcessEngine {
             storage,
             vault,
             http,
+            ota_http: http_clients::ota_client()?,
             web,
             mcp_http: mcp::McpHttpTransport::new(),
             pricing,
             reasoning_unsupported: Arc::new(Mutex::new(std::collections::HashSet::new())),
             wakers: Arc::new(Mutex::new(HashMap::new())),
+            provider_backoff: Arc::new(provider_backoff::ProviderBackoff::default()),
             read_ledger: Arc::new(tools::ReadLedger::default()),
             broker: Arc::new(approval::ToolApprovalBroker::new()),
             pending_approvals: Arc::new(Mutex::new(HashMap::new())),
-            thread_auto_approvals: Arc::new(Mutex::new(std::collections::HashSet::new())),
+            thread_auto_approvals: Arc::new(Mutex::new(agent_tools::ApprovalMemory::default())),
+            unpriced_allowed: Arc::new(Mutex::new(std::collections::HashSet::new())),
             power,
             events_tx,
             active_runs: Arc::new(AtomicU32::new(0)),
             cancellations: Arc::new(Mutex::new(HashMap::new())),
+            run_done: Arc::new(Mutex::new(HashMap::new())),
             verified_update: Arc::new(Mutex::new(None)),
             run_tasks: Arc::new(Mutex::new(tokio::task::JoinSet::new())),
             ota_release_key: std::sync::OnceLock::new(),
@@ -331,7 +399,9 @@ impl InProcessEngine {
             .collect();
 
         let default_models = provider_prefs::load_default_models(&self.storage);
-        let requested_provider_id = thread
+        // A provider pinned by the chat or its assistant is used or the request fails (R19):
+        // falling back could send the chat to another, possibly paid, vendor.
+        let pinned_provider_id = thread
             .provider_id_override
             .as_deref()
             .map(str::trim)
@@ -340,13 +410,25 @@ impl InProcessEngine {
                 assistant
                     .map(|a| a.default_provider_id.trim())
                     .filter(|s| !s.is_empty())
-            })
+            });
+        if let Some(pid) = pinned_provider_id {
+            let usable = profiles.iter().find(|p| {
+                p.id == pid && p.is_enabled && (!p.dialect.requires_api_key() || p.has_api_key)
+            });
+            if usable.is_none() {
+                return Err(BistreError::new(DiagnosticKey::ProviderPinnedUnavailable));
+            }
+        }
+        // Owner decision 2026-11-26: Settings > Default models is the default for a chat that
+        // names no provider or model itself; the picker's last pick only fills in when it is
+        // unset (the picker sets the open chat's own model).
+        let requested_provider_id = pinned_provider_id
             .or_else(|| {
-                let id = settings.active_provider_id.trim();
+                let id = default_models.global_provider_id.trim();
                 if id.is_empty() { None } else { Some(id) }
             })
             .or_else(|| {
-                let id = default_models.global_provider_id.trim();
+                let id = settings.active_provider_id.trim();
                 if id.is_empty() { None } else { Some(id) }
             });
 
@@ -382,23 +464,23 @@ impl InProcessEngine {
                     .filter(|s| !s.is_empty())
             })
             .or_else(|| {
-                let active_m = settings.active_model_id.trim();
-                if !active_m.is_empty()
-                    && (settings.active_provider_id.is_empty()
-                        || settings.active_provider_id == selected.id)
-                {
-                    Some(active_m)
-                } else {
-                    None
-                }
-            })
-            .or_else(|| {
                 let gm = default_models.global_model_id.trim();
                 if !gm.is_empty()
                     && (default_models.global_provider_id.is_empty()
                         || default_models.global_provider_id == selected.id)
                 {
                     Some(gm)
+                } else {
+                    None
+                }
+            })
+            .or_else(|| {
+                let active_m = settings.active_model_id.trim();
+                if !active_m.is_empty()
+                    && (settings.active_provider_id.is_empty()
+                        || settings.active_provider_id == selected.id)
+                {
+                    Some(active_m)
                 } else {
                     None
                 }
@@ -431,7 +513,8 @@ impl InProcessEngine {
                 .or_else(|| assistant.and_then(|a| a.temperature_milli)),
             max_output_tokens: thread
                 .max_output_tokens
-                .or_else(|| assistant.and_then(|a| a.max_output_tokens)),
+                .or_else(|| assistant.and_then(|a| a.max_output_tokens))
+                .or_else(|| self.anthropic_output_limit(selected.dialect, &model)),
             top_p_milli: thread
                 .top_p_milli
                 .or_else(|| assistant.and_then(|a| a.top_p_milli)),
@@ -439,6 +522,67 @@ impl InProcessEngine {
         };
 
         Ok((selected, api_key, model, gen_params))
+    }
+
+    /// W4.8: Anthropic requires `max_tokens`; it is the model's own limit from the registry,
+    /// never a fixed number (the request body keeps a fallback when the model is unknown).
+    fn anthropic_output_limit(&self, dialect: ProviderDialect, model: &str) -> Option<u32> {
+        (dialect == ProviderDialect::Anthropic)
+            .then(|| {
+                self.pricing
+                    .snapshot()
+                    .lookup(model)
+                    .and_then(|r| r.max_output_tokens)
+            })
+            .flatten()
+    }
+
+    /// R30: cancels a run still going in `thread_id` and waits, at most
+    /// [`PREVIOUS_RUN_STOP_TIMEOUT`], until it has finished and committed, so a new run (send,
+    /// edit, regenerate) never overlaps it or commits after it.
+    pub(crate) async fn stop_previous_run(&self, thread_id: &str) {
+        let done = lock_or_recover(&self.run_done, "run_done")
+            .get(thread_id)
+            .cloned();
+        let Some(mut done) = done else { return };
+        if *done.borrow() {
+            return;
+        }
+        if let Some(flag) = lock_or_recover(&self.cancellations, "cancellations").get(thread_id) {
+            flag.store(true, Ordering::SeqCst);
+        }
+        self.wake_run(thread_id);
+        // Finished, or its task is gone (the sender dropped): either way it is over.
+        if tokio::time::timeout(PREVIOUS_RUN_STOP_TIMEOUT, done.wait_for(|d| *d))
+            .await
+            .is_err()
+        {
+            tracing::warn!(
+                thread_id,
+                "previous run did not stop in time; starting the new run anyway"
+            );
+        }
+    }
+
+    /// The shared services one run's task needs, bound to that run's `wake` signal.
+    fn stream_services(&self, wake: &Arc<Notify>) -> StreamServices {
+        StreamServices {
+            http: self.http.clone(),
+            web: self.web.clone(),
+            mcp_http: self.mcp_http.clone(),
+            vault: Arc::clone(&self.vault),
+            pricing: Arc::clone(&self.pricing),
+            wake: Arc::clone(wake),
+            data_dir: self.data_dir.clone(),
+            reasoning_unsupported: Arc::clone(&self.reasoning_unsupported),
+            provider_backoff: Arc::clone(&self.provider_backoff),
+            read_ledger: Arc::clone(&self.read_ledger),
+            broker: Arc::clone(&self.broker),
+            pending_approvals: Arc::clone(&self.pending_approvals),
+            thread_auto_approvals: Arc::clone(&self.thread_auto_approvals),
+            power: Arc::clone(&self.power),
+            unpriced_allowed: Arc::clone(&self.unpriced_allowed),
+        }
     }
 
     #[expect(
@@ -468,6 +612,8 @@ impl InProcessEngine {
         })?;
 
         let pending_id = Uuid::now_v7().to_string();
+        let (done_tx, done_rx) = tokio::sync::watch::channel(false);
+        lock_or_recover(&self.run_done, "run_done").insert(thread.id.clone(), done_rx);
         let cancel_flag = Arc::new(AtomicBool::new(false));
         let mut guard = lock_or_recover(&self.cancellations, "cancellations");
         if let Some(prev) = guard.insert(thread.id.clone(), Arc::clone(&cancel_flag)) {
@@ -482,20 +628,7 @@ impl InProcessEngine {
             }
         }
         let wakers = Arc::clone(&self.wakers);
-        let services = StreamServices {
-            http: self.http.clone(),
-            web: self.web.clone(),
-            mcp_http: self.mcp_http.clone(),
-            vault: Arc::clone(&self.vault),
-            pricing: Arc::clone(&self.pricing),
-            wake: Arc::clone(&wake),
-            data_dir: self.data_dir.clone(),
-            reasoning_unsupported: Arc::clone(&self.reasoning_unsupported),
-            read_ledger: Arc::clone(&self.read_ledger),
-            broker: Arc::clone(&self.broker),
-            pending_approvals: Arc::clone(&self.pending_approvals),
-            thread_auto_approvals: Arc::clone(&self.thread_auto_approvals),
-        };
+        let services = self.stream_services(&wake);
         let storage = Arc::clone(&self.storage);
         let power = Arc::clone(&self.power);
         let events_tx = self.events_tx.clone();
@@ -543,6 +676,9 @@ impl InProcessEngine {
                 stateless_default,
             )
             .await;
+            done_tx.send_replace(true);
+            lock_or_recover(&services.thread_auto_approvals, "approval_memory").end_run(&run_id);
+            lock_or_recover(&services.unpriced_allowed, "unpriced_allowed").remove(&thread_id);
 
             // Only remove our own cancel/wake handles (never clobber a newer overlapping run).
             {
@@ -582,3 +718,7 @@ impl InProcessEngine {
         Ok(pending_id)
     }
 }
+#[cfg(test)]
+mod attachment_send_tests;
+#[cfg(test)]
+mod prompt_surface_tests;

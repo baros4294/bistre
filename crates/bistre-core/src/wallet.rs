@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use bistre_protocol::{BistreResult, MoneyMicros};
+use bistre_protocol::{BistreResult, MoneyMicros, UsageMetrics};
 use bistre_storage::StorageHandle;
 
 /// An outstanding spend reservation for one paid request.
@@ -17,8 +17,9 @@ pub struct SpendReservation {
 }
 
 impl SpendReservation {
-    /// Checks the ceiling (settled + reserved spend since `since_unix_ms`) and reserves
-    /// `estimate`. Fails closed: any storage error denies the request.
+    /// Checks the daily ceiling (settled + reserved spend since `since_unix_ms`) and the
+    /// per-chat cap (the chat's whole ledger spend), then reserves `estimate`. Fails closed: any
+    /// storage error denies the request.
     pub fn reserve(
         storage: &Arc<StorageHandle>,
         thread_id: Option<String>,
@@ -28,13 +29,41 @@ impl SpendReservation {
         ceiling: Option<MoneyMicros>,
         since_unix_ms: i64,
     ) -> BistreResult<Self> {
-        let id = storage.reserve_wallet_spend(
+        Self::reserve_with_chat_cap(
+            storage,
             thread_id,
             provider_id,
             model_id,
             estimate,
             ceiling,
             since_unix_ms,
+            None,
+        )
+    }
+
+    /// [`Self::reserve`] with the chat's own cap checked in the same transaction.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "one reservation needs every ledger dimension at once"
+    )]
+    pub fn reserve_with_chat_cap(
+        storage: &Arc<StorageHandle>,
+        thread_id: Option<String>,
+        provider_id: String,
+        model_id: String,
+        estimate: MoneyMicros,
+        ceiling: Option<MoneyMicros>,
+        since_unix_ms: i64,
+        chat_cap: Option<MoneyMicros>,
+    ) -> BistreResult<Self> {
+        let id = storage.reserve_wallet_spend_with_chat_cap(
+            thread_id,
+            provider_id,
+            model_id,
+            estimate,
+            ceiling,
+            since_unix_ms,
+            chat_cap,
         )?;
         Ok(Self {
             storage: Arc::clone(storage),
@@ -87,6 +116,32 @@ impl Drop for SpendReservation {
     }
 }
 
+/// The usage a sent request is billed for (R5).
+///
+/// Some providers send usage only in their final frame (`OpenAI` Responses `response.completed`,
+/// the Chat Completions usage chunk), so a stopped or broken stream carries none. A sent request
+/// is never free: when the provider reported nothing, bill the reserved input estimate plus the
+/// output counted locally. Returns the usage and whether it was estimated.
+pub fn billable_usage(
+    reported: &UsageMetrics,
+    estimated_input_tokens: u64,
+    counted_output_tokens: u64,
+) -> (UsageMetrics, bool) {
+    let reported_any = reported.input_tokens > 0
+        || reported.output_tokens > 0
+        || reported.reasoning_tokens > 0
+        || reported.cached_input_tokens > 0
+        || reported.cache_creation_input_tokens > 0;
+    if reported_any {
+        return (*reported, false);
+    }
+    let usage = UsageMetrics {
+        input_tokens: estimated_input_tokens,
+        output_tokens: counted_output_tokens,
+        ..*reported
+    };
+    (usage, true)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,5 +263,22 @@ mod tests {
             MoneyMicros::from_micros(42)
         );
         Ok(())
+    }
+
+    /// R5: a stream stopped before its usage frame is billed as sent, not at $0.
+    #[test]
+    fn a_request_without_reported_usage_is_billed_from_the_estimate() {
+        let (usage, estimated) = billable_usage(&UsageMetrics::default(), 1_200, 340);
+        assert!(estimated);
+        assert_eq!((usage.input_tokens, usage.output_tokens), (1_200, 340));
+
+        let reported = UsageMetrics {
+            input_tokens: 900,
+            output_tokens: 50,
+            ..UsageMetrics::default()
+        };
+        let (usage, estimated) = billable_usage(&reported, 1_200, 340);
+        assert!(!estimated, "reported usage is always preferred");
+        assert_eq!((usage.input_tokens, usage.output_tokens), (900, 50));
     }
 }

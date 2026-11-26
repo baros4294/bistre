@@ -13,41 +13,6 @@ use super::{
     tools,
 };
 
-/// What the next request for one branch sends, split the way the composer's context breakdown
-/// shows it (counted offline with universal `o200k_base` BPE tokenizer).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ContextUsage {
-    /// The assistant's or chat's system prompt.
-    pub system_tokens: u64,
-    /// Write mode only: story notes, cards, persona, lore, and chapters added to the prompt.
-    pub story_tokens: u64,
-    /// Active built-in tools & MCP schemas attached to the request.
-    pub tools_tokens: u64,
-    /// Uploaded/attached files & images referenced in the active branch.
-    pub attachments_tokens: u64,
-    /// Number of attachments referenced in the active branch.
-    pub attachments_count: u32,
-    /// The turns the request resends (after any compaction or context pin).
-    pub history_tokens: u64,
-    /// How many turns that is.
-    pub history_turns: u32,
-    /// The unsent composer draft.
-    pub draft_tokens: u64,
-}
-
-impl ContextUsage {
-    /// Everything the next request would send, draft included.
-    #[must_use]
-    pub fn total(&self) -> u64 {
-        self.system_tokens
-            .saturating_add(self.story_tokens)
-            .saturating_add(self.tools_tokens)
-            .saturating_add(self.attachments_tokens)
-            .saturating_add(self.history_tokens)
-            .saturating_add(self.draft_tokens)
-    }
-}
-
 /// Unified engine boundary implemented by:
 /// - `InProcessEngine` (Android embedded & desktop direct mode)
 /// - `LocalIpcEngine` (Desktop UDS/Named Pipe to `bistre-daemon`)
@@ -166,7 +131,14 @@ pub trait EngineClient: Send + Sync {
     fn export_all_threads_json(&self) -> BoxFuture<'_, BistreResult<String>>;
     fn import_threads_json(&self, raw_json: String) -> BoxFuture<'_, BistreResult<u32>>;
     fn export_settings_json(&self) -> BoxFuture<'_, BistreResult<String>>;
-    fn import_settings_json(&self, raw_json: String) -> BoxFuture<'_, BistreResult<AppSettings>>;
+    /// Imports settings JSON. A file that would loosen trust or the spending limit fails with
+    /// `diag.import.loosens_safety` unless `allow_loosening` (the user confirmed); every import
+    /// revokes outstanding tool permits.
+    fn import_settings_json(
+        &self,
+        raw_json: String,
+        allow_loosening: bool,
+    ) -> BoxFuture<'_, BistreResult<AppSettings>>;
     fn list_storage_files(&self) -> BoxFuture<'_, BistreResult<Vec<StorageFileEntry>>>;
     fn delete_storage_file(&self, rel_path: String) -> BoxFuture<'_, BistreResult<bool>>;
     fn clean_unused_storage_files(&self) -> BoxFuture<'_, BistreResult<u64>>;
@@ -283,14 +255,14 @@ pub trait EngineClient: Send + Sync {
     fn latest_event_cursor(&self) -> BoxFuture<'_, BistreResult<u64>>;
     /// The model's conversation limit in tokens, from the cached public model lists.
     fn model_context_tokens(&self, model: String) -> BoxFuture<'_, BistreResult<Option<u32>>>;
-    /// What the next request sends for the branch ending at `leaf_node_id`, by category,
-    /// counting `draft` as the message about to be sent.
-    fn context_usage(
+    /// What the next request sends for the branch ending at `leaf_node_id`, by category
+    /// (A-SE), counting `draft` as the message about to be sent.
+    fn context_breakdown(
         &self,
         thread_id: String,
         leaf_node_id: String,
         draft: String,
-    ) -> BoxFuture<'_, BistreResult<ContextUsage>>;
+    ) -> BoxFuture<'_, BistreResult<crate::context_breakdown::ContextBreakdown>>;
     /// Starts a public price-list refresh now (the user's "Update prices now").
     fn refresh_prices(&self) -> BoxFuture<'_, BistreResult<()>>;
     /// Records the user's approval of one exact tool call; returns a one-use permit id.
@@ -300,11 +272,25 @@ pub trait EngineClient: Send + Sync {
         tool_name: String,
         arguments_json: String,
     ) -> BoxFuture<'_, BistreResult<String>>;
-    /// Delivers the user's decision (`approve_once` / `approve_for_thread` / `deny`) to a
-    /// live agent run paused at `ToolApprovalRequested`.
+    /// Lets the chat's next run send requests whose price is unknown while a spending cap is
+    /// active (A-S6 "Allow once"); the allowance ends with that run.
+    fn allow_unpriced_once(&self, thread_id: String) -> BoxFuture<'_, BistreResult<()>>;
+    /// Validates and saves a provider's custom headers and body fields (A-S8), bound to its
+    /// current origin; an invalid header or body is refused with a `DiagnosticKey`.
+    fn save_provider_overrides(
+        &self,
+        provider_id: String,
+        headers_json: String,
+        body_json: String,
+    ) -> BoxFuture<'_, BistreResult<()>>;
+    /// The same "Allow once" for the next read-aloud or live-voice request.
+    fn allow_unpriced_media_once(&self) -> BoxFuture<'_, BistreResult<()>>;
+    /// Delivers the user's decision (`approve_once` / `approve_for_thread` / `deny` / `stop`)
+    /// to the run paused at `ToolApprovalRequested` with exactly this thread, run, and call id.
     fn respond_tool_approval(
         &self,
         thread_id: String,
+        run_id: String,
         call_id: String,
         decision: bistre_protocol::ToolApprovalDecision,
     ) -> BoxFuture<'_, BistreResult<bool>>;
@@ -383,10 +369,24 @@ pub trait EngineClient: Send + Sync {
         workspace_root: String,
         skill_path: String,
     ) -> BoxFuture<'_, BistreResult<String>>;
-    fn list_workspace_hooks(
+    /// Web sources used by the replies in a chat (search results and citations, B2).
+    fn list_thread_grounding(
+        &self,
+        thread_id: String,
+    ) -> BoxFuture<'_, BistreResult<Vec<crate::engine_grounding::NodeGrounding>>>;
+    /// The workspace's `.bistre/hooks.json` hooks, their digest, and whether the user approved
+    /// exactly this file (A-S5). `None` when the workspace has no hooks file.
+    fn workspace_hooks_status(
         &self,
         workspace_root: String,
-    ) -> BoxFuture<'_, BistreResult<Vec<hooks::WorkspaceHookConfig>>>;
+    ) -> BoxFuture<'_, BistreResult<Option<hooks::WorkspaceHooksStatus>>>;
+    /// Approves the hooks file whose digest the user reviewed; a file changed since then is
+    /// refused (`hooks_changed`) so the user approves only what they saw.
+    fn approve_workspace_hooks(
+        &self,
+        workspace_root: String,
+        digest: String,
+    ) -> BoxFuture<'_, BistreResult<()>>;
     fn list_cron_jobs(&self) -> BoxFuture<'_, BistreResult<Vec<CronJobRecord>>>;
     fn upsert_cron_job(&self, job: CronJobRecord) -> BoxFuture<'_, BistreResult<CronJobRecord>>;
     fn delete_cron_job(&self, job_id: String) -> BoxFuture<'_, BistreResult<()>>;

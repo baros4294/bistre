@@ -19,7 +19,6 @@ pub const MAX_HTTP_400_HEALS: usize = 6;
 /// Bytes of an error body scanned for hints and markers.
 pub const MAX_ERROR_BODY_SCAN_BYTES: usize = 64 * 1024;
 const MIN_HINT_MS: u64 = 1_000;
-const MAX_HINT_MS: u64 = 300_000;
 
 /// Typed failure kinds driving retry decisions and jump-to-fix UI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,7 +108,12 @@ pub fn classify_http_failure(status: u16, body: &str) -> FailureKind {
 
 /// Builds the typed error, encoding the status, transient marker, and any retry hint in the detail
 /// code (`http_429;retry_after_ms=30000` or `http_400;transient`) so the run loop schedules backoff.
-pub fn failure_error(kind: FailureKind, status: u16, retry_after_ms: Option<u64>) -> BistreError {
+pub fn failure_error(
+    kind: FailureKind,
+    status: u16,
+    retry_after_ms: Option<u64>,
+    reason: Option<&str>,
+) -> BistreError {
     let mut detail = format!("http_{status}");
     if kind == FailureKind::Transient && status == 400 {
         detail.push_str(";transient");
@@ -117,6 +121,11 @@ pub fn failure_error(kind: FailureKind, status: u16, retry_after_ms: Option<u64>
     if let Some(ms) = retry_after_ms {
         detail.push_str(";retry_after_ms=");
         detail.push_str(&ms.to_string());
+    }
+    // P4: the provider's own words (bounded, separators removed), shown with the error.
+    if let Some(reason) = reason.filter(|r| !r.is_empty()) {
+        detail.push_str(";reason=");
+        detail.push_str(reason);
     }
     BistreError::with_detail(kind.diagnostic(), detail)
 }
@@ -137,11 +146,15 @@ pub fn parse_retry_hint(headers: &HeaderMap, body: &str, now: SystemTime) -> Opt
             .and_then(|v| v.to_str().ok())
             .map(str::trim)
     };
+    // G4 (opencode #63174): a zero `retry-after-ms` is no hint, so `retry-after` decides.
     let raw_ms = header("retry-after-ms")
         .and_then(|v| v.parse::<u64>().ok())
+        .filter(|&ms| ms > 0)
         .or_else(|| header("retry-after").and_then(|v| parse_retry_after_value(v, now)))
         .or_else(|| parse_gemini_retry_delay(body))?;
-    Some(raw_ms.clamp(MIN_HINT_MS, MAX_HINT_MS))
+    // R32: no upper clamp: a wait longer than the retry budget makes the run give up
+    // instead of retrying early into the same limit.
+    Some(raw_ms.max(MIN_HINT_MS))
 }
 
 /// `Retry-After`: delta-seconds or an RFC 7231 IMF-fixdate.
@@ -646,6 +659,32 @@ pub fn apply_next_heal_for_dialect(
     None
 }
 
+/// R14: whether a 400 says the model does not take reasoning at all (as opposed to, say, a
+/// stale signature), so the "no reasoning" mark is set only when it is true.
+#[must_use]
+pub fn says_reasoning_unsupported(error_body: &str) -> bool {
+    let lower = scan(error_body);
+    let about_reasoning = [
+        "reasoning",
+        "thinking",
+        "reasoning_effort",
+        "thinking_config",
+    ]
+    .iter()
+    .any(|w| lower.contains(w));
+    let unsupported = [
+        "not supported",
+        "unsupported",
+        "unrecognized",
+        "unknown parameter",
+        "not available",
+        "does not support",
+    ]
+    .iter()
+    .any(|w| lower.contains(w));
+    about_reasoning && unsupported && !lower.contains("signature")
+}
+
 /// Converts a hint into a sleep duration.
 pub const fn hint_duration(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -656,6 +695,22 @@ mod tests {
     use super::*;
     use reqwest::header::HeaderValue;
     use serde_json::json;
+
+    /// R14: only a 400 that says reasoning is unsupported marks the model as "no reasoning";
+    /// a signature or other 400 healed by dropping reasoning does not.
+    #[test]
+    fn only_an_unsupported_reasoning_error_marks_the_model() {
+        assert!(says_reasoning_unsupported(
+            r#"{"error":{"message":"thinking is not supported for this model"}}"#
+        ));
+        assert!(says_reasoning_unsupported(
+            "Unrecognized request argument supplied: reasoning_effort"
+        ));
+        assert!(!says_reasoning_unsupported(
+            r#"{"error":{"message":"messages.1.content.0.thinking.signature: Invalid signature"}}"#
+        ));
+        assert!(!says_reasoning_unsupported("max_tokens is too large"));
+    }
 
     #[test]
     fn classifies_quota_overflow_transient_and_auth() {
@@ -709,12 +764,17 @@ mod tests {
         assert_eq!(parse_retry_hint(&empty, body, now), Some(12_500));
         let mut huge = HeaderMap::new();
         huge.insert("retry-after", HeaderValue::from_static("86400"));
-        assert_eq!(parse_retry_hint(&huge, "", now), Some(300_000));
+        assert_eq!(parse_retry_hint(&huge, "", now), Some(86_400_000));
+        // G4 (opencode #63174): a zero `retry-after-ms` is no hint; `retry-after` decides.
+        let mut zero = HeaderMap::new();
+        zero.insert("retry-after-ms", HeaderValue::from_static("0"));
+        zero.insert("retry-after", HeaderValue::from_static("60"));
+        assert_eq!(parse_retry_hint(&zero, "", now), Some(60_000));
         assert_eq!(
             parse_imf_fixdate("Sun, 06 Nov 1994 08:49:37 GMT"),
             Some(784_111_777)
         );
-        let err = failure_error(FailureKind::RateLimited, 429, Some(4_000));
+        let err = failure_error(FailureKind::RateLimited, 429, Some(4_000), None);
         assert_eq!(
             retry_after_from_detail(err.detail_code.as_deref()),
             Some(4_000)
@@ -823,7 +883,7 @@ mod tests {
         assert_eq!(body["max_tokens"], 4096);
         assert!(body.get("max_completion_tokens").is_none());
 
-        let err = failure_error(FailureKind::Transient, 400, None);
+        let err = failure_error(FailureKind::Transient, 400, None, None);
         assert!(
             err.detail_code
                 .as_deref()

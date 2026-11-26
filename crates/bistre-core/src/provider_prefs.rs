@@ -3,7 +3,7 @@
 //! (`settings.default_models`), per-thread spend caps (`thread_spend_limit:<tid>`),
 //! and per-thread assistant reply prefill (`thread_reply_prefill:<tid>`).
 
-use bistre_protocol::MoneyMicros;
+use bistre_protocol::{BistreError, BistreResult, DiagnosticKey, MoneyMicros};
 use bistre_storage::StorageHandle;
 use serde_json::{Map, Value};
 
@@ -38,7 +38,7 @@ impl Default for ProviderAdvancedPrefs {
 /// Parsed `provider.overrides:<id>` custom headers & body fields.
 #[derive(Debug, Default, Clone)]
 pub struct ProviderRequestOverrides {
-    pub headers: Vec<(String, String)>,
+    pub headers: Vec<crate::custom_headers::CustomHeader>,
     pub body_fields: Option<Map<String, Value>>,
 }
 
@@ -93,42 +93,87 @@ pub fn load_provider_advanced(storage: &StorageHandle, provider_id: &str) -> Pro
     }
 }
 
-/// Loads sanitized custom headers and extra JSON body fields from `provider.overrides:<provider_id>`.
+/// Loads the validated custom headers and extra JSON body fields of `provider.overrides:<id>`.
+///
+/// Fails closed (A-S8): an unreadable entry or any invalid header or body is an error that
+/// stops the request, never a silently dropped header.
 pub fn load_provider_overrides(
     storage: &StorageHandle,
     provider_id: &str,
-) -> ProviderRequestOverrides {
+) -> BistreResult<ProviderRequestOverrides> {
     let key = format!("provider.overrides:{provider_id}");
-    let Ok(Some(raw)) = storage.get_kv_meta(&key) else {
-        return ProviderRequestOverrides::default();
+    let Some(raw) = storage.get_kv_meta(&key)? else {
+        return Ok(ProviderRequestOverrides::default());
     };
-    let Ok(val) = serde_json::from_str::<Value>(&raw) else {
-        return ProviderRequestOverrides::default();
-    };
-    let mut headers = Vec::new();
-    if let Some(h_raw) = val.get("headers_json").and_then(Value::as_str)
-        && let Ok(Value::Object(map)) = serde_json::from_str::<Value>(h_raw.trim())
-    {
-        for (k, v) in map {
-            if let Some(s) = v.as_str() {
-                headers.push((k, s.to_owned()));
-            }
-        }
+    if raw.trim().is_empty() {
+        return Ok(ProviderRequestOverrides::default());
     }
-    let body_fields = val
-        .get("body_json")
-        .and_then(Value::as_str)
-        .and_then(|b| serde_json::from_str::<Value>(b.trim()).ok())
-        .and_then(|v| match v {
-            Value::Object(m) if !m.is_empty() => Some(m),
-            _ => None,
-        });
-    ProviderRequestOverrides {
-        headers,
-        body_fields,
-    }
+    let val: Value = serde_json::from_str(&raw).map_err(|_| {
+        BistreError::with_detail(
+            DiagnosticKey::ProviderHeadersInvalid,
+            "overrides_unreadable",
+        )
+    })?;
+    let text = |field: &str| val.get(field).and_then(Value::as_str).unwrap_or_default();
+    Ok(ProviderRequestOverrides {
+        headers: crate::custom_headers::parse_custom_headers(text("headers_json"))?,
+        body_fields: crate::custom_headers::parse_custom_body(text("body_json"))?,
+    })
 }
 
+/// Validates and stores custom headers and body fields for `provider_id`, bound to the
+/// provider's current origin. An invalid header or body is refused before anything is saved.
+pub fn save_provider_overrides(
+    storage: &StorageHandle,
+    provider_id: &str,
+    base_url: &str,
+    headers_json: &str,
+    body_json: &str,
+) -> BistreResult<()> {
+    crate::custom_headers::parse_custom_headers(headers_json)?;
+    crate::custom_headers::parse_custom_body(body_json)?;
+    let stored = serde_json::json!({
+        "headers_json": headers_json.trim(),
+        "body_json": body_json.trim(),
+        "origin": crate::custom_headers::origin_of(base_url),
+    });
+    storage.set_kv_meta(
+        format!("provider.overrides:{provider_id}"),
+        stored.to_string(),
+    )
+}
+
+/// Clears saved custom headers (body fields stay) when a provider's origin changes, so
+/// headers meant for one server are never sent to another.
+pub fn drop_headers_if_origin_changed(
+    storage: &StorageHandle,
+    provider_id: &str,
+    new_base_url: &str,
+) -> BistreResult<bool> {
+    let key = format!("provider.overrides:{provider_id}");
+    let Some(raw) = storage.get_kv_meta(&key)? else {
+        return Ok(false);
+    };
+    let Ok(Value::Object(mut map)) = serde_json::from_str::<Value>(&raw) else {
+        return Ok(false);
+    };
+    let saved_origin = map.get("origin").and_then(Value::as_str).map(str::to_owned);
+    let has_headers = map
+        .get("headers_json")
+        .and_then(Value::as_str)
+        .is_some_and(|h| !h.trim().is_empty());
+    let new_origin = crate::custom_headers::origin_of(new_base_url);
+    if !has_headers || saved_origin.is_some_and(|o| Some(o) == new_origin) {
+        return Ok(false);
+    }
+    map.insert("headers_json".to_owned(), Value::String(String::new()));
+    map.insert(
+        "origin".to_owned(),
+        new_origin.map_or(Value::Null, Value::String),
+    );
+    storage.set_kv_meta(key, Value::Object(map).to_string())?;
+    Ok(true)
+}
 /// Loads `settings.default_models` from SQLite `kv_meta`.
 pub fn load_default_models(storage: &StorageHandle) -> DefaultModelsPrefs {
     let Ok(Some(raw)) = storage.get_kv_meta("settings.default_models") else {
@@ -163,47 +208,32 @@ pub fn load_default_models(storage: &StorageHandle) -> DefaultModelsPrefs {
     }
 }
 
-/// Loads optional per-thread spend ceiling (`kv_meta["thread_spend_limit:<thread_id>"]`).
-pub fn load_thread_spend_limit(storage: &StorageHandle, thread_id: &str) -> Option<MoneyMicros> {
+/// Loads the optional per-chat spend cap (`kv_meta["thread_spend_limit:<thread_id>"]`).
+///
+/// Fails closed (A-S1): a storage error or a value that is not a whole, non-negative number of
+/// micro-USD is an error that denies the paid request, never "no cap". An empty value means no
+/// cap; `0` is a cap of zero.
+pub fn load_thread_spend_limit(
+    storage: &StorageHandle,
+    thread_id: &str,
+) -> BistreResult<Option<MoneyMicros>> {
     let key = format!("thread_spend_limit:{thread_id}");
-    let raw = match storage.get_kv_meta(&key) {
-        Ok(Some(v)) => v,
-        Ok(None) => return None,
-        Err(err) => {
-            tracing::warn!(key = err.key.as_key(), "thread spend limit lookup failed");
-            return None;
-        }
-    };
+    let raw = storage.get_kv_meta(&key).map_err(|err| {
+        BistreError::with_detail(DiagnosticKey::WalletCheckUnavailable, err.key.as_key())
+    })?;
+    let Some(raw) = raw else { return Ok(None) };
     let trimmed = raw.trim();
     if trimmed.is_empty() {
-        return None;
+        return Ok(None);
     }
-    let micros: i64 = trimmed.parse().ok()?;
-    (micros > 0).then_some(MoneyMicros(micros))
-}
-
-/// Computes cumulative recorded spend on `thread_id` from committed node metadata.
-pub fn sum_thread_recorded_spend_micros(storage: &StorageHandle, thread_id: &str) -> MoneyMicros {
-    let nodes = match storage.list_nodes(thread_id) {
-        Ok(v) => v,
-        Err(err) => {
-            tracing::warn!(key = err.key.as_key(), "thread spend sum node list failed");
-            return MoneyMicros::ZERO;
-        }
-    };
-    let mut total = MoneyMicros::ZERO;
-    for node in nodes {
-        if let Some(meta) = node.provider_meta_json.as_deref()
-            && let Ok(val) = serde_json::from_str::<Value>(meta)
-            && let Some(c) = val.get("cost_micros").and_then(Value::as_i64)
-            && c > 0
-        {
-            total = total.saturating_add(MoneyMicros(c));
-        }
+    match trimmed.parse::<i64>() {
+        Ok(micros) if micros >= 0 => Ok(Some(MoneyMicros(micros))),
+        _ => Err(BistreError::with_detail(
+            DiagnosticKey::WalletCheckUnavailable,
+            "thread_spend_limit_malformed",
+        )),
     }
-    total
 }
-
 /// Loads optional per-thread assistant reply prefill (`kv_meta["thread_reply_prefill:<thread_id>"]`).
 pub fn load_thread_reply_prefill(storage: &StorageHandle, thread_id: &str) -> Option<String> {
     let key = format!("thread_reply_prefill:{thread_id}");
@@ -241,8 +271,14 @@ mod tests {
             "provider.overrides:openai".to_owned(),
             r#"{"headers_json":"{\"X-Custom\":\"yes\"}","body_json":"{\"seed\":42}"}"#.to_owned(),
         )?;
-        let ov = load_provider_overrides(&storage, "openai");
-        assert_eq!(ov.headers, vec![("X-Custom".to_owned(), "yes".to_owned())]);
+        let ov = load_provider_overrides(&storage, "openai")?;
+        assert_eq!(
+            ov.headers
+                .iter()
+                .map(|h| h.name().as_str())
+                .collect::<Vec<_>>(),
+            ["x-custom"]
+        );
         assert_eq!(
             ov.body_fields
                 .as_ref()
@@ -253,9 +289,22 @@ mod tests {
 
         storage.set_kv_meta("thread_spend_limit:t1".to_owned(), "500000".to_owned())?;
         assert_eq!(
-            load_thread_spend_limit(&storage, "t1"),
+            load_thread_spend_limit(&storage, "t1")?,
             Some(MoneyMicros(500_000))
         );
+        // A-S1: a malformed or negative cap denies instead of silently meaning "no cap".
+        for bad in ["5 dollars", "-1", "1.5"] {
+            storage.set_kv_meta("thread_spend_limit:t1".to_owned(), bad.to_owned())?;
+            assert_eq!(
+                load_thread_spend_limit(&storage, "t1")
+                    .err()
+                    .and_then(|e| e.detail_code),
+                Some("thread_spend_limit_malformed".to_owned()),
+                "{bad}"
+            );
+        }
+        storage.set_kv_meta("thread_spend_limit:t1".to_owned(), String::new())?;
+        assert_eq!(load_thread_spend_limit(&storage, "t1")?, None);
         Ok(())
     }
 }

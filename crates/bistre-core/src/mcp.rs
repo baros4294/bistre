@@ -95,6 +95,33 @@ impl McpHttpTransport {
         }
         Ok((status, resp_headers, bytes))
     }
+
+    /// Sends a bodiless `DELETE` (session close); only the status matters.
+    async fn delete(&self, url: &str, headers: HeaderMap) -> BistreResult<StatusCode> {
+        if !crate::net::is_loopback_url(url) {
+            return self
+                .public
+                .send_json(
+                    Method::DELETE,
+                    url,
+                    headers,
+                    &Value::Null,
+                    MAX_MCP_HTTP_RESPONSE_BYTES,
+                )
+                .await
+                .map(|(status, _, _)| status);
+        }
+        let client = self.local.as_ref().map_err(Clone::clone)?;
+        client
+            .delete(url)
+            .headers(headers)
+            .send()
+            .await
+            .map(|resp| resp.status())
+            .map_err(|_| {
+                BistreError::with_detail(DiagnosticKey::ProviderRequestFailed, "mcp_connect")
+            })
+    }
 }
 
 /// Per-server MCP session state (`Mcp-Session-Id`) with a single renewal on HTTP `404`.
@@ -227,12 +254,15 @@ impl McpSession<'_> {
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("")
                 .to_ascii_lowercase();
-            if content_type.contains("text/event-stream") {
-                return decode_mcp_sse_response(&bytes, req_id);
-            }
-            return serde_json::from_slice::<Value>(&bytes).map_err(|_| {
-                BistreError::with_detail(DiagnosticKey::ProviderRequestFailed, "mcp_json")
-            });
+            let val = if content_type.contains("text/event-stream") {
+                decode_mcp_sse_response(&bytes, req_id)?
+            } else {
+                serde_json::from_slice::<Value>(&bytes).map_err(|_| {
+                    BistreError::with_detail(DiagnosticKey::ProviderRequestFailed, "mcp_json")
+                })?
+            };
+            // R17: a JSON-RPC `error` is an error on the HTTP path too.
+            return json_rpc_result(val);
         }
     }
 
@@ -275,6 +305,31 @@ impl McpSession<'_> {
             );
         }
         Ok(resp)
+    }
+
+    /// Ends a 2025-11-25 session with `DELETE` (spec: clients should close sessions they no
+    /// longer need). Best effort: a failure is logged, and the server expires it anyway.
+    async fn close(&mut self) {
+        let Some(id) = self.session_id.take() else {
+            return;
+        };
+        let headers = match mcp_headers(
+            self.url,
+            "session/close",
+            None,
+            Some(&id),
+            &self.protocol_version,
+            self.bearer_token,
+        ) {
+            Ok(h) => h,
+            Err(err) => {
+                tracing::warn!(key = err.key.as_key(), "mcp session close skipped");
+                return;
+            }
+        };
+        if let Err(err) = self.transport.delete(self.url, headers).await {
+            tracing::debug!(key = err.key.as_key(), "mcp session close failed");
+        }
     }
 }
 
@@ -443,6 +498,29 @@ pub async fn discover_http_mcp_server_with_auth(
     })
 }
 
+/// A JSON-RPC response as a result: an `error` member is an error (R17), carrying the code and
+/// the server's own message (bounded and sanitized, P4), never a successful tool result.
+pub fn json_rpc_result(val: Value) -> BistreResult<Value> {
+    let Some(err) = val.get("error") else {
+        return Ok(val);
+    };
+    let code = err.get("code").and_then(Value::as_i64).unwrap_or(-32000);
+    let mut detail = format!("mcp_rpc_error_{code}");
+    if let Some(msg) = err
+        .get("message")
+        .and_then(Value::as_str)
+        .map(crate::finish::sanitize_reason)
+        .filter(|m| !m.is_empty())
+    {
+        detail.push_str(";reason=");
+        detail.push_str(&msg);
+    }
+    Err(BistreError::with_detail(
+        DiagnosticKey::ProviderRequestFailed,
+        detail,
+    ))
+}
+
 /// Unified MCP tool-call entrypoint dispatching `stdio` vs Streamable `http` and returning rich
 /// parsed output (`text`, `is_error`, and persisted `media_attachments`).
 pub async fn call_mcp_tool_rich(
@@ -474,20 +552,26 @@ pub async fn call_mcp_tool_rich(
             "arguments": arguments
         }
     });
-    let resp = match session.rpc("tools/call", Some(tool_name), &body).await {
-        Ok(v) => v,
-        Err(err)
-            if matches!(
-                err.detail_code.as_deref(),
-                Some("mcp_http_400" | "mcp_http_404")
-            ) =>
-        {
-            session.renewed = true;
+    // A-S9: negotiate first so `tools/call` is sent exactly once. MCP 2026-07-28 answers the
+    // stateless, side-effect-free `server/discover`; otherwise open a 2025-11-25 session. A
+    // failed call is an error and never resent (it may already have run); only an expired
+    // session (HTTP 404) is renewed once, inside `rpc`, as the spec requires.
+    let discover_body = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "server/discover",
+        "params": { "protocolVersion": MCP_PROTOCOL_2026 }
+    });
+    match session.rpc("server/discover", None, &discover_body).await {
+        Ok(resp) if resp.get("result").is_some() => {}
+        Err(err) if err.key == DiagnosticKey::NetworkDestinationBlocked => return Err(err),
+        Ok(_) | Err(_) => {
             session.initialize().await?;
-            session.rpc("tools/call", Some(tool_name), &body).await?
         }
-        Err(err) => return Err(err),
-    };
+    }
+    let called = session.rpc("tools/call", Some(tool_name), &body).await;
+    session.close().await;
+    let resp = called?;
     let result = resp.get("result").unwrap_or(&resp);
     Ok(crate::mcp_stdio::parse_mcp_call_result(result, data_dir))
 }
@@ -623,6 +707,7 @@ mod tests {
     #[tokio::test]
     async fn streamable_http_sse_response_decodes_and_bearer_fails_closed_on_remote_http()
     -> TestResult {
+        use crate::test_support::{MockServer, Scripted};
         // 1. Bearer token on non-loopback plain HTTP MUST fail closed before any socket opens.
         let transport = McpHttpTransport::new();
         let remote_http = McpServerConfig {
@@ -646,39 +731,26 @@ mod tests {
             Some("mcp_bearer_requires_https_or_loopback".to_owned())
         );
 
-        // 2. Streamable HTTP `text/event-stream` response decodes via SseFramer.
-        let listener = TcpListener::bind("127.0.0.1:0").await?;
-        let addr = listener.local_addr()?;
-        let srv = tokio::spawn(async move {
-            let Ok((mut sock, _)) = listener.accept().await else {
-                return;
-            };
-            let mut buf = [0_u8; 4096];
-            let n = sock.read(&mut buf).await.unwrap_or(0);
-            let req = String::from_utf8_lossy(&buf[..n]);
-            assert!(req.contains("text/event-stream"));
-            assert!(req.contains("Bearer local-tok"));
-            let sse = concat!(
-                "event: message\n",
-                "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\n",
-                "event: message\n",
-                "data: {\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"isError\":false,\"content\":[{\"type\":\"text\",\"text\":\"sse ok\"}]}}\n\n",
-            );
-            let resp = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{sse}",
-                sse.len()
-            );
-            if let Err(err) = sock.write_all(resp.as_bytes()).await {
-                tracing::debug!(%err, "mock mcp sse write failed");
-            }
-        });
+        // 2. Streamable HTTP `text/event-stream` response decodes via SseFramer. The call
+        //    negotiates first: this server speaks 2026-07-28 (`server/discover` succeeds).
+        let sse = concat!(
+            "event: message\n",
+            "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\n",
+            "event: message\n",
+            "data: {\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"isError\":false,\"content\":[{\"type\":\"text\",\"text\":\"sse ok\"}]}}\n\n",
+        );
+        let server = MockServer::start(vec![
+            Scripted::json(200, &json!({"jsonrpc":"2.0","id":1,"result":{"tools":[]}})),
+            Scripted::sse(sse),
+        ])
+        .await?;
         let local_cfg = McpServerConfig {
             id: "local-sse".to_owned(),
             name: "Local SSE".to_owned(),
             transport: "http".to_owned(),
             command: String::new(),
             args: Vec::new(),
-            url: format!("http://{addr}/mcp"),
+            url: format!("{}/mcp", server.base()),
             enabled: true,
         };
         let out = call_mcp_tool_rich(
@@ -692,7 +764,100 @@ mod tests {
         .await?;
         assert!(!out.is_error);
         assert_eq!(out.text, "sse ok");
-        let _joined = srv.await;
+        let seen = server.finish().await;
+        assert_eq!(seen.len(), 2, "stateless 2026 server: no session to close");
+        let call = &seen[1];
+        assert_eq!(call.header("mcp-method"), Some("tools/call"));
+        assert!(
+            call.header("accept")
+                .is_some_and(|a| a.contains("text/event-stream"))
+        );
+        assert_eq!(call.header("authorization"), Some("Bearer local-tok"));
+        Ok(())
+    }
+
+    /// A-S9: `tools/call` is sent exactly once: the protocol is negotiated first, a 400 is an
+    /// error (never a resend that could run the tool twice), and the session is closed.
+    #[tokio::test]
+    async fn a_failed_tool_call_is_never_resent_and_the_session_is_closed() -> TestResult {
+        use crate::test_support::{MockServer, Scripted};
+        let server = MockServer::start(vec![
+            Scripted::status(404),
+            Scripted::json(
+                200,
+                &json!({"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25"}}),
+            )
+            .with_header("Mcp-Session-Id", "sess-1"),
+            Scripted::status(202),
+            Scripted::json(400, &json!({"error":"bad"})),
+            Scripted::status(200),
+        ])
+        .await?;
+        let cfg = McpServerConfig {
+            id: "s".to_owned(),
+            name: "S".to_owned(),
+            transport: "http".to_owned(),
+            command: String::new(),
+            args: Vec::new(),
+            url: format!("{}/mcp", server.base()),
+            enabled: true,
+        };
+        let transport = McpHttpTransport::new();
+        let res = call_mcp_tool_rich(&transport, &cfg, None, "deploy", &json!({}), None).await;
+        assert!(res.is_err());
+        let seen = server.finish().await;
+        let methods: Vec<_> = seen
+            .iter()
+            .map(|r| {
+                (
+                    r.method.clone(),
+                    r.header("mcp-method").unwrap_or("").to_owned(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            methods.iter().filter(|(_, m)| m == "tools/call").count(),
+            1,
+            "{methods:?}"
+        );
+        assert_eq!(
+            methods.last().map(|(verb, _)| verb.as_str()),
+            Some("DELETE"),
+            "the session is closed: {methods:?}"
+        );
+        Ok(())
+    }
+
+    /// R17: a JSON-RPC `error` over HTTP is an error, not a successful tool result.
+    #[tokio::test]
+    async fn an_http_json_rpc_error_is_an_error_not_a_result() -> TestResult {
+        use crate::test_support::{MockServer, Scripted};
+        let server = MockServer::start(vec![
+            Scripted::json(
+                200,
+                &json!({"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2026-07-28"}}),
+            ),
+            Scripted::json(
+                200,
+                &json!({"jsonrpc":"2.0","id":3,"error":{"code":-32602,"message":"Unknown tool: deploy"}}),
+            ),
+        ])
+        .await?;
+        let cfg = McpServerConfig {
+            id: "s".to_owned(),
+            name: "S".to_owned(),
+            transport: "http".to_owned(),
+            command: String::new(),
+            args: Vec::new(),
+            url: format!("{}/mcp", server.base()),
+            enabled: true,
+        };
+        let transport = McpHttpTransport::new();
+        let res = call_mcp_tool_rich(&transport, &cfg, None, "deploy", &json!({}), None).await;
+        let detail = res.err().and_then(|e| e.detail_code).unwrap_or_default();
+        assert!(detail.starts_with("mcp_rpc_error_-32602"), "{detail}");
+        assert!(detail.contains("reason=Unknown tool: deploy"), "{detail}");
+        drop(server.finish().await);
         Ok(())
     }
 }

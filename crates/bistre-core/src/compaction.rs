@@ -39,10 +39,53 @@ pub fn estimate_branch_tokens_for_model(
     let mut total = crate::tokenizer::count_tokens_with(system_prompt, encoding);
     for node in history {
         total = total.saturating_add(crate::tokenizer::count_tokens_with(&node.content, encoding));
+        total = total.saturating_add(replayed_meta_tokens(node, encoding));
         total = total.saturating_add(6); // role/frame overhead
     }
     total
 }
+
+/// R26: what replay sends besides the text: tool calls (name + arguments), a tool result's
+/// output, and reasoning blocks (their text, or their opaque payload, which the provider counts
+/// too). Over-counting an opaque payload only makes compaction start a little early.
+fn replayed_meta_tokens(node: &NodeRecord, encoding: crate::tokenizer::BpeEncoding) -> u64 {
+    let meta = crate::replay_policy::parse_turn_wire_meta(node.provider_meta_json.as_deref());
+    let count = |text: &str| crate::tokenizer::count_tokens_with(text, encoding);
+    let mut total = 0_u64;
+    for call in &meta.tool_calls {
+        total = total
+            .saturating_add(count(&call.name))
+            .saturating_add(count(&call.arguments_json))
+            .saturating_add(8);
+    }
+    for block in &meta.reasoning_blocks {
+        use crate::replay_policy::ReasoningBlock as B;
+        let tokens = match block {
+            B::OpenAiReasoning {
+                summary,
+                encrypted_content,
+                ..
+            } => count(&Value::Array(summary.clone()).to_string())
+                .saturating_add(count(encrypted_content)),
+            B::AnthropicThinking {
+                thinking,
+                signature,
+            } => count(thinking).saturating_add(count(signature)),
+            B::AnthropicRedactedThinking { data } => count(data),
+            B::GeminiThought { text, signature } => {
+                count(text).saturating_add(signature.as_deref().map_or(0, count))
+            }
+            B::PlainReasoning { text } => count(text),
+            B::GeminiTextSignature { signature } => count(signature),
+        };
+        total = total.saturating_add(tokens);
+    }
+    total
+}
+
+/// The share of the context window kept free: a run shortens the chat before sending once the
+/// request would fill more than `100 - AUTO_COMPACT_RESERVE_PERCENT` percent of it.
+pub const AUTO_COMPACT_RESERVE_PERCENT: u8 = 15;
 
 /// Returns `true` when estimated tokens cross the configurable compaction reserve threshold
 /// (e.g., `reserve_percent = 20` triggers compaction once 80% of `context_window_tokens` is full).
@@ -215,6 +258,15 @@ fn merge_node_attachments(prev: &mut NodeRecord, next: &NodeRecord) {
 /// so providers never receive consecutive `"user"` turns or an assistant-tailed history.
 /// Never merges across a `NodeRole::Tool` boundary so `tool_use` -> `tool_result` pairs stay intact.
 pub fn enforce_role_alternation(history: Vec<NodeRecord>) -> Vec<NodeRecord> {
+    enforce_role_alternation_with(history, false)
+}
+
+/// [`enforce_role_alternation`], optionally keeping a trailing assistant turn: resuming a
+/// paused turn (Anthropic `pause_turn`) sends that turn back as-is so the model continues it.
+pub fn enforce_role_alternation_with(
+    history: Vec<NodeRecord>,
+    keep_assistant_tail: bool,
+) -> Vec<NodeRecord> {
     let mut out: Vec<NodeRecord> = Vec::with_capacity(history.len());
     for node in history {
         let Some(side) = replay_role(node.role) else {
@@ -239,9 +291,10 @@ pub fn enforce_role_alternation(history: Vec<NodeRecord>) -> Vec<NodeRecord> {
         }
         out.push(node);
     }
-    while out
-        .last()
-        .is_some_and(|n| replay_role(n.role) == Some(false))
+    while !keep_assistant_tail
+        && out
+            .last()
+            .is_some_and(|n| replay_role(n.role) == Some(false))
     {
         out.pop();
     }
@@ -353,6 +406,82 @@ mod tests {
 
     type TestResult = Result<(), Box<dyn std::error::Error>>;
 
+    /// R26: replay sends tool calls (name + arguments) and reasoning blocks too; a branch whose
+    /// weight sits there must not look nearly empty to the compaction trigger.
+    #[test]
+    fn tool_arguments_and_reasoning_are_counted() {
+        use bistre_protocol::{NodeRecord, NodeRole};
+        let big_args = format!(
+            "{{\"path\":\"a.rs\",\"content\":\"{}\"}}",
+            "word ".repeat(4000)
+        );
+        let meta = serde_json::json!({
+            "tool_calls": [{ "call_id": "c1", "name": "write", "arguments_json": big_args }],
+            "reasoning_blocks": [{ "kind": "anthropic_thinking",
+                "thinking": "step ".repeat(2000), "signature": "sig" }],
+        })
+        .to_string();
+        let node = NodeRecord {
+            id: "n1".to_owned(),
+            thread_id: "t".to_owned(),
+            parent_id: None,
+            role: NodeRole::Assistant,
+            content: "Done.".to_owned(),
+            provider_meta_json: Some(meta),
+            created_at_ms: 0,
+        };
+        let total = estimate_branch_tokens("", std::slice::from_ref(&node));
+        assert!(
+            total > 5000,
+            "tool arguments and thinking are sent and counted: {total}"
+        );
+    }
+
+    /// R13: a stopped reply that only thought (no text, no tool call) is never sent back as an
+    /// empty assistant turn (Anthropic answers that with a 400).
+    #[test]
+    fn an_empty_assistant_turn_is_never_replayed() -> TestResult {
+        let dir = tempdir()?;
+        let storage = StorageHandle::open(dir.path().join("r13.sqlite"))?;
+        let thread = storage.create_thread(None, "t", ThreadMode::Chat, None, None)?;
+        let u1 = storage.append_node(
+            thread.id.clone(),
+            None,
+            NodeRole::User,
+            "one".to_owned(),
+            None,
+        )?;
+        let meta = serde_json::json!({ "thinking_text": "hmm", "cancelled": true }).to_string();
+        let a1 = storage.append_node(
+            thread.id.clone(),
+            Some(u1.id),
+            NodeRole::Assistant,
+            String::new(),
+            Some(meta),
+        )?;
+        let u2 = storage.append_node(
+            thread.id.clone(),
+            Some(a1.id),
+            NodeRole::User,
+            "two".to_owned(),
+            None,
+        )?;
+        let (history, _, _) =
+            crate::engine_runs::load_turn_context(&storage, &thread.id, &u2.id, "", None)?;
+        assert!(
+            history
+                .iter()
+                .all(|n| n.role != NodeRole::Assistant || !n.content.trim().is_empty()),
+            "{:?}",
+            history
+                .iter()
+                .map(|n| (n.role, n.content.clone()))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(history.len(), 1, "the two user turns merge into one");
+        Ok(())
+    }
+
     #[test]
     fn context_usage_follows_what_the_next_request_sends() -> TestResult {
         let dir = tempdir()?;
@@ -378,8 +507,15 @@ mod tests {
         }
         let leaf = created.last().map(|n| n.id.clone()).ok_or("no turns")?;
         let usage = |leaf: &str| {
-            crate::engine_runs::branch_context_usage(&storage, None, &thread.id, leaf, "")
-                .map(|u| u.history_tokens)
+            crate::context_breakdown::branch_context_breakdown(
+                &storage,
+                None,
+                &thread.id,
+                leaf,
+                "",
+                &|_| None,
+            )
+            .map(|b| b.tokens_of(crate::context_breakdown::ContextCategoryKind::Messages))
         };
         let full = usage(&leaf)?;
         // Five 400-word turns (exact BPE ~400 tokens/turn); trailing assistant turn is not resent.
@@ -399,6 +535,7 @@ mod tests {
 
     #[test]
     fn context_usage_splits_instructions_history_and_draft() -> TestResult {
+        use crate::context_breakdown::ContextCategoryKind as K;
         let dir = tempdir()?;
         let storage = StorageHandle::open(dir.path().join("split.sqlite"))?;
         let thread = storage.create_thread(None, "Split", ThreadMode::Chat, None, None)?;
@@ -409,6 +546,7 @@ mod tests {
             thread.id.clone(),
             bistre_protocol::ThreadPatch {
                 system_prompt_override: Some(Some(system_text.clone())),
+                model_id_override: Some(Some("m".to_owned())),
                 ..bistre_protocol::ThreadPatch::default()
             },
         )?;
@@ -419,23 +557,38 @@ mod tests {
             user_text.clone(),
             None,
         )?;
-        let usage = crate::engine_runs::branch_context_usage(
+        let usage = crate::context_breakdown::branch_context_breakdown(
             &storage,
             None,
             &thread.id,
             &user.id,
             &draft_text,
+            &|_| Some(100_000),
         )?;
         let exp_sys = estimate_tokens_for_text(&system_text);
         let exp_hist = estimate_tokens_for_text(&user_text) + 6;
         let exp_draft = estimate_tokens_for_text(&draft_text);
         assert!(exp_sys > 0);
-        assert_eq!(usage.system_tokens, exp_sys);
-        assert_eq!(usage.story_tokens, 0, "chat mode adds no story prompt");
-        assert_eq!(usage.history_turns, 1);
-        assert_eq!(usage.history_tokens, exp_hist, "one turn plus its frame");
-        assert_eq!(usage.draft_tokens, exp_draft);
-        assert_eq!(usage.total(), exp_sys + exp_hist + exp_draft);
+        assert_eq!(usage.tokens_of(K::SystemPrompt), exp_sys);
+        assert_eq!(
+            usage.tokens_of(K::Story),
+            0,
+            "chat mode adds no story prompt"
+        );
+        let messages = usage
+            .categories
+            .iter()
+            .find(|c| c.kind == K::Messages)
+            .ok_or("messages row")?;
+        assert_eq!(messages.count, Some(1));
+        assert_eq!(messages.tokens, exp_hist, "one turn plus its frame");
+        assert_eq!(usage.tokens_of(K::Draft), exp_draft);
+        assert_eq!(usage.total_sent(), exp_sys + exp_hist + exp_draft);
+        assert_eq!(usage.limit_tokens, Some(100_000));
+        assert_eq!(
+            usage.reserve_tokens, 15_000,
+            "15 % of the window is kept free"
+        );
         Ok(())
     }
 

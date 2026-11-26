@@ -2,15 +2,20 @@
 //! immediate steering, storage file manager, export/import, and live voice/TTS).
 //! Kept separate from `engine_impl.rs` so every module stays focused and well under 1,500 lines.
 
+use std::path::Path;
 use std::sync::atomic::Ordering;
 
 use bistre_protocol::{
     AppSettings, AttachmentInput, BistreError, BistreResult, DiagnosticKey, EngineEvent,
-    ModelCatalogInfo, NodeRecord, NodeRole, StorageFileEntry, lock_or_recover,
+    ModelCatalogInfo, MoneyMicros, NodeRecord, NodeRole, StorageFileEntry, UsageMetrics,
+    lock_or_recover,
 };
 
 use crate::events::{emit, note_write};
-use crate::{InProcessEngine, attachments, storage_files, voice};
+use crate::{InProcessEngine, attachments, providers, storage_files, voice, wallet};
+
+/// `unpriced_allowed` key for "Allow once" on read aloud and live voice, which are not chat runs.
+pub(crate) const MEDIA_ALLOWANCE: &str = "media";
 
 impl InProcessEngine {
     pub(crate) fn get_provider_api_keys_inner(
@@ -187,8 +192,16 @@ impl InProcessEngine {
         storage_files::export_settings_json(&self.storage)
     }
 
-    pub(crate) fn import_settings_json_inner(&self, raw_json: &str) -> BistreResult<AppSettings> {
-        storage_files::import_settings_json(&self.storage, raw_json)
+    pub(crate) fn import_settings_json_inner(
+        &self,
+        raw_json: &str,
+        allow_loosening: bool,
+    ) -> BistreResult<AppSettings> {
+        let imported =
+            storage_files::import_settings_json(&self.storage, raw_json, allow_loosening)?;
+        // A-S3: imported trust and tool settings revoke every outstanding permit at once.
+        self.broker.invalidate();
+        Ok(imported)
     }
 
     pub(crate) fn list_storage_files_inner(&self) -> BistreResult<Vec<StorageFileEntry>> {
@@ -216,10 +229,69 @@ impl InProcessEngine {
             .ok_or_else(|| BistreError::new(DiagnosticKey::StorageNotFound))?;
         let profile = self.hydrate_provider(raw);
         let keys = self.load_key_ring(provider_id)?;
-        voice::synthesize_speech(&self.http, &profile, &keys, model_id, text, voice_name).await
+        let reservation = self.reserve_media_spend(&profile, model_id, text).await?;
+        let audio =
+            voice::synthesize_speech(&self.http, &profile, &keys, model_id, text, voice_name)
+                .await?;
+        if let Some((reservation, input_tokens, estimate)) = reservation {
+            // Speech endpoints return no usage: settle the reserved input estimate.
+            reservation.settle(estimate, input_tokens, 0, "estimated".to_owned())?;
+        }
+        Ok(audio)
     }
 
-    pub(crate) fn start_live_voice_session_inner(
+    /// A-S4: the Wallet Shield gate for paid requests outside chat runs (read aloud, live
+    /// voice). A reached daily cap blocks them; under a cap an unknown price blocks unless
+    /// "Allow once" was granted for media; a loopback provider is free. Returns the
+    /// reservation, the counted input tokens, and the reserved estimate.
+    async fn reserve_media_spend(
+        &self,
+        profile: &bistre_protocol::ProviderProfile,
+        model_id: &str,
+        input_text: &str,
+    ) -> BistreResult<Option<(wallet::SpendReservation, u64, MoneyMicros)>> {
+        if crate::net::is_loopback_url(&profile.base_url) {
+            return Ok(None);
+        }
+        let settings = self.storage.load_settings().map_err(|err| {
+            BistreError::with_detail(DiagnosticKey::WalletCheckUnavailable, err.key.as_key())
+        })?;
+        let input_tokens = crate::compaction::estimate_tokens_for_model(input_text, Some(model_id));
+        let rates = self.pricing.rates_for(model_id).await;
+        if rates.is_none()
+            && settings.wallet_daily_ceiling_micros.is_some()
+            && !lock_or_recover(&self.unpriced_allowed, "unpriced_allowed").remove(MEDIA_ALLOWANCE)
+        {
+            return Err(BistreError::with_detail(
+                DiagnosticKey::WalletPriceUnknown,
+                "price_unknown",
+            ));
+        }
+        let usage = UsageMetrics {
+            input_tokens,
+            ..UsageMetrics::default()
+        };
+        let estimate =
+            providers::estimate_cost_micros(profile, rates, &usage).unwrap_or(MoneyMicros::ZERO);
+        let reservation = wallet::SpendReservation::reserve(
+            &self.storage,
+            None,
+            profile.id.clone(),
+            model_id.to_owned(),
+            estimate,
+            settings.wallet_daily_ceiling_micros,
+            crate::engine_runs::utc_day_start_unix_ms(),
+        )
+        .map_err(|err| match err.key {
+            DiagnosticKey::WalletCeilingExceeded => err,
+            other => {
+                BistreError::with_detail(DiagnosticKey::WalletCheckUnavailable, other.as_key())
+            }
+        })?;
+        Ok(Some((reservation, input_tokens, estimate)))
+    }
+
+    pub(crate) async fn start_live_voice_session_inner(
         &self,
         provider_id: &str,
         model_id: &str,
@@ -232,6 +304,11 @@ impl InProcessEngine {
             .ok_or_else(|| BistreError::new(DiagnosticKey::StorageNotFound))?;
         let profile = self.hydrate_provider(raw);
         let keys = self.load_key_ring(provider_id)?;
+        // Gate only: a live session is open-ended, so the reservation is released at once.
+        drop(
+            self.reserve_media_spend(&profile, model_id, &system_prompt)
+                .await?,
+        );
         self.live_voice.start_session(
             profile,
             keys,
@@ -239,6 +316,61 @@ impl InProcessEngine {
             voice_name,
             system_prompt,
             self.events_tx.clone(),
+        )
+    }
+
+    /// The workspace's hooks, their digest, and whether exactly this file is approved (A-S5).
+    pub(crate) fn workspace_hooks_status_inner(
+        &self,
+        root: &Path,
+    ) -> BistreResult<Option<crate::hooks::WorkspaceHooksStatus>> {
+        let Some(file) = crate::hooks::load_workspace_hooks(root)? else {
+            return Ok(None);
+        };
+        let approved = self
+            .storage
+            .get_kv_meta(&crate::hooks::hooks_approval_key(root))?;
+        Ok(Some(crate::hooks::WorkspaceHooksStatus {
+            approved: approved.as_deref() == Some(file.digest.as_str()),
+            hooks: file.hooks,
+            digest: file.digest,
+        }))
+    }
+
+    /// Approves the hooks file the user reviewed; a file changed since is refused.
+    pub(crate) fn approve_workspace_hooks_inner(
+        &self,
+        root: &Path,
+        digest: &str,
+    ) -> BistreResult<()> {
+        let current = crate::hooks::load_workspace_hooks(root)?.map(|f| f.digest);
+        if current.as_deref() != Some(digest) {
+            return Err(BistreError::with_detail(
+                DiagnosticKey::InvalidInput,
+                "hooks_changed",
+            ));
+        }
+        self.storage
+            .set_kv_meta(crate::hooks::hooks_approval_key(root), digest.to_owned())
+    }
+
+    /// Validates and saves a provider's custom headers and body, bound to its origin (A-S8).
+    pub(crate) fn save_provider_overrides_inner(
+        &self,
+        provider_id: &str,
+        headers_json: &str,
+        body_json: &str,
+    ) -> BistreResult<()> {
+        let provider = self
+            .storage
+            .get_provider(provider_id)?
+            .ok_or_else(|| BistreError::new(DiagnosticKey::StorageNotFound))?;
+        crate::provider_prefs::save_provider_overrides(
+            &self.storage,
+            provider_id,
+            &provider.base_url,
+            headers_json,
+            body_json,
         )
     }
 }

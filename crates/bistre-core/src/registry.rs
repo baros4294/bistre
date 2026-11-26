@@ -28,7 +28,7 @@ use crate::ssrf::PublicWebTransport;
 /// Freshness window for a successful sync.
 pub const REGISTRY_TTL: Duration = Duration::from_hours(24);
 /// Version of the on-disk price cache; a different version is ignored and rebuilt.
-pub const PRICE_CACHE_FORMAT: u32 = 3;
+pub const PRICE_CACHE_FORMAT: u32 = 5;
 /// Cooldown after a sync that yielded no rates.
 pub const REGISTRY_FAILURE_COOLDOWN: Duration = Duration::from_secs(60);
 /// Maximum wait for one model's rate.
@@ -51,15 +51,34 @@ pub const PRICING_SOURCES: [(&str, &str); 4] = [
 pub struct ModelRates {
     pub input_per_mtok: i64,
     pub output_per_mtok: i64,
-    /// Cached-input rate when the source reports one.
+    /// Cached-input (cache read) rate when the source reports one.
     pub cached_input_per_mtok: Option<i64>,
+    /// Cache-write rate for the default (5-minute) TTL, when the source reports one.
+    pub cache_write_per_mtok: Option<i64>,
+    /// Cache-write rate for the 1-hour TTL, when the source reports one.
+    pub cache_write_1h_per_mtok: Option<i64>,
     /// The model's conversation limit (context window) in tokens, when the source reports one.
     pub context_tokens: Option<u32>,
     /// Whether the model accepts a reasoning/thinking effort, when the source reports it.
     pub reasoning: Option<bool>,
+    /// The most tokens one reply may have, when the source reports it (W4.8: Anthropic's
+    /// required `max_tokens` comes from here, not a fixed number).
+    pub max_output_tokens: Option<u32>,
 }
 
 impl ModelRates {
+    /// Fills fields this entry lacks from `other` (a later source or a prefix-less id).
+    fn fill_gaps(&mut self, other: &Self) {
+        self.cached_input_per_mtok = self.cached_input_per_mtok.or(other.cached_input_per_mtok);
+        self.cache_write_per_mtok = self.cache_write_per_mtok.or(other.cache_write_per_mtok);
+        self.cache_write_1h_per_mtok = self
+            .cache_write_1h_per_mtok
+            .or(other.cache_write_1h_per_mtok);
+        self.context_tokens = self.context_tokens.or(other.context_tokens);
+        self.max_output_tokens = self.max_output_tokens.or(other.max_output_tokens);
+        self.reasoning = self.reasoning.or(other.reasoning);
+    }
+
     /// Exact cost; cached input tokens are billed at the cached rate when known.
     pub fn cost(
         &self,
@@ -76,38 +95,59 @@ impl ModelRates {
         MoneyMicros::from_micros(i64::try_from(total / 1_000_000).unwrap_or(i64::MAX))
     }
 
-    /// Dialect-accurate exact micro-USD cost.
+    /// Dialect-accurate exact micro-USD cost, or `None` when a rate it needs is unknown.
     ///
     /// - Anthropic's `input_tokens` **excludes** `cache_read_input_tokens` and
-    ///   `cache_creation_input_tokens` (additive billing: `1.0x` fresh + `0.1x` read + `1.25x` 5m write).
+    ///   `cache_creation_input_tokens` (additive billing). Cache writes are billed per TTL at the
+    ///   registry's 5-minute / 1-hour write rates; an unknown write rate makes the cost unknown
+    ///   (fail closed, never a guessed multiplier).
     /// - `OpenAI`, Gemini, and `CustomOpenAi` report `input_tokens` **inclusive** of cached tokens.
+    /// - Gemini thinking tokens are billed as output on top of `output_tokens`.
+    /// - An unknown cache-read rate bills cached tokens at the full input rate (an upper bound).
     pub fn cost_for_dialect(
         &self,
         dialect: bistre_protocol::ProviderDialect,
         usage: &bistre_protocol::UsageMetrics,
-    ) -> MoneyMicros {
+    ) -> Option<MoneyMicros> {
+        use bistre_protocol::ProviderDialect;
         let rate = |r: i64| u128::try_from(r).unwrap_or(0);
         let base_in = rate(self.input_per_mtok);
-        let out_cost = u128::from(usage.output_tokens) * rate(self.output_per_mtok);
-        let total = if dialect == bistre_protocol::ProviderDialect::Anthropic {
-            let cache_read_rate = self.cached_input_per_mtok.map_or(base_in / 10, rate);
-            let cache_write_rate = base_in.saturating_mul(5) / 4; // 1.25x (5-minute TTL)
+        let read_rate = rate(self.cached_input_per_mtok.unwrap_or(self.input_per_mtok));
+        // Gemini bills thinking as output but reports it apart from the answer
+        // (`thoughtsTokenCount` / `total_thought_tokens`); other dialects already include it.
+        let billed_output = if dialect == ProviderDialect::GoogleGemini {
+            usage.output_tokens.saturating_add(usage.reasoning_tokens)
+        } else {
+            usage.output_tokens
+        };
+        let out_cost = u128::from(billed_output) * rate(self.output_per_mtok);
+        let total = if dialect == ProviderDialect::Anthropic {
+            let one_hour_writes = usage
+                .cache_creation_1h_input_tokens
+                .min(usage.cache_creation_input_tokens);
+            let five_minute_writes = usage.cache_creation_input_tokens - one_hour_writes;
+            let write_cost = |tokens: u64, r: Option<i64>| -> Option<u128> {
+                if tokens == 0 {
+                    Some(0)
+                } else {
+                    r.map(|r| u128::from(tokens) * rate(r))
+                }
+            };
             u128::from(usage.input_tokens) * base_in
-                + u128::from(usage.cached_input_tokens) * cache_read_rate
-                + u128::from(usage.cache_creation_input_tokens) * cache_write_rate
+                + u128::from(usage.cached_input_tokens) * read_rate
+                + write_cost(five_minute_writes, self.cache_write_per_mtok)?
+                + write_cost(one_hour_writes, self.cache_write_1h_per_mtok)?
                 + out_cost
         } else {
             let cached = usage.cached_input_tokens.min(usage.input_tokens);
             let fresh = usage.input_tokens - cached;
-            u128::from(fresh) * base_in
-                + u128::from(cached)
-                    * rate(self.cached_input_per_mtok.unwrap_or(self.input_per_mtok))
-                + out_cost
+            u128::from(fresh) * base_in + u128::from(cached) * read_rate + out_cost
         };
-        MoneyMicros::from_micros(i64::try_from(total / 1_000_000).unwrap_or(i64::MAX))
+        Some(MoneyMicros::from_micros(
+            i64::try_from(total / 1_000_000).unwrap_or(i64::MAX),
+        ))
     }
 }
-
 /// Parses a decimal (`"0.000000075"`, `"7.5e-8"`, `"2.5"`) times `10^scale` into an integer,
 /// truncating below one unit. Returns `None` for negatives, NaN-like text, or overflow.
 pub fn parse_decimal_scaled(text: &str, scale: u32) -> Option<i64> {
@@ -235,6 +275,8 @@ struct ListPricing {
     input: Field<Decimal>,
     output: Field<Decimal>,
     input_cache_read: Field<Decimal>,
+    input_cache_write: Field<Decimal>,
+    input_cache_write_1h: Field<Decimal>,
 }
 
 #[derive(Deserialize)]
@@ -242,8 +284,11 @@ struct LiteSpec {
     input_cost_per_token: Field<Decimal>,
     output_cost_per_token: Field<Decimal>,
     cache_read_input_token_cost: Field<Decimal>,
+    cache_creation_input_token_cost: Field<Decimal>,
+    cache_creation_input_token_cost_above_1hr: Field<Decimal>,
     max_input_tokens: Field<u64>,
     max_tokens: Field<u64>,
+    max_output_tokens: Field<u64>,
     supports_reasoning: Field<bool>,
 }
 
@@ -264,11 +309,13 @@ struct DevCost {
     input: Field<Decimal>,
     output: Field<Decimal>,
     cache_read: Field<Decimal>,
+    cache_write: Field<Decimal>,
 }
 
 #[derive(Deserialize)]
 struct DevLimit {
     context: Field<u64>,
+    output: Field<u64>,
 }
 
 /// Parses one source's raw JSON into `(model_id, rates)` pairs; an unreadable list yields none.
@@ -315,8 +362,11 @@ fn parse_list(openrouter: bool, body: &[u8]) -> serde_json::Result<Vec<(String, 
                     input_per_mtok: input,
                     output_per_mtok: output,
                     cached_input_per_mtok: per_token(p.input_cache_read),
+                    cache_write_per_mtok: per_token(p.input_cache_write),
+                    cache_write_1h_per_mtok: per_token(p.input_cache_write_1h),
                     context_tokens: count(context),
                     reasoning,
+                    max_output_tokens: None,
                 },
             ))
         })
@@ -335,8 +385,13 @@ fn parse_litellm(body: &[u8]) -> serde_json::Result<Vec<(String, ModelRates)>> {
                     input_per_mtok: per_token(spec.input_cost_per_token)?,
                     output_per_mtok: per_token(spec.output_cost_per_token)?,
                     cached_input_per_mtok: per_token(spec.cache_read_input_token_cost),
+                    cache_write_per_mtok: per_token(spec.cache_creation_input_token_cost),
+                    cache_write_1h_per_mtok: per_token(
+                        spec.cache_creation_input_token_cost_above_1hr,
+                    ),
                     context_tokens: count(spec.max_input_tokens).or(count(spec.max_tokens)),
                     reasoning: field(spec.supports_reasoning),
+                    max_output_tokens: count(spec.max_output_tokens),
                 },
             ))
         })
@@ -353,14 +408,20 @@ fn parse_models_dev(body: &[u8]) -> serde_json::Result<Vec<(String, ModelRates)>
         .filter_map(|(id, model)| {
             let model = model.get()?;
             let cost = field(model.cost)?;
+            let limit = field(model.limit);
+            let (context, output) =
+                limit.map_or((None, None), |l| (count(l.context), count(l.output)));
             Some((
                 id,
                 ModelRates {
                     input_per_mtok: per_mtok(cost.input)?,
                     output_per_mtok: per_mtok(cost.output)?,
                     cached_input_per_mtok: per_mtok(cost.cache_read),
-                    context_tokens: field(model.limit).and_then(|l| count(l.context)),
+                    cache_write_per_mtok: per_mtok(cost.cache_write),
+                    cache_write_1h_per_mtok: None,
+                    context_tokens: context,
                     reasoning: field(model.reasoning),
+                    max_output_tokens: output,
                 },
             ))
         })
@@ -394,15 +455,22 @@ impl RateTable {
             for key in [full, short] {
                 self.rates
                     .entry(key)
-                    .and_modify(|known| {
-                        known.cached_input_per_mtok =
-                            known.cached_input_per_mtok.or(rates.cached_input_per_mtok);
-                        known.context_tokens = known.context_tokens.or(rates.context_tokens);
-                        known.reasoning = known.reasoning.or(rates.reasoning);
-                    })
+                    .and_modify(|known| known.fill_gaps(&rates))
                     .or_insert(rates);
             }
         }
+    }
+
+    /// W8: a refresh's prices replace what was known ("Update prices now" never changed a
+    /// known price: syncs only filled gaps); ids no source returned this time keep their
+    /// old price, so one failed source does not lose prices.
+    #[must_use]
+    pub fn refreshed_from(&self, fresh: &Self) -> Self {
+        let mut next = fresh.clone();
+        for (id, old) in &self.rates {
+            next.rates.entry(id.clone()).or_insert(*old);
+        }
+        next
     }
 
     /// Exact id first, then the id without its `vendor/` prefix.
@@ -417,10 +485,7 @@ impl RateTable {
             .copied()
             .map(|mut known| {
                 if let Some(other) = by_short {
-                    known.cached_input_per_mtok =
-                        known.cached_input_per_mtok.or(other.cached_input_per_mtok);
-                    known.context_tokens = known.context_tokens.or(other.context_tokens);
-                    known.reasoning = known.reasoning.or(other.reasoning);
+                    known.fill_gaps(&other);
                 }
                 known
             })
@@ -448,9 +513,10 @@ pub struct PricingRegistry {
 struct PriceCache {
     format: u32,
     fetched_at_ms: i64,
-    /// `id -> [input, output, cached_input or -1, context tokens or -1, reasoning 1/0/-1]`
-    /// (micro-USD per million tokens for the first three).
-    rates: HashMap<String, [i64; 5]>,
+    /// `id -> [input, output, cached_input or -1, context tokens or -1, reasoning 1/0/-1,
+    /// cache_write or -1, cache_write_1h or -1, max output tokens or -1]` (micro-USD per
+    /// million tokens for the rates).
+    rates: HashMap<String, [i64; 8]>,
 }
 
 fn unix_now_ms() -> i64 {
@@ -490,16 +556,33 @@ impl PricingRegistry {
             let entries = cache
                 .rates
                 .into_iter()
-                .map(|(id, [input, output, cached, context, reasoning])| {
-                    let rates = ModelRates {
-                        input_per_mtok: input,
-                        output_per_mtok: output,
-                        cached_input_per_mtok: (cached >= 0).then_some(cached),
-                        context_tokens: u32::try_from(context).ok(),
-                        reasoning: (reasoning >= 0).then_some(reasoning == 1),
-                    };
-                    (id, rates)
-                })
+                .map(
+                    |(
+                        id,
+                        [
+                            input,
+                            output,
+                            cached,
+                            context,
+                            reasoning,
+                            write,
+                            write_1h,
+                            max_out,
+                        ],
+                    )| {
+                        let rates = ModelRates {
+                            input_per_mtok: input,
+                            output_per_mtok: output,
+                            cached_input_per_mtok: (cached >= 0).then_some(cached),
+                            cache_write_per_mtok: (write >= 0).then_some(write),
+                            cache_write_1h_per_mtok: (write_1h >= 0).then_some(write_1h),
+                            context_tokens: u32::try_from(context).ok(),
+                            reasoning: (reasoning >= 0).then_some(reasoning == 1),
+                            max_output_tokens: u32::try_from(max_out).ok(),
+                        };
+                        (id, rates)
+                    },
+                )
                 .collect();
             registry.publish(entries);
             lock_or_recover(&registry.clock, "clock").last_success =
@@ -530,6 +613,9 @@ impl PricingRegistry {
                             cached,
                             context,
                             reasoning,
+                            r.cache_write_per_mtok.unwrap_or(-1),
+                            r.cache_write_1h_per_mtok.unwrap_or(-1),
+                            r.max_output_tokens.map_or(-1, i64::from),
                         ],
                     )
                 })
@@ -604,6 +690,8 @@ impl PricingRegistry {
         let web = web.clone();
         runtime.spawn(async move {
             let mut any = false;
+            let base = registry.snapshot();
+            let mut fresh = RateTable::default();
             for (name, url) in PRICING_SOURCES {
                 let Ok(fetched) = web.get(url, MAX_CATALOG_BYTES).await else {
                     continue;
@@ -613,7 +701,12 @@ impl PricingRegistry {
                 }
                 let entries = parse_source(name, &fetched.body);
                 any |= !entries.is_empty();
-                registry.publish(entries);
+                // Within one refresh an earlier source wins and later ones fill its gaps; the
+                // refresh as a whole wins over the prices known before it.
+                fresh.merge_gaps(entries);
+                registry
+                    .table_tx
+                    .send_replace(Arc::new(base.refreshed_from(&fresh)));
             }
             {
                 let mut clock = lock_or_recover(&registry.clock, "clock");
@@ -718,26 +811,68 @@ mod tests {
         assert!(table.lookup("unknown").is_none());
     }
 
+    /// R3: Gemini reports thinking apart from the visible answer and bills both as output
+    /// (generateContent `thoughtsTokenCount`, Interactions `total_thought_tokens`); `OpenAI`'s
+    /// `reasoning_tokens` are already inside `output_tokens` and must not count twice.
+    #[test]
+    fn gemini_thinking_is_billed_as_output_and_openai_reasoning_is_not_double_counted() {
+        use bistre_protocol::{ProviderDialect, UsageMetrics};
+        let rates = ModelRates {
+            input_per_mtok: 1_000_000,
+            output_per_mtok: 10_000_000,
+            cached_input_per_mtok: None,
+            cache_write_per_mtok: None,
+            cache_write_1h_per_mtok: None,
+            context_tokens: None,
+            reasoning: None,
+            max_output_tokens: None,
+        };
+        let usage = UsageMetrics {
+            input_tokens: 0,
+            output_tokens: 100_000,
+            reasoning_tokens: 900_000,
+            ..UsageMetrics::default()
+        };
+        // Gemini: 100k answer + 900k thinking = 1M output tokens = $10.
+        assert_eq!(
+            rates
+                .cost_for_dialect(ProviderDialect::GoogleGemini, &usage)
+                .map(MoneyMicros::as_micros),
+            Some(10_000_000)
+        );
+        // OpenAI reports reasoning inside output_tokens: only the 100k output is billed.
+        assert_eq!(
+            rates
+                .cost_for_dialect(ProviderDialect::OpenAi, &usage)
+                .map(MoneyMicros::as_micros),
+            Some(1_000_000)
+        );
+    }
+
     #[test]
     fn cost_bills_cached_input_at_cached_rate() {
         let rates = ModelRates {
             input_per_mtok: 3_000_000,
             output_per_mtok: 15_000_000,
             cached_input_per_mtok: Some(300_000),
+            cache_write_per_mtok: None,
+            cache_write_1h_per_mtok: None,
             context_tokens: None,
             reasoning: None,
+            max_output_tokens: None,
         };
         // 1M fresh input = $3, 1M cached = $0.30, 100k output = $1.50.
         let cost = rates.cost(2_000_000, 1_000_000, 100_000);
         assert_eq!(cost.as_micros(), 4_800_000);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn waiting_for_an_unknown_model_without_a_sync_returns_immediately() {
         let registry = PricingRegistry::new();
-        let started = Instant::now();
+        // Paused clock: any timed wait would advance virtual time by `REGISTRY_MODEL_WAIT`.
+        let started = tokio::time::Instant::now();
         assert!(registry.rates_for("nothing").await.is_none());
-        assert!(started.elapsed() < Duration::from_millis(100));
+        assert_eq!(started.elapsed(), Duration::ZERO);
     }
 
     #[test]
@@ -752,8 +887,11 @@ mod tests {
                 input_per_mtok: 1_000_000,
                 output_per_mtok: 2_000_000,
                 cached_input_per_mtok: Some(100_000),
+                cache_write_per_mtok: None,
+                cache_write_1h_per_mtok: None,
                 context_tokens: None,
                 reasoning: None,
+                max_output_tokens: None,
             },
         )]);
         registry.save_cache();
@@ -774,6 +912,62 @@ mod tests {
         let other = PricingRegistry::with_cache(path);
         assert!(other.snapshot().lookup("model-a").is_none());
         assert!(other.sync_due());
+        Ok(())
+    }
+
+    /// W4.8: each model's output limit comes from the registry (`LiteLLM` `max_output_tokens`,
+    /// models.dev `limit.output`, read 2026-11-26) and survives the on-disk cache.
+    /// W8: a refresh replaces a known price; a price no source returned stays.
+    #[test]
+    fn a_refresh_replaces_known_prices() {
+        let mut old = RateTable::default();
+        old.merge_gaps(parse(
+            "litellm",
+            &json!({
+                "a": {"input_cost_per_token": 0.000_001, "output_cost_per_token": 0.000_002},
+                "only-old": {"input_cost_per_token": 0.000_003, "output_cost_per_token": 0.000_004}
+            }),
+        ));
+        let mut fresh = RateTable::default();
+        fresh.merge_gaps(parse(
+            "litellm",
+            &json!({
+                "a": {"input_cost_per_token": 0.000_005, "output_cost_per_token": 0.000_006}
+            }),
+        ));
+        let next = old.refreshed_from(&fresh);
+        assert_eq!(next.lookup("a").map(|r| r.input_per_mtok), Some(5_000_000));
+        assert_eq!(
+            next.lookup("only-old").map(|r| r.input_per_mtok),
+            Some(3_000_000)
+        );
+    }
+
+    #[test]
+    fn output_limits_come_from_the_registry() -> Result<(), Box<dyn std::error::Error>> {
+        let litellm = json!({"b": {"input_cost_per_token": 0.000_001, "output_cost_per_token": 0.000_002, "max_input_tokens": 200_000, "max_output_tokens": 64_000}});
+        let models_dev = json!({"p": {"models": {"c": {"cost": {"input": 1, "output": 2}, "limit": {"context": 64000, "output": 8192}}}}});
+        let out = |src: &str, doc: &Value| {
+            parse(src, doc)
+                .first()
+                .and_then(|(_, r)| r.max_output_tokens)
+        };
+        assert_eq!(out("litellm", &litellm), Some(64_000));
+        assert_eq!(out("models_dev", &models_dev), Some(8_192));
+
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("prices.json");
+        let registry = PricingRegistry::with_cache(path.clone());
+        registry.publish(parse("litellm", &litellm));
+        registry.save_cache();
+        let reloaded = PricingRegistry::with_cache(path);
+        assert_eq!(
+            reloaded
+                .snapshot()
+                .lookup("b")
+                .and_then(|r| r.max_output_tokens),
+            Some(64_000)
+        );
         Ok(())
     }
 
@@ -834,25 +1028,32 @@ mod tests {
         assert_eq!(merged.and_then(|r| r.context_tokens), Some(1000));
     }
 
-    #[test]
-    fn anthropic_cache_cost_is_additive_and_prices_cache_creation() {
-        let rates = ModelRates {
-            input_per_mtok: 10_000_000,             // $10 / 1M
-            output_per_mtok: 20_000_000,            // $20 / 1M
-            cached_input_per_mtok: Some(1_000_000), // $1 / 1M (0.1x)
+    fn anthropic_rates() -> ModelRates {
+        ModelRates {
+            input_per_mtok: 10_000_000,                // $10 / 1M
+            output_per_mtok: 20_000_000,               // $20 / 1M
+            cached_input_per_mtok: Some(1_000_000),    // $1 / 1M
+            cache_write_per_mtok: Some(12_500_000),    // $12.50 / 1M (5-minute TTL)
+            cache_write_1h_per_mtok: Some(20_000_000), // $20 / 1M (1-hour TTL)
             context_tokens: Some(200_000),
             reasoning: Some(true),
-        };
+            max_output_tokens: None,
+        }
+    }
+
+    #[test]
+    fn anthropic_cache_cost_is_additive_and_prices_cache_creation() {
+        let rates = anthropic_rates();
         let usage = bistre_protocol::UsageMetrics {
             input_tokens: 100_000,                // $1.00 fresh
             cached_input_tokens: 1_000_000,       // $1.00 cache read
-            cache_creation_input_tokens: 400_000, // 0.4M * $12.50 = $5.00 cache write
+            cache_creation_input_tokens: 400_000, // 0.4M * $12.50 = $5.00 cache write (5m)
             output_tokens: 100_000,               // $2.00 output
             ..bistre_protocol::UsageMetrics::default()
         };
         // Anthropic: additive ($1 + $1 + $5 + $2 = $9.00 = 9_000_000 micros).
         let anth = rates.cost_for_dialect(bistre_protocol::ProviderDialect::Anthropic, &usage);
-        assert_eq!(anth.as_micros(), 9_000_000);
+        assert_eq!(anth.map(MoneyMicros::as_micros), Some(9_000_000));
 
         // OpenAI: input_tokens includes cached_input_tokens.
         let oai_usage = bistre_protocol::UsageMetrics {
@@ -862,6 +1063,68 @@ mod tests {
             ..bistre_protocol::UsageMetrics::default()
         };
         let oai = rates.cost_for_dialect(bistre_protocol::ProviderDialect::OpenAi, &oai_usage);
-        assert_eq!(oai.as_micros(), 4_800_000);
+        assert_eq!(oai.map(MoneyMicros::as_micros), Some(4_800_000));
+    }
+
+    /// R22: 1-hour cache writes are billed at the 1-hour rate from the registry, split by the
+    /// `usage.cache_creation` TTL breakdown; an unknown write rate makes the cost unknown.
+    #[test]
+    fn anthropic_one_hour_cache_writes_use_their_own_rate_or_fail_closed() {
+        let mut usage = bistre_protocol::UsageMetrics::default();
+        crate::wire_parse::merge_sse_usage(
+            bistre_protocol::ProviderDialect::Anthropic,
+            r#"{"type":"message_start","message":{"usage":{"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":400000,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":400000}}}}"#,
+            &mut usage,
+        );
+        assert_eq!(usage.cache_creation_1h_input_tokens, 400_000);
+        let rates = anthropic_rates();
+        // 0.4M * $20 = $8.00, not 0.4M * $12.50 = $5.00.
+        assert_eq!(
+            rates
+                .cost_for_dialect(bistre_protocol::ProviderDialect::Anthropic, &usage)
+                .map(MoneyMicros::as_micros),
+            Some(8_000_000)
+        );
+        let no_1h_rate = ModelRates {
+            cache_write_1h_per_mtok: None,
+            ..rates
+        };
+        assert_eq!(
+            no_1h_rate.cost_for_dialect(bistre_protocol::ProviderDialect::Anthropic, &usage),
+            None,
+            "an unknown 1-hour write rate is an unknown price, never a guessed multiplier"
+        );
+        // An unknown read rate bills reads at the full input rate (upper bound, no guess).
+        let reads = bistre_protocol::UsageMetrics {
+            cached_input_tokens: 1_000_000,
+            ..bistre_protocol::UsageMetrics::default()
+        };
+        let no_read_rate = ModelRates {
+            cached_input_per_mtok: None,
+            ..rates
+        };
+        assert_eq!(
+            no_read_rate
+                .cost_for_dialect(bistre_protocol::ProviderDialect::Anthropic, &reads)
+                .map(MoneyMicros::as_micros),
+            Some(10_000_000)
+        );
+    }
+
+    #[test]
+    fn every_source_reports_cache_write_rates() {
+        let openrouter = json!({"data": [{"id": "a/m", "pricing": {"prompt": "0.00001", "completion": "0.00002", "input_cache_write": "0.0000125", "input_cache_write_1h": "0.00002"}}]});
+        let litellm = json!({"l": {"input_cost_per_token": 1e-5, "output_cost_per_token": 2e-5, "cache_creation_input_token_cost": 1.25e-5, "cache_creation_input_token_cost_above_1hr": 2e-5}});
+        let models_dev = json!({"p": {"models": {"d": {"cost": {"input": 10, "output": 20, "cache_write": 12.5}}}}});
+        let or = parse("openrouter", &openrouter);
+        let lt = parse("litellm", &litellm);
+        let md = parse("models_dev", &models_dev);
+        let write = |v: &[(String, ModelRates)]| {
+            v.first()
+                .map(|(_, r)| (r.cache_write_per_mtok, r.cache_write_1h_per_mtok))
+        };
+        assert_eq!(write(&or), Some((Some(12_500_000), Some(20_000_000))));
+        assert_eq!(write(&lt), Some((Some(12_500_000), Some(20_000_000))));
+        assert_eq!(write(&md), Some((Some(12_500_000), None)));
     }
 }
