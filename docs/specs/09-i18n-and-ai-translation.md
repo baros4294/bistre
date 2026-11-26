@@ -32,3 +32,5 @@ Standard Flutter `gen-l10n` compiles static Dart classes and cannot hot-load OTA
 - `tools/bistre_i18n gen` emits strongly-typed `L10nKey` enum + typed helper methods (`apps/bistre_app/lib/l10n/l10n_keys.g.dart`) and copies validated catalogs to `apps/bistre_app/assets/l10n/`.
 - `apps/bistre_app/lib/l10n/` runs a pure-Dart ICU MessageFormat parser/evaluator (`{var}`, `{n, plural, =0{...} one{...} other{...}}`, `{v, select, ...}` + CLDR plural rules for `en`, `vi`, `ar`, etc.) inside `BistreLocalizations` (`InheritedNotifier`).
 - Switching locale (`en` ↔ `vi` ↔ `ar`) updates `Directionality` (`ltr`/`rtl`) and every visible string in 1 frame with zero restart. Track-A `minisign`-verified JSON locale packs hot-load directly into `BistreLocalizations.applyHotLocalePack(...)` without restarting.
+
+- **`diag.tool.path_denied`** (W8): a path outside what a tool or import may use (a skill outside the workspace, a CHARX entry escaping its folder) has its own key; it reused the edit hash-mismatch key, which pointed the user at the wrong fix.

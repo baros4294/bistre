@@ -19,5 +19,7 @@
 - **QUIC-only Remote Bridge**: Fragile under enterprise firewalls and Tailscale WireGuard encapsulation.
 
 ## Consequences & Verification
+- The IPC channel is private to the signed-in user (R29): owner-only pipe DACL and remote-client rejection on the daemon side, server-identity (Windows token SID / Unix peer uid) verification on the client side, before any request is written.
+- Frames are bounded in time and memory (R40): the daemon drops a client whose request frame does not arrive within 10 s (`IPC_FRAME_TIMEOUT`), so idle clients cannot hold its 16 connection slots; the app waits at most 120 s for a reply (`IPC_REPLY_TIMEOUT`); a frame's buffer grows with the bytes that arrive, never to its declared length (up to 8 MiB) up front. Test: `ipc_client::frame_tests::a_stalled_frame_times_out`.
 - Flutter UI stays 100% topology-agnostic across Android, Desktop Daemon, and Remote Bridge.
 - Verified via `bistre-daemon --health-check` (RSS ≤30 MB) and single-instance lock contention tests.

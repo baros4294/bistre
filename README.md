@@ -31,7 +31,7 @@ Bistre is built for people who want one calm, responsive AI workspace across des
 
 | Platform | Distribution | Highlights |
 |---|---|---|
-| **Windows** | Direct GitHub Release | Per-user installer (`-setup.exe`) & portable `.zip`, native Win11 DWM frame, system file dialogs |
+| **Windows** | Direct GitHub Release | Per-user installer (`-setup.exe`) & portable `.zip`, native Win11 DWM frame, system file dialogs. Builds are not code-signed, so SmartScreen may warn on first run; check the published SHA-256 sums and build attestations |
 | **Linux** | Direct GitHub Release | `.AppImage`, `.deb`, `.rpm`, & portable `.tar.gz`, native Wayland/X11 desktop build, active-scoped daemon |
 | **Android** | Direct GitHub APK (`arm64-v8a`) | Edge-to-edge layout, 16 KB page alignment, Keystore-backed vault, run-scoped foreground service |
 
