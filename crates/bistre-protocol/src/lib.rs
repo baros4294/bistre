@@ -9,6 +9,9 @@ pub mod story;
 
 use core::fmt;
 use serde::{Deserialize, Serialize};
+
+pub mod dialect;
+pub use dialect::ProviderDialect;
 use thiserror::Error;
 
 pub use story::*;
@@ -229,6 +232,102 @@ pub enum DiagnosticKey {
     #[serde(rename = "diag.wallet.check_unavailable")]
     WalletCheckUnavailable,
 
+    /// The provider reported no usage (stream stopped before its usage frame); the request was
+    /// billed from the input estimate plus the output counted locally.
+    /// The model's price is unknown, so the request cannot be checked against an active cap.
+    #[error("diag.wallet.price_unknown")]
+    #[serde(rename = "diag.wallet.price_unknown")]
+    WalletPriceUnknown,
+
+    #[error("diag.wallet.usage_estimated")]
+    #[serde(rename = "diag.wallet.usage_estimated")]
+    WalletUsageEstimated,
+
+    /// A disk read or write failed (for example after the computer woke from sleep). The
+    /// database connection is reopened; trying again usually works.
+    #[error("diag.storage.io_error")]
+    #[serde(rename = "diag.storage.io_error")]
+    StorageIoError,
+
+    /// A path outside what a tool or import may touch was refused (W8: this used to reuse
+    /// the edit hash-mismatch key).
+    #[error("diag.tool.path_denied")]
+    #[serde(rename = "diag.tool.path_denied")]
+    ToolPathDenied,
+
+    /// The run reached its step limit while the model still wanted to go on (R18).
+    #[error("diag.run.step_limit_reached")]
+    #[serde(rename = "diag.run.step_limit_reached")]
+    RunStepLimitReached,
+
+    /// An attachment could not be sent (missing or too large); the model got a note instead (R24).
+    #[error("diag.attachment.not_sent")]
+    #[serde(rename = "diag.attachment.not_sent")]
+    AttachmentNotSent,
+
+    /// The reply hit the model's output limit and stopped early (R10); Continue asks for more.
+    #[error("diag.provider.reply_truncated")]
+    #[serde(rename = "diag.provider.reply_truncated")]
+    ProviderReplyTruncated,
+
+    /// The provider declined or filtered the reply (R10).
+    #[error("diag.provider.reply_refused")]
+    #[serde(rename = "diag.provider.reply_refused")]
+    ProviderReplyRefused,
+
+    /// The update manifest is in a format this version cannot read (reinstall from the
+    /// download page once).
+    #[error("diag.ota.manifest_unsupported")]
+    #[serde(rename = "diag.ota.manifest_unsupported")]
+    OtaManifestUnsupported,
+
+    /// The release has no update file for this kind of device.
+    #[error("diag.ota.no_asset_for_platform")]
+    #[serde(rename = "diag.ota.no_asset_for_platform")]
+    OtaNoAssetForPlatform,
+
+    /// The full-text search index is corrupt; search runs as a slower plain scan until it is
+    /// rebuilt. Saving messages is never blocked by it.
+    #[error("diag.storage.search_index_corrupt")]
+    #[serde(rename = "diag.storage.search_index_corrupt")]
+    StorageSearchIndexCorrupt,
+
+    /// A node's parent belongs to another thread (or does not exist).
+    #[error("diag.storage.parent_thread_mismatch")]
+    #[serde(rename = "diag.storage.parent_thread_mismatch")]
+    StorageParentThreadMismatch,
+
+    /// The workspace has hooks in `.bistre/hooks.json` that the user has not approved yet.
+    #[error("diag.hooks.approval_required")]
+    #[serde(rename = "diag.hooks.approval_required")]
+    HooksApprovalRequired,
+
+    /// An imported settings file allows more than the current settings (looser trust preset or
+    /// a higher or removed spending limit); importing it needs the user's confirmation.
+    #[error("diag.import.loosens_safety")]
+    #[serde(rename = "diag.import.loosens_safety")]
+    ImportLoosensSafety,
+
+    /// The provider this chat or assistant is pinned to is turned off, missing, or has no key.
+    #[error("diag.provider.pinned_unavailable")]
+    #[serde(rename = "diag.provider.pinned_unavailable")]
+    ProviderPinnedUnavailable,
+
+    /// A custom provider header is not allowed (reserved, credential, or not a valid header).
+    #[error("diag.provider.headers_invalid")]
+    #[serde(rename = "diag.provider.headers_invalid")]
+    ProviderHeadersInvalid,
+
+    /// Saved custom headers were removed because the provider's server address changed.
+    #[error("diag.provider.headers_cleared")]
+    #[serde(rename = "diag.provider.headers_cleared")]
+    ProviderHeadersCleared,
+
+    /// The custom request body is not a JSON object.
+    #[error("diag.provider.body_invalid")]
+    #[serde(rename = "diag.provider.body_invalid")]
+    ProviderBodyInvalid,
+
     #[error("diag.tool.tier_blocked")]
     #[serde(rename = "diag.tool.tier_blocked")]
     ToolTierBlocked,
@@ -279,6 +378,24 @@ impl DiagnosticKey {
             Self::OtaIntegrityFailed => "diag.ota.integrity_failed",
             Self::OtaSigningKeyMissing => "diag.ota.signing_key_missing",
             Self::WalletCheckUnavailable => "diag.wallet.check_unavailable",
+            Self::WalletUsageEstimated => "diag.wallet.usage_estimated",
+            Self::WalletPriceUnknown => "diag.wallet.price_unknown",
+            Self::ToolPathDenied => "diag.tool.path_denied",
+            Self::RunStepLimitReached => "diag.run.step_limit_reached",
+            Self::AttachmentNotSent => "diag.attachment.not_sent",
+            Self::ProviderReplyTruncated => "diag.provider.reply_truncated",
+            Self::ProviderReplyRefused => "diag.provider.reply_refused",
+            Self::OtaManifestUnsupported => "diag.ota.manifest_unsupported",
+            Self::OtaNoAssetForPlatform => "diag.ota.no_asset_for_platform",
+            Self::StorageIoError => "diag.storage.io_error",
+            Self::StorageSearchIndexCorrupt => "diag.storage.search_index_corrupt",
+            Self::StorageParentThreadMismatch => "diag.storage.parent_thread_mismatch",
+            Self::HooksApprovalRequired => "diag.hooks.approval_required",
+            Self::ImportLoosensSafety => "diag.import.loosens_safety",
+            Self::ProviderPinnedUnavailable => "diag.provider.pinned_unavailable",
+            Self::ProviderHeadersInvalid => "diag.provider.headers_invalid",
+            Self::ProviderBodyInvalid => "diag.provider.body_invalid",
+            Self::ProviderHeadersCleared => "diag.provider.headers_cleared",
             Self::ToolTierBlocked => "diag.tool.tier_blocked",
             Self::InternalError => "diag.internal.error",
         }
@@ -439,9 +556,11 @@ impl TrustPreset {
     pub fn parse(raw: &str) -> Self {
         match raw.trim().to_ascii_lowercase().as_str() {
             "off" => Self::Off,
-            "strict" | "parchment" | "parchment_safe" => Self::Strict,
             "unchained_sandbox" | "sandbox" => Self::UnchainedSandbox,
-            _ => Self::GuidedCraft,
+            "guided_craft" | "guided" => Self::GuidedCraft,
+            // "strict", "parchment", "parchment_safe", and any unknown text: unknown text
+            // never loosens trust (A-S7).
+            _ => Self::Strict,
         }
     }
 }
@@ -680,61 +799,6 @@ impl Default for AppSettings {
     }
 }
 
-/// Strictly Big 3 + Custom OpenAI-Compatible wire dialects (Spec 02).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProviderDialect {
-    OpenAi,
-    GoogleGemini,
-    Anthropic,
-    CustomOpenAi,
-}
-
-impl ProviderDialect {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::OpenAi => "openai",
-            Self::GoogleGemini => "google_gemini",
-            Self::Anthropic => "anthropic",
-            Self::CustomOpenAi => "custom_openai",
-        }
-    }
-
-    pub fn parse(raw: &str) -> Self {
-        match raw {
-            "openai" => Self::OpenAi,
-            "google_gemini" | "gemini" => Self::GoogleGemini,
-            "anthropic" => Self::Anthropic,
-            _ => Self::CustomOpenAi,
-        }
-    }
-
-    /// Official default API root URL for built-in dialects.
-    pub const fn default_base_url(self) -> &'static str {
-        match self {
-            Self::OpenAi => "https://api.openai.com/v1",
-            Self::GoogleGemini => "https://generativelanguage.googleapis.com",
-            Self::Anthropic => "https://api.anthropic.com/v1",
-            Self::CustomOpenAi => "http://127.0.0.1:11434/v1",
-        }
-    }
-
-    /// Default opaque local icon identifier (zero external references).
-    pub const fn default_icon_slug(self) -> &'static str {
-        match self {
-            Self::OpenAi => "openai",
-            Self::GoogleGemini => "gemini",
-            Self::Anthropic => "anthropic",
-            Self::CustomOpenAi => "server",
-        }
-    }
-
-    /// Big 3 cloud providers always require an API key; custom endpoints may run locally without one.
-    pub const fn requires_api_key(self) -> bool {
-        !matches!(self, Self::CustomOpenAi)
-    }
-}
-
 /// Exact integer generation parameters forwarded cleanly to any LLM wire dialect (zero floats).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenerationParams {
@@ -813,6 +877,10 @@ pub struct UsageMetrics {
     pub cached_input_tokens: u64,
     #[serde(default)]
     pub cache_creation_input_tokens: u64,
+    /// The part of `cache_creation_input_tokens` written with the 1-hour TTL (Anthropic
+    /// `usage.cache_creation.ephemeral_1h_input_tokens`); the rest used the default TTL.
+    #[serde(default)]
+    pub cache_creation_1h_input_tokens: u64,
     #[serde(default)]
     pub reasoning_tokens: u64,
     #[serde(default)]
@@ -1328,7 +1396,11 @@ pub enum SystemPowerEvent {
     NetworkLost,
     NetworkRestored,
     OsTimeoutImminent,
-    PowerSourceChanged { on_ac: bool },
+    PowerSourceChanged {
+        on_ac: bool,
+    },
+    /// The app came back to the foreground (P19): stalled streams end; runs are not touched.
+    AppResumed,
 }
 
 pub mod events;

@@ -11,6 +11,7 @@
 mod catalog_repo;
 pub mod harness;
 mod schema;
+mod search;
 pub mod story;
 #[cfg(test)]
 mod tests;
@@ -31,7 +32,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use bistre_protocol::{
     AppSettings, AssistantPatch, AssistantRecord, BistreError, BistreResult, DiagnosticKey,
     DraftRecord, MoneyMicros, NodeRecord, NodeRole, ProviderDialect, ProviderPatch,
-    ProviderProfile, SearchHit, ThreadMode, ThreadPatch, ThreadSummary, WorkspaceSummary,
+    ProviderProfile, ThreadMode, ThreadPatch, ThreadSummary, WorkspaceSummary,
 };
 use rusqlite::{Connection, ErrorCode, OpenFlags, OptionalExtension, params};
 use uuid::Uuid;
@@ -39,7 +40,7 @@ use uuid::Uuid;
 pub use harness::{AgentRunUpdate, CreateAgentRunParams};
 
 /// Current canonical SQLite schema version (`PRAGMA user_version`).
-pub const CURRENT_SCHEMA_VERSION: u32 = 9;
+pub const CURRENT_SCHEMA_VERSION: u32 = 11;
 
 /// Default assistant identifier seeded strictly when a fresh install has zero assistants.
 pub const DEFAULT_ASSISTANT_ID: &str = "default_assistant";
@@ -75,6 +76,8 @@ enum WriterMessage {
     Execute(WriteTask),
     Shutdown(mpsc::SyncSender<BistreResult<CheckpointStats>>),
 }
+/// Deepest branch [`StorageHandle::list_branch`] walks (a guard against cycles).
+pub const MAX_BRANCH_DEPTH: i64 = 100_000;
 
 /// Thread-safe handle to the local Bistre SQLite WAL database.
 #[derive(Debug)]
@@ -82,6 +85,15 @@ pub struct StorageHandle {
     db_path: PathBuf,
     writer_tx: mpsc::SyncSender<WriterMessage>,
     writer_thread: Mutex<Option<JoinHandle<()>>>,
+}
+
+/// Whether `spent + estimate` stays within `cap` (and `spent` has not already reached it).
+/// An overflowing sum never fits.
+fn fits_under(spent: i64, estimate: MoneyMicros, cap: MoneyMicros) -> bool {
+    spent < cap.as_micros()
+        && spent
+            .checked_add(estimate.as_micros())
+            .is_some_and(|after| after <= cap.as_micros())
 }
 
 impl StorageHandle {
@@ -103,6 +115,7 @@ impl StorageHandle {
         ensure_default_workspace(&writer_conn)?;
         ensure_default_assistant_if_empty(&writer_conn)?;
         seed_builtin_providers_once(&writer_conn)?;
+        search::rebuild_stale_search_index(&mut writer_conn);
 
         let (writer_tx, writer_rx) = mpsc::sync_channel::<WriterMessage>(WRITER_QUEUE_CAP);
         let handle = thread::Builder::new()
@@ -141,8 +154,15 @@ impl StorageHandle {
         F: FnOnce(&mut Connection) -> BistreResult<T> + Send + 'static,
     {
         let (reply_tx, reply_rx) = mpsc::sync_channel(1);
+        let db_path = self.db_path.clone();
         let task: WriteTask = Box::new(move |conn| {
             let outcome = f(conn);
+            if outcome
+                .as_ref()
+                .is_err_and(|e| e.key == DiagnosticKey::StorageIoError)
+            {
+                reopen_writer(conn, &db_path);
+            }
             if reply_tx.send(outcome).is_err() {
                 tracing::debug!("storage caller stopped waiting for the write result");
             }
@@ -420,15 +440,59 @@ impl StorageHandle {
     }
 
     /// Deletes a thread (and cascades its nodes and draft via FK constraints).
+    /// Runs a write that changes `nodes` (and so fires the FTS triggers). If the full-text index
+    /// is corrupt (G3), the search triggers are dropped and the index marked stale in one
+    /// transaction, and the write is retried once: saving messages never depends on search.
+    /// The index is never rebuilt live; search falls back to a plain scan meanwhile.
+    fn write_node_change<T, F>(&self, mut op: F) -> BistreResult<T>
+    where
+        T: Send + 'static,
+        F: FnMut(&mut Connection) -> BistreResult<T> + Send + 'static,
+    {
+        self.write(move |conn| match op(conn) {
+            Err(err) if err.key == DiagnosticKey::StorageSearchIndexCorrupt => {
+                tracing::error!(
+                    key = err.key.as_key(),
+                    "search index corrupt: search triggers dropped and index marked stale"
+                );
+                let tx = conn.transaction().map_err(map_sqlite_err)?;
+                tx.execute_batch(schema::DROP_SEARCH_TRIGGERS_SQL)
+                    .map_err(map_sqlite_err)?;
+                tx.execute(
+                    "INSERT OR REPLACE INTO kv_meta (key, value) VALUES ('search.fts_stale', '1')",
+                    [],
+                )
+                .map_err(map_sqlite_err)?;
+                tx.commit().map_err(map_sqlite_err)?;
+                op(conn)
+            }
+            other => other,
+        })
+    }
+    /// Deletes a chat and everything derived from it: nodes (cascade), its event-log rows, and
+    /// its run journal with steps (R31), in one transaction.
     pub fn delete_thread(&self, thread_id: String) -> BistreResult<()> {
-        self.write(move |conn| {
-            let deleted = conn
+        self.write_node_change(move |conn| {
+            let tx = conn.transaction().map_err(map_sqlite_err)?;
+            tx.execute(
+                "DELETE FROM run_steps WHERE run_id IN (SELECT id FROM agent_runs WHERE thread_id = ?1)",
+                [&thread_id],
+            )
+            .map_err(map_sqlite_err)?;
+            tx.execute("DELETE FROM agent_runs WHERE thread_id = ?1", [&thread_id])
+                .map_err(map_sqlite_err)?;
+            tx.execute(
+                "DELETE FROM engine_events_log WHERE thread_id = ?1",
+                [&thread_id],
+            )
+            .map_err(map_sqlite_err)?;
+            let deleted = tx
                 .execute("DELETE FROM threads WHERE id = ?1", [&thread_id])
                 .map_err(map_sqlite_err)?;
             if deleted == 0 {
                 return Err(BistreError::new(DiagnosticKey::StorageNotFound));
             }
-            Ok(())
+            tx.commit().map_err(map_sqlite_err)
         })
     }
 
@@ -478,8 +542,19 @@ impl StorageHandle {
         let id = Uuid::now_v7().to_string();
         let now = now_unix_ms();
 
-        self.write(move |conn| {
+        self.write_node_change(move |conn| {
             let tx = conn.transaction().map_err(map_sqlite_err)?;
+            // U1: a parent from another thread (or a missing one) would graft one chat onto
+            // another; refuse it in the same transaction as the insert.
+            if let Some(pid) = parent_id.as_deref() {
+                let parent_thread: Option<String> = tx
+                    .query_row("SELECT thread_id FROM nodes WHERE id = ?1", [pid], |row| row.get(0))
+                    .optional()
+                    .map_err(map_sqlite_err)?;
+                if parent_thread.as_deref() != Some(thread_id.as_str()) {
+                    return Err(BistreError::new(DiagnosticKey::StorageParentThreadMismatch));
+                }
+            }
             tx.execute(
                 "INSERT INTO nodes (id, thread_id, parent_id, role, content, provider_meta_json, created_at_ms)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -506,12 +581,12 @@ impl StorageHandle {
             tx.commit().map_err(map_sqlite_err)?;
 
             Ok(NodeRecord {
-                id,
-                thread_id,
-                parent_id,
+                id: id.clone(),
+                thread_id: thread_id.clone(),
+                parent_id: parent_id.clone(),
                 role,
-                content,
-                provider_meta_json,
+                content: content.clone(),
+                provider_meta_json: provider_meta_json.clone(),
                 created_at_ms: now,
             })
         })
@@ -543,10 +618,50 @@ impl StorageHandle {
         rows.collect::<Result<Vec<_>, _>>().map_err(map_sqlite_err)
     }
 
+    /// The branch that ends at `leaf_id`, root first (R37): a recursive walk up the parent
+    /// links in SQLite, so a step reads only its own branch, not every node of the thread.
+    /// Bounded by [`MAX_BRANCH_DEPTH`]; a cycle stops at the depth cap.
+    pub fn list_branch(&self, thread_id: &str, leaf_id: &str) -> BistreResult<Vec<NodeRecord>> {
+        let conn = self.open_reader()?;
+        let mut stmt = conn
+            .prepare(
+                "WITH RECURSIVE branch(id, depth) AS (
+                     SELECT id, 0 FROM nodes WHERE id = ?2 AND thread_id = ?1
+                     UNION ALL
+                     SELECT n.parent_id, b.depth + 1
+                     FROM branch b JOIN nodes n ON n.id = b.id
+                     WHERE n.parent_id IS NOT NULL AND b.depth < ?3
+                 )
+                 SELECT n.id, n.thread_id, n.parent_id, n.role, n.content,
+                        n.provider_meta_json, n.created_at_ms
+                 FROM branch b JOIN nodes n ON n.id = b.id AND n.thread_id = ?1
+                 ORDER BY b.depth DESC",
+            )
+            .map_err(map_sqlite_err)?;
+        let rows = stmt
+            .query_map(
+                rusqlite::params![thread_id, leaf_id, MAX_BRANCH_DEPTH],
+                |row| {
+                    let role_raw: String = row.get(3)?;
+                    Ok(NodeRecord {
+                        id: row.get(0)?,
+                        thread_id: row.get(1)?,
+                        parent_id: row.get(2)?,
+                        role: NodeRole::parse(&role_raw),
+                        content: row.get(4)?,
+                        provider_meta_json: row.get(5)?,
+                        created_at_ms: row.get(6)?,
+                    })
+                },
+            )
+            .map_err(map_sqlite_err)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(map_sqlite_err)
+    }
+
     /// Deletes a single DAG node cleanly, reparenting direct children and updating `active_head_node_id`.
     pub fn delete_node(&self, thread_id: String, node_id: String) -> BistreResult<()> {
         let now = now_unix_ms();
-        self.write(move |conn| {
+        self.write_node_change(move |conn| {
             let tx = conn
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(map_sqlite_err)?;
@@ -784,7 +899,9 @@ impl StorageHandle {
     ///
     /// Runs on the single writer, so concurrent runs serialize: each sees every settled entry
     /// *and* every outstanding reservation. Returns the reservation id, or
-    /// `WalletCeilingExceeded` when today's settled + reserved spend already meets `ceiling`.
+    /// `WalletCeilingExceeded` when today's settled + reserved spend already meets `ceiling` or
+    /// adding `estimate` would pass it (checked addition: an overflow is refused too). A negative
+    /// estimate is never a reservation.
     pub fn reserve_wallet_spend(
         &self,
         thread_id: Option<String>,
@@ -794,6 +911,40 @@ impl StorageHandle {
         ceiling: Option<MoneyMicros>,
         since_unix_ms: i64,
     ) -> BistreResult<String> {
+        self.reserve_wallet_spend_with_chat_cap(
+            thread_id,
+            provider_id,
+            model_id,
+            estimate,
+            ceiling,
+            since_unix_ms,
+            None,
+        )
+    }
+
+    /// [`Self::reserve_wallet_spend`] plus the per-chat cap: in the same writer transaction,
+    /// the chat's whole ledger spend (settled + reserved, all time) plus `estimate` must fit
+    /// `chat_cap`, else `WalletCeilingExceeded` with detail `thread_spend_limit`.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "one reservation needs every ledger dimension at once"
+    )]
+    pub fn reserve_wallet_spend_with_chat_cap(
+        &self,
+        thread_id: Option<String>,
+        provider_id: String,
+        model_id: String,
+        estimate: MoneyMicros,
+        ceiling: Option<MoneyMicros>,
+        since_unix_ms: i64,
+        chat_cap: Option<MoneyMicros>,
+    ) -> BistreResult<String> {
+        if estimate.as_micros() < 0 {
+            return Err(BistreError::with_detail(
+                DiagnosticKey::WalletCeilingExceeded,
+                "negative_estimate",
+            ));
+        }
         let id = Uuid::now_v7().to_string();
         let now = now_unix_ms();
         self.write(move |conn| {
@@ -805,8 +956,31 @@ impl StorageHandle {
                     |row| row.get(0),
                 )
                 .map_err(map_sqlite_err)?;
-            if ceiling.is_some_and(|c| MoneyMicros::from_micros(spent) >= c) {
+            if let Some(c) = ceiling
+                && !fits_under(spent, estimate, c)
+            {
                 return Err(BistreError::new(DiagnosticKey::WalletCeilingExceeded));
+            }
+            if let Some(cap) = chat_cap {
+                let Some(tid) = thread_id.as_deref() else {
+                    return Err(BistreError::with_detail(
+                        DiagnosticKey::WalletCeilingExceeded,
+                        "thread_spend_limit",
+                    ));
+                };
+                let chat_spent: i64 = tx
+                    .query_row(
+                        "SELECT COALESCE(SUM(cost_micros), 0) FROM wallet_ledger WHERE thread_id = ?1",
+                        [tid],
+                        |row| row.get(0),
+                    )
+                    .map_err(map_sqlite_err)?;
+                if !fits_under(chat_spent, estimate, cap) {
+                    return Err(BistreError::with_detail(
+                        DiagnosticKey::WalletCeilingExceeded,
+                        "thread_spend_limit",
+                    ));
+                }
             }
             tx.execute(
                 "INSERT INTO wallet_ledger (id, thread_id, job_id, provider_id, model_id, cost_micros,
@@ -999,11 +1173,21 @@ impl StorageHandle {
             Uuid::now_v7()
         ));
         let tmp_str = tmp.to_string_lossy().into_owned();
-        let snapshot = self.write(move |conn| {
+        // R20: the snapshot comes from its own read-only connection (a consistent WAL read),
+        // never the single writer, so runs keep saving while a large backup copies.
+        // `query_only` stays off: it would refuse `VACUUM INTO`'s write to the new file.
+        let snapshot = Connection::open_with_flags(
+            &self.db_path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY
+                | OpenFlags::SQLITE_OPEN_NO_MUTEX
+                | OpenFlags::SQLITE_OPEN_URI,
+        )
+        .and_then(|conn| {
+            conn.busy_timeout(std::time::Duration::from_secs(5))?;
             conn.execute("VACUUM INTO ?1", [&tmp_str])
-                .map_err(map_sqlite_err)?;
-            Ok(())
-        });
+        })
+        .map(|_| ())
+        .map_err(map_sqlite_err);
         let finished = snapshot
             .and_then(|()| {
                 std::fs::OpenOptions::new()
@@ -1023,69 +1207,6 @@ impl StorageHandle {
             tracing::debug!("could not remove partial backup temp file");
         }
         finished
-    }
-
-    /// Full-text searches canonical nodes via SQLite FTS5, returning ranked snippets.
-    pub fn search_nodes(
-        &self,
-        query: &str,
-        thread_id: Option<&str>,
-        limit: u32,
-    ) -> BistreResult<Vec<SearchHit>> {
-        let trimmed = query.trim();
-        if trimmed.is_empty() {
-            return Ok(Vec::new());
-        }
-        let fts_query = sanitize_fts_query(trimmed);
-        let capped_limit = i64::from(limit.clamp(1, 200));
-        let conn = self.open_reader()?;
-
-        let map_row = |row: &rusqlite::Row<'_>| -> rusqlite::Result<SearchHit> {
-            let role_raw: String = row.get(2)?;
-            Ok(SearchHit {
-                node_id: row.get(0)?,
-                thread_id: row.get(1)?,
-                role: NodeRole::parse(&role_raw),
-                snippet: row.get(3)?,
-                created_at_ms: row.get(4)?,
-            })
-        };
-
-        if let Some(tid) = thread_id {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT n.id, n.thread_id, n.role,
-                            snippet(nodes_fts, 0, '[', ']', '...', 16),
-                            n.created_at_ms
-                     FROM nodes_fts
-                     JOIN nodes n ON n.rowid = nodes_fts.rowid
-                     WHERE nodes_fts MATCH ?1 AND n.thread_id = ?2
-                     ORDER BY bm25(nodes_fts)
-                     LIMIT ?3",
-                )
-                .map_err(map_sqlite_err)?;
-            let rows = stmt
-                .query_map(params![fts_query, tid, capped_limit], map_row)
-                .map_err(map_sqlite_err)?;
-            rows.collect::<Result<Vec<_>, _>>().map_err(map_sqlite_err)
-        } else {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT n.id, n.thread_id, n.role,
-                            snippet(nodes_fts, 0, '[', ']', '...', 16),
-                            n.created_at_ms
-                     FROM nodes_fts
-                     JOIN nodes n ON n.rowid = nodes_fts.rowid
-                     WHERE nodes_fts MATCH ?1
-                     ORDER BY bm25(nodes_fts)
-                     LIMIT ?2",
-                )
-                .map_err(map_sqlite_err)?;
-            let rows = stmt
-                .query_map(params![fts_query, capped_limit], map_row)
-                .map_err(map_sqlite_err)?;
-            rows.collect::<Result<Vec<_>, _>>().map_err(map_sqlite_err)
-        }
     }
 
     /// Runs `PRAGMA wal_checkpoint(TRUNCATE)` on the writer thread to reclaim WAL space.
@@ -1170,17 +1291,6 @@ fn map_thread_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadSummary> {
     })
 }
 
-/// Quotes user terms safely for FTS5 MATCH so punctuation/operators never cause SQL errors.
-fn sanitize_fts_query(raw: &str) -> String {
-    raw.split_whitespace()
-        .map(|token| {
-            let escaped = token.replace('"', "\"\"");
-            format!("\"{escaped}\"*")
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
 fn now_unix_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1204,6 +1314,14 @@ fn map_sqlite_err(err: rusqlite::Error) -> BistreError {
     if let rusqlite::Error::SqliteFailure(ffi_err, _) = &err {
         return match ffi_err.code {
             ErrorCode::DiskFull => BistreError::new(DiagnosticKey::StorageDiskFull),
+            ErrorCode::SystemIoFailure => BistreError::with_detail(
+                DiagnosticKey::StorageIoError,
+                format!("sqlite_{}", ffi_err.extended_code),
+            ),
+            // SQLITE_CORRUPT_VTAB: the FTS5 index (a virtual table), not the canonical data.
+            ErrorCode::DatabaseCorrupt if ffi_err.extended_code == 267 => {
+                BistreError::new(DiagnosticKey::StorageSearchIndexCorrupt)
+            }
             ErrorCode::DatabaseBusy | ErrorCode::DatabaseLocked => {
                 BistreError::new(DiagnosticKey::StorageBusy)
             }
@@ -1214,4 +1332,26 @@ fn map_sqlite_err(err: rusqlite::Error) -> BistreError {
         };
     }
     BistreError::with_detail(DiagnosticKey::InternalError, "sqlite_error")
+}
+
+/// opencode #59189: replaces the writer connection after a disk I/O error so later writes
+/// reach the database again. The failed write itself is not retried (its commit state is
+/// unknown); if the reopen fails, the old handle stays and the next I/O error tries again.
+fn reopen_writer(conn: &mut Connection, db_path: &Path) {
+    match open_writer_connection(db_path).and_then(|fresh| {
+        configure_connection(&fresh, true)?;
+        Ok(fresh)
+    }) {
+        Ok(fresh) => {
+            *conn = fresh;
+            tracing::warn!(
+                key = DiagnosticKey::StorageIoError.as_key(),
+                "storage writer reopened after a disk I/O error"
+            );
+        }
+        Err(err) => tracing::error!(
+            key = err.key.as_key(),
+            "storage writer could not reopen after a disk I/O error"
+        ),
+    }
 }

@@ -7,6 +7,7 @@
 //! - API keys remain locked to the execution node's `SecretVault`.
 
 pub mod containment;
+pub mod pipe_identity;
 pub mod sealed;
 
 use bistre_protocol::lock_or_recover;
