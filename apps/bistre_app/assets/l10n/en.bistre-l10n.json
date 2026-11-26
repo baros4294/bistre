@@ -204,6 +204,20 @@
       "max_chars": 96,
       "placeholders": {}
     },
+    "diag.storage.io_error": {
+      "message": "Couldn't save to disk just now. Please try again.",
+      "context": "Rust DiagnosticKey::StorageIoError: reading or writing the local database failed (often right after the computer wakes from sleep); the app reconnected, so trying again usually works",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.storage.search_index_corrupt": {
+      "message": "Search is slower for now. Restart Bistre to repair it.",
+      "context": "Rust DiagnosticKey::StorageSearchIndexCorrupt: the search index is damaged; messages still save, search is slower until the app restarts and repairs it",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
     "diag.storage.migration_failed": {
       "message": "Local database upgrade failed integrity checks.",
       "context": "Rust DiagnosticKey::StorageMigrationFailed message",
@@ -2202,6 +2216,13 @@
       "max_chars": 52,
       "placeholders": {}
     },
+    "toast.update_stage_failed": {
+      "message": "The update didn't download.",
+      "context": "Toast when downloading an update failed; the Open Updates action shows why",
+      "tone": "calm_editorial",
+      "max_chars": 72,
+      "placeholders": {}
+    },
     "toast.node_deleted": {
       "message": "Message deleted",
       "context": "Toast after deleting a single message node",
@@ -2573,14 +2594,21 @@
     },
     "tool.approve_chat": {
       "message": "Approve for chat",
-      "context": "Approve tool category for current thread",
+      "context": "Approve this exact tool call and allow the identical call again in the current chat (read-only tools: any arguments)",
       "tone": "concise_action",
       "max_chars": 26,
       "placeholders": {}
     },
     "tool.deny": {
       "message": "Deny",
-      "context": "Reject tool invocation",
+      "context": "Reject this tool call; the identical call is refused again without asking for the rest of this run",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "tool.stop": {
+      "message": "Stop run",
+      "context": "Reject this tool call and stop the whole agent run",
       "tone": "concise_action",
       "max_chars": 16,
       "placeholders": {}
@@ -2772,6 +2800,13 @@
       "max_chars": 36,
       "placeholders": {}
     },
+    "shortcut.stop_reply": {
+      "message": "Stop the reply",
+      "context": "Keyboard shortcut description for Ctrl+. : stops the reply that is being written",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
     "studio.tab.files": {
       "message": "Files",
       "context": "Studio pane tab for touched files, diffs, and inline comments",
@@ -2791,6 +2826,20 @@
       "context": "Studio pane tab showing exact compiled prompt and lorebook trace",
       "tone": "concise_action",
       "max_chars": 22,
+      "placeholders": {}
+    },
+    "studio.tab.sources": {
+      "message": "Sources",
+      "context": "Studio tab listing the web pages a reply used (search results and citations)",
+      "tone": "calm_editorial",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "studio.sources.empty": {
+      "message": "Web pages a reply used will be listed here.",
+      "context": "Empty state of the Studio Sources tab: no reply in this chat has used a web page yet",
+      "tone": "calm_editorial",
+      "max_chars": 120,
       "placeholders": {}
     },
     "studio.files.empty": {
@@ -3254,6 +3303,20 @@
         }
       }
     },
+    "chat.backoff.notice_attempt": {
+      "message": "Try {attempt} failed. Trying again in {seconds}s",
+      "context": "Notice while a reply waits before trying again automatically; {attempt} is which automatic try this is (1, 2, 3...), {seconds} counts down",
+      "tone": "calm_editorial",
+      "max_chars": 60,
+      "placeholders": {
+        "seconds": {
+          "type": "int"
+        },
+        "attempt": {
+          "type": "int"
+        }
+      }
+    },
     "chat.action.retry_now": {
       "message": "Retry now",
       "context": "Inline button that retries immediately instead of waiting",
@@ -3322,6 +3385,20 @@
       "context": "Button on the spending-limit error that opens the limit setting",
       "tone": "concise_action",
       "max_chars": 28,
+      "placeholders": {}
+    },
+    "chat.fix.allow_unpriced_once": {
+      "message": "Allow once",
+      "context": "Button on the unknown-price error: send this chat's next reply even though its cost can't be checked against the spending limit",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.fix.review_hooks": {
+      "message": "Review hooks",
+      "context": "Button on the hooks notice: opens Agent settings to review the folder's hooks",
+      "tone": "concise_action",
+      "max_chars": 24,
       "placeholders": {}
     },
     "chat.empty.intro": {
@@ -3569,6 +3646,69 @@
       "max_chars": 96,
       "placeholders": {}
     },
+    "diag.wallet.price_unknown": {
+      "message": "This model's price is unknown, so it can't be checked against your spending limit.",
+      "context": "Rust DiagnosticKey::WalletPriceUnknown message: the model has no known price, so a spending limit can't be checked",
+      "tone": "diagnostic",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "diag.wallet.usage_estimated": {
+      "message": "The provider didn't report usage, so this cost is an estimate.",
+      "context": "Rust DiagnosticKey::WalletUsageEstimated message: the provider sent no usage, so the cost was estimated",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.pinned_unavailable": {
+      "message": "This chat's provider is off or has no key. Turn it on, or pick another provider for this chat.",
+      "context": "Rust DiagnosticKey::ProviderPinnedUnavailable: the provider chosen for this chat or assistant is off, removed, or has no key; Bistre does not switch to another provider",
+      "tone": "diagnostic",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "diag.import.loosens_safety": {
+      "message": "This settings file allows more than your current ones, like a higher spending limit or fewer approval prompts.",
+      "context": "Rust DiagnosticKey::ImportLoosensSafety: the imported settings file allows tools to run without asking more often, or raises/removes the spending limit; shown as a toast with an Import anyway button",
+      "tone": "diagnostic",
+      "max_chars": 120,
+      "placeholders": {}
+    },
+    "diag.hooks.approval_required": {
+      "message": "This folder has hooks that run commands. Review and allow them before tools can run.",
+      "context": "Rust DiagnosticKey::HooksApprovalRequired: the workspace folder has a .bistre/hooks.json with commands the user has not allowed yet; tool calls stay blocked until allowed",
+      "tone": "diagnostic",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "diag.storage.parent_thread_mismatch": {
+      "message": "That message wasn't saved because it belonged to another chat. Please send it again.",
+      "context": "Rust DiagnosticKey::StorageParentThreadMismatch: a message was about to be saved under a message from another chat, so it was not saved",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.headers_invalid": {
+      "message": "A custom header isn't allowed. Remove sign-in headers, line breaks, and special characters.",
+      "context": "Rust DiagnosticKey::ProviderHeadersInvalid: a custom header is reserved (like Authorization), holds a line break, or is not plain text",
+      "tone": "diagnostic",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "diag.provider.headers_cleared": {
+      "message": "Custom headers were removed because the server address changed.",
+      "context": "Rust DiagnosticKey::ProviderHeadersCleared: saved custom headers were removed because the provider address changed",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.body_invalid": {
+      "message": "Extra request fields must be a JSON object.",
+      "context": "Rust DiagnosticKey::ProviderBodyInvalid: the custom request body is not a JSON object",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
     "diag.tool.tier_blocked": {
       "message": "This action touches a protected file or command, so it is blocked.",
       "context": "Rust DiagnosticKey::ToolTierBlocked message",
@@ -3694,46 +3834,6 @@
       "context": "Heading of the context breakdown popover",
       "tone": "calm_editorial",
       "max_chars": 48,
-      "placeholders": {}
-    },
-    "chat.context_instructions": {
-      "message": "Instructions",
-      "context": "Breakdown row: the assistant or chat system prompt",
-      "tone": "concise_action",
-      "max_chars": 24,
-      "placeholders": {}
-    },
-    "chat.context_story": {
-      "message": "Story notes and cards",
-      "context": "Breakdown row: Write-mode story notes, character cards, persona, and lore added to the prompt",
-      "tone": "concise_action",
-      "max_chars": 32,
-      "placeholders": {}
-    },
-    "chat.context_history": {
-      "message": "{count, plural, =0{Chat history} one{Chat history (1 message)} other{Chat history ({count} messages)}}",
-      "context": "Breakdown row: earlier messages resent with the next request",
-      "tone": "concise_action",
-      "max_chars": 48,
-      "placeholders": {
-        "count": {
-          "type": "int",
-          "example": "4"
-        }
-      }
-    },
-    "chat.context_draft": {
-      "message": "Your draft",
-      "context": "Breakdown row: the unsent composer text",
-      "tone": "concise_action",
-      "max_chars": 24,
-      "placeholders": {}
-    },
-    "chat.context_free": {
-      "message": "Free space",
-      "context": "Breakdown row: tokens left before the model limit",
-      "tone": "concise_action",
-      "max_chars": 24,
       "placeholders": {}
     },
     "chat.context_tokens": {
@@ -4381,20 +4481,6 @@
       "max_chars": 48,
       "placeholders": {}
     },
-    "chat.notes.title": {
-      "message": "Chat notes",
-      "context": "Heading for the per-chat private notes panel",
-      "tone": "calm_editorial",
-      "max_chars": 24,
-      "placeholders": {}
-    },
-    "chat.notes.placeholder": {
-      "message": "Private notes for this chat (not sent to the model)...",
-      "context": "Placeholder inside the per-chat notes text area",
-      "tone": "calm_editorial",
-      "max_chars": 64,
-      "placeholders": {}
-    },
     "chat.turn.details": {
       "message": "Turn details",
       "context": "Menu item to inspect raw metadata and sources for a reply",
@@ -4496,6 +4582,41 @@
       "context": "Section title in Agent & Tools settings for per-tool approval rules",
       "tone": "calm_editorial",
       "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.agent.hooks_title": {
+      "message": "Workspace hooks",
+      "context": "Agent settings section title: commands from .bistre/hooks.json in the workspace folder",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.hooks_body": {
+      "message": "These commands come from .bistre/hooks.json in this folder and run around tool calls. They only run after you allow them, and you'll be asked again whenever the file changes.",
+      "context": "Explains workspace hooks: commands from .bistre/hooks.json that run around tool calls only after the user allows them; any change to the file needs a new approval",
+      "tone": "calm_editorial",
+      "max_chars": 220,
+      "placeholders": {}
+    },
+    "settings.agent.hooks_allow": {
+      "message": "Allow these hooks",
+      "context": "Button that allows the listed workspace hooks to run",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.agent.hooks_allowed": {
+      "message": "Allowed",
+      "context": "Status: the listed workspace hooks are allowed",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.agent.hooks_pending": {
+      "message": "Not allowed yet",
+      "context": "Status: the listed workspace hooks are not allowed yet, so tools stay blocked",
+      "tone": "calm_editorial",
+      "max_chars": 40,
       "placeholders": {}
     },
     "settings.agent.perm_ask": {
@@ -4806,8 +4927,8 @@
       "placeholders": {}
     },
     "provider.extra_body_placeholder": {
-      "message": "{\"top_k\": 40}",
-      "context": "Placeholder for extra JSON fields",
+      "message": "{\"field\": \"value\"}",
+      "context": "Placeholder for extra request fields: a JSON object (shape only)",
       "tone": "calm_editorial",
       "max_chars": 32,
       "placeholders": {}
@@ -4820,8 +4941,8 @@
       "placeholders": {}
     },
     "provider.headers_placeholder": {
-      "message": "X-Custom-Header: value",
-      "context": "Placeholder for custom HTTP headers",
+      "message": "{\"Header-Name\": \"value\"}",
+      "context": "Placeholder for custom HTTP headers: a JSON object of header names to values (shape only, not a real header)",
       "tone": "calm_editorial",
       "max_chars": 36,
       "placeholders": {}
@@ -5190,11 +5311,50 @@
       "max_chars": 20,
       "placeholders": {}
     },
+    "settings.provider.advanced_page_title": {
+      "message": "Advanced settings for {name}",
+      "context": "Title of a provider's Advanced settings page; {name} is the provider name the user gave",
+      "tone": "calm_editorial",
+      "max_chars": 60,
+      "placeholders": {
+        "name": {
+          "type": "string"
+        }
+      }
+    },
     "settings.provider.api_format": {
       "message": "API format",
       "context": "Custom provider wire dialect label",
       "tone": "calm_editorial",
       "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.provider.format_chat": {
+      "message": "Chat Completions",
+      "context": "API format choice for a custom provider: the OpenAI Chat Completions format (an API name, keep it recognisable)",
+      "tone": "calm_editorial",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.provider.format_responses": {
+      "message": "Responses",
+      "context": "API format choice for a custom provider: the OpenAI Responses format (an API name)",
+      "tone": "calm_editorial",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.provider.format_anthropic": {
+      "message": "Anthropic Messages",
+      "context": "API format choice for a custom provider: the Anthropic Messages format (an API name)",
+      "tone": "calm_editorial",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.provider.format_gemini": {
+      "message": "Gemini",
+      "context": "API format choice for a custom provider: the Gemini Interactions format (an API name)",
+      "tone": "calm_editorial",
+      "max_chars": 18,
       "placeholders": {}
     },
     "settings.provider.auth_bearer": {
@@ -5245,6 +5405,17 @@
       "tone": "calm_editorial",
       "max_chars": 34,
       "placeholders": {}
+    },
+    "settings.provider.requests_go_to": {
+      "message": "Requests go to {url}",
+      "context": "Line in a provider's Advanced settings showing the exact address chat requests are sent to; {url} is that address",
+      "tone": "calm_editorial",
+      "max_chars": 160,
+      "placeholders": {
+        "url": {
+          "type": "string"
+        }
+      }
     },
     "settings.provider.legacy_fallback": {
       "message": "Allow fallback server URL",
@@ -5413,11 +5584,15 @@
       "placeholders": {}
     },
     "toast.provider.connection_failed": {
-      "message": "Connection check failed. Check your key or server URL.",
-      "context": "Toast message when provider Test fails",
+      "message": "Couldn't connect to {url}. Check your key or server URL.",
+      "context": "Toast when a provider's connection test fails; {url} is the exact address that was tried",
       "tone": "calm_editorial",
-      "max_chars": 72,
-      "placeholders": {}
+      "max_chars": 160,
+      "placeholders": {
+        "url": {
+          "type": "string"
+        }
+      }
     },
     "toast.provider.connection_ok": {
       "message": "Connection OK ({seconds}s — {count} models reachable)",
@@ -5440,25 +5615,6 @@
       "context": "Action button to play spoken audio for an assistant reply",
       "tone": "concise_action",
       "max_chars": 24,
-      "placeholders": {}
-    },
-    "chat.context_attachments": {
-      "message": "Attachments ({count})",
-      "context": "Row label in context window breakdown showing attached files token usage",
-      "tone": "calm_editorial",
-      "max_chars": 36,
-      "placeholders": {
-        "count": {
-          "type": "int",
-          "example": "2"
-        }
-      }
-    },
-    "chat.context_tools": {
-      "message": "Tools & MCP",
-      "context": "Row label in context window breakdown showing enabled tool schema tokens",
-      "tone": "calm_editorial",
-      "max_chars": 28,
       "placeholders": {}
     },
     "composer.live_voice_connecting": {
@@ -5840,6 +5996,353 @@
       "context": "Toast shown after cleaning unused storage files",
       "tone": "calm_editorial",
       "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.import_anyway": {
+      "message": "Import anyway",
+      "context": "Toast button: apply an imported settings file even though it allows more than the current settings",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "shell.dismiss": {
+      "message": "Dismiss",
+      "context": "Accessible name and hint of the x button that dismisses a notice (toast, banner, error)",
+      "tone": "calm_editorial",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "shell.close": {
+      "message": "Close",
+      "context": "Accessible name of the x button that closes a panel, dialog, or search bar",
+      "tone": "calm_editorial",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "shell.remove": {
+      "message": "Remove",
+      "context": "Accessible name of the x button that removes an attached file or a queued message",
+      "tone": "calm_editorial",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.ota.technical_details": {
+      "message": "Technical details",
+      "context": "Button that shows or hides the technical code of an update error",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.ota.open_updates": {
+      "message": "Open Updates",
+      "context": "Toast action that opens Settings > Updates after an update download failed",
+      "tone": "calm_editorial",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.ota.feed_downloads_hint": {
+      "message": "Opened in a browser, this address downloads manifest.json. That is expected.",
+      "context": "Help under the update feed address: opening that address in a web browser downloads a small file instead of showing a page, which is normal",
+      "tone": "calm_editorial",
+      "max_chars": 140,
+      "placeholders": {}
+    },
+    "diag.ota.manifest_unsupported": {
+      "message": "This version can't read the new update format. Install the latest version once from the download page.",
+      "context": "Rust DiagnosticKey::OtaManifestUnsupported: the update feed uses a format this version cannot read; installing the latest version once from the download page fixes it",
+      "tone": "diagnostic",
+      "max_chars": 120,
+      "placeholders": {}
+    },
+    "diag.ota.no_asset_for_platform": {
+      "message": "This release has no update for this device yet.",
+      "context": "Rust DiagnosticKey::OtaNoAssetForPlatform: the release has no update file for this kind of device",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "chat.context.percent_used": {
+      "message": "{percent}% used",
+      "context": "Headline: how full the context window is; {percent} is a number with one decimal",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {
+        "percent": {
+          "type": "string"
+        }
+      }
+    },
+    "chat.context.percent": {
+      "message": "{percent}%",
+      "context": "Percent cell of a breakdown row; {percent} has one decimal",
+      "tone": "calm_editorial",
+      "max_chars": 12,
+      "placeholders": {
+        "percent": {
+          "type": "string"
+        }
+      }
+    },
+    "chat.context.no_percent": {
+      "message": "—",
+      "context": "Percent cell when there is no share to show (window unknown, or a row that is not sent)",
+      "tone": "calm_editorial",
+      "max_chars": 4,
+      "placeholders": {}
+    },
+    "chat.context.not_sent": {
+      "message": "Not sent until needed",
+      "context": "Caption above rows that are not part of the next request (loaded only when needed)",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.context.cat.messages": {
+      "message": "{count, plural, =1{Messages (1 turn)} other{Messages ({count} turns)}}",
+      "context": "Breakdown row: the chat's earlier messages that are sent again; {count} is the number of turns",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {
+        "count": {
+          "type": "plural"
+        }
+      }
+    },
+    "chat.context.cat.built_in_tools": {
+      "message": "{count, plural, =1{Built-in tools (1)} other{Built-in tools ({count})}}",
+      "context": "Breakdown row: Bistre's own tools sent with the request (read, edit, search…); {count} is how many",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {
+        "count": {
+          "type": "plural"
+        }
+      }
+    },
+    "chat.context.cat.mcp_tools": {
+      "message": "{count, plural, =1{MCP tools (1)} other{MCP tools ({count})}}",
+      "context": "Breakdown row: tools from connected MCP servers that are sent; {count} is how many; opens a list",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {
+        "count": {
+          "type": "plural"
+        }
+      }
+    },
+    "chat.context.cat.system_prompt": {
+      "message": "Instructions",
+      "context": "Breakdown row: the assistant's or chat's instructions",
+      "tone": "calm_editorial",
+      "max_chars": 30,
+      "placeholders": {}
+    },
+    "chat.context.cat.workspace_instructions": {
+      "message": "Project instructions",
+      "context": "Breakdown row: the project folder's instructions file (AGENTS.md or similar) added in Build and Plan",
+      "tone": "calm_editorial",
+      "max_chars": 30,
+      "placeholders": {}
+    },
+    "chat.context.cat.story": {
+      "message": "Story notes and cards",
+      "context": "Breakdown row: Write mode's story notes, cards, and chapters",
+      "tone": "calm_editorial",
+      "max_chars": 30,
+      "placeholders": {}
+    },
+    "chat.context.cat.attachments": {
+      "message": "{count, plural, =1{Attachments (1)} other{Attachments ({count})}}",
+      "context": "Breakdown row: attached files in the sent messages; {count} is how many",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {
+        "count": {
+          "type": "plural"
+        }
+      }
+    },
+    "chat.context.cat.draft": {
+      "message": "Unsent draft",
+      "context": "Breakdown row: the message being typed, not sent yet",
+      "tone": "calm_editorial",
+      "max_chars": 30,
+      "placeholders": {}
+    },
+    "chat.context.cat.deferred_mcp_tools": {
+      "message": "{count, plural, =1{MCP tools on demand (1)} other{MCP tools on demand ({count})}}",
+      "context": "Breakdown row (not sent): MCP tools whose details load only when the model asks; {count} is how many",
+      "tone": "calm_editorial",
+      "max_chars": 44,
+      "placeholders": {
+        "count": {
+          "type": "plural"
+        }
+      }
+    },
+    "chat.context.cat.reserve": {
+      "message": "Kept free for shortening",
+      "context": "Breakdown row: the part of the window kept free so the chat can be shortened before it fills",
+      "tone": "calm_editorial",
+      "max_chars": 30,
+      "placeholders": {}
+    },
+    "chat.context.cat.free": {
+      "message": "Free space",
+      "context": "Breakdown row: the rest of the window that is still free",
+      "tone": "calm_editorial",
+      "max_chars": 30,
+      "placeholders": {}
+    },
+    "chat.context.cat.other": {
+      "message": "Other",
+      "context": "Breakdown row of a kind this version does not name",
+      "tone": "calm_editorial",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "chat.context.mcp_page_title": {
+      "message": "MCP tools",
+      "context": "Title of the breakdown's second page listing MCP servers and their tools",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.context.tool_on_demand": {
+      "message": "{name} (on demand)",
+      "context": "An MCP tool whose details are loaded only when needed; {name} is the tool's name",
+      "tone": "calm_editorial",
+      "max_chars": 60,
+      "placeholders": {
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "chat.context.mcp_truncated": {
+      "message": "More tools are connected than shown here.",
+      "context": "Note when there are more MCP servers or tools than the list shows",
+      "tone": "calm_editorial",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "chat.context.back": {
+      "message": "Back",
+      "context": "Button that goes back to the first page of the context breakdown",
+      "tone": "calm_editorial",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "chat.context.row_semantics": {
+      "message": "{label}, {tokens}, {percent}",
+      "context": "What a screen reader says for one breakdown row: {label} is the row name, {tokens} like '398k tokens', {percent} like '39.8%'",
+      "tone": "calm_editorial",
+      "max_chars": 120,
+      "placeholders": {
+        "label": {
+          "type": "string"
+        },
+        "tokens": {
+          "type": "string"
+        },
+        "percent": {
+          "type": "string"
+        }
+      }
+    },
+    "diag.provider.reply_truncated": {
+      "message": "The reply hit its length limit and stopped early.",
+      "context": "Rust DiagnosticKey::ProviderReplyTruncated: the reply reached the model's output limit and stopped mid-way; the Continue button asks for the rest",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.provider.reply_refused": {
+      "message": "The provider declined to answer this.",
+      "context": "Rust DiagnosticKey::ProviderReplyRefused: the provider declined to answer or filtered the reply",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "chat.fix.continue": {
+      "message": "Continue",
+      "context": "Button under a reply that stopped at its length limit: asks the model to go on",
+      "tone": "calm_editorial",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "chat.fix.continue_message": {
+      "message": "Please continue from where you stopped.",
+      "context": "The message sent to the model when the user presses Continue after a cut-off reply; written to the model, short",
+      "tone": "calm_editorial",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "chat.diag.provider_reason": {
+      "message": "The provider said: {reason}",
+      "context": "Second line of a provider error: what the provider itself said; {reason} is its message, shown as is",
+      "tone": "calm_editorial",
+      "max_chars": 230,
+      "placeholders": {
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "diag.attachment.not_sent": {
+      "message": "An attached file could not be sent, so the model did not see it.",
+      "context": "Rust DiagnosticKey::AttachmentNotSent: a file attached to the chat is missing or too large, so the model was not given it (it was told instead)",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "diag.run.step_limit_reached": {
+      "message": "The reply stopped after its step limit. Send a message to let it continue.",
+      "context": "Rust DiagnosticKey::RunStepLimitReached: an agent run stopped because it used its maximum number of steps while the model still wanted to continue; sending a new message continues",
+      "tone": "diagnostic",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "sidebar.run.running": {
+      "message": "Replying",
+      "context": "Spoken label of the small dot on a chat in the sidebar: this chat is replying right now",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.run.awaiting": {
+      "message": "Waiting for you",
+      "context": "Spoken label of the small dot on a chat in the sidebar: the reply is waiting for the user to allow a tool",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "sidebar.run.done_unread": {
+      "message": "New reply",
+      "context": "Spoken label of the small dot on a chat in the sidebar: a reply finished while the user was in another chat and has not been seen",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "sidebar.run.failed": {
+      "message": "Stopped with a problem",
+      "context": "Spoken label of the small dot on a chat in the sidebar: the reply stopped because of a problem while the user was elsewhere",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.pinned.show": {
+      "message": "Show",
+      "context": "Button on a pinned reply in the pinned replies panel: closes the panel and scrolls the chat to that message",
+      "tone": "calm_editorial",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "diag.tool.path_denied": {
+      "message": "That file is outside the folders Bistre may use, so it was not opened.",
+      "context": "Rust DiagnosticKey::ToolPathDenied: a file or path outside what the tool or import may use was refused (outside the workspace, or a path that tries to escape a folder)",
+      "tone": "diagnostic",
+      "max_chars": 96,
       "placeholders": {}
     }
   }
