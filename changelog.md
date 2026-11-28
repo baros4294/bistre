@@ -2,11 +2,11 @@
 
 Each release, newest first. Release dates, installers, checksums, and build attestations are on [GitHub Releases](https://github.com/baros4294/bistre/releases). What each feature does in detail, and what is still partial, is in [`docs/specs/00-architecture.md`](docs/specs/00-architecture.md) (Implementation Status).
 
-## v0.2.0
+## v0.2.1
 
 ### Updating from v0.1.2
 
-v0.1.2 reads only the old update format, so install v0.2.0 once from GitHub Releases. Later versions update in the app. Your chats and settings stay on the device.
+v0.1.2 reads only the old update format, so install v0.2.1 once from GitHub Releases. Later versions update in the app. Your chats and settings stay on the device.
 
 ### Projects and agents
 
