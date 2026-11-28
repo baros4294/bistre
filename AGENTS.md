@@ -21,7 +21,7 @@
 - One fact, one home: each rule, constant, version, and doc fact lives in one place the rest refers to. One name per concept across code, docs, and UI copy; identifiers carry units (`_ms`, `_bytes`, `_micros`).
 - A ban targets one failure (silenced error, unbounded queue, raw spawn) and names the sanctioned path, never a valid construct as a whole.
 - Never weaken verification (dropped features, skipped work, weaker tests, smaller stress sizes, looser budgets, retries). A regression test fails without its fix.
-- Fix causes, never samples: separate a flake (load, timing, ordering) from a defect, never special-case a test input. Read a failure's log, fix its root cause and related ones, then rerun affected tests once, not per fix.
+- Fix causes, never samples: separate a flake (load, timing, ordering) from a defect, never special-case a test input. Read the log, fix the root cause and related ones, then rerun only the failed test (`cargo nextest run -p <crate> <name>`, `flutter test <file> --plain-name <name>`) or CI job (`gh run rerun <id> --failed`), once.
 - No volatile facts (model IDs, capabilities, prices, device brands, dates, tracker IDs like `W8`) in code, comments, test names, or docs. Dates and IDs live in `tasks.md`; wire-protocol versions and fixtures are exempt.
 - Derived caches carry a format version and rebuild on mismatch.
 - Check every layout a change touches: phone (< 720 dp), desktop, 200% text, RTL.
@@ -29,7 +29,7 @@
 - Nothing partial sold as done (platforms, locales, widths, states). Before "done": re-read the request, run `just check-all`, review gallery PNGs for UI changes, report what is open.
 
 ## 4. Writing
-Applies to docs, comments, commit and PR text, reports, UI copy, model prompts, and this file.
+Applies to all text: docs, comments, commits, PRs, reports, UI copy, prompts.
 - Deliver the whole answer on the first pass: no preamble, recap, disclaimer, sign-off, unrequested advice, or follow-up offer. A report opens with the outcome, then what is open or unverified.
 - Markdown carries structure only: headings to `###`, hyphen bullets, numbered lists for ordered steps, tables for row-and-column data. No bold, italics, horizontal rules, or emoji; a bullet may open with a plain label and a colon. Backticks hold literal code, paths, commands, and keys, never emphasis or plain numbers.
 - Prose sits in paragraphs. A sentence starts from known context, lands on the new point, and ends there, with no trailing hedge or clause restating what it showed.
@@ -45,7 +45,7 @@ Prompts the app sends are code.
 - A prompt change names the failure it fixes and ships with a test on recorded output.
 
 ## 6. Documentation and hygiene
-- Update all affected documentation in the same change as the code, schema, FFI, token, lint, CI, or dependency change.
+- Update all affected documentation in the same change as the code, schema, FFI, token, lint, CI, or dependency change. Record each pitfall you hit (tool, environment, CI, test harness) in CONTRIBUTING Known Pitfalls that session; read it before building.
 - Owners: architecture and deps: ADR, Spec 00, README, AGENTS. Domain: its spec. UI: `docs/design/design.md`, Spec 08. Strings and `DiagnosticKey`: `l10n/catalog/`, Spec 09. Commands and CI: `justfile`, README, CONTRIBUTING. Security: `SECURITY.md`. Notices: `third-party-notices.md`.
 - No `TODO`, `FIXME`, `HACK`, `XXX`, dead code, generator boilerplate, BOM, or CRLF (except `.bat`, `.cmd`, `.iss`, `.rc`); `.ps1` stays ASCII.
 - Budgets: non-generated code files at most 1,000 lines, split by responsibility (Spec 00 §5); `AGENTS.md` and `tasks.md` at most 10,000 characters; `tasks.md` lists open work only.
@@ -53,7 +53,7 @@ Prompts the app sends are code.
 - Lint exceptions: Rust `#[expect(.., reason)]` only when unavoidable, never for `unsafe_code`, `unwrap_used`, `expect_used`, `panic`; Dart never suppresses `bistre_*`.
 
 ## 7. Build, disk, and git
-- Batch edits, iterate with `cargo check -p <crate>`, never overlap heavy builds; release builds at most once, at task end.
+- Batch edits, iterate with `cargo check -p <crate>`, never overlap heavy builds or wait idle (start CI or `gh workflow run release.yml --ref <branch>`, keep working); release builds once, at task end. On Windows, Cargo runs in PowerShell: Git Bash's `link` shadows MSVC `link.exe`.
 - `target/` at most 4 GiB, `apps/bistre_app/build/` at most 1 GiB (`just disk`); `just prune` keeps the debug and Android caches.
 - Never touch `%LOCALAPPDATA%\Bistre` or an installed build. Debug uses `<repo>/.bistre-dev/`; tests use temp dirs.
 - Never commit, push, open or merge a PR, tag, or release unless the owner asks for that step. Then: Conventional Commits in reviewable layers, `gh pr merge --rebase`.
@@ -66,10 +66,10 @@ Prompts the app sends are code.
 ## 9. Runtime, security, and UI invariants
 - Rust: `#![deny(unsafe_code)]` (audited `// SAFETY:` shims only in crypto, daemon, updater); no `unwrap`, `expect`, `panic!`, `dbg!`, `process::exit`; bounded channels; no blocking I/O on async threads; every await in a run races its cancel signal.
 - Processes: `no_window_command`, `spawn_contained`/`run_bounded`, `spawn_detached_daemon`; whole-tree kill on timeout. Raw `Command::new`, Dart `Process`, and `mmap` are banned.
-- Domain invariants live in their specs, with tests: storage (Spec 01: one WAL writer, additive N-1 migrations, atomic rename), providers (Spec 02: never retry spend caps, billing, or quota; retry mid-stream only with zero output), tools and MCP (Spec 04: one-use permits bound to exact arguments), spending (Spec 06: reserve before each paid POST, `store: false`), egress (ADR-0017: `PublicWebTransport`), OTA (Spec 10: SHA-256 and `minisign-verify` before staging). One version: `Cargo.toml` = `pubspec.yaml` (`just bump`).
+- Domain invariants live in their specs with tests (Spec 01, 02, 04, 06, 10, ADR-0017); never retry a spend cap, and reserve before each paid POST. One version: `Cargo.toml` = `pubspec.yaml` (`just bump`).
 - Flutter UI: read `docs/design/design.md` and `.agents/skills/fullstack-architect/SKILL.md` first. 10 Ink Primitives, typed `BistreUiIcon`, streaming deltas only in a leaf `ValueNotifier`, Reduce motion honoured, tap targets labelled and at least 40 px (48 dp touch), `TextEditingController.text` untouched while composing.
 - CI: Actions pinned to 40-char SHAs, `persist-credentials: false`, least privilege, `timeout-minutes`, no `${{ }}` inside `run:`.
-- Spec 11 performance budgets (cold start, idle memory, streaming p99, zero idle polling, APK size) are hard failures.
+- Spec 11 performance budgets are hard failures.
 
 ## 10. Commands and index
 - `just check-all` runs every gate; also `just ui-gallery`, `just perf`, `just status`, `just codegen-frb` (after FFI changes).

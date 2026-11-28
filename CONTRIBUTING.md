@@ -17,6 +17,14 @@ Bistre is an MIT open-source project built around strict layer boundaries, zero 
 8. Never introduce Material/Cupertino UI libraries, third-party state frameworks, hardcoded UI strings, layout animations outside disclosures, raw `Color(...)` literals outside `bistre_theme.dart`, floating-point currency math, `openssl-sys`/`native-tls`, or FFI/SQLite layer violations.
 9. Write docs, comments, and PR text by `AGENTS.md` section 4. `just guard` rejects em dashes, filler words, and emoji in every text file, and in Markdown bold, italics, horizontal rules, plain numbers in backticks, rule words in capitals, exclamation marks, and ellipses.
 
+## Known Pitfalls
+Each one cost a session time before it was written here. Add the next one you find in the same change.
+- Windows: run Cargo builds and tests from PowerShell or `cmd`, never Git Bash. Git Bash puts GNU coreutils `link` ahead of MSVC `link.exe` on `PATH`, so every Rust link step fails with `link: missing operand` and `link.exe returned an unexpected error`, which looks like a broken Visual Studio install. `cargo check` and `cargo clippy` do not link, so they still pass there.
+- Linux release container: git refuses a checkout or SDK owned by another user (`detected dubious ownership`); `release.yml` marks both safe.
+- Linux packages: the `.deb` and `.rpm` must list every library Flutter opens at start; a missing one aborts the app before its first frame (`libEGL.so.1`).
+- Flutter tests: a mocked method channel must reply or throw (`MissingPluginException`); a handler that returns nothing leaves the test waiting until it times out.
+- Case-only renames on Windows: use `git mv -f`; a `git reset` drops staged case renames.
+
 ## Translating Bistre in One Pass (Human or AI Agent)
 1. Copy `l10n/catalog/en.bistre-l10n.json` to `l10n/catalog/<bcp47>.bistre-l10n.json`.
 2. Update `"locale"` and `"direction"` (`"ltr"` or `"rtl"`).
