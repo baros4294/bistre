@@ -227,7 +227,7 @@ async fn wallet_shield_enforces_daily_cap_and_unlimited_bypasses_and_ota_checks_
     assert_eq!(check.as_ref().map(|c| c.update_available), Some(true));
     assert_eq!(
         check.as_ref().map(|c| c.latest_version.as_str()),
-        Some("0.2.0")
+        Some("99.0.0")
     );
 
     // A UI-forged check (version the core never verified, attacker URL) cannot be staged.
