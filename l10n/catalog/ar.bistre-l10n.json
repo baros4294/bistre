@@ -424,6 +424,20 @@
       "max_chars": 18,
       "placeholders": {}
     },
+    "chat.source_open": {
+      "message": "فتح في المتصفح",
+      "context": "Button on a web source a reply used; opens the page in the default browser",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.source_open_failed": {
+      "message": "لم يفتح أي متصفح هذه الصفحة.",
+      "context": "Notice when no browser opened a web source the user chose to open",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
     "chat.show_earlier_messages": {
       "message": "عرض الرسائل الأقدم",
       "context": "Button at the top of a long chat that loads the older messages above the ones shown",

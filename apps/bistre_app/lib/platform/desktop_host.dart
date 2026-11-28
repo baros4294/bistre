@@ -585,6 +585,45 @@ class BistreDesktopHost {
   static bool get canOpenFiles =>
       Platform.isWindows || Platform.isLinux || Platform.isAndroid;
 
+  /// The normalized link when [url] is `http(s)` with a host and no login, the only links
+  /// Bistre hands to a browser; `null` otherwise.
+  static String? webLink(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null ||
+        (uri.scheme != 'http' && uri.scheme != 'https') ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty) {
+      return null;
+    }
+    return uri.toString();
+  }
+
+  /// Opens a web page in the default browser; `false` when it was not opened.
+  static Future<bool> openWebLink(String url) async {
+    final link = webLink(url);
+    if (link == null) return false;
+    try {
+      if (Platform.isWindows || Platform.isAndroid) {
+        return await _channel.invokeMethod<bool>(
+              'openWebLink',
+              <String, Object?>{'url': link},
+            ) ??
+            false;
+      }
+      if (Platform.isLinux) {
+        await core.linuxOpenWebLink(url: link);
+        return true;
+      }
+    } on PlatformException catch (e) {
+      debugPrint('[bistre] non-fatal open_web_link: $e');
+    } on MissingPluginException catch (e) {
+      debugPrint('[bistre] non-fatal open_web_link: $e');
+    } on Object catch (e) {
+      debugPrint('[bistre] non-fatal linux_open_web_link: $e');
+    }
+    return false;
+  }
+
   /// Opens `filePath` in its default app (safe local files only); `false` when it was not
   /// opened.
   static Future<bool> openFile(String filePath) async {

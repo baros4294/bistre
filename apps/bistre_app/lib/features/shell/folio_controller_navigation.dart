@@ -383,6 +383,13 @@ extension FolioNavigationAndSettingsActions on FolioController {
     _notify();
   }
 
+  /// Opens a web source in the default browser, and says so when none opened it.
+  Future<void> openWebLink(String url) async {
+    if (!await BistreDesktopHost.openWebLink(url)) {
+      showToast(L10nKey.chatSourceOpenFailed, tone: ToastTone.error);
+    }
+  }
+
   Future<void> copyText(String text) async {
     await Clipboard.setData(ClipboardData(text: text));
     showToast(L10nKey.toastCopied);

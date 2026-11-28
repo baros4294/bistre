@@ -338,6 +338,15 @@ pub async fn linux_open_file(path: String) -> Result<(), String> {
         .map_err(ffi_err)
 }
 
+/// Opens an `http(s)` page in the default Linux browser (`xdg-open`), run contained by core;
+/// every other scheme and any URL with a login is refused.
+#[frb]
+pub async fn linux_open_web_link(url: String) -> Result<(), String> {
+    bistre_core::desktop_helpers::open_web_link(&url)
+        .await
+        .map_err(ffi_err)
+}
+
 /// Opens an existing local folder in the Linux file manager (`xdg-open`), run contained by core.
 #[frb]
 pub async fn linux_open_folder(path: String) -> Result<(), String> {

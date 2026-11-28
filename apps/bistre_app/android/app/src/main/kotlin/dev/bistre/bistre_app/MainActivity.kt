@@ -13,6 +13,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.provider.DocumentsContract
 import android.provider.Settings
+import android.util.Log
 import android.view.DragEvent
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
@@ -184,6 +185,10 @@ class MainActivity : FlutterActivity() {
                     val path = call.argument<String>("path")
                     result.success(path != null && ViewerFiles.openInApp(this, path))
                 }
+                "openWebLink" -> {
+                    val url = call.argument<String>("url")
+                    result.success(url != null && openWebLink(url))
+                }
                 "copyPicture" -> {
                     val path = call.argument<String>("path")
                     result.success(path != null && ViewerFiles.copyPicture(this, path))
@@ -311,6 +316,18 @@ class MainActivity : FlutterActivity() {
      * Files dragged onto Bistre (split screen, desktop mode) are copied into the cache and sent
      * to Dart as `onFilesDropped`, as Windows does; a text-only drag is left to Flutter.
      */
+    /** Opens an http(s) page in the browser; any other scheme or a link with a login is refused. */
+    private fun openWebLink(url: String): Boolean {
+        val uri = Uri.parse(url)
+        if (uri.scheme !in setOf("http", "https") || uri.host.isNullOrEmpty() || uri.userInfo != null) {
+            return false
+        }
+        val view = Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
+        return runCatching { startActivity(view) }
+            .onFailure { Log.w("Bistre", "link not opened: ${it.message}") }
+            .isSuccess
+    }
+
     private fun listenForDrops(hostChannel: MethodChannel) {
         val main = Handler(Looper.getMainLooper())
         window.decorView.setOnDragListener { _, event ->
