@@ -11,6 +11,14 @@ fmt-check:
   cargo fmt --all -- --check
   dart format --output=none --set-exit-if-changed apps/bistre_app/lib apps/bistre_app/test apps/bistre_app/hook tools/bistre_lints tools/bistre_i18n tools/bistre_guard
 
+# Print the app version (Cargo.toml = pubspec.yaml)
+version:
+  dart run tools/bistre_guard/bin/bistre_version.dart show
+
+# Raise the app version: patch, minor, major, or an exact X.Y.Z above the current one
+bump part="patch":
+  dart run tools/bistre_guard/bin/bistre_version.dart bump {{part}}
+
 # Run mechanical code hygiene, doc-sync, version-parity, and CI security guards
 guard:
   dart run tools/bistre_guard/bin/bistre_guard.dart
