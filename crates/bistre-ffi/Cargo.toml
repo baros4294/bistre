@@ -8,7 +8,7 @@ publish = false
 
 [lib]
 name = "bistre_ffi"
-crate-type = ["staticlib", "cdylib"]
+crate-type = ["cdylib"]
 
 [lints]
 workspace = true
@@ -20,3 +20,4 @@ zeroize.workspace = true
 flutter_rust_bridge.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+tracing.workspace = true

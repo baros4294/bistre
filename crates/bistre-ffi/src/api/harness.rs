@@ -3,8 +3,8 @@
 
 use flutter_rust_bridge::frb;
 
-use super::{current_engine, FfiNodeRecord};
-use crate::dto_mapping::map_node;
+use super::{current_engine, FfiNodeRecord, FfiThreadSummary};
+use crate::dto_mapping::{map_node, map_thread};
 use bistre_protocol::DiagnosticKey;
 
 /// Records the user's approval of one exact tool call and returns its one-use permit id.
@@ -70,6 +70,21 @@ pub async fn respond_tool_approval(
     let parsed = bistre_protocol::ToolApprovalDecision::parse(&decision);
     engine
         .respond_tool_approval(thread_id, run_id, call_id, parsed)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)
+}
+
+/// Delivers the native host-bridge result for a `HostActionRequested` event (`computer_use`).
+#[frb]
+pub async fn respond_host_action(
+    request_id: String,
+    ok: bool,
+    output_text: String,
+    image_base64: Option<String>,
+) -> Result<bool, String> {
+    let engine = current_engine()?;
+    engine
+        .respond_host_action(request_id, ok, output_text, image_base64)
         .await
         .map_err(crate::dto_mapping::ffi_err)
 }
@@ -144,16 +159,33 @@ pub struct FfiCheckpoint {
     pub created_at_ms: i64,
 }
 
-/// Inserts a reversible `CompactionSummary` DAG node without deleting original history.
+/// Inserts a reversible `CompactionSummary` DAG node without deleting original history;
+/// `instructions` tell the Summary model what to keep.
 #[frb]
 pub async fn compact_thread(
     thread_id: String,
     keep_recent_turns: u32,
     custom_summary: Option<String>,
+    instructions: Option<String>,
 ) -> Result<FfiNodeRecord, String> {
     let engine = current_engine()?;
     let node = engine
-        .compact_thread(thread_id, keep_recent_turns, custom_summary)
+        .compact_thread(thread_id, keep_recent_turns, custom_summary, instructions)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)?;
+    Ok(map_node(node))
+}
+
+/// Replaces the text of a compaction summary; the messages it condenses stay saved.
+#[frb]
+pub async fn rewrite_compaction_summary(
+    thread_id: String,
+    node_id: String,
+    content: String,
+) -> Result<FfiNodeRecord, String> {
+    let engine = current_engine()?;
+    let node = engine
+        .rewrite_compaction_summary(thread_id, node_id, content)
         .await
         .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_node(node))
@@ -203,6 +235,20 @@ pub async fn discover_mcp_server_json(server_config_json: String) -> Result<Stri
         .await
         .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&report).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
+}
+
+/// Searches the public MCP Registry; returns the page as JSON (`entries[].server` is a
+/// turned-off server profile, `next_cursor` fetches the next page).
+#[frb]
+pub async fn search_mcp_registry_json(
+    query: String,
+    cursor: Option<String>,
+) -> Result<String, String> {
+    let page = current_engine()?
+        .search_mcp_registry(query, cursor)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)?;
+    serde_json::to_string(&page).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
 }
 
 /// Invokes a tool on a configured Streamable HTTP MCP server with 256 KiB output capping.
@@ -486,7 +532,7 @@ pub async fn approve_workspace_hooks(workspace_root: String, digest: String) -> 
         .map_err(crate::dto_mapping::ffi_err)
 }
 
-/// One web page a reply used (B2): `http(s)` only, bounded text.
+/// One web page a reply used: `http(s)` only, bounded text.
 #[derive(Debug, Clone)]
 pub struct FfiGroundingSource {
     pub node_id: String,
@@ -515,4 +561,115 @@ pub async fn list_thread_grounding(thread_id: String) -> Result<Vec<FfiGrounding
             })
         })
         .collect())
+}
+
+/// Generates and saves a short title for `thread_id` using Settings > Default models > Chat titles.
+#[frb]
+pub async fn generate_thread_title(thread_id: String) -> Result<FfiThreadSummary, String> {
+    let engine = current_engine()?;
+    let thread = engine
+        .generate_thread_title(thread_id)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)?;
+    Ok(map_thread(thread))
+}
+
+/// Translates `node_id` into `target_language` (or Settings > Default models > Target language)
+/// and commits the translation as a new sibling version.
+#[frb]
+pub async fn translate_node(
+    thread_id: String,
+    node_id: String,
+    target_language: Option<String>,
+) -> Result<FfiNodeRecord, String> {
+    let engine = current_engine()?;
+    let node = engine
+        .translate_node(thread_id, node_id, target_language)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)?;
+    Ok(map_node(node))
+}
+
+/// Credential-free snapshot of the exact wire request core would send next for a chat.
+#[derive(Debug, Clone)]
+pub struct FfiInspectedRequest {
+    pub method: String,
+    pub url: String,
+    pub dialect: String,
+    pub model: String,
+    pub headers: Vec<(String, String)>,
+    pub body_json: String,
+}
+
+/// Builds the exact credential-free wire request core would send next for `thread_id`.
+#[frb]
+pub async fn inspect_next_request(
+    thread_id: String,
+    draft: String,
+) -> Result<FfiInspectedRequest, String> {
+    let engine = current_engine()?;
+    let req = engine
+        .inspect_next_request(thread_id, draft)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)?;
+    Ok(FfiInspectedRequest {
+        method: req.method,
+        url: req.url,
+        dialect: req.dialect,
+        model: req.model,
+        headers: req.headers,
+        body_json: req.body_json,
+    })
+}
+
+/// Exports a provider profile as a portable `ai-provider:v1:` share code (API key excluded unless
+/// `include_api_key` is explicitly `true`).
+#[frb]
+pub async fn export_provider_share_code(
+    provider_id: String,
+    include_api_key: bool,
+) -> Result<String, String> {
+    let engine = current_engine()?;
+    engine
+        .export_provider_share_code(provider_id, include_api_key)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)
+}
+
+/// Imports an `ai-provider:v1:` share code as a new provider profile with a fresh id.
+#[frb]
+pub async fn import_provider_share_code(code: String) -> Result<super::FfiProviderProfile, String> {
+    let engine = current_engine()?;
+    let prof = engine
+        .import_provider_share_code(code)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)?;
+    Ok(crate::dto_mapping::map_provider(prof))
+}
+
+/// A page of `thread_id`'s nodes, oldest first: the newest `limit` (at most 500) written before
+/// `before_node_id`, or the newest overall without it.
+#[frb]
+pub async fn list_nodes_window(
+    thread_id: String,
+    before_node_id: Option<String>,
+    limit: u32,
+) -> Result<Vec<FfiNodeRecord>, String> {
+    let engine = current_engine()?;
+    let cap = usize::try_from(limit).unwrap_or(100);
+    let nodes = engine
+        .list_nodes_window(thread_id, before_node_id, cap)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)?;
+    Ok(nodes.into_iter().map(map_node).collect())
+}
+
+/// Returns the monotonic history revision for `thread_id`.
+#[frb]
+pub async fn thread_history_rev(thread_id: String) -> Result<i64, String> {
+    let engine = current_engine()?;
+    engine
+        .thread_history_rev(thread_id)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)
 }

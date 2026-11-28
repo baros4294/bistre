@@ -4,8 +4,13 @@
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
 import 'api.dart';
+import 'api/chat.dart';
 import 'api/harness.dart';
+import 'api/library.dart';
 import 'api/media.dart';
+import 'api/projects.dart';
+import 'api/providers.dart';
+import 'api/runs.dart';
 import 'api/story.dart';
 
 import 'dart:async';
@@ -76,7 +81,7 @@ class BistreRustLib
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 844846918;
+  int get rustContentHash => 783497594;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -114,6 +119,11 @@ abstract class BistreRustLibApi extends BaseApi {
     required String digest,
   });
 
+  Future<String> crateApiChatAskSideQuestion({
+    required String threadId,
+    required String question,
+  });
+
   Future<void> crateApiBackupDatabase({required String destPath});
 
   Future<String> crateApiHarnessCallMcpToolJson({
@@ -124,29 +134,34 @@ abstract class BistreRustLibApi extends BaseApi {
 
   Future<bool> crateApiCancelActiveRun({required String threadId});
 
+  Future<bool> crateApiLibraryCancelDataWipe();
+
   Future<FfiUpdateCheckResult> crateApiCheckForUpdates({
     String? feedUrlOverride,
   });
 
   Future<BigInt> crateApiMediaCleanUnusedStorageFiles();
 
-  Future<FfiProviderProfile> crateApiClearProviderApiKey({
+  Future<FfiProviderProfile> crateApiProvidersClearProviderApiKey({
     required String providerId,
   });
+
+  Future<void> crateApiClearThreadMessages({required String threadId});
 
   Future<FfiNodeRecord> crateApiHarnessCompactThread({
     required String threadId,
     required int keepRecentTurns,
     String? customSummary,
+    String? instructions,
   });
 
-  Future<FfiContextBreakdown> crateApiContextBreakdown({
+  Future<FfiContextBreakdown> crateApiRunsContextBreakdown({
     required String threadId,
     required String leafNodeId,
     required String draft,
   });
 
-  Future<FfiAssistantRecord> crateApiCreateAssistant({
+  Future<FfiAssistantRecord> crateApiProvidersCreateAssistant({
     required String name,
     required String roleSubtitle,
     required String systemPrompt,
@@ -154,14 +169,14 @@ abstract class BistreRustLibApi extends BaseApi {
     required String badgeCode,
   });
 
-  Future<FfiProviderProfile> crateApiCreateCustomProvider({
+  Future<FfiProviderProfile> crateApiProvidersCreateCustomProvider({
     required String name,
     required String baseUrl,
     required String defaultModel,
     String? apiKey,
   });
 
-  Future<FfiProviderProfile> crateApiCreateProvider({
+  Future<FfiProviderProfile> crateApiProvidersCreateProvider({
     required String name,
     required String dialect,
     required String baseUrl,
@@ -172,17 +187,27 @@ abstract class BistreRustLibApi extends BaseApi {
   });
 
   Future<FfiThreadSummary> crateApiCreateThread({
+    String? projectId,
     required String title,
     required String mode,
     String? topic,
     String? assistantId,
   });
 
-  Future<void> crateApiDeleteAssistant({required String assistantId});
+  Future<bool> crateApiLibraryDataWipePending();
+
+  String crateApiProvidersDefaultTitlePrompt();
+
+  Future<void> crateApiProvidersDeleteAssistant({required String assistantId});
 
   Future<void> crateApiStoryDeleteCharacterCard({required String cardId});
 
   Future<void> crateApiHarnessDeleteCronJob({required String jobId});
+
+  Future<void> crateApiDeleteFromNode({
+    required String threadId,
+    required String nodeId,
+  });
 
   Future<void> crateApiHarnessDeleteMemoryEntry({required String entryId});
 
@@ -191,9 +216,11 @@ abstract class BistreRustLibApi extends BaseApi {
     required String nodeId,
   });
 
-  Future<void> crateApiDeleteProvider({required String providerId});
+  Future<void> crateApiProjectsDeleteProject({required String projectId});
 
-  Future<void> crateApiDeleteSteering({required String steeringId});
+  Future<void> crateApiProvidersDeleteProvider({required String providerId});
+
+  Future<void> crateApiRunsDeleteSteering({required String steeringId});
 
   Future<bool> crateApiMediaDeleteStorageFile({required String relPath});
 
@@ -209,13 +236,24 @@ abstract class BistreRustLibApi extends BaseApi {
     required String workspaceRoot,
   });
 
+  Future<String> crateApiLibraryDraftNextMessage({
+    required String threadId,
+    required String note,
+  });
+
+  Future<FfiNodeRecord> crateApiChatEditReply({
+    required String threadId,
+    required String nodeId,
+    required String content,
+  });
+
   Future<FfiNodeRecord> crateApiEditUserNodeAndStream({
     required String threadId,
     required String nodeId,
     required String newContent,
   });
 
-  Future<FfiSteeringMessage> crateApiEnqueueSteering({
+  Future<FfiSteeringMessage> crateApiRunsEnqueueSteering({
     required String threadId,
     required String content,
   });
@@ -228,9 +266,19 @@ abstract class BistreRustLibApi extends BaseApi {
     String? permitId,
   });
 
-  Future<String> crateApiMediaExportAllThreadsJson();
-
   Future<String> crateApiStoryExportCharacterCardCcv3({required String cardId});
+
+  Future<void> crateApiLibraryExportCharacterCardPng({
+    required String cardId,
+    required String destPath,
+  });
+
+  Future<int> crateApiLibraryExportChatsZip({required String destPath});
+
+  Future<String> crateApiHarnessExportProviderShareCode({
+    required String providerId,
+    required bool includeApiKey,
+  });
 
   Future<String> crateApiMediaExportSettingsJson();
 
@@ -239,8 +287,17 @@ abstract class BistreRustLibApi extends BaseApi {
     required String format,
   });
 
-  Future<List<FfiProviderModelInfo>> crateApiFetchProviderModels({
+  Future<List<FfiProviderModelInfo>> crateApiProvidersFetchProviderModels({
     required String providerId,
+  });
+
+  Future<FfiThreadSummary> crateApiForkThread({
+    required String threadId,
+    required String nodeId,
+  });
+
+  Future<FfiThreadSummary> crateApiHarnessGenerateThreadTitle({
+    required String threadId,
   });
 
   Future<String?> crateApiHarnessGetContextStartPin({required String threadId});
@@ -255,12 +312,30 @@ abstract class BistreRustLibApi extends BaseApi {
 
   Future<FfiStorageStats> crateApiGetStorageStats();
 
+  Future<FfiThreadGoal?> crateApiChatGetThreadGoal({required String threadId});
+
+  Future<PlatformInt64> crateApiMediaGetThreadSpendMicros({
+    required String threadId,
+  });
+
   Future<PlatformInt64> crateApiGetWalletDailySpendMicros();
 
   Future<PlatformInt64> crateApiGetWalletSpendMicros();
 
+  Future<List<FfiPurposeUsage>> crateApiMediaGetWalletUsageByPurpose({
+    required PlatformInt64 sinceUnixMs,
+  });
+
+  Future<bool> crateApiLibraryHasMcpToken({required String serverId});
+
   Future<String> crateApiStoryImportCharacterCardFileJson({
     required String filePath,
+  });
+
+  Future<int> crateApiLibraryImportChatsZip({required String srcPath});
+
+  Future<FfiProviderProfile> crateApiHarnessImportProviderShareCode({
+    required String code,
   });
 
   Future<FfiAppSettings> crateApiMediaImportSettingsJson({
@@ -275,20 +350,47 @@ abstract class BistreRustLibApi extends BaseApi {
     Uint8List? vaultKey,
   });
 
+  Future<FfiInspectedRequest> crateApiHarnessInspectNextRequest({
+    required String threadId,
+    required String draft,
+  });
+
   Future<String> crateApiStoryInspectStoryPromptJson({
     required String threadId,
     String? activeSceneBeats,
   });
 
-  Future<List<FfiAgentRunRecord>> crateApiListAgentRuns({
+  Future<FfiSkill> crateApiLibraryInstallSkill({required String source});
+
+  Future<FfiClipboardAttachments> crateApiMediaLinuxClipboardAttachments();
+
+  Future<void> crateApiMediaLinuxNotify({
+    required String title,
+    required String body,
+    required bool playSound,
+  });
+
+  Future<void> crateApiMediaLinuxOpenFile({required String path});
+
+  Future<void> crateApiMediaLinuxOpenFolder({required String path});
+
+  Future<String?> crateApiMediaLinuxPickFolder({required String title});
+
+  Future<List<FfiAgentRunRecord>> crateApiRunsListAgentRuns({
     String? threadId,
     required bool onlyActive,
     required int limit,
   });
 
-  Future<List<FfiAssistantRecord>> crateApiListAssistants();
+  Future<List<FfiSkill>> crateApiLibraryListAppSkills();
+
+  Future<List<FfiAssistantRecord>> crateApiProvidersListAssistants();
 
   Future<String> crateApiStoryListCharacterCardsJson();
+
+  Future<List<FfiChatFile>> crateApiLibraryListChatFiles({
+    required String threadId,
+  });
 
   Future<List<FfiCheckpoint>> crateApiHarnessListCheckpoints({
     required String threadId,
@@ -297,17 +399,29 @@ abstract class BistreRustLibApi extends BaseApi {
 
   Future<List<FfiCronJob>> crateApiHarnessListCronJobs();
 
+  Future<List<String>> crateApiChatListExcludedNodes({
+    required String threadId,
+  });
+
   Future<List<FfiMemoryEntry>> crateApiHarnessListMemoryEntries({
     String? scope,
   });
 
   Future<List<FfiNodeRecord>> crateApiListNodes({required String threadId});
 
-  Future<List<FfiSteeringMessage>> crateApiListPendingSteering({
+  Future<List<FfiNodeRecord>> crateApiHarnessListNodesWindow({
+    required String threadId,
+    String? beforeNodeId,
+    required int limit,
+  });
+
+  Future<List<FfiSteeringMessage>> crateApiRunsListPendingSteering({
     required String threadId,
   });
 
-  Future<List<FfiProviderProfile>> crateApiListProviders();
+  Future<List<FfiProject>> crateApiProjectsListProjects();
+
+  Future<List<FfiProviderProfile>> crateApiProvidersListProviders();
 
   Future<String> crateApiStoryListRegexRulesJson();
 
@@ -349,20 +463,40 @@ abstract class BistreRustLibApi extends BaseApi {
   });
 
   Future<FfiModelCatalogInfo?> crateApiMediaLookupModelCatalogInfo({
+    required String providerId,
     required String modelId,
   });
 
-  Future<int?> crateApiModelContextTokens({required String model});
+  Future<int?> crateApiRunsModelContextTokens({
+    required String providerId,
+    required String model,
+  });
 
-  Future<int> crateApiNotifyPowerEvent({required String eventKind, bool? onAc});
+  Future<void> crateApiProjectsMoveThreadToProject({
+    required String threadId,
+    String? projectId,
+  });
 
-  Future<FfiPowerGuardStatus> crateApiPowerGuardStatus();
+  Future<int> crateApiRunsNotifyPowerEvent({
+    required String eventKind,
+    bool? onAc,
+  });
+
+  Future<String> crateApiStoryPlanScene({
+    required String threadId,
+    required String title,
+    required String beats,
+  });
+
+  Future<FfiPowerGuardStatus> crateApiRunsPowerGuardStatus();
 
   Future<String> crateApiHarnessPrepareSubagentSandboxJson({
     required String workspaceRoot,
   });
 
-  List<FfiDialectDescriptor> crateApiProviderDialectDescriptors();
+  List<FfiDialectDescriptor> crateApiProvidersProviderDialectDescriptors();
+
+  Future<FfiRawExchange?> crateApiChatRawExchange({required String requestId});
 
   Future<void> crateApiRefreshPrices();
 
@@ -371,14 +505,33 @@ abstract class BistreRustLibApi extends BaseApi {
     required String userNodeId,
   });
 
-  Future<FfiAgentRunRecord> crateApiResolveIndeterminateRun({
+  Future<String> crateApiLibraryRegenerateReplyGuided({
+    required String threadId,
+    required String userNodeId,
+    required String guidance,
+  });
+
+  Future<String> crateApiReinstallUpdate({required FfiUpdateCheckResult check});
+
+  Future<void> crateApiLibraryRemoveAppSkill({required String skillPath});
+
+  Future<void> crateApiLibraryRequestDataWipe();
+
+  Future<FfiAgentRunRecord> crateApiRunsResolveIndeterminateRun({
     required String runId,
     required bool confirmCompleted,
   });
 
-  FfiResolvedEndpoint crateApiResolveProviderEndpoint({
+  FfiResolvedEndpoint crateApiProvidersResolveProviderEndpoint({
     required String dialect,
     required String baseUrl,
+  });
+
+  Future<bool> crateApiHarnessRespondHostAction({
+    required String requestId,
+    required bool ok,
+    required String outputText,
+    String? imageBase64,
   });
 
   Future<bool> crateApiHarnessRespondToolApproval({
@@ -395,15 +548,35 @@ abstract class BistreRustLibApi extends BaseApi {
     required String checkpointId,
   });
 
+  Future<FfiNodeRecord> crateApiHarnessRewriteCompactionSummary({
+    required String threadId,
+    required String nodeId,
+    required String content,
+  });
+
+  Future<String> crateApiStoryRewritePassage({
+    required String threadId,
+    required String mode,
+    required String excerpt,
+    required String context,
+  });
+
   Future<FfiDraftRecord> crateApiSaveDraft({
     required String threadId,
     required String text,
   });
 
+  Future<FfiProject> crateApiProjectsSaveProject({required FfiProject project});
+
   Future<void> crateApiHarnessSaveProviderOverrides({
     required String providerId,
     required String headersJson,
     required String bodyJson,
+  });
+
+  Future<FfiSkill> crateApiLibrarySaveReplyAsSkill({
+    required String threadId,
+    required String nodeId,
   });
 
   Future<FfiAppSettings> crateApiSaveSettings({
@@ -412,6 +585,11 @@ abstract class BistreRustLibApi extends BaseApi {
 
   Future<String> crateApiStorySaveStoryThreadStateJson({
     required String stateJson,
+  });
+
+  Future<String> crateApiHarnessSearchMcpRegistryJson({
+    required String query,
+    String? cursor,
   });
 
   Future<List<FfiSearchHit>> crateApiSearchNodes({
@@ -443,7 +621,7 @@ abstract class BistreRustLibApi extends BaseApi {
     required String text,
   });
 
-  Future<FfiPowerGuardStatus> crateApiSetAndroidPowerState({
+  Future<FfiPowerGuardStatus> crateApiRunsSetAndroidPowerState({
     required bool fgsActive,
     required bool batteryUnrestricted,
   });
@@ -458,9 +636,25 @@ abstract class BistreRustLibApi extends BaseApi {
     required String value,
   });
 
-  Future<FfiProviderProfile> crateApiSetProviderApiKey({
+  Future<void> crateApiLibrarySetMcpToken({
+    required String serverId,
+    required String token,
+  });
+
+  Future<List<String>> crateApiChatSetNodeExcluded({
+    required String threadId,
+    required String nodeId,
+    required bool excluded,
+  });
+
+  Future<FfiProviderProfile> crateApiProvidersSetProviderApiKey({
     required String providerId,
     required String apiKey,
+  });
+
+  Future<FfiThreadGoal?> crateApiChatSetThreadGoal({
+    required String threadId,
+    required String objective,
   });
 
   Future<void> crateApiShutdownRuntime();
@@ -483,6 +677,15 @@ abstract class BistreRustLibApi extends BaseApi {
 
   Stream<FfiEngineEvent> crateApiSubscribeEvents();
 
+  Future<FfiChapterSummary> crateApiStorySummarizeChapter({
+    required String threadId,
+    required String chapterId,
+  });
+
+  Future<FfiThreadSummary> crateApiChatSummarizeIntoNewChat({
+    required String threadId,
+  });
+
   Future<Uint8List> crateApiMediaSynthesizeSpeech({
     required String providerId,
     required String modelId,
@@ -490,12 +693,22 @@ abstract class BistreRustLibApi extends BaseApi {
     String? voice,
   });
 
+  Future<PlatformInt64> crateApiHarnessThreadHistoryRev({
+    required String threadId,
+  });
+
+  Future<FfiNodeRecord> crateApiHarnessTranslateNode({
+    required String threadId,
+    required String nodeId,
+    String? targetLanguage,
+  });
+
   Future<void> crateApiHarnessUndoCompaction({
     required String threadId,
     required String compactionNodeId,
   });
 
-  Future<FfiAssistantRecord> crateApiUpdateAssistant({
+  Future<FfiAssistantRecord> crateApiProvidersUpdateAssistant({
     required String assistantId,
     String? name,
     String? roleSubtitle,
@@ -513,7 +726,7 @@ abstract class BistreRustLibApi extends BaseApi {
     required bool clearTopP,
   });
 
-  Future<FfiProviderProfile> crateApiUpdateProvider({
+  Future<FfiProviderProfile> crateApiProvidersUpdateProvider({
     required String providerId,
     String? name,
     String? baseUrl,
@@ -797,6 +1010,41 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
+  Future<String> crateApiChatAskSideQuestion({
+    required String threadId,
+    required String question,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          sse_encode_String(question, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 7,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiChatAskSideQuestionConstMeta,
+        argValues: [threadId, question],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiChatAskSideQuestionConstMeta =>
+      const TaskConstMeta(
+        debugName: "ask_side_question",
+        argNames: ["threadId", "question"],
+      );
+
+  @override
   Future<void> crateApiBackupDatabase({required String destPath}) {
     return handler.executeNormal(
       NormalTask(
@@ -806,7 +1054,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 8,
             port: port_,
           );
         },
@@ -840,7 +1088,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 9,
             port: port_,
           );
         },
@@ -871,7 +1119,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 10,
             port: port_,
           );
         },
@@ -892,6 +1140,33 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   );
 
   @override
+  Future<bool> crateApiLibraryCancelDataWipe() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 11,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiLibraryCancelDataWipeConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibraryCancelDataWipeConstMeta =>
+      const TaskConstMeta(debugName: "cancel_data_wipe", argNames: []);
+
+  @override
   Future<FfiUpdateCheckResult> crateApiCheckForUpdates({
     String? feedUrlOverride,
   }) {
@@ -903,7 +1178,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 12,
             port: port_,
           );
         },
@@ -932,7 +1207,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 13,
             port: port_,
           );
         },
@@ -954,7 +1229,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
-  Future<FfiProviderProfile> crateApiClearProviderApiKey({
+  Future<FfiProviderProfile> crateApiProvidersClearProviderApiKey({
     required String providerId,
   }) {
     return handler.executeNormal(
@@ -965,7 +1240,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 14,
             port: port_,
           );
         },
@@ -973,17 +1248,48 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_ffi_provider_profile,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiClearProviderApiKeyConstMeta,
+        constMeta: kCrateApiProvidersClearProviderApiKeyConstMeta,
         argValues: [providerId],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiClearProviderApiKeyConstMeta =>
+  TaskConstMeta get kCrateApiProvidersClearProviderApiKeyConstMeta =>
       const TaskConstMeta(
         debugName: "clear_provider_api_key",
         argNames: ["providerId"],
+      );
+
+  @override
+  Future<void> crateApiClearThreadMessages({required String threadId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 15,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiClearThreadMessagesConstMeta,
+        argValues: [threadId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClearThreadMessagesConstMeta =>
+      const TaskConstMeta(
+        debugName: "clear_thread_messages",
+        argNames: ["threadId"],
       );
 
   @override
@@ -991,6 +1297,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     required String threadId,
     required int keepRecentTurns,
     String? customSummary,
+    String? instructions,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -999,10 +1306,11 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           sse_encode_String(threadId, serializer);
           sse_encode_u_32(keepRecentTurns, serializer);
           sse_encode_opt_String(customSummary, serializer);
+          sse_encode_opt_String(instructions, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 16,
             port: port_,
           );
         },
@@ -1011,7 +1319,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiHarnessCompactThreadConstMeta,
-        argValues: [threadId, keepRecentTurns, customSummary],
+        argValues: [threadId, keepRecentTurns, customSummary, instructions],
         apiImpl: this,
       ),
     );
@@ -1020,11 +1328,16 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   TaskConstMeta get kCrateApiHarnessCompactThreadConstMeta =>
       const TaskConstMeta(
         debugName: "compact_thread",
-        argNames: ["threadId", "keepRecentTurns", "customSummary"],
+        argNames: [
+          "threadId",
+          "keepRecentTurns",
+          "customSummary",
+          "instructions",
+        ],
       );
 
   @override
-  Future<FfiContextBreakdown> crateApiContextBreakdown({
+  Future<FfiContextBreakdown> crateApiRunsContextBreakdown({
     required String threadId,
     required String leafNodeId,
     required String draft,
@@ -1039,7 +1352,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 17,
             port: port_,
           );
         },
@@ -1047,20 +1360,21 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_ffi_context_breakdown,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiContextBreakdownConstMeta,
+        constMeta: kCrateApiRunsContextBreakdownConstMeta,
         argValues: [threadId, leafNodeId, draft],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiContextBreakdownConstMeta => const TaskConstMeta(
-    debugName: "context_breakdown",
-    argNames: ["threadId", "leafNodeId", "draft"],
-  );
+  TaskConstMeta get kCrateApiRunsContextBreakdownConstMeta =>
+      const TaskConstMeta(
+        debugName: "context_breakdown",
+        argNames: ["threadId", "leafNodeId", "draft"],
+      );
 
   @override
-  Future<FfiAssistantRecord> crateApiCreateAssistant({
+  Future<FfiAssistantRecord> crateApiProvidersCreateAssistant({
     required String name,
     required String roleSubtitle,
     required String systemPrompt,
@@ -1079,7 +1393,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 18,
             port: port_,
           );
         },
@@ -1087,26 +1401,27 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_ffi_assistant_record,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiCreateAssistantConstMeta,
+        constMeta: kCrateApiProvidersCreateAssistantConstMeta,
         argValues: [name, roleSubtitle, systemPrompt, defaultMode, badgeCode],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiCreateAssistantConstMeta => const TaskConstMeta(
-    debugName: "create_assistant",
-    argNames: [
-      "name",
-      "roleSubtitle",
-      "systemPrompt",
-      "defaultMode",
-      "badgeCode",
-    ],
-  );
+  TaskConstMeta get kCrateApiProvidersCreateAssistantConstMeta =>
+      const TaskConstMeta(
+        debugName: "create_assistant",
+        argNames: [
+          "name",
+          "roleSubtitle",
+          "systemPrompt",
+          "defaultMode",
+          "badgeCode",
+        ],
+      );
 
   @override
-  Future<FfiProviderProfile> crateApiCreateCustomProvider({
+  Future<FfiProviderProfile> crateApiProvidersCreateCustomProvider({
     required String name,
     required String baseUrl,
     required String defaultModel,
@@ -1123,7 +1438,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 19,
             port: port_,
           );
         },
@@ -1131,21 +1446,21 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_ffi_provider_profile,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiCreateCustomProviderConstMeta,
+        constMeta: kCrateApiProvidersCreateCustomProviderConstMeta,
         argValues: [name, baseUrl, defaultModel, apiKey],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiCreateCustomProviderConstMeta =>
+  TaskConstMeta get kCrateApiProvidersCreateCustomProviderConstMeta =>
       const TaskConstMeta(
         debugName: "create_custom_provider",
         argNames: ["name", "baseUrl", "defaultModel", "apiKey"],
       );
 
   @override
-  Future<FfiProviderProfile> crateApiCreateProvider({
+  Future<FfiProviderProfile> crateApiProvidersCreateProvider({
     required String name,
     required String dialect,
     required String baseUrl,
@@ -1168,7 +1483,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 20,
             port: port_,
           );
         },
@@ -1176,7 +1491,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_ffi_provider_profile,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiCreateProviderConstMeta,
+        constMeta: kCrateApiProvidersCreateProviderConstMeta,
         argValues: [
           name,
           dialect,
@@ -1191,21 +1506,23 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     );
   }
 
-  TaskConstMeta get kCrateApiCreateProviderConstMeta => const TaskConstMeta(
-    debugName: "create_provider",
-    argNames: [
-      "name",
-      "dialect",
-      "baseUrl",
-      "defaultModel",
-      "iconSlug",
-      "customIconPath",
-      "apiKey",
-    ],
-  );
+  TaskConstMeta get kCrateApiProvidersCreateProviderConstMeta =>
+      const TaskConstMeta(
+        debugName: "create_provider",
+        argNames: [
+          "name",
+          "dialect",
+          "baseUrl",
+          "defaultModel",
+          "iconSlug",
+          "customIconPath",
+          "apiKey",
+        ],
+      );
 
   @override
   Future<FfiThreadSummary> crateApiCreateThread({
+    String? projectId,
     required String title,
     required String mode,
     String? topic,
@@ -1215,6 +1532,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_opt_String(projectId, serializer);
           sse_encode_String(title, serializer);
           sse_encode_String(mode, serializer);
           sse_encode_opt_String(topic, serializer);
@@ -1222,7 +1540,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 21,
             port: port_,
           );
         },
@@ -1231,7 +1549,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiCreateThreadConstMeta,
-        argValues: [title, mode, topic, assistantId],
+        argValues: [projectId, title, mode, topic, assistantId],
         apiImpl: this,
       ),
     );
@@ -1239,11 +1557,60 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
 
   TaskConstMeta get kCrateApiCreateThreadConstMeta => const TaskConstMeta(
     debugName: "create_thread",
-    argNames: ["title", "mode", "topic", "assistantId"],
+    argNames: ["projectId", "title", "mode", "topic", "assistantId"],
   );
 
   @override
-  Future<void> crateApiDeleteAssistant({required String assistantId}) {
+  Future<bool> crateApiLibraryDataWipePending() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 22,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiLibraryDataWipePendingConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibraryDataWipePendingConstMeta =>
+      const TaskConstMeta(debugName: "data_wipe_pending", argNames: []);
+
+  @override
+  String crateApiProvidersDefaultTitlePrompt() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 23)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiProvidersDefaultTitlePromptConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiProvidersDefaultTitlePromptConstMeta =>
+      const TaskConstMeta(debugName: "default_title_prompt", argNames: []);
+
+  @override
+  Future<void> crateApiProvidersDeleteAssistant({required String assistantId}) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -1252,7 +1619,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 24,
             port: port_,
           );
         },
@@ -1260,17 +1627,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_unit,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiDeleteAssistantConstMeta,
+        constMeta: kCrateApiProvidersDeleteAssistantConstMeta,
         argValues: [assistantId],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiDeleteAssistantConstMeta => const TaskConstMeta(
-    debugName: "delete_assistant",
-    argNames: ["assistantId"],
-  );
+  TaskConstMeta get kCrateApiProvidersDeleteAssistantConstMeta =>
+      const TaskConstMeta(
+        debugName: "delete_assistant",
+        argNames: ["assistantId"],
+      );
 
   @override
   Future<void> crateApiStoryDeleteCharacterCard({required String cardId}) {
@@ -1282,7 +1650,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 25,
             port: port_,
           );
         },
@@ -1313,7 +1681,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 26,
             port: port_,
           );
         },
@@ -1332,6 +1700,40 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "delete_cron_job", argNames: ["jobId"]);
 
   @override
+  Future<void> crateApiDeleteFromNode({
+    required String threadId,
+    required String nodeId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          sse_encode_String(nodeId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 27,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiDeleteFromNodeConstMeta,
+        argValues: [threadId, nodeId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiDeleteFromNodeConstMeta => const TaskConstMeta(
+    debugName: "delete_from_node",
+    argNames: ["threadId", "nodeId"],
+  );
+
+  @override
   Future<void> crateApiHarnessDeleteMemoryEntry({required String entryId}) {
     return handler.executeNormal(
       NormalTask(
@@ -1341,7 +1743,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 28,
             port: port_,
           );
         },
@@ -1376,7 +1778,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 29,
             port: port_,
           );
         },
@@ -1397,7 +1799,35 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   );
 
   @override
-  Future<void> crateApiDeleteProvider({required String providerId}) {
+  Future<void> crateApiProjectsDeleteProject({required String projectId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(projectId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 30,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiProjectsDeleteProjectConstMeta,
+        argValues: [projectId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiProjectsDeleteProjectConstMeta =>
+      const TaskConstMeta(debugName: "delete_project", argNames: ["projectId"]);
+
+  @override
+  Future<void> crateApiProvidersDeleteProvider({required String providerId}) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -1406,7 +1836,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 31,
             port: port_,
           );
         },
@@ -1414,20 +1844,21 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_unit,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiDeleteProviderConstMeta,
+        constMeta: kCrateApiProvidersDeleteProviderConstMeta,
         argValues: [providerId],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiDeleteProviderConstMeta => const TaskConstMeta(
-    debugName: "delete_provider",
-    argNames: ["providerId"],
-  );
+  TaskConstMeta get kCrateApiProvidersDeleteProviderConstMeta =>
+      const TaskConstMeta(
+        debugName: "delete_provider",
+        argNames: ["providerId"],
+      );
 
   @override
-  Future<void> crateApiDeleteSteering({required String steeringId}) {
+  Future<void> crateApiRunsDeleteSteering({required String steeringId}) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -1436,7 +1867,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 32,
             port: port_,
           );
         },
@@ -1444,14 +1875,14 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_unit,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiDeleteSteeringConstMeta,
+        constMeta: kCrateApiRunsDeleteSteeringConstMeta,
         argValues: [steeringId],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiDeleteSteeringConstMeta => const TaskConstMeta(
+  TaskConstMeta get kCrateApiRunsDeleteSteeringConstMeta => const TaskConstMeta(
     debugName: "delete_steering",
     argNames: ["steeringId"],
   );
@@ -1466,7 +1897,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 33,
             port: port_,
           );
         },
@@ -1497,7 +1928,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 34,
             port: port_,
           );
         },
@@ -1528,7 +1959,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 35,
             port: port_,
           );
         },
@@ -1558,7 +1989,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 36,
             port: port_,
           );
         },
@@ -1591,7 +2022,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 30,
+            funcId: 37,
             port: port_,
           );
         },
@@ -1613,6 +2044,77 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
+  Future<String> crateApiLibraryDraftNextMessage({
+    required String threadId,
+    required String note,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          sse_encode_String(note, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 38,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiLibraryDraftNextMessageConstMeta,
+        argValues: [threadId, note],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibraryDraftNextMessageConstMeta =>
+      const TaskConstMeta(
+        debugName: "draft_next_message",
+        argNames: ["threadId", "note"],
+      );
+
+  @override
+  Future<FfiNodeRecord> crateApiChatEditReply({
+    required String threadId,
+    required String nodeId,
+    required String content,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          sse_encode_String(nodeId, serializer);
+          sse_encode_String(content, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 39,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_ffi_node_record,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiChatEditReplyConstMeta,
+        argValues: [threadId, nodeId, content],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiChatEditReplyConstMeta => const TaskConstMeta(
+    debugName: "edit_reply",
+    argNames: ["threadId", "nodeId", "content"],
+  );
+
+  @override
   Future<FfiNodeRecord> crateApiEditUserNodeAndStream({
     required String threadId,
     required String nodeId,
@@ -1628,7 +2130,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 40,
             port: port_,
           );
         },
@@ -1650,7 +2152,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
-  Future<FfiSteeringMessage> crateApiEnqueueSteering({
+  Future<FfiSteeringMessage> crateApiRunsEnqueueSteering({
     required String threadId,
     required String content,
   }) {
@@ -1663,7 +2165,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 32,
+            funcId: 41,
             port: port_,
           );
         },
@@ -1671,17 +2173,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_ffi_steering_message,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiEnqueueSteeringConstMeta,
+        constMeta: kCrateApiRunsEnqueueSteeringConstMeta,
         argValues: [threadId, content],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiEnqueueSteeringConstMeta => const TaskConstMeta(
-    debugName: "enqueue_steering",
-    argNames: ["threadId", "content"],
-  );
+  TaskConstMeta get kCrateApiRunsEnqueueSteeringConstMeta =>
+      const TaskConstMeta(
+        debugName: "enqueue_steering",
+        argNames: ["threadId", "content"],
+      );
 
   @override
   Future<String> crateApiHarnessExecuteWorkspaceToolJson({
@@ -1703,7 +2206,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 33,
+            funcId: 42,
             port: port_,
           );
         },
@@ -1731,33 +2234,6 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
-  Future<String> crateApiMediaExportAllThreadsJson() {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 34,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiMediaExportAllThreadsJsonConstMeta,
-        argValues: [],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiMediaExportAllThreadsJsonConstMeta =>
-      const TaskConstMeta(debugName: "export_all_threads_json", argNames: []);
-
-  @override
   Future<String> crateApiStoryExportCharacterCardCcv3({
     required String cardId,
   }) {
@@ -1769,7 +2245,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 35,
+            funcId: 43,
             port: port_,
           );
         },
@@ -1791,6 +2267,107 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
+  Future<void> crateApiLibraryExportCharacterCardPng({
+    required String cardId,
+    required String destPath,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(cardId, serializer);
+          sse_encode_String(destPath, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 44,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiLibraryExportCharacterCardPngConstMeta,
+        argValues: [cardId, destPath],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibraryExportCharacterCardPngConstMeta =>
+      const TaskConstMeta(
+        debugName: "export_character_card_png",
+        argNames: ["cardId", "destPath"],
+      );
+
+  @override
+  Future<int> crateApiLibraryExportChatsZip({required String destPath}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(destPath, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 45,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_u_32,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiLibraryExportChatsZipConstMeta,
+        argValues: [destPath],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibraryExportChatsZipConstMeta =>
+      const TaskConstMeta(
+        debugName: "export_chats_zip",
+        argNames: ["destPath"],
+      );
+
+  @override
+  Future<String> crateApiHarnessExportProviderShareCode({
+    required String providerId,
+    required bool includeApiKey,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(providerId, serializer);
+          sse_encode_bool(includeApiKey, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 46,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiHarnessExportProviderShareCodeConstMeta,
+        argValues: [providerId, includeApiKey],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHarnessExportProviderShareCodeConstMeta =>
+      const TaskConstMeta(
+        debugName: "export_provider_share_code",
+        argNames: ["providerId", "includeApiKey"],
+      );
+
+  @override
   Future<String> crateApiMediaExportSettingsJson() {
     return handler.executeNormal(
       NormalTask(
@@ -1799,7 +2376,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 47,
             port: port_,
           );
         },
@@ -1831,7 +2408,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 37,
+            funcId: 48,
             port: port_,
           );
         },
@@ -1852,7 +2429,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   );
 
   @override
-  Future<List<FfiProviderModelInfo>> crateApiFetchProviderModels({
+  Future<List<FfiProviderModelInfo>> crateApiProvidersFetchProviderModels({
     required String providerId,
   }) {
     return handler.executeNormal(
@@ -1863,7 +2440,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 38,
+            funcId: 49,
             port: port_,
           );
         },
@@ -1871,17 +2448,84 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_list_ffi_provider_model_info,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiFetchProviderModelsConstMeta,
+        constMeta: kCrateApiProvidersFetchProviderModelsConstMeta,
         argValues: [providerId],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiFetchProviderModelsConstMeta =>
+  TaskConstMeta get kCrateApiProvidersFetchProviderModelsConstMeta =>
       const TaskConstMeta(
         debugName: "fetch_provider_models",
         argNames: ["providerId"],
+      );
+
+  @override
+  Future<FfiThreadSummary> crateApiForkThread({
+    required String threadId,
+    required String nodeId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          sse_encode_String(nodeId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 50,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_ffi_thread_summary,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiForkThreadConstMeta,
+        argValues: [threadId, nodeId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiForkThreadConstMeta => const TaskConstMeta(
+    debugName: "fork_thread",
+    argNames: ["threadId", "nodeId"],
+  );
+
+  @override
+  Future<FfiThreadSummary> crateApiHarnessGenerateThreadTitle({
+    required String threadId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 51,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_ffi_thread_summary,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiHarnessGenerateThreadTitleConstMeta,
+        argValues: [threadId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHarnessGenerateThreadTitleConstMeta =>
+      const TaskConstMeta(
+        debugName: "generate_thread_title",
+        argNames: ["threadId"],
       );
 
   @override
@@ -1896,7 +2540,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 39,
+            funcId: 52,
             port: port_,
           );
         },
@@ -1926,7 +2570,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 40,
+            funcId: 53,
             port: port_,
           );
         },
@@ -1954,7 +2598,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 41,
+            funcId: 54,
             port: port_,
           );
         },
@@ -1984,7 +2628,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 42,
+            funcId: 55,
             port: port_,
           );
         },
@@ -2014,7 +2658,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 43,
+            funcId: 56,
             port: port_,
           );
         },
@@ -2033,6 +2677,67 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "get_storage_stats", argNames: []);
 
   @override
+  Future<FfiThreadGoal?> crateApiChatGetThreadGoal({required String threadId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 57,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_ffi_thread_goal,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiChatGetThreadGoalConstMeta,
+        argValues: [threadId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiChatGetThreadGoalConstMeta =>
+      const TaskConstMeta(debugName: "get_thread_goal", argNames: ["threadId"]);
+
+  @override
+  Future<PlatformInt64> crateApiMediaGetThreadSpendMicros({
+    required String threadId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 58,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_i_64,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiMediaGetThreadSpendMicrosConstMeta,
+        argValues: [threadId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMediaGetThreadSpendMicrosConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_thread_spend_micros",
+        argNames: ["threadId"],
+      );
+
+  @override
   Future<PlatformInt64> crateApiGetWalletDailySpendMicros() {
     return handler.executeNormal(
       NormalTask(
@@ -2041,7 +2746,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 44,
+            funcId: 59,
             port: port_,
           );
         },
@@ -2071,7 +2776,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 45,
+            funcId: 60,
             port: port_,
           );
         },
@@ -2090,6 +2795,67 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "get_wallet_spend_micros", argNames: []);
 
   @override
+  Future<List<FfiPurposeUsage>> crateApiMediaGetWalletUsageByPurpose({
+    required PlatformInt64 sinceUnixMs,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_i_64(sinceUnixMs, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 61,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_ffi_purpose_usage,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiMediaGetWalletUsageByPurposeConstMeta,
+        argValues: [sinceUnixMs],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMediaGetWalletUsageByPurposeConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_wallet_usage_by_purpose",
+        argNames: ["sinceUnixMs"],
+      );
+
+  @override
+  Future<bool> crateApiLibraryHasMcpToken({required String serverId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(serverId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 62,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiLibraryHasMcpTokenConstMeta,
+        argValues: [serverId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibraryHasMcpTokenConstMeta =>
+      const TaskConstMeta(debugName: "has_mcp_token", argNames: ["serverId"]);
+
+  @override
   Future<String> crateApiStoryImportCharacterCardFileJson({
     required String filePath,
   }) {
@@ -2101,7 +2867,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 46,
+            funcId: 63,
             port: port_,
           );
         },
@@ -2123,6 +2889,67 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
+  Future<int> crateApiLibraryImportChatsZip({required String srcPath}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(srcPath, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 64,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_u_32,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiLibraryImportChatsZipConstMeta,
+        argValues: [srcPath],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibraryImportChatsZipConstMeta =>
+      const TaskConstMeta(debugName: "import_chats_zip", argNames: ["srcPath"]);
+
+  @override
+  Future<FfiProviderProfile> crateApiHarnessImportProviderShareCode({
+    required String code,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(code, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 65,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_ffi_provider_profile,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiHarnessImportProviderShareCodeConstMeta,
+        argValues: [code],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHarnessImportProviderShareCodeConstMeta =>
+      const TaskConstMeta(
+        debugName: "import_provider_share_code",
+        argNames: ["code"],
+      );
+
+  @override
   Future<FfiAppSettings> crateApiMediaImportSettingsJson({
     required String rawJson,
     required bool allowLoosening,
@@ -2136,7 +2963,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 47,
+            funcId: 66,
             port: port_,
           );
         },
@@ -2167,7 +2994,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 48,
+            funcId: 67,
             port: port_,
           );
         },
@@ -2202,7 +3029,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 49,
+            funcId: 68,
             port: port_,
           );
         },
@@ -2223,6 +3050,41 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   );
 
   @override
+  Future<FfiInspectedRequest> crateApiHarnessInspectNextRequest({
+    required String threadId,
+    required String draft,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          sse_encode_String(draft, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 69,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_ffi_inspected_request,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiHarnessInspectNextRequestConstMeta,
+        argValues: [threadId, draft],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHarnessInspectNextRequestConstMeta =>
+      const TaskConstMeta(
+        debugName: "inspect_next_request",
+        argNames: ["threadId", "draft"],
+      );
+
+  @override
   Future<String> crateApiStoryInspectStoryPromptJson({
     required String threadId,
     String? activeSceneBeats,
@@ -2236,7 +3098,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 50,
+            funcId: 70,
             port: port_,
           );
         },
@@ -2258,7 +3120,185 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
-  Future<List<FfiAgentRunRecord>> crateApiListAgentRuns({
+  Future<FfiSkill> crateApiLibraryInstallSkill({required String source}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(source, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 71,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_ffi_skill,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiLibraryInstallSkillConstMeta,
+        argValues: [source],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibraryInstallSkillConstMeta =>
+      const TaskConstMeta(debugName: "install_skill", argNames: ["source"]);
+
+  @override
+  Future<FfiClipboardAttachments> crateApiMediaLinuxClipboardAttachments() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 72,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_ffi_clipboard_attachments,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiMediaLinuxClipboardAttachmentsConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMediaLinuxClipboardAttachmentsConstMeta =>
+      const TaskConstMeta(
+        debugName: "linux_clipboard_attachments",
+        argNames: [],
+      );
+
+  @override
+  Future<void> crateApiMediaLinuxNotify({
+    required String title,
+    required String body,
+    required bool playSound,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(title, serializer);
+          sse_encode_String(body, serializer);
+          sse_encode_bool(playSound, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 73,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiMediaLinuxNotifyConstMeta,
+        argValues: [title, body, playSound],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMediaLinuxNotifyConstMeta => const TaskConstMeta(
+    debugName: "linux_notify",
+    argNames: ["title", "body", "playSound"],
+  );
+
+  @override
+  Future<void> crateApiMediaLinuxOpenFile({required String path}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 74,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiMediaLinuxOpenFileConstMeta,
+        argValues: [path],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMediaLinuxOpenFileConstMeta =>
+      const TaskConstMeta(debugName: "linux_open_file", argNames: ["path"]);
+
+  @override
+  Future<void> crateApiMediaLinuxOpenFolder({required String path}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 75,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiMediaLinuxOpenFolderConstMeta,
+        argValues: [path],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMediaLinuxOpenFolderConstMeta =>
+      const TaskConstMeta(debugName: "linux_open_folder", argNames: ["path"]);
+
+  @override
+  Future<String?> crateApiMediaLinuxPickFolder({required String title}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(title, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 76,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiMediaLinuxPickFolderConstMeta,
+        argValues: [title],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMediaLinuxPickFolderConstMeta =>
+      const TaskConstMeta(debugName: "linux_pick_folder", argNames: ["title"]);
+
+  @override
+  Future<List<FfiAgentRunRecord>> crateApiRunsListAgentRuns({
     String? threadId,
     required bool onlyActive,
     required int limit,
@@ -2273,7 +3313,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 51,
+            funcId: 77,
             port: port_,
           );
         },
@@ -2281,20 +3321,20 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_list_ffi_agent_run_record,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiListAgentRunsConstMeta,
+        constMeta: kCrateApiRunsListAgentRunsConstMeta,
         argValues: [threadId, onlyActive, limit],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiListAgentRunsConstMeta => const TaskConstMeta(
+  TaskConstMeta get kCrateApiRunsListAgentRunsConstMeta => const TaskConstMeta(
     debugName: "list_agent_runs",
     argNames: ["threadId", "onlyActive", "limit"],
   );
 
   @override
-  Future<List<FfiAssistantRecord>> crateApiListAssistants() {
+  Future<List<FfiSkill>> crateApiLibraryListAppSkills() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -2302,7 +3342,34 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 52,
+            funcId: 78,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_ffi_skill,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiLibraryListAppSkillsConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibraryListAppSkillsConstMeta =>
+      const TaskConstMeta(debugName: "list_app_skills", argNames: []);
+
+  @override
+  Future<List<FfiAssistantRecord>> crateApiProvidersListAssistants() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 79,
             port: port_,
           );
         },
@@ -2310,14 +3377,14 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_list_ffi_assistant_record,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiListAssistantsConstMeta,
+        constMeta: kCrateApiProvidersListAssistantsConstMeta,
         argValues: [],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiListAssistantsConstMeta =>
+  TaskConstMeta get kCrateApiProvidersListAssistantsConstMeta =>
       const TaskConstMeta(debugName: "list_assistants", argNames: []);
 
   @override
@@ -2329,7 +3396,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 53,
+            funcId: 80,
             port: port_,
           );
         },
@@ -2348,6 +3415,36 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "list_character_cards_json", argNames: []);
 
   @override
+  Future<List<FfiChatFile>> crateApiLibraryListChatFiles({
+    required String threadId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 81,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_ffi_chat_file,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiLibraryListChatFilesConstMeta,
+        argValues: [threadId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibraryListChatFilesConstMeta =>
+      const TaskConstMeta(debugName: "list_chat_files", argNames: ["threadId"]);
+
+  @override
   Future<List<FfiCheckpoint>> crateApiHarnessListCheckpoints({
     required String threadId,
     required int limit,
@@ -2361,7 +3458,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 54,
+            funcId: 82,
             port: port_,
           );
         },
@@ -2391,7 +3488,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 55,
+            funcId: 83,
             port: port_,
           );
         },
@@ -2410,6 +3507,39 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "list_cron_jobs", argNames: []);
 
   @override
+  Future<List<String>> crateApiChatListExcludedNodes({
+    required String threadId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 84,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiChatListExcludedNodesConstMeta,
+        argValues: [threadId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiChatListExcludedNodesConstMeta =>
+      const TaskConstMeta(
+        debugName: "list_excluded_nodes",
+        argNames: ["threadId"],
+      );
+
+  @override
   Future<List<FfiMemoryEntry>> crateApiHarnessListMemoryEntries({
     String? scope,
   }) {
@@ -2421,7 +3551,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 56,
+            funcId: 85,
             port: port_,
           );
         },
@@ -2452,7 +3582,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 57,
+            funcId: 86,
             port: port_,
           );
         },
@@ -2471,7 +3601,44 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "list_nodes", argNames: ["threadId"]);
 
   @override
-  Future<List<FfiSteeringMessage>> crateApiListPendingSteering({
+  Future<List<FfiNodeRecord>> crateApiHarnessListNodesWindow({
+    required String threadId,
+    String? beforeNodeId,
+    required int limit,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          sse_encode_opt_String(beforeNodeId, serializer);
+          sse_encode_u_32(limit, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 87,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_ffi_node_record,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiHarnessListNodesWindowConstMeta,
+        argValues: [threadId, beforeNodeId, limit],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHarnessListNodesWindowConstMeta =>
+      const TaskConstMeta(
+        debugName: "list_nodes_window",
+        argNames: ["threadId", "beforeNodeId", "limit"],
+      );
+
+  @override
+  Future<List<FfiSteeringMessage>> crateApiRunsListPendingSteering({
     required String threadId,
   }) {
     return handler.executeNormal(
@@ -2482,7 +3649,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 58,
+            funcId: 88,
             port: port_,
           );
         },
@@ -2490,21 +3657,21 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_list_ffi_steering_message,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiListPendingSteeringConstMeta,
+        constMeta: kCrateApiRunsListPendingSteeringConstMeta,
         argValues: [threadId],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiListPendingSteeringConstMeta =>
+  TaskConstMeta get kCrateApiRunsListPendingSteeringConstMeta =>
       const TaskConstMeta(
         debugName: "list_pending_steering",
         argNames: ["threadId"],
       );
 
   @override
-  Future<List<FfiProviderProfile>> crateApiListProviders() {
+  Future<List<FfiProject>> crateApiProjectsListProjects() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -2512,7 +3679,34 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 59,
+            funcId: 89,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_ffi_project,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiProjectsListProjectsConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiProjectsListProjectsConstMeta =>
+      const TaskConstMeta(debugName: "list_projects", argNames: []);
+
+  @override
+  Future<List<FfiProviderProfile>> crateApiProvidersListProviders() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 90,
             port: port_,
           );
         },
@@ -2520,14 +3714,14 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_list_ffi_provider_profile,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiListProvidersConstMeta,
+        constMeta: kCrateApiProvidersListProvidersConstMeta,
         argValues: [],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiListProvidersConstMeta =>
+  TaskConstMeta get kCrateApiProvidersListProvidersConstMeta =>
       const TaskConstMeta(debugName: "list_providers", argNames: []);
 
   @override
@@ -2539,7 +3733,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 60,
+            funcId: 91,
             port: port_,
           );
         },
@@ -2566,7 +3760,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 61,
+            funcId: 92,
             port: port_,
           );
         },
@@ -2596,7 +3790,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 62,
+            funcId: 93,
             port: port_,
           );
         },
@@ -2627,7 +3821,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 63,
+            funcId: 94,
             port: port_,
           );
         },
@@ -2658,7 +3852,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 64,
+            funcId: 95,
             port: port_,
           );
         },
@@ -2689,7 +3883,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 65,
+            funcId: 96,
             port: port_,
           );
         },
@@ -2726,7 +3920,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 66,
+            funcId: 97,
             port: port_,
           );
         },
@@ -2759,7 +3953,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 67,
+            funcId: 98,
             port: port_,
           );
         },
@@ -2789,7 +3983,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 68,
+            funcId: 99,
             port: port_,
           );
         },
@@ -2816,7 +4010,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 69,
+            funcId: 100,
             port: port_,
           );
         },
@@ -2844,7 +4038,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 70,
+            funcId: 101,
             port: port_,
           );
         },
@@ -2871,7 +4065,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 71,
+            funcId: 102,
             port: port_,
           );
         },
@@ -2903,7 +4097,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 72,
+            funcId: 103,
             port: port_,
           );
         },
@@ -2936,7 +4130,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 73,
+            funcId: 104,
             port: port_,
           );
         },
@@ -2959,17 +4153,19 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
 
   @override
   Future<FfiModelCatalogInfo?> crateApiMediaLookupModelCatalogInfo({
+    required String providerId,
     required String modelId,
   }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(providerId, serializer);
           sse_encode_String(modelId, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 74,
+            funcId: 105,
             port: port_,
           );
         },
@@ -2978,7 +4174,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiMediaLookupModelCatalogInfoConstMeta,
-        argValues: [modelId],
+        argValues: [providerId, modelId],
         apiImpl: this,
       ),
     );
@@ -2987,20 +4183,24 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   TaskConstMeta get kCrateApiMediaLookupModelCatalogInfoConstMeta =>
       const TaskConstMeta(
         debugName: "lookup_model_catalog_info",
-        argNames: ["modelId"],
+        argNames: ["providerId", "modelId"],
       );
 
   @override
-  Future<int?> crateApiModelContextTokens({required String model}) {
+  Future<int?> crateApiRunsModelContextTokens({
+    required String providerId,
+    required String model,
+  }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(providerId, serializer);
           sse_encode_String(model, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 75,
+            funcId: 106,
             port: port_,
           );
         },
@@ -3008,20 +4208,56 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_opt_box_autoadd_u_32,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiModelContextTokensConstMeta,
-        argValues: [model],
+        constMeta: kCrateApiRunsModelContextTokensConstMeta,
+        argValues: [providerId, model],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiModelContextTokensConstMeta => const TaskConstMeta(
-    debugName: "model_context_tokens",
-    argNames: ["model"],
-  );
+  TaskConstMeta get kCrateApiRunsModelContextTokensConstMeta =>
+      const TaskConstMeta(
+        debugName: "model_context_tokens",
+        argNames: ["providerId", "model"],
+      );
 
   @override
-  Future<int> crateApiNotifyPowerEvent({
+  Future<void> crateApiProjectsMoveThreadToProject({
+    required String threadId,
+    String? projectId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          sse_encode_opt_String(projectId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 107,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiProjectsMoveThreadToProjectConstMeta,
+        argValues: [threadId, projectId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiProjectsMoveThreadToProjectConstMeta =>
+      const TaskConstMeta(
+        debugName: "move_thread_to_project",
+        argNames: ["threadId", "projectId"],
+      );
+
+  @override
+  Future<int> crateApiRunsNotifyPowerEvent({
     required String eventKind,
     bool? onAc,
   }) {
@@ -3034,7 +4270,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 76,
+            funcId: 108,
             port: port_,
           );
         },
@@ -3042,20 +4278,57 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_u_32,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiNotifyPowerEventConstMeta,
+        constMeta: kCrateApiRunsNotifyPowerEventConstMeta,
         argValues: [eventKind, onAc],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiNotifyPowerEventConstMeta => const TaskConstMeta(
-    debugName: "notify_power_event",
-    argNames: ["eventKind", "onAc"],
+  TaskConstMeta get kCrateApiRunsNotifyPowerEventConstMeta =>
+      const TaskConstMeta(
+        debugName: "notify_power_event",
+        argNames: ["eventKind", "onAc"],
+      );
+
+  @override
+  Future<String> crateApiStoryPlanScene({
+    required String threadId,
+    required String title,
+    required String beats,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          sse_encode_String(title, serializer);
+          sse_encode_String(beats, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 109,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiStoryPlanSceneConstMeta,
+        argValues: [threadId, title, beats],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiStoryPlanSceneConstMeta => const TaskConstMeta(
+    debugName: "plan_scene",
+    argNames: ["threadId", "title", "beats"],
   );
 
   @override
-  Future<FfiPowerGuardStatus> crateApiPowerGuardStatus() {
+  Future<FfiPowerGuardStatus> crateApiRunsPowerGuardStatus() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -3063,7 +4336,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 77,
+            funcId: 110,
             port: port_,
           );
         },
@@ -3071,14 +4344,14 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_ffi_power_guard_status,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiPowerGuardStatusConstMeta,
+        constMeta: kCrateApiRunsPowerGuardStatusConstMeta,
         argValues: [],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiPowerGuardStatusConstMeta =>
+  TaskConstMeta get kCrateApiRunsPowerGuardStatusConstMeta =>
       const TaskConstMeta(debugName: "power_guard_status", argNames: []);
 
   @override
@@ -3093,7 +4366,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 78,
+            funcId: 111,
             port: port_,
           );
         },
@@ -3115,29 +4388,61 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
-  List<FfiDialectDescriptor> crateApiProviderDialectDescriptors() {
+  List<FfiDialectDescriptor> crateApiProvidersProviderDialectDescriptors() {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 79)!;
+          return pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 112,
+          )!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_ffi_dialect_descriptor,
           decodeErrorData: null,
         ),
-        constMeta: kCrateApiProviderDialectDescriptorsConstMeta,
+        constMeta: kCrateApiProvidersProviderDialectDescriptorsConstMeta,
         argValues: [],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiProviderDialectDescriptorsConstMeta =>
+  TaskConstMeta get kCrateApiProvidersProviderDialectDescriptorsConstMeta =>
       const TaskConstMeta(
         debugName: "provider_dialect_descriptors",
         argNames: [],
       );
+
+  @override
+  Future<FfiRawExchange?> crateApiChatRawExchange({required String requestId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(requestId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 113,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_ffi_raw_exchange,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiChatRawExchangeConstMeta,
+        argValues: [requestId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiChatRawExchangeConstMeta =>
+      const TaskConstMeta(debugName: "raw_exchange", argNames: ["requestId"]);
 
   @override
   Future<void> crateApiRefreshPrices() {
@@ -3148,7 +4453,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 80,
+            funcId: 114,
             port: port_,
           );
         },
@@ -3180,7 +4485,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 81,
+            funcId: 115,
             port: port_,
           );
         },
@@ -3201,7 +4506,132 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   );
 
   @override
-  Future<FfiAgentRunRecord> crateApiResolveIndeterminateRun({
+  Future<String> crateApiLibraryRegenerateReplyGuided({
+    required String threadId,
+    required String userNodeId,
+    required String guidance,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          sse_encode_String(userNodeId, serializer);
+          sse_encode_String(guidance, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 116,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiLibraryRegenerateReplyGuidedConstMeta,
+        argValues: [threadId, userNodeId, guidance],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibraryRegenerateReplyGuidedConstMeta =>
+      const TaskConstMeta(
+        debugName: "regenerate_reply_guided",
+        argNames: ["threadId", "userNodeId", "guidance"],
+      );
+
+  @override
+  Future<String> crateApiReinstallUpdate({
+    required FfiUpdateCheckResult check,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_box_autoadd_ffi_update_check_result(check, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 117,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiReinstallUpdateConstMeta,
+        argValues: [check],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiReinstallUpdateConstMeta =>
+      const TaskConstMeta(debugName: "reinstall_update", argNames: ["check"]);
+
+  @override
+  Future<void> crateApiLibraryRemoveAppSkill({required String skillPath}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(skillPath, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 118,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiLibraryRemoveAppSkillConstMeta,
+        argValues: [skillPath],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibraryRemoveAppSkillConstMeta =>
+      const TaskConstMeta(
+        debugName: "remove_app_skill",
+        argNames: ["skillPath"],
+      );
+
+  @override
+  Future<void> crateApiLibraryRequestDataWipe() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 119,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiLibraryRequestDataWipeConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibraryRequestDataWipeConstMeta =>
+      const TaskConstMeta(debugName: "request_data_wipe", argNames: []);
+
+  @override
+  Future<FfiAgentRunRecord> crateApiRunsResolveIndeterminateRun({
     required String runId,
     required bool confirmCompleted,
   }) {
@@ -3214,7 +4644,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 82,
+            funcId: 120,
             port: port_,
           );
         },
@@ -3222,21 +4652,21 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_ffi_agent_run_record,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiResolveIndeterminateRunConstMeta,
+        constMeta: kCrateApiRunsResolveIndeterminateRunConstMeta,
         argValues: [runId, confirmCompleted],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiResolveIndeterminateRunConstMeta =>
+  TaskConstMeta get kCrateApiRunsResolveIndeterminateRunConstMeta =>
       const TaskConstMeta(
         debugName: "resolve_indeterminate_run",
         argNames: ["runId", "confirmCompleted"],
       );
 
   @override
-  FfiResolvedEndpoint crateApiResolveProviderEndpoint({
+  FfiResolvedEndpoint crateApiProvidersResolveProviderEndpoint({
     required String dialect,
     required String baseUrl,
   }) {
@@ -3246,23 +4676,66 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(dialect, serializer);
           sse_encode_String(baseUrl, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 83)!;
+          return pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 121,
+          )!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_ffi_resolved_endpoint,
           decodeErrorData: null,
         ),
-        constMeta: kCrateApiResolveProviderEndpointConstMeta,
+        constMeta: kCrateApiProvidersResolveProviderEndpointConstMeta,
         argValues: [dialect, baseUrl],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiResolveProviderEndpointConstMeta =>
+  TaskConstMeta get kCrateApiProvidersResolveProviderEndpointConstMeta =>
       const TaskConstMeta(
         debugName: "resolve_provider_endpoint",
         argNames: ["dialect", "baseUrl"],
+      );
+
+  @override
+  Future<bool> crateApiHarnessRespondHostAction({
+    required String requestId,
+    required bool ok,
+    required String outputText,
+    String? imageBase64,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(requestId, serializer);
+          sse_encode_bool(ok, serializer);
+          sse_encode_String(outputText, serializer);
+          sse_encode_opt_String(imageBase64, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 122,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiHarnessRespondHostActionConstMeta,
+        argValues: [requestId, ok, outputText, imageBase64],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHarnessRespondHostActionConstMeta =>
+      const TaskConstMeta(
+        debugName: "respond_host_action",
+        argNames: ["requestId", "ok", "outputText", "imageBase64"],
       );
 
   @override
@@ -3283,7 +4756,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 84,
+            funcId: 123,
             port: port_,
           );
         },
@@ -3314,7 +4787,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 85,
+            funcId: 124,
             port: port_,
           );
         },
@@ -3346,7 +4819,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 86,
+            funcId: 125,
             port: port_,
           );
         },
@@ -3368,6 +4841,82 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
+  Future<FfiNodeRecord> crateApiHarnessRewriteCompactionSummary({
+    required String threadId,
+    required String nodeId,
+    required String content,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          sse_encode_String(nodeId, serializer);
+          sse_encode_String(content, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 126,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_ffi_node_record,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiHarnessRewriteCompactionSummaryConstMeta,
+        argValues: [threadId, nodeId, content],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHarnessRewriteCompactionSummaryConstMeta =>
+      const TaskConstMeta(
+        debugName: "rewrite_compaction_summary",
+        argNames: ["threadId", "nodeId", "content"],
+      );
+
+  @override
+  Future<String> crateApiStoryRewritePassage({
+    required String threadId,
+    required String mode,
+    required String excerpt,
+    required String context,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          sse_encode_String(mode, serializer);
+          sse_encode_String(excerpt, serializer);
+          sse_encode_String(context, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 127,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiStoryRewritePassageConstMeta,
+        argValues: [threadId, mode, excerpt, context],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiStoryRewritePassageConstMeta =>
+      const TaskConstMeta(
+        debugName: "rewrite_passage",
+        argNames: ["threadId", "mode", "excerpt", "context"],
+      );
+
+  @override
   Future<FfiDraftRecord> crateApiSaveDraft({
     required String threadId,
     required String text,
@@ -3381,7 +4930,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 87,
+            funcId: 128,
             port: port_,
           );
         },
@@ -3402,6 +4951,36 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   );
 
   @override
+  Future<FfiProject> crateApiProjectsSaveProject({
+    required FfiProject project,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_box_autoadd_ffi_project(project, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 129,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_ffi_project,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiProjectsSaveProjectConstMeta,
+        argValues: [project],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiProjectsSaveProjectConstMeta =>
+      const TaskConstMeta(debugName: "save_project", argNames: ["project"]);
+
+  @override
   Future<void> crateApiHarnessSaveProviderOverrides({
     required String providerId,
     required String headersJson,
@@ -3417,7 +4996,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 88,
+            funcId: 130,
             port: port_,
           );
         },
@@ -3439,6 +5018,41 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
+  Future<FfiSkill> crateApiLibrarySaveReplyAsSkill({
+    required String threadId,
+    required String nodeId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          sse_encode_String(nodeId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 131,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_ffi_skill,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiLibrarySaveReplyAsSkillConstMeta,
+        argValues: [threadId, nodeId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibrarySaveReplyAsSkillConstMeta =>
+      const TaskConstMeta(
+        debugName: "save_reply_as_skill",
+        argNames: ["threadId", "nodeId"],
+      );
+
+  @override
   Future<FfiAppSettings> crateApiSaveSettings({
     required FfiAppSettings settings,
   }) {
@@ -3450,7 +5064,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 89,
+            funcId: 132,
             port: port_,
           );
         },
@@ -3480,7 +5094,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 90,
+            funcId: 133,
             port: port_,
           );
         },
@@ -3502,6 +5116,41 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
+  Future<String> crateApiHarnessSearchMcpRegistryJson({
+    required String query,
+    String? cursor,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(query, serializer);
+          sse_encode_opt_String(cursor, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 134,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiHarnessSearchMcpRegistryJsonConstMeta,
+        argValues: [query, cursor],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHarnessSearchMcpRegistryJsonConstMeta =>
+      const TaskConstMeta(
+        debugName: "search_mcp_registry_json",
+        argNames: ["query", "cursor"],
+      );
+
+  @override
   Future<List<FfiSearchHit>> crateApiSearchNodes({
     required String query,
     String? threadId,
@@ -3517,7 +5166,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 91,
+            funcId: 135,
             port: port_,
           );
         },
@@ -3553,7 +5202,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 92,
+            funcId: 136,
             port: port_,
           );
         },
@@ -3591,7 +5240,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 93,
+            funcId: 137,
             port: port_,
           );
         },
@@ -3626,7 +5275,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 94,
+            funcId: 138,
             port: port_,
           );
         },
@@ -3661,7 +5310,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 95,
+            funcId: 139,
             port: port_,
           );
         },
@@ -3683,7 +5332,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
-  Future<FfiPowerGuardStatus> crateApiSetAndroidPowerState({
+  Future<FfiPowerGuardStatus> crateApiRunsSetAndroidPowerState({
     required bool fgsActive,
     required bool batteryUnrestricted,
   }) {
@@ -3696,7 +5345,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 96,
+            funcId: 140,
             port: port_,
           );
         },
@@ -3704,14 +5353,14 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_ffi_power_guard_status,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiSetAndroidPowerStateConstMeta,
+        constMeta: kCrateApiRunsSetAndroidPowerStateConstMeta,
         argValues: [fgsActive, batteryUnrestricted],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSetAndroidPowerStateConstMeta =>
+  TaskConstMeta get kCrateApiRunsSetAndroidPowerStateConstMeta =>
       const TaskConstMeta(
         debugName: "set_android_power_state",
         argNames: ["fgsActive", "batteryUnrestricted"],
@@ -3731,7 +5380,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 97,
+            funcId: 141,
             port: port_,
           );
         },
@@ -3766,7 +5415,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 98,
+            funcId: 142,
             port: port_,
           );
         },
@@ -3785,7 +5434,78 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "set_kv_meta", argNames: ["key", "value"]);
 
   @override
-  Future<FfiProviderProfile> crateApiSetProviderApiKey({
+  Future<void> crateApiLibrarySetMcpToken({
+    required String serverId,
+    required String token,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(serverId, serializer);
+          sse_encode_String(token, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 143,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiLibrarySetMcpTokenConstMeta,
+        argValues: [serverId, token],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibrarySetMcpTokenConstMeta => const TaskConstMeta(
+    debugName: "set_mcp_token",
+    argNames: ["serverId", "token"],
+  );
+
+  @override
+  Future<List<String>> crateApiChatSetNodeExcluded({
+    required String threadId,
+    required String nodeId,
+    required bool excluded,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          sse_encode_String(nodeId, serializer);
+          sse_encode_bool(excluded, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 144,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiChatSetNodeExcludedConstMeta,
+        argValues: [threadId, nodeId, excluded],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiChatSetNodeExcludedConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_node_excluded",
+        argNames: ["threadId", "nodeId", "excluded"],
+      );
+
+  @override
+  Future<FfiProviderProfile> crateApiProvidersSetProviderApiKey({
     required String providerId,
     required String apiKey,
   }) {
@@ -3798,7 +5518,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 99,
+            funcId: 145,
             port: port_,
           );
         },
@@ -3806,16 +5526,51 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_ffi_provider_profile,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiSetProviderApiKeyConstMeta,
+        constMeta: kCrateApiProvidersSetProviderApiKeyConstMeta,
         argValues: [providerId, apiKey],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSetProviderApiKeyConstMeta => const TaskConstMeta(
-    debugName: "set_provider_api_key",
-    argNames: ["providerId", "apiKey"],
+  TaskConstMeta get kCrateApiProvidersSetProviderApiKeyConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_provider_api_key",
+        argNames: ["providerId", "apiKey"],
+      );
+
+  @override
+  Future<FfiThreadGoal?> crateApiChatSetThreadGoal({
+    required String threadId,
+    required String objective,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          sse_encode_String(objective, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 146,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_ffi_thread_goal,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiChatSetThreadGoalConstMeta,
+        argValues: [threadId, objective],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiChatSetThreadGoalConstMeta => const TaskConstMeta(
+    debugName: "set_thread_goal",
+    argNames: ["threadId", "objective"],
   );
 
   @override
@@ -3827,7 +5582,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 100,
+            funcId: 147,
             port: port_,
           );
         },
@@ -3855,7 +5610,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 101,
+            funcId: 148,
             port: port_,
           );
         },
@@ -3891,7 +5646,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 102,
+            funcId: 149,
             port: port_,
           );
         },
@@ -3926,7 +5681,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 103,
+            funcId: 150,
             port: port_,
           );
         },
@@ -3957,7 +5712,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 104,
+            funcId: 151,
             port: port_,
           );
         },
@@ -3990,7 +5745,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 105,
+              funcId: 152,
               port: port_,
             );
           },
@@ -4011,6 +5766,74 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "subscribe_events", argNames: ["sink"]);
 
   @override
+  Future<FfiChapterSummary> crateApiStorySummarizeChapter({
+    required String threadId,
+    required String chapterId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          sse_encode_String(chapterId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 153,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_ffi_chapter_summary,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiStorySummarizeChapterConstMeta,
+        argValues: [threadId, chapterId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiStorySummarizeChapterConstMeta =>
+      const TaskConstMeta(
+        debugName: "summarize_chapter",
+        argNames: ["threadId", "chapterId"],
+      );
+
+  @override
+  Future<FfiThreadSummary> crateApiChatSummarizeIntoNewChat({
+    required String threadId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 154,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_ffi_thread_summary,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiChatSummarizeIntoNewChatConstMeta,
+        argValues: [threadId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiChatSummarizeIntoNewChatConstMeta =>
+      const TaskConstMeta(
+        debugName: "summarize_into_new_chat",
+        argNames: ["threadId"],
+      );
+
+  @override
   Future<Uint8List> crateApiMediaSynthesizeSpeech({
     required String providerId,
     required String modelId,
@@ -4028,7 +5851,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 106,
+            funcId: 155,
             port: port_,
           );
         },
@@ -4050,6 +5873,76 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
+  Future<PlatformInt64> crateApiHarnessThreadHistoryRev({
+    required String threadId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 156,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_i_64,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiHarnessThreadHistoryRevConstMeta,
+        argValues: [threadId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHarnessThreadHistoryRevConstMeta =>
+      const TaskConstMeta(
+        debugName: "thread_history_rev",
+        argNames: ["threadId"],
+      );
+
+  @override
+  Future<FfiNodeRecord> crateApiHarnessTranslateNode({
+    required String threadId,
+    required String nodeId,
+    String? targetLanguage,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(threadId, serializer);
+          sse_encode_String(nodeId, serializer);
+          sse_encode_opt_String(targetLanguage, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 157,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_ffi_node_record,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiHarnessTranslateNodeConstMeta,
+        argValues: [threadId, nodeId, targetLanguage],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiHarnessTranslateNodeConstMeta =>
+      const TaskConstMeta(
+        debugName: "translate_node",
+        argNames: ["threadId", "nodeId", "targetLanguage"],
+      );
+
+  @override
   Future<void> crateApiHarnessUndoCompaction({
     required String threadId,
     required String compactionNodeId,
@@ -4063,7 +5956,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 107,
+            funcId: 158,
             port: port_,
           );
         },
@@ -4085,7 +5978,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       );
 
   @override
-  Future<FfiAssistantRecord> crateApiUpdateAssistant({
+  Future<FfiAssistantRecord> crateApiProvidersUpdateAssistant({
     required String assistantId,
     String? name,
     String? roleSubtitle,
@@ -4124,7 +6017,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 108,
+            funcId: 159,
             port: port_,
           );
         },
@@ -4132,7 +6025,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_ffi_assistant_record,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiUpdateAssistantConstMeta,
+        constMeta: kCrateApiProvidersUpdateAssistantConstMeta,
         argValues: [
           assistantId,
           name,
@@ -4155,29 +6048,30 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     );
   }
 
-  TaskConstMeta get kCrateApiUpdateAssistantConstMeta => const TaskConstMeta(
-    debugName: "update_assistant",
-    argNames: [
-      "assistantId",
-      "name",
-      "roleSubtitle",
-      "systemPrompt",
-      "defaultMode",
-      "badgeCode",
-      "iconSlug",
-      "defaultProviderId",
-      "defaultModelId",
-      "temperatureMilli",
-      "clearTemperature",
-      "maxOutputTokens",
-      "clearMaxOutputTokens",
-      "topPMilli",
-      "clearTopP",
-    ],
-  );
+  TaskConstMeta get kCrateApiProvidersUpdateAssistantConstMeta =>
+      const TaskConstMeta(
+        debugName: "update_assistant",
+        argNames: [
+          "assistantId",
+          "name",
+          "roleSubtitle",
+          "systemPrompt",
+          "defaultMode",
+          "badgeCode",
+          "iconSlug",
+          "defaultProviderId",
+          "defaultModelId",
+          "temperatureMilli",
+          "clearTemperature",
+          "maxOutputTokens",
+          "clearMaxOutputTokens",
+          "topPMilli",
+          "clearTopP",
+        ],
+      );
 
   @override
-  Future<FfiProviderProfile> crateApiUpdateProvider({
+  Future<FfiProviderProfile> crateApiProvidersUpdateProvider({
     required String providerId,
     String? name,
     String? baseUrl,
@@ -4202,7 +6096,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 109,
+            funcId: 160,
             port: port_,
           );
         },
@@ -4210,7 +6104,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           decodeSuccessData: sse_decode_ffi_provider_profile,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kCrateApiUpdateProviderConstMeta,
+        constMeta: kCrateApiProvidersUpdateProviderConstMeta,
         argValues: [
           providerId,
           name,
@@ -4226,19 +6120,20 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     );
   }
 
-  TaskConstMeta get kCrateApiUpdateProviderConstMeta => const TaskConstMeta(
-    debugName: "update_provider",
-    argNames: [
-      "providerId",
-      "name",
-      "baseUrl",
-      "defaultModel",
-      "isEnabled",
-      "useServerStateCache",
-      "iconSlug",
-      "customIconPath",
-    ],
-  );
+  TaskConstMeta get kCrateApiProvidersUpdateProviderConstMeta =>
+      const TaskConstMeta(
+        debugName: "update_provider",
+        argNames: [
+          "providerId",
+          "name",
+          "baseUrl",
+          "defaultModel",
+          "isEnabled",
+          "useServerStateCache",
+          "iconSlug",
+          "customIconPath",
+        ],
+      );
 
   @override
   Future<FfiThreadSummary> crateApiUpdateThread({
@@ -4286,7 +6181,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 110,
+            funcId: 161,
             port: port_,
           );
         },
@@ -4356,7 +6251,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 111,
+            funcId: 162,
             port: port_,
           );
         },
@@ -4387,7 +6282,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 112,
+            funcId: 163,
             port: port_,
           );
         },
@@ -4427,7 +6322,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 113,
+            funcId: 164,
             port: port_,
           );
         },
@@ -4458,7 +6353,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 114,
+            funcId: 165,
             port: port_,
           );
         },
@@ -4491,7 +6386,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 115,
+            funcId: 166,
             port: port_,
           );
         },
@@ -4524,7 +6419,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 116,
+            funcId: 167,
             port: port_,
           );
         },
@@ -4557,7 +6452,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 117,
+            funcId: 168,
             port: port_,
           );
         },
@@ -4590,7 +6485,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 118,
+            funcId: 169,
             port: port_,
           );
         },
@@ -4629,7 +6524,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 119,
+            funcId: 170,
             port: port_,
           );
         },
@@ -4666,7 +6561,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 120,
+            funcId: 171,
             port: port_,
           );
         },
@@ -4753,6 +6648,24 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  FfiProject dco_decode_box_autoadd_ffi_project(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_ffi_project(raw);
+  }
+
+  @protected
+  FfiRawExchange dco_decode_box_autoadd_ffi_raw_exchange(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_ffi_raw_exchange(raw);
+  }
+
+  @protected
+  FfiThreadGoal dco_decode_box_autoadd_ffi_thread_goal(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_ffi_thread_goal(raw);
+  }
+
+  @protected
   FfiUpdateCheckResult dco_decode_box_autoadd_ffi_update_check_result(
     dynamic raw,
   ) {
@@ -4826,37 +6739,37 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       walletDailyCeilingMicros: dco_decode_opt_box_autoadd_i_64(arr[4]),
       walletLocalFirst: dco_decode_bool(arr[5]),
       providerStatelessDefault: dco_decode_bool(arr[6]),
-      fontScaleBps: dco_decode_u_32(arr[7]),
-      fontSizePx: dco_decode_u_32(arr[8]),
-      lineHeightBps: dco_decode_u_32(arr[9]),
-      readingWidthPx: dco_decode_u_32(arr[10]),
-      proseFontFamily: dco_decode_String(arr[11]),
-      proseFontPath: dco_decode_String(arr[12]),
-      monoFontFamily: dco_decode_String(arr[13]),
-      monoFontPath: dco_decode_String(arr[14]),
-      accentPreset: dco_decode_String(arr[15]),
-      customAccentHex: dco_decode_String(arr[16]),
-      sidebarOpen: dco_decode_bool(arr[17]),
-      sendOnEnter: dco_decode_bool(arr[18]),
-      reduceMotionOverride: dco_decode_bool(arr[19]),
-      showTokenMetrics: dco_decode_bool(arr[20]),
-      activeProviderId: dco_decode_String(arr[21]),
-      activeModelId: dco_decode_String(arr[22]),
-      otaFeedUrl: dco_decode_String(arr[23]),
-      otaChannel: dco_decode_String(arr[24]),
-      otaAutoCheck: dco_decode_bool(arr[25]),
-      windowBoundsJson: dco_decode_String(arr[26]),
-      customShortcutsJson: dco_decode_String(arr[27]),
-      keepAwakeWhileRunning: dco_decode_bool(arr[28]),
-      windowsKeepAwakeOnBattery: dco_decode_bool(arr[29]),
-      daemonKeepAliveWhenActive: dco_decode_bool(arr[30]),
-      unattendedPolicy: dco_decode_String(arr[31]),
-      retryWatchdogMaxWaitSecs: dco_decode_u_32(arr[32]),
-      reasoningEffort: dco_decode_String(arr[33]),
-      termuxBridgeEnabled: dco_decode_bool(arr[34]),
-      codeWrapMode: dco_decode_String(arr[35]),
-      pricingAutoRefresh: dco_decode_bool(arr[36]),
-      userDisplayName: dco_decode_String(arr[37]),
+      fontSizePx: dco_decode_u_32(arr[7]),
+      lineHeightBps: dco_decode_u_32(arr[8]),
+      readingWidthPx: dco_decode_u_32(arr[9]),
+      proseFontFamily: dco_decode_String(arr[10]),
+      proseFontPath: dco_decode_String(arr[11]),
+      monoFontFamily: dco_decode_String(arr[12]),
+      monoFontPath: dco_decode_String(arr[13]),
+      accentPreset: dco_decode_String(arr[14]),
+      customAccentHex: dco_decode_String(arr[15]),
+      sidebarOpen: dco_decode_bool(arr[16]),
+      sendOnEnter: dco_decode_bool(arr[17]),
+      reduceMotionOverride: dco_decode_bool(arr[18]),
+      showTokenMetrics: dco_decode_bool(arr[19]),
+      activeProviderId: dco_decode_String(arr[20]),
+      activeModelId: dco_decode_String(arr[21]),
+      otaFeedUrl: dco_decode_String(arr[22]),
+      otaChannel: dco_decode_String(arr[23]),
+      otaAutoCheck: dco_decode_bool(arr[24]),
+      windowBoundsJson: dco_decode_String(arr[25]),
+      customShortcutsJson: dco_decode_String(arr[26]),
+      keepAwakeWhileRunning: dco_decode_bool(arr[27]),
+      windowsKeepAwakeOnBattery: dco_decode_bool(arr[28]),
+      daemonKeepAliveWhenActive: dco_decode_bool(arr[29]),
+      unattendedPolicy: dco_decode_String(arr[30]),
+      retryWatchdogMaxWaitSecs: dco_decode_u_32(arr[31]),
+      reasoningEffort: dco_decode_String(arr[32]),
+      termuxBridgeEnabled: dco_decode_bool(arr[33]),
+      codeWrapMode: dco_decode_String(arr[34]),
+      pricingAutoRefresh: dco_decode_bool(arr[35]),
+      userDisplayName: dco_decode_String(arr[36]),
+      autoCompactAtPercent: dco_decode_u_8(arr[37]),
     );
   }
 
@@ -4898,6 +6811,35 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  FfiChapterSummary dco_decode_ffi_chapter_summary(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return FfiChapterSummary(
+      eraSummary: dco_decode_String(arr[0]),
+      contradictions: dco_decode_list_String(arr[1]),
+    );
+  }
+
+  @protected
+  FfiChatFile dco_decode_ffi_chat_file(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return FfiChatFile(
+      nodeId: dco_decode_String(arr[0]),
+      fromUser: dco_decode_bool(arr[1]),
+      name: dco_decode_String(arr[2]),
+      mimeType: dco_decode_String(arr[3]),
+      sizeBytes: dco_decode_u_64(arr[4]),
+      blobRelPath: dco_decode_String(arr[5]),
+      createdAtMs: dco_decode_i_64(arr[6]),
+    );
+  }
+
+  @protected
   FfiCheckpoint dco_decode_ffi_checkpoint(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -4910,6 +6852,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       beforeBlake3: dco_decode_String(arr[3]),
       afterBlake3: dco_decode_String(arr[4]),
       createdAtMs: dco_decode_i_64(arr[5]),
+    );
+  }
+
+  @protected
+  FfiClipboardAttachments dco_decode_ffi_clipboard_attachments(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return FfiClipboardAttachments(
+      files: dco_decode_list_String(arr[0]),
+      png: dco_decode_opt_list_prim_u_8_strict(arr[1]),
     );
   }
 
@@ -5047,6 +7001,22 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  FfiInspectedRequest dco_decode_ffi_inspected_request(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return FfiInspectedRequest(
+      method: dco_decode_String(arr[0]),
+      url: dco_decode_String(arr[1]),
+      dialect: dco_decode_String(arr[2]),
+      model: dco_decode_String(arr[3]),
+      headers: dco_decode_list_record_string_string(arr[4]),
+      bodyJson: dco_decode_String(arr[5]),
+    );
+  }
+
+  @protected
   FfiMcpServerUsage dco_decode_ffi_mcp_server_usage(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -5094,15 +7064,21 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   FfiModelCatalogInfo dco_decode_ffi_model_catalog_info(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 6)
-      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    if (arr.length != 12)
+      throw Exception('unexpected arr length: expect 12 but see ${arr.length}');
     return FfiModelCatalogInfo(
       contextWindow: dco_decode_opt_box_autoadd_u_32(arr[0]),
       maxOutputTokens: dco_decode_opt_box_autoadd_u_32(arr[1]),
       inputPerMtokMicros: dco_decode_opt_box_autoadd_i_64(arr[2]),
       outputPerMtokMicros: dco_decode_opt_box_autoadd_i_64(arr[3]),
       cachedInputPerMtokMicros: dco_decode_opt_box_autoadd_i_64(arr[4]),
-      reasoning: dco_decode_opt_box_autoadd_bool(arr[5]),
+      cacheWritePerMtokMicros: dco_decode_opt_box_autoadd_i_64(arr[5]),
+      cacheWrite1HPerMtokMicros: dco_decode_opt_box_autoadd_i_64(arr[6]),
+      reasoning: dco_decode_opt_box_autoadd_bool(arr[7]),
+      writesText: dco_decode_bool(arr[8]),
+      aspectRatios: dco_decode_list_String(arr[9]),
+      resolutions: dco_decode_list_String(arr[10]),
+      durationsS: dco_decode_list_prim_u_32_strict(arr[11]),
     );
   }
 
@@ -5158,6 +7134,21 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  FfiProject dco_decode_ffi_project(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return FfiProject(
+      id: dco_decode_String(arr[0]),
+      name: dco_decode_String(arr[1]),
+      folderPath: dco_decode_String(arr[2]),
+      instructions: dco_decode_String(arr[3]),
+      createdAtMs: dco_decode_i_64(arr[4]),
+    );
+  }
+
+  @protected
   FfiProviderModelInfo dco_decode_ffi_provider_model_info(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -5195,6 +7186,35 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  FfiPurposeUsage dco_decode_ffi_purpose_usage(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return FfiPurposeUsage(
+      purpose: dco_decode_String(arr[0]),
+      requests: dco_decode_u_64(arr[1]),
+      inputTokens: dco_decode_u_64(arr[2]),
+      outputTokens: dco_decode_u_64(arr[3]),
+      costMicros: dco_decode_i_64(arr[4]),
+    );
+  }
+
+  @protected
+  FfiRawExchange dco_decode_ffi_raw_exchange(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return FfiRawExchange(
+      url: dco_decode_String(arr[0]),
+      requestBody: dco_decode_String(arr[1]),
+      response: dco_decode_String(arr[2]),
+      truncated: dco_decode_bool(arr[3]),
+    );
+  }
+
+  @protected
   FfiResolvedEndpoint dco_decode_ffi_resolved_endpoint(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -5218,6 +7238,19 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       role: dco_decode_String(arr[2]),
       snippet: dco_decode_String(arr[3]),
       createdAtMs: dco_decode_i_64(arr[4]),
+    );
+  }
+
+  @protected
+  FfiSkill dco_decode_ffi_skill(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return FfiSkill(
+      name: dco_decode_String(arr[0]),
+      description: dco_decode_String(arr[1]),
+      path: dco_decode_String(arr[2]),
     );
   }
 
@@ -5267,6 +7300,19 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       threadCount: dco_decode_u_64(arr[5]),
       nodeCount: dco_decode_u_64(arr[6]),
       activeRuns: dco_decode_u_32(arr[7]),
+    );
+  }
+
+  @protected
+  FfiThreadGoal dco_decode_ffi_thread_goal(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return FfiThreadGoal(
+      objective: dco_decode_String(arr[0]),
+      completed: dco_decode_bool(arr[1]),
+      summary: dco_decode_String(arr[2]),
     );
   }
 
@@ -5375,6 +7421,12 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  List<FfiChatFile> dco_decode_list_ffi_chat_file(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_ffi_chat_file).toList();
+  }
+
+  @protected
   List<FfiCheckpoint> dco_decode_list_ffi_checkpoint(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_ffi_checkpoint).toList();
@@ -5439,6 +7491,12 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  List<FfiProject> dco_decode_list_ffi_project(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_ffi_project).toList();
+  }
+
+  @protected
   List<FfiProviderModelInfo> dco_decode_list_ffi_provider_model_info(
     dynamic raw,
   ) {
@@ -5455,9 +7513,21 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  List<FfiPurposeUsage> dco_decode_list_ffi_purpose_usage(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_ffi_purpose_usage).toList();
+  }
+
+  @protected
   List<FfiSearchHit> dco_decode_list_ffi_search_hit(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_ffi_search_hit).toList();
+  }
+
+  @protected
+  List<FfiSkill> dco_decode_list_ffi_skill(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_ffi_skill).toList();
   }
 
   @protected
@@ -5489,6 +7559,12 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  Uint32List dco_decode_list_prim_u_32_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as Uint32List;
+  }
+
+  @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as List<int>;
@@ -5498,6 +7574,12 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as Uint8List;
+  }
+
+  @protected
+  List<(String, String)> dco_decode_list_record_string_string(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_record_string_string).toList();
   }
 
   @protected
@@ -5535,6 +7617,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  FfiRawExchange? dco_decode_opt_box_autoadd_ffi_raw_exchange(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_ffi_raw_exchange(raw);
+  }
+
+  @protected
+  FfiThreadGoal? dco_decode_opt_box_autoadd_ffi_thread_goal(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_ffi_thread_goal(raw);
+  }
+
+  @protected
   FfiWorkspaceHooksStatus?
   dco_decode_opt_box_autoadd_ffi_workspace_hooks_status(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
@@ -5565,6 +7659,16 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   Uint8List? dco_decode_opt_list_prim_u_8_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_list_prim_u_8_strict(raw);
+  }
+
+  @protected
+  (String, String) dco_decode_record_string_string(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2) {
+      throw Exception('Expected 2 elements, got ${arr.length}');
+    }
+    return (dco_decode_String(arr[0]), dco_decode_String(arr[1]));
   }
 
   @protected
@@ -5664,6 +7768,28 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  FfiProject sse_decode_box_autoadd_ffi_project(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_ffi_project(deserializer));
+  }
+
+  @protected
+  FfiRawExchange sse_decode_box_autoadd_ffi_raw_exchange(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_ffi_raw_exchange(deserializer));
+  }
+
+  @protected
+  FfiThreadGoal sse_decode_box_autoadd_ffi_thread_goal(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_ffi_thread_goal(deserializer));
+  }
+
+  @protected
   FfiUpdateCheckResult sse_decode_box_autoadd_ffi_update_check_result(
     SseDeserializer deserializer,
   ) {
@@ -5750,7 +7876,6 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     );
     var var_walletLocalFirst = sse_decode_bool(deserializer);
     var var_providerStatelessDefault = sse_decode_bool(deserializer);
-    var var_fontScaleBps = sse_decode_u_32(deserializer);
     var var_fontSizePx = sse_decode_u_32(deserializer);
     var var_lineHeightBps = sse_decode_u_32(deserializer);
     var var_readingWidthPx = sse_decode_u_32(deserializer);
@@ -5781,6 +7906,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     var var_codeWrapMode = sse_decode_String(deserializer);
     var var_pricingAutoRefresh = sse_decode_bool(deserializer);
     var var_userDisplayName = sse_decode_String(deserializer);
+    var var_autoCompactAtPercent = sse_decode_u_8(deserializer);
     return FfiAppSettings(
       theme: var_theme,
       layoutMode: var_layoutMode,
@@ -5789,7 +7915,6 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       walletDailyCeilingMicros: var_walletDailyCeilingMicros,
       walletLocalFirst: var_walletLocalFirst,
       providerStatelessDefault: var_providerStatelessDefault,
-      fontScaleBps: var_fontScaleBps,
       fontSizePx: var_fontSizePx,
       lineHeightBps: var_lineHeightBps,
       readingWidthPx: var_readingWidthPx,
@@ -5820,6 +7945,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       codeWrapMode: var_codeWrapMode,
       pricingAutoRefresh: var_pricingAutoRefresh,
       userDisplayName: var_userDisplayName,
+      autoCompactAtPercent: var_autoCompactAtPercent,
     );
   }
 
@@ -5876,6 +8002,40 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  FfiChapterSummary sse_decode_ffi_chapter_summary(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_eraSummary = sse_decode_String(deserializer);
+    var var_contradictions = sse_decode_list_String(deserializer);
+    return FfiChapterSummary(
+      eraSummary: var_eraSummary,
+      contradictions: var_contradictions,
+    );
+  }
+
+  @protected
+  FfiChatFile sse_decode_ffi_chat_file(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_nodeId = sse_decode_String(deserializer);
+    var var_fromUser = sse_decode_bool(deserializer);
+    var var_name = sse_decode_String(deserializer);
+    var var_mimeType = sse_decode_String(deserializer);
+    var var_sizeBytes = sse_decode_u_64(deserializer);
+    var var_blobRelPath = sse_decode_String(deserializer);
+    var var_createdAtMs = sse_decode_i_64(deserializer);
+    return FfiChatFile(
+      nodeId: var_nodeId,
+      fromUser: var_fromUser,
+      name: var_name,
+      mimeType: var_mimeType,
+      sizeBytes: var_sizeBytes,
+      blobRelPath: var_blobRelPath,
+      createdAtMs: var_createdAtMs,
+    );
+  }
+
+  @protected
   FfiCheckpoint sse_decode_ffi_checkpoint(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_id = sse_decode_String(deserializer);
@@ -5892,6 +8052,16 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       afterBlake3: var_afterBlake3,
       createdAtMs: var_createdAtMs,
     );
+  }
+
+  @protected
+  FfiClipboardAttachments sse_decode_ffi_clipboard_attachments(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_files = sse_decode_list_String(deserializer);
+    var var_png = sse_decode_opt_list_prim_u_8_strict(deserializer);
+    return FfiClipboardAttachments(files: var_files, png: var_png);
   }
 
   @protected
@@ -6067,6 +8237,27 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  FfiInspectedRequest sse_decode_ffi_inspected_request(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_method = sse_decode_String(deserializer);
+    var var_url = sse_decode_String(deserializer);
+    var var_dialect = sse_decode_String(deserializer);
+    var var_model = sse_decode_String(deserializer);
+    var var_headers = sse_decode_list_record_string_string(deserializer);
+    var var_bodyJson = sse_decode_String(deserializer);
+    return FfiInspectedRequest(
+      method: var_method,
+      url: var_url,
+      dialect: var_dialect,
+      model: var_model,
+      headers: var_headers,
+      bodyJson: var_bodyJson,
+    );
+  }
+
+  @protected
   FfiMcpServerUsage sse_decode_ffi_mcp_server_usage(
     SseDeserializer deserializer,
   ) {
@@ -6129,14 +8320,30 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     var var_cachedInputPerMtokMicros = sse_decode_opt_box_autoadd_i_64(
       deserializer,
     );
+    var var_cacheWritePerMtokMicros = sse_decode_opt_box_autoadd_i_64(
+      deserializer,
+    );
+    var var_cacheWrite1HPerMtokMicros = sse_decode_opt_box_autoadd_i_64(
+      deserializer,
+    );
     var var_reasoning = sse_decode_opt_box_autoadd_bool(deserializer);
+    var var_writesText = sse_decode_bool(deserializer);
+    var var_aspectRatios = sse_decode_list_String(deserializer);
+    var var_resolutions = sse_decode_list_String(deserializer);
+    var var_durationsS = sse_decode_list_prim_u_32_strict(deserializer);
     return FfiModelCatalogInfo(
       contextWindow: var_contextWindow,
       maxOutputTokens: var_maxOutputTokens,
       inputPerMtokMicros: var_inputPerMtokMicros,
       outputPerMtokMicros: var_outputPerMtokMicros,
       cachedInputPerMtokMicros: var_cachedInputPerMtokMicros,
+      cacheWritePerMtokMicros: var_cacheWritePerMtokMicros,
+      cacheWrite1HPerMtokMicros: var_cacheWrite1HPerMtokMicros,
       reasoning: var_reasoning,
+      writesText: var_writesText,
+      aspectRatios: var_aspectRatios,
+      resolutions: var_resolutions,
+      durationsS: var_durationsS,
     );
   }
 
@@ -6208,6 +8415,23 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  FfiProject sse_decode_ffi_project(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_name = sse_decode_String(deserializer);
+    var var_folderPath = sse_decode_String(deserializer);
+    var var_instructions = sse_decode_String(deserializer);
+    var var_createdAtMs = sse_decode_i_64(deserializer);
+    return FfiProject(
+      id: var_id,
+      name: var_name,
+      folderPath: var_folderPath,
+      instructions: var_instructions,
+      createdAtMs: var_createdAtMs,
+    );
+  }
+
+  @protected
   FfiProviderModelInfo sse_decode_ffi_provider_model_info(
     SseDeserializer deserializer,
   ) {
@@ -6257,6 +8481,38 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  FfiPurposeUsage sse_decode_ffi_purpose_usage(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_purpose = sse_decode_String(deserializer);
+    var var_requests = sse_decode_u_64(deserializer);
+    var var_inputTokens = sse_decode_u_64(deserializer);
+    var var_outputTokens = sse_decode_u_64(deserializer);
+    var var_costMicros = sse_decode_i_64(deserializer);
+    return FfiPurposeUsage(
+      purpose: var_purpose,
+      requests: var_requests,
+      inputTokens: var_inputTokens,
+      outputTokens: var_outputTokens,
+      costMicros: var_costMicros,
+    );
+  }
+
+  @protected
+  FfiRawExchange sse_decode_ffi_raw_exchange(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_url = sse_decode_String(deserializer);
+    var var_requestBody = sse_decode_String(deserializer);
+    var var_response = sse_decode_String(deserializer);
+    var var_truncated = sse_decode_bool(deserializer);
+    return FfiRawExchange(
+      url: var_url,
+      requestBody: var_requestBody,
+      response: var_response,
+      truncated: var_truncated,
+    );
+  }
+
+  @protected
   FfiResolvedEndpoint sse_decode_ffi_resolved_endpoint(
     SseDeserializer deserializer,
   ) {
@@ -6280,6 +8536,19 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       role: var_role,
       snippet: var_snippet,
       createdAtMs: var_createdAtMs,
+    );
+  }
+
+  @protected
+  FfiSkill sse_decode_ffi_skill(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_name = sse_decode_String(deserializer);
+    var var_description = sse_decode_String(deserializer);
+    var var_path = sse_decode_String(deserializer);
+    return FfiSkill(
+      name: var_name,
+      description: var_description,
+      path: var_path,
     );
   }
 
@@ -6343,6 +8612,19 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       threadCount: var_threadCount,
       nodeCount: var_nodeCount,
       activeRuns: var_activeRuns,
+    );
+  }
+
+  @protected
+  FfiThreadGoal sse_decode_ffi_thread_goal(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_objective = sse_decode_String(deserializer);
+    var var_completed = sse_decode_bool(deserializer);
+    var var_summary = sse_decode_String(deserializer);
+    return FfiThreadGoal(
+      objective: var_objective,
+      completed: var_completed,
+      summary: var_summary,
     );
   }
 
@@ -6507,6 +8789,20 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  List<FfiChatFile> sse_decode_list_ffi_chat_file(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <FfiChatFile>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_ffi_chat_file(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<FfiCheckpoint> sse_decode_list_ffi_checkpoint(
     SseDeserializer deserializer,
   ) {
@@ -6645,6 +8941,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  List<FfiProject> sse_decode_list_ffi_project(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <FfiProject>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_ffi_project(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<FfiProviderModelInfo> sse_decode_list_ffi_provider_model_info(
     SseDeserializer deserializer,
   ) {
@@ -6673,6 +8981,20 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  List<FfiPurposeUsage> sse_decode_list_ffi_purpose_usage(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <FfiPurposeUsage>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_ffi_purpose_usage(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<FfiSearchHit> sse_decode_list_ffi_search_hit(
     SseDeserializer deserializer,
   ) {
@@ -6682,6 +9004,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     var ans_ = <FfiSearchHit>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_ffi_search_hit(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<FfiSkill> sse_decode_list_ffi_skill(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <FfiSkill>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_ffi_skill(deserializer));
     }
     return ans_;
   }
@@ -6743,6 +9077,13 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getUint32List(len_);
+  }
+
+  @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
@@ -6754,6 +9095,20 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
     return deserializer.buffer.getUint8List(len_);
+  }
+
+  @protected
+  List<(String, String)> sse_decode_list_record_string_string(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <(String, String)>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_record_string_string(deserializer));
+    }
+    return ans_;
   }
 
   @protected
@@ -6818,6 +9173,32 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  FfiRawExchange? sse_decode_opt_box_autoadd_ffi_raw_exchange(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_ffi_raw_exchange(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  FfiThreadGoal? sse_decode_opt_box_autoadd_ffi_thread_goal(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_ffi_thread_goal(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   FfiWorkspaceHooksStatus?
   sse_decode_opt_box_autoadd_ffi_workspace_hooks_status(
     SseDeserializer deserializer,
@@ -6873,6 +9254,16 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     } else {
       return null;
     }
+  }
+
+  @protected
+  (String, String) sse_decode_record_string_string(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_field0 = sse_decode_String(deserializer);
+    var var_field1 = sse_decode_String(deserializer);
+    return (var_field0, var_field1);
   }
 
   @protected
@@ -6994,6 +9385,33 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  void sse_encode_box_autoadd_ffi_project(
+    FfiProject self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_ffi_project(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_ffi_raw_exchange(
+    FfiRawExchange self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_ffi_raw_exchange(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_ffi_thread_goal(
+    FfiThreadGoal self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_ffi_thread_goal(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_ffi_update_check_result(
     FfiUpdateCheckResult self,
     SseSerializer serializer,
@@ -7069,7 +9487,6 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     sse_encode_opt_box_autoadd_i_64(self.walletDailyCeilingMicros, serializer);
     sse_encode_bool(self.walletLocalFirst, serializer);
     sse_encode_bool(self.providerStatelessDefault, serializer);
-    sse_encode_u_32(self.fontScaleBps, serializer);
     sse_encode_u_32(self.fontSizePx, serializer);
     sse_encode_u_32(self.lineHeightBps, serializer);
     sse_encode_u_32(self.readingWidthPx, serializer);
@@ -7100,6 +9517,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     sse_encode_String(self.codeWrapMode, serializer);
     sse_encode_bool(self.pricingAutoRefresh, serializer);
     sse_encode_String(self.userDisplayName, serializer);
+    sse_encode_u_8(self.autoCompactAtPercent, serializer);
   }
 
   @protected
@@ -7136,6 +9554,28 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  void sse_encode_ffi_chapter_summary(
+    FfiChapterSummary self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.eraSummary, serializer);
+    sse_encode_list_String(self.contradictions, serializer);
+  }
+
+  @protected
+  void sse_encode_ffi_chat_file(FfiChatFile self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.nodeId, serializer);
+    sse_encode_bool(self.fromUser, serializer);
+    sse_encode_String(self.name, serializer);
+    sse_encode_String(self.mimeType, serializer);
+    sse_encode_u_64(self.sizeBytes, serializer);
+    sse_encode_String(self.blobRelPath, serializer);
+    sse_encode_i_64(self.createdAtMs, serializer);
+  }
+
+  @protected
   void sse_encode_ffi_checkpoint(FfiCheckpoint self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.id, serializer);
@@ -7144,6 +9584,16 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     sse_encode_String(self.beforeBlake3, serializer);
     sse_encode_String(self.afterBlake3, serializer);
     sse_encode_i_64(self.createdAtMs, serializer);
+  }
+
+  @protected
+  void sse_encode_ffi_clipboard_attachments(
+    FfiClipboardAttachments self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_String(self.files, serializer);
+    sse_encode_opt_list_prim_u_8_strict(self.png, serializer);
   }
 
   @protected
@@ -7261,6 +9711,20 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  void sse_encode_ffi_inspected_request(
+    FfiInspectedRequest self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.method, serializer);
+    sse_encode_String(self.url, serializer);
+    sse_encode_String(self.dialect, serializer);
+    sse_encode_String(self.model, serializer);
+    sse_encode_list_record_string_string(self.headers, serializer);
+    sse_encode_String(self.bodyJson, serializer);
+  }
+
+  @protected
   void sse_encode_ffi_mcp_server_usage(
     FfiMcpServerUsage self,
     SseSerializer serializer,
@@ -7309,7 +9773,13 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     sse_encode_opt_box_autoadd_i_64(self.inputPerMtokMicros, serializer);
     sse_encode_opt_box_autoadd_i_64(self.outputPerMtokMicros, serializer);
     sse_encode_opt_box_autoadd_i_64(self.cachedInputPerMtokMicros, serializer);
+    sse_encode_opt_box_autoadd_i_64(self.cacheWritePerMtokMicros, serializer);
+    sse_encode_opt_box_autoadd_i_64(self.cacheWrite1HPerMtokMicros, serializer);
     sse_encode_opt_box_autoadd_bool(self.reasoning, serializer);
+    sse_encode_bool(self.writesText, serializer);
+    sse_encode_list_String(self.aspectRatios, serializer);
+    sse_encode_list_String(self.resolutions, serializer);
+    sse_encode_list_prim_u_32_strict(self.durationsS, serializer);
   }
 
   @protected
@@ -7358,6 +9828,16 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  void sse_encode_ffi_project(FfiProject self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.name, serializer);
+    sse_encode_String(self.folderPath, serializer);
+    sse_encode_String(self.instructions, serializer);
+    sse_encode_i_64(self.createdAtMs, serializer);
+  }
+
+  @protected
   void sse_encode_ffi_provider_model_info(
     FfiProviderModelInfo self,
     SseSerializer serializer,
@@ -7391,6 +9871,31 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  void sse_encode_ffi_purpose_usage(
+    FfiPurposeUsage self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.purpose, serializer);
+    sse_encode_u_64(self.requests, serializer);
+    sse_encode_u_64(self.inputTokens, serializer);
+    sse_encode_u_64(self.outputTokens, serializer);
+    sse_encode_i_64(self.costMicros, serializer);
+  }
+
+  @protected
+  void sse_encode_ffi_raw_exchange(
+    FfiRawExchange self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.url, serializer);
+    sse_encode_String(self.requestBody, serializer);
+    sse_encode_String(self.response, serializer);
+    sse_encode_bool(self.truncated, serializer);
+  }
+
+  @protected
   void sse_encode_ffi_resolved_endpoint(
     FfiResolvedEndpoint self,
     SseSerializer serializer,
@@ -7408,6 +9913,14 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     sse_encode_String(self.role, serializer);
     sse_encode_String(self.snippet, serializer);
     sse_encode_i_64(self.createdAtMs, serializer);
+  }
+
+  @protected
+  void sse_encode_ffi_skill(FfiSkill self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.name, serializer);
+    sse_encode_String(self.description, serializer);
+    sse_encode_String(self.path, serializer);
   }
 
   @protected
@@ -7451,6 +9964,17 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     sse_encode_u_64(self.threadCount, serializer);
     sse_encode_u_64(self.nodeCount, serializer);
     sse_encode_u_32(self.activeRuns, serializer);
+  }
+
+  @protected
+  void sse_encode_ffi_thread_goal(
+    FfiThreadGoal self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.objective, serializer);
+    sse_encode_bool(self.completed, serializer);
+    sse_encode_String(self.summary, serializer);
   }
 
   @protected
@@ -7567,6 +10091,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_ffi_attachment_input(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_ffi_chat_file(
+    List<FfiChatFile> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_ffi_chat_file(item, serializer);
     }
   }
 
@@ -7691,6 +10227,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  void sse_encode_list_ffi_project(
+    List<FfiProject> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_ffi_project(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_ffi_provider_model_info(
     List<FfiProviderModelInfo> self,
     SseSerializer serializer,
@@ -7715,6 +10263,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  void sse_encode_list_ffi_purpose_usage(
+    List<FfiPurposeUsage> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_ffi_purpose_usage(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_ffi_search_hit(
     List<FfiSearchHit> self,
     SseSerializer serializer,
@@ -7723,6 +10283,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_ffi_search_hit(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_ffi_skill(
+    List<FfiSkill> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_ffi_skill(item, serializer);
     }
   }
 
@@ -7775,6 +10347,16 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  void sse_encode_list_prim_u_32_strict(
+    Uint32List self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putUint32List(self);
+  }
+
+  @protected
   void sse_encode_list_prim_u_8_loose(
     List<int> self,
     SseSerializer serializer,
@@ -7794,6 +10376,18 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     serializer.buffer.putUint8List(self);
+  }
+
+  @protected
+  void sse_encode_list_record_string_string(
+    List<(String, String)> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_record_string_string(item, serializer);
+    }
   }
 
   @protected
@@ -7856,6 +10450,32 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_ffi_raw_exchange(
+    FfiRawExchange? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_ffi_raw_exchange(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_ffi_thread_goal(
+    FfiThreadGoal? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_ffi_thread_goal(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_ffi_workspace_hooks_status(
     FfiWorkspaceHooksStatus? self,
     SseSerializer serializer,
@@ -7912,6 +10532,16 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     if (self != null) {
       sse_encode_list_prim_u_8_strict(self, serializer);
     }
+  }
+
+  @protected
+  void sse_encode_record_string_string(
+    (String, String) self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.$1, serializer);
+    sse_encode_String(self.$2, serializer);
   }
 
   @protected

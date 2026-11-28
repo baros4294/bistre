@@ -1,6 +1,6 @@
 //! FFI DTOs and entrypoints for multi-key vault reveal, catalog metadata lookup, native
 //! multimodal/Office attachments, immediate steering, storage file manager, export/import,
-//! Live TTS, and Live Voice sessions.
+//! Live TTS, Live Voice sessions, and spend per purpose.
 
 use bistre_protocol::AttachmentInput;
 use flutter_rust_bridge::frb;
@@ -17,7 +17,17 @@ pub struct FfiModelCatalogInfo {
     pub input_per_mtok_micros: Option<i64>,
     pub output_per_mtok_micros: Option<i64>,
     pub cached_input_per_mtok_micros: Option<i64>,
+    pub cache_write_per_mtok_micros: Option<i64>,
+    pub cache_write_1h_per_mtok_micros: Option<i64>,
     pub reasoning: Option<bool>,
+    /// False for a model that only draws, films, or speaks (it has no thinking setting).
+    pub writes_text: bool,
+    /// Picture shapes the model offers (`16:9`); empty leaves the shape to the provider.
+    pub aspect_ratios: Vec<String>,
+    /// Output sizes the model offers (`2K`, `720p`).
+    pub resolutions: Vec<String>,
+    /// Video lengths the model offers, in seconds.
+    pub durations_s: Vec<u32>,
 }
 
 /// User-selected file attachment passed from Flutter composer to Rust core.
@@ -40,6 +50,48 @@ pub struct FfiStorageFileEntry {
     pub deletable: bool,
 }
 
+/// Settled spend for one purpose (`chat`, `helper`, `title`, `summary`, `translation`, `voice`).
+#[frb]
+#[derive(Debug, Clone)]
+pub struct FfiPurposeUsage {
+    pub purpose: String,
+    pub requests: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cost_micros: i64,
+}
+
+/// Settled spend of one chat in micro-USD, every purpose and all time.
+#[frb]
+pub async fn get_thread_spend_micros(thread_id: String) -> Result<i64, String> {
+    Ok(current_engine()?
+        .thread_spend_micros(thread_id)
+        .await
+        .map_err(ffi_err)?
+        .as_micros())
+}
+
+/// Settled spend since `since_unix_ms`, one entry per purpose with any use, chat first.
+#[frb]
+pub async fn get_wallet_usage_by_purpose(
+    since_unix_ms: i64,
+) -> Result<Vec<FfiPurposeUsage>, String> {
+    let usage = current_engine()?
+        .wallet_usage_by_purpose(since_unix_ms)
+        .await
+        .map_err(ffi_err)?;
+    Ok(usage
+        .into_iter()
+        .map(|u| FfiPurposeUsage {
+            purpose: u.purpose.as_str().to_owned(),
+            requests: u.requests,
+            input_tokens: u.input_tokens,
+            output_tokens: u.output_tokens,
+            cost_micros: u.cost.as_micros(),
+        })
+        .collect())
+}
+
 /// Returns decrypted API keys stored in the OS vault for `provider_id` in ring order.
 #[frb]
 pub async fn get_provider_api_keys(provider_id: String) -> Result<Vec<String>, String> {
@@ -49,13 +101,14 @@ pub async fn get_provider_api_keys(provider_id: String) -> Result<Vec<String>, S
         .map_err(ffi_err)
 }
 
-/// Looks up live pricing & context limit metadata for `model_id` from the cached registry.
+/// Live prices and limits of `model_id` as `provider_id` serves it, from the cached catalog.
 #[frb]
 pub async fn lookup_model_catalog_info(
+    provider_id: String,
     model_id: String,
 ) -> Result<Option<FfiModelCatalogInfo>, String> {
     let info = current_engine()?
-        .lookup_model_catalog_info(model_id)
+        .lookup_model_catalog_info(provider_id, model_id)
         .await
         .map_err(ffi_err)?;
     Ok(info.map(|c| FfiModelCatalogInfo {
@@ -64,7 +117,13 @@ pub async fn lookup_model_catalog_info(
         input_per_mtok_micros: c.input_per_mtok_micros,
         output_per_mtok_micros: c.output_per_mtok_micros,
         cached_input_per_mtok_micros: c.cached_input_per_mtok_micros,
+        cache_write_per_mtok_micros: c.cache_write_per_mtok_micros,
+        cache_write_1h_per_mtok_micros: c.cache_write_1h_per_mtok_micros,
         reasoning: c.reasoning,
+        writes_text: c.writes_text,
+        aspect_ratios: c.aspect_ratios,
+        resolutions: c.resolutions,
+        durations_s: c.durations_s,
     }))
 }
 
@@ -102,15 +161,6 @@ pub async fn steer_active_run_now(
         .await
         .map_err(ffi_err)?;
     Ok(map_node(node))
-}
-
-/// Exports all chats and message trees as portable JSON.
-#[frb]
-pub async fn export_all_threads_json() -> Result<String, String> {
-    current_engine()?
-        .export_all_threads_json()
-        .await
-        .map_err(ffi_err)
 }
 
 /// Imports threads from an exported chat JSON file, returning the number of imported threads.
@@ -237,6 +287,61 @@ pub async fn send_live_voice_text(session_id: String, text: String) -> Result<()
 pub async fn stop_live_voice_session(session_id: String) -> Result<(), String> {
     current_engine()?
         .stop_live_voice_session(session_id)
+        .await
+        .map_err(ffi_err)
+}
+
+/// Linux folder picker (`zenity`, then `kdialog`), run contained by core; `None` when cancelled
+/// or when no picker is installed.
+#[frb]
+pub async fn linux_pick_folder(title: String) -> Result<Option<String>, String> {
+    bistre_core::desktop_helpers::pick_folder(&title)
+        .await
+        .map_err(ffi_err)
+}
+
+/// The files or the picture copied to the Linux clipboard.
+#[frb]
+#[derive(Debug, Clone)]
+pub struct FfiClipboardAttachments {
+    pub files: Vec<String>,
+    pub png: Option<Vec<u8>>,
+}
+
+/// The files or the picture on the Linux clipboard (`wl-paste` or `xclip`, run contained by
+/// core); none when no clipboard tool is installed.
+#[frb]
+pub async fn linux_clipboard_attachments() -> Result<FfiClipboardAttachments, String> {
+    let got = bistre_core::desktop_helpers::clipboard_attachments()
+        .await
+        .map_err(ffi_err)?;
+    Ok(FfiClipboardAttachments {
+        files: got.files,
+        png: got.png,
+    })
+}
+
+/// Linux desktop notification (`notify-send`), run contained by core.
+#[frb]
+pub async fn linux_notify(title: String, body: String, play_sound: bool) -> Result<(), String> {
+    bistre_core::desktop_helpers::notify(&title, &body, play_sound)
+        .await
+        .map_err(ffi_err)
+}
+
+/// Opens an existing local file in its default Linux app (`xdg-open`), run contained by core;
+/// executables, scripts, and network paths are refused.
+#[frb]
+pub async fn linux_open_file(path: String) -> Result<(), String> {
+    bistre_core::desktop_helpers::open_file(&path)
+        .await
+        .map_err(ffi_err)
+}
+
+/// Opens an existing local folder in the Linux file manager (`xdg-open`), run contained by core.
+#[frb]
+pub async fn linux_open_folder(path: String) -> Result<(), String> {
+    bistre_core::desktop_helpers::open_folder(&path)
         .await
         .map_err(ffi_err)
 }

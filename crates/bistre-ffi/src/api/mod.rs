@@ -18,12 +18,35 @@ use crate::dto_mapping::{
 };
 use crate::frb_generated::StreamSink;
 
+pub mod chat;
 pub mod harness;
+pub mod library;
 pub mod media;
+pub mod projects;
+pub mod providers;
+pub mod runs;
 pub mod story;
 
 static ENGINE: LazyLock<RwLock<Option<Arc<dyn EngineClient>>>> =
     LazyLock::new(|| RwLock::new(None));
+
+/// The data folder's writer lock while the engine runs in this process on desktop; dropped
+/// only after that engine has shut down.
+static WRITER_LOCK: LazyLock<std::sync::Mutex<Option<bistre_core::daemon_launch::WriterLock>>> =
+    LazyLock::new(|| std::sync::Mutex::new(None));
+
+/// Shuts down the current engine, then releases its writer lock.
+async fn retire_engine() -> Result<(), String> {
+    let previous = ENGINE
+        .write()
+        .map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())?
+        .take();
+    if let Some(old) = previous {
+        old.shutdown().await.map_err(crate::dto_mapping::ffi_err)?;
+    }
+    drop(bistre_protocol::lock_or_recover(&WRITER_LOCK, "writer_lock").take());
+    Ok(())
+}
 
 pub(crate) fn current_engine() -> Result<Arc<dyn EngineClient>, String> {
     let guard = ENGINE
@@ -109,7 +132,6 @@ pub struct FfiAppSettings {
     pub wallet_daily_ceiling_micros: Option<i64>,
     pub wallet_local_first: bool,
     pub provider_stateless_default: bool,
-    pub font_scale_bps: u32,
     pub font_size_px: u32,
     pub line_height_bps: u32,
     pub reading_width_px: u32,
@@ -140,6 +162,7 @@ pub struct FfiAppSettings {
     pub code_wrap_mode: String,
     pub pricing_auto_refresh: bool,
     pub user_display_name: String,
+    pub auto_compact_at_percent: u8,
 }
 
 /// Thin FFI DTO mirror of `ThreadSummary`.
@@ -175,11 +198,11 @@ pub struct FfiNodeRecord {
     pub content: String,
     pub provider_meta_json: Option<String>,
     pub created_at_ms: i64,
-    /// Files sent with this message (P1), parsed once in core from its metadata.
+    /// Files sent with this message, parsed once in core from its metadata.
     pub attachments: Vec<FfiNodeAttachment>,
 }
 
-/// One file sent with a message (P1). `blob_rel_path` is relative to the data directory.
+/// One file sent with a message. `blob_rel_path` is relative to the data directory.
 #[frb]
 #[derive(Debug, Clone)]
 pub struct FfiNodeAttachment {
@@ -343,28 +366,19 @@ impl FfiEngineEvent {
     }
 }
 
-/// Initializes the in-process Rust core engine pointing at `data_dir`. `vault_key` is the
-/// 32-byte Android Keystore-unwrapped vault data key (Android only); pass `None` elsewhere.
+/// Initializes the Rust core engine for `data_dir`. On Windows and Linux that is the data
+/// folder's `bistre-daemon` (started when it is not running), or the engine in this process
+/// when no daemon is installed. `vault_key` is the 32-byte Android Keystore-unwrapped vault
+/// data key (Android only); pass `None` elsewhere.
 #[frb]
 pub async fn init_runtime(
     data_dir: String,
     vault_key: Option<Vec<u8>>,
 ) -> Result<FfiHealthSnapshot, String> {
-    // Android hands over its Keystore-unwrapped data key; other platforms resolve their own.
-    let key = match vault_key.map(zeroize::Zeroizing::new) {
-        Some(bytes) => Some(VaultKey::from_slice(&bytes).map_err(crate::dto_mapping::ffi_err)?),
-        None => bistre_core::vault_key::resolve_vault_key(std::path::Path::new(&data_dir)).await,
-    };
     // Re-initialising (hot restart, data-dir switch) must never leave two engines, and so two
-    // SQLite writers, alive: take and shut down the previous engine before opening the next.
-    let previous = ENGINE
-        .write()
-        .map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())?
-        .take();
-    if let Some(old) = previous {
-        old.shutdown().await.map_err(crate::dto_mapping::ffi_err)?;
-    }
-    let engine = InProcessEngine::open(data_dir, key).map_err(crate::dto_mapping::ffi_err)?;
+    // SQLite writers, alive: shut down the previous engine before opening the next.
+    retire_engine().await?;
+    let engine = open_engine(&data_dir, vault_key).await?;
     {
         let mut guard = ENGINE
             .write()
@@ -375,6 +389,38 @@ pub async fn init_runtime(
     Ok(map_health(snap))
 }
 
+/// Android hands over its Keystore-unwrapped data key and runs the engine in this process.
+async fn open_engine(
+    data_dir: &str,
+    vault_key: Option<Vec<u8>>,
+) -> Result<Arc<dyn EngineClient>, String> {
+    if let Some(bytes) = vault_key.map(zeroize::Zeroizing::new) {
+        let key = VaultKey::from_slice(&bytes).map_err(crate::dto_mapping::ffi_err)?;
+        let engine: Arc<dyn EngineClient> =
+            InProcessEngine::open(data_dir, Some(key)).map_err(crate::dto_mapping::ffi_err)?;
+        return Ok(engine);
+    }
+    #[cfg(any(windows, target_os = "linux"))]
+    {
+        let desktop = bistre_core::daemon_launch::open_desktop_engine(
+            std::path::Path::new(data_dir),
+            bistre_core::daemon_launch::bundled_daemon_exe(),
+        )
+        .await
+        .map_err(crate::dto_mapping::ffi_err)?;
+        let (engine, lock) = desktop.into_parts();
+        *bistre_protocol::lock_or_recover(&WRITER_LOCK, "writer_lock") = lock;
+        Ok(engine)
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    {
+        let key = bistre_core::vault_key::resolve_vault_key(std::path::Path::new(data_dir)).await;
+        let engine: Arc<dyn EngineClient> =
+            InProcessEngine::open(data_dir, key).map_err(crate::dto_mapping::ffi_err)?;
+        Ok(engine)
+    }
+}
+
 /// Returns a live engine & SQLite WAL health snapshot.
 #[frb]
 pub async fn get_health() -> Result<FfiHealthSnapshot, String> {
@@ -383,295 +429,11 @@ pub async fn get_health() -> Result<FfiHealthSnapshot, String> {
     Ok(map_health(snap))
 }
 
-/// Lists built-in (Big 3) and user-added custom provider profiles.
-#[frb]
-pub async fn list_providers() -> Result<Vec<FfiProviderProfile>, String> {
-    let engine = current_engine()?;
-    let list = engine
-        .list_providers()
-        .await
-        .map_err(crate::dto_mapping::ffi_err)?;
-    Ok(list.into_iter().map(map_provider).collect())
-}
-
-/// The facts the provider settings show for one API format (P7): one source, in core.
-#[derive(Debug, Clone)]
-pub struct FfiDialectDescriptor {
-    pub id: String,
-    pub default_base_url: String,
-    pub endpoint_path: String,
-    pub requires_api_key: bool,
-}
-
-/// Every API format with its default server URL and chat endpoint path.
-#[frb(sync)]
-pub fn provider_dialect_descriptors() -> Vec<FfiDialectDescriptor> {
-    ProviderDialect::ALL
-        .into_iter()
-        .map(|d| FfiDialectDescriptor {
-            id: d.as_str().to_owned(),
-            default_base_url: d.default_base_url().to_owned(),
-            endpoint_path: d.default_endpoint_path().to_owned(),
-            requires_api_key: d.requires_api_key(),
-        })
-        .collect()
-}
-
-/// The chat and model-list URLs a provider with this format and server URL is called at (P8).
-#[derive(Debug, Clone)]
-pub struct FfiResolvedEndpoint {
-    pub chat_url: String,
-    pub models_url: String,
-}
-
-/// Resolves a provider's URLs exactly as requests build them (empty server URL: the default).
-#[frb(sync)]
-pub fn resolve_provider_endpoint(dialect: String, base_url: String) -> FfiResolvedEndpoint {
-    let r = bistre_core::credentials::resolve_endpoint(ProviderDialect::parse(&dialect), &base_url);
-    FfiResolvedEndpoint {
-        chat_url: r.chat_url,
-        models_url: r.models_url,
-    }
-}
-
-/// Updates non-secret provider metadata (name, base URL, default model, enabled, cache toggle, icon).
-#[frb]
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Flat FRB v2 boundary avoids deeply nested patch structs."
-)]
-pub async fn update_provider(
-    provider_id: String,
-    name: Option<String>,
-    base_url: Option<String>,
-    default_model: Option<String>,
-    is_enabled: Option<bool>,
-    use_server_state_cache: Option<bool>,
-    icon_slug: Option<String>,
-    custom_icon_path: Option<String>,
-) -> Result<FfiProviderProfile, String> {
-    let engine = current_engine()?;
-    let updated = engine
-        .update_provider(
-            provider_id,
-            ProviderPatch {
-                name,
-                base_url,
-                default_model,
-                key_hint: None,
-                is_enabled,
-                use_server_state_cache,
-                icon_slug,
-                custom_icon_path,
-            },
-        )
-        .await
-        .map_err(crate::dto_mapping::ffi_err)?;
-    Ok(map_provider(updated))
-}
-
-/// Stores an API key strictly in the node-local OS `SecretVault` (Windows DPAPI / OS vault).
-#[frb]
-pub async fn set_provider_api_key(
-    provider_id: String,
-    api_key: String,
-) -> Result<FfiProviderProfile, String> {
-    let engine = current_engine()?;
-    let updated = engine
-        .set_provider_api_key(provider_id, api_key)
-        .await
-        .map_err(crate::dto_mapping::ffi_err)?;
-    Ok(map_provider(updated))
-}
-
-/// Removes a stored API key from the node-local `SecretVault`.
-#[frb]
-pub async fn clear_provider_api_key(provider_id: String) -> Result<FfiProviderProfile, String> {
-    let engine = current_engine()?;
-    let updated = engine
-        .clear_provider_api_key(provider_id)
-        .await
-        .map_err(crate::dto_mapping::ffi_err)?;
-    Ok(map_provider(updated))
-}
-
-/// Creates a provider of any supported dialect (`openai`, `google_gemini`, `anthropic`, `custom_openai`).
-#[frb]
-pub async fn create_provider(
-    name: String,
-    dialect: String,
-    base_url: String,
-    default_model: String,
-    icon_slug: String,
-    custom_icon_path: String,
-    api_key: Option<String>,
-) -> Result<FfiProviderProfile, String> {
-    let engine = current_engine()?;
-    let created = engine
-        .create_provider(
-            name,
-            ProviderDialect::parse(&dialect),
-            base_url,
-            default_model,
-            icon_slug,
-            custom_icon_path,
-            api_key,
-        )
-        .await
-        .map_err(crate::dto_mapping::ffi_err)?;
-    Ok(map_provider(created))
-}
-
-/// Adds a user-defined Custom OpenAI-Compatible provider profile.
-#[frb]
-pub async fn create_custom_provider(
-    name: String,
-    base_url: String,
-    default_model: String,
-    api_key: Option<String>,
-) -> Result<FfiProviderProfile, String> {
-    let engine = current_engine()?;
-    let created = engine
-        .create_custom_provider(name, base_url, default_model, api_key)
-        .await
-        .map_err(crate::dto_mapping::ffi_err)?;
-    Ok(map_provider(created))
-}
-
-/// Removes any provider profile and deletes its key from `SecretVault`.
-#[frb]
-pub async fn delete_provider(provider_id: String) -> Result<(), String> {
-    let engine = current_engine()?;
-    engine
-        .delete_provider(provider_id)
-        .await
-        .map_err(crate::dto_mapping::ffi_err)
-}
-
-/// Queries live models from the provider's `/models` endpoint (zero hardcoded model list).
-#[frb]
-pub async fn fetch_provider_models(
-    provider_id: String,
-) -> Result<Vec<FfiProviderModelInfo>, String> {
-    let engine = current_engine()?;
-    let list = engine
-        .fetch_provider_models(provider_id)
-        .await
-        .map_err(crate::dto_mapping::ffi_err)?;
-    Ok(list
-        .into_iter()
-        .map(|m| FfiProviderModelInfo {
-            id: m.id,
-            display_name: m.display_name,
-        })
-        .collect())
-}
-
-/// Lists built-in and custom assistants.
-#[frb]
-pub async fn list_assistants() -> Result<Vec<FfiAssistantRecord>, String> {
-    let engine = current_engine()?;
-    let list = engine
-        .list_assistants()
-        .await
-        .map_err(crate::dto_mapping::ffi_err)?;
-    Ok(list.into_iter().map(map_assistant).collect())
-}
-
-/// Creates a custom assistant persisted in local SQLite.
-#[frb]
-pub async fn create_assistant(
-    name: String,
-    role_subtitle: String,
-    system_prompt: String,
-    default_mode: String,
-    badge_code: String,
-) -> Result<FfiAssistantRecord, String> {
-    let engine = current_engine()?;
-    let created = engine
-        .create_assistant(
-            name,
-            role_subtitle,
-            system_prompt,
-            ThreadMode::parse(&default_mode),
-            badge_code,
-        )
-        .await
-        .map_err(crate::dto_mapping::ffi_err)?;
-    Ok(map_assistant(created))
-}
-
-/// Updates an assistant's profile, default provider/model, icon, and generation parameters in local SQLite.
-#[frb]
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Flat FRB v2 boundary avoids nested Option<Option<T>> codegen."
-)]
-pub async fn update_assistant(
-    assistant_id: String,
-    name: Option<String>,
-    role_subtitle: Option<String>,
-    system_prompt: Option<String>,
-    default_mode: Option<String>,
-    badge_code: Option<String>,
-    icon_slug: Option<String>,
-    default_provider_id: Option<String>,
-    default_model_id: Option<String>,
-    temperature_milli: Option<u32>,
-    clear_temperature: bool,
-    max_output_tokens: Option<u32>,
-    clear_max_output_tokens: bool,
-    top_p_milli: Option<u32>,
-    clear_top_p: bool,
-) -> Result<FfiAssistantRecord, String> {
-    let engine = current_engine()?;
-    let updated = engine
-        .update_assistant(
-            assistant_id,
-            AssistantPatch {
-                name,
-                role_subtitle,
-                system_prompt,
-                default_mode: default_mode.as_deref().map(ThreadMode::parse),
-                badge_code,
-                icon_slug,
-                default_provider_id,
-                default_model_id,
-                temperature_milli: if clear_temperature {
-                    Some(None)
-                } else {
-                    temperature_milli.map(Some)
-                },
-                max_output_tokens: if clear_max_output_tokens {
-                    Some(None)
-                } else {
-                    max_output_tokens.map(Some)
-                },
-                top_p_milli: if clear_top_p {
-                    Some(None)
-                } else {
-                    top_p_milli.map(Some)
-                },
-            },
-        )
-        .await
-        .map_err(crate::dto_mapping::ffi_err)?;
-    Ok(map_assistant(updated))
-}
-
-/// Deletes an assistant (at least one assistant always remains; threads repoint cleanly).
-#[frb]
-pub async fn delete_assistant(assistant_id: String) -> Result<(), String> {
-    let engine = current_engine()?;
-    engine
-        .delete_assistant(assistant_id)
-        .await
-        .map_err(crate::dto_mapping::ffi_err)
-}
-
-/// Creates a new conversation thread with optional topic and assistant binding.
+/// Creates a new conversation thread, in `project_id` when given, with optional topic and
+/// assistant binding.
 #[frb]
 pub async fn create_thread(
+    project_id: Option<String>,
     title: String,
     mode: String,
     topic: Option<String>,
@@ -679,7 +441,13 @@ pub async fn create_thread(
 ) -> Result<FfiThreadSummary, String> {
     let engine = current_engine()?;
     let thread = engine
-        .create_thread(None, title, ThreadMode::parse(&mode), topic, assistant_id)
+        .create_thread(
+            project_id,
+            title,
+            ThreadMode::parse(&mode),
+            topic,
+            assistant_id,
+        )
         .await
         .map_err(crate::dto_mapping::ffi_err)?;
     Ok(map_thread(thread))
@@ -845,6 +613,37 @@ pub async fn delete_node(thread_id: String, node_id: String) -> Result<(), Strin
         .map_err(crate::dto_mapping::ffi_err)
 }
 
+/// Copies the branch ending at `node_id` into a new chat and returns it.
+#[frb]
+pub async fn fork_thread(thread_id: String, node_id: String) -> Result<FfiThreadSummary, String> {
+    let engine = current_engine()?;
+    let thread = engine
+        .fork_thread(thread_id, node_id)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)?;
+    Ok(map_thread(thread))
+}
+
+/// Removes a message and every message after it.
+#[frb]
+pub async fn delete_from_node(thread_id: String, node_id: String) -> Result<(), String> {
+    let engine = current_engine()?;
+    engine
+        .delete_from_node(thread_id, node_id)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)
+}
+
+/// Removes every message of a chat and keeps the chat.
+#[frb]
+pub async fn clear_thread_messages(thread_id: String) -> Result<(), String> {
+    let engine = current_engine()?;
+    engine
+        .clear_thread_messages(thread_id)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)
+}
+
 /// Exports a thread cleanly as Markdown (`"markdown"`) or JSON (`"json"`).
 #[frb]
 pub async fn export_thread(thread_id: String, format: String) -> Result<String, String> {
@@ -894,22 +693,36 @@ pub async fn check_for_updates(
 pub async fn stage_update(check: FfiUpdateCheckResult) -> Result<String, String> {
     let engine = current_engine()?;
     engine
-        .stage_update(UpdateCheckResult {
-            current_version: check.current_version,
-            latest_version: check.latest_version,
-            update_available: check.update_available,
-            track: check.track,
-            ownership_mode: check.ownership_mode,
-            signature_verified: check.signature_verified,
-            active_runs_blocking: check.active_runs_blocking,
-            release_notes: check.release_notes,
-            download_url: check.download_url,
-            sha256_hex: check.sha256_hex,
-            download_size_bytes: check.download_size_bytes,
-            checked_at_ms: check.checked_at_ms,
-        })
+        .stage_update(map_ffi_update_check(check))
         .await
         .map_err(crate::dto_mapping::ffi_err)
+}
+
+/// Re-downloads, verifies SHA-256 offline, and stages the currently running version for reinstall.
+#[frb]
+pub async fn reinstall_update(check: FfiUpdateCheckResult) -> Result<String, String> {
+    let engine = current_engine()?;
+    engine
+        .reinstall_update(map_ffi_update_check(check))
+        .await
+        .map_err(crate::dto_mapping::ffi_err)
+}
+
+fn map_ffi_update_check(check: FfiUpdateCheckResult) -> UpdateCheckResult {
+    UpdateCheckResult {
+        current_version: check.current_version,
+        latest_version: check.latest_version,
+        update_available: check.update_available,
+        track: check.track,
+        ownership_mode: check.ownership_mode,
+        signature_verified: check.signature_verified,
+        active_runs_blocking: check.active_runs_blocking,
+        release_notes: check.release_notes,
+        download_url: check.download_url,
+        sha256_hex: check.sha256_hex,
+        download_size_bytes: check.download_size_bytes,
+        checked_at_ms: check.checked_at_ms,
+    }
 }
 
 /// Cancels any active streaming reply for `thread_id`.
@@ -991,7 +804,6 @@ pub async fn save_settings(settings: FfiAppSettings) -> Result<FfiAppSettings, S
                 .map(MoneyMicros::from_micros),
             wallet_local_first: settings.wallet_local_first,
             provider_stateless_default: settings.provider_stateless_default,
-            font_scale_bps: settings.font_scale_bps,
             font_size_px: settings.font_size_px,
             line_height_bps: settings.line_height_bps,
             reading_width_px: settings.reading_width_px,
@@ -1022,6 +834,7 @@ pub async fn save_settings(settings: FfiAppSettings) -> Result<FfiAppSettings, S
             code_wrap_mode: settings.code_wrap_mode,
             pricing_auto_refresh: settings.pricing_auto_refresh,
             user_display_name: settings.user_display_name,
+            auto_compact_at_percent: settings.auto_compact_at_percent,
         })
         .await
         .map_err(crate::dto_mapping::ffi_err)?;
@@ -1134,209 +947,6 @@ pub async fn subscribe_events(sink: StreamSink<FfiEngineEvent>) -> Result<(), St
     Ok(())
 }
 
-/// Lists durable long-horizon agent runs stored in SQLite WAL.
-#[frb]
-pub async fn list_agent_runs(
-    thread_id: Option<String>,
-    only_active: bool,
-    limit: u32,
-) -> Result<Vec<FfiAgentRunRecord>, String> {
-    let engine = current_engine()?;
-    let runs = engine
-        .list_agent_runs(thread_id, only_active, limit)
-        .await
-        .map_err(crate::dto_mapping::ffi_err)?;
-    Ok(runs.into_iter().map(map_agent_run).collect())
-}
-
-/// Queues a mid-stream user steering message for injection at the next step boundary without cancelling.
-#[frb]
-pub async fn enqueue_steering(
-    thread_id: String,
-    content: String,
-) -> Result<FfiSteeringMessage, String> {
-    let engine = current_engine()?;
-    let msg = engine
-        .enqueue_steering(thread_id, content)
-        .await
-        .map_err(crate::dto_mapping::ffi_err)?;
-    Ok(map_steering(msg))
-}
-
-/// Lists pending steering messages queued for `thread_id`.
-#[frb]
-pub async fn list_pending_steering(thread_id: String) -> Result<Vec<FfiSteeringMessage>, String> {
-    let engine = current_engine()?;
-    let items = engine
-        .list_pending_steering(thread_id)
-        .await
-        .map_err(crate::dto_mapping::ffi_err)?;
-    Ok(items.into_iter().map(map_steering).collect())
-}
-
-/// Removes a queued steering message before injection.
-#[frb]
-pub async fn delete_steering(steering_id: String) -> Result<(), String> {
-    let engine = current_engine()?;
-    engine
-        .delete_steering(steering_id)
-        .await
-        .map_err(crate::dto_mapping::ffi_err)
-}
-
-/// Returns live OS sleep-guard, daemon connection, and Android FGS status.
-#[frb]
-pub async fn power_guard_status() -> Result<FfiPowerGuardStatus, String> {
-    let engine = current_engine()?;
-    let status = engine
-        .power_guard_status()
-        .await
-        .map_err(crate::dto_mapping::ffi_err)?;
-    Ok(map_power_status(status))
-}
-
-/// Delivers an OS suspend, resume, network, or timeout lifecycle event to the durable run reconciler.
-#[frb]
-pub async fn notify_power_event(event_kind: String, on_ac: Option<bool>) -> Result<u32, String> {
-    let engine = current_engine()?;
-    let parsed = match event_kind.as_str() {
-        "will_suspend" => SystemPowerEvent::WillSuspend,
-        "did_resume" => SystemPowerEvent::DidResume,
-        "app_resumed" => SystemPowerEvent::AppResumed,
-        "network_lost" => SystemPowerEvent::NetworkLost,
-        "network_restored" => SystemPowerEvent::NetworkRestored,
-        "os_timeout_imminent" => SystemPowerEvent::OsTimeoutImminent,
-        "power_source_changed" => SystemPowerEvent::PowerSourceChanged {
-            on_ac: on_ac.unwrap_or(true),
-        },
-        _ => return Err(DiagnosticKey::InvalidInput.as_key().to_owned()),
-    };
-    engine
-        .notify_power_event(parsed)
-        .await
-        .map_err(crate::dto_mapping::ffi_err)
-}
-
-/// Updates Android run-scoped `specialUse` FGS & battery exemption telemetry from Kotlin platform channel.
-#[frb]
-pub async fn set_android_power_state(
-    fgs_active: bool,
-    battery_unrestricted: bool,
-) -> Result<FfiPowerGuardStatus, String> {
-    let engine = current_engine()?;
-    let status = engine
-        .set_android_power_state(fgs_active, battery_unrestricted)
-        .await
-        .map_err(crate::dto_mapping::ffi_err)?;
-    Ok(map_power_status(status))
-}
-
-/// Reconciles an `indeterminate_halt` Tier-2 run after explicit user choice (`confirm_completed` or retry).
-#[frb]
-pub async fn resolve_indeterminate_run(
-    run_id: String,
-    confirm_completed: bool,
-) -> Result<FfiAgentRunRecord, String> {
-    let engine = current_engine()?;
-    let run = engine
-        .resolve_indeterminate_run(run_id, confirm_completed)
-        .await
-        .map_err(crate::dto_mapping::ffi_err)?;
-    Ok(map_agent_run(run))
-}
-
-/// The model's conversation limit in tokens (`None` when no public list reports it).
-#[frb]
-pub async fn model_context_tokens(model: String) -> Result<Option<u32>, String> {
-    current_engine()?
-        .model_context_tokens(model)
-        .await
-        .map_err(crate::dto_mapping::ffi_err)
-}
-
-/// One row of the context breakdown (A-SE); `kind` is a fixed id the app maps to its words.
-#[derive(Debug, Clone)]
-pub struct FfiContextCategory {
-    pub kind: String,
-    pub tokens: u64,
-    pub count: Option<u32>,
-    pub sent: bool,
-}
-
-/// One MCP tool's schema in the breakdown.
-#[derive(Debug, Clone)]
-pub struct FfiMcpToolUsage {
-    pub name: String,
-    pub tokens: u64,
-    pub deferred: bool,
-}
-
-/// One MCP server and its tools in the breakdown.
-#[derive(Debug, Clone)]
-pub struct FfiMcpServerUsage {
-    pub server_id: String,
-    pub label: String,
-    pub tools: Vec<FfiMcpToolUsage>,
-}
-
-/// What fills the next request, by category, with the window and the kept-free reserve.
-#[derive(Debug, Clone)]
-pub struct FfiContextBreakdown {
-    pub categories: Vec<FfiContextCategory>,
-    pub total_sent: u64,
-    pub limit_tokens: Option<u64>,
-    pub reserve_tokens: u64,
-    pub mcp: Vec<FfiMcpServerUsage>,
-    pub mcp_truncated: bool,
-}
-
-/// The breakdown for the branch ending at `leaf_node_id`, with `draft` as the message about to
-/// be sent.
-#[frb]
-pub async fn context_breakdown(
-    thread_id: String,
-    leaf_node_id: String,
-    draft: String,
-) -> Result<FfiContextBreakdown, String> {
-    let b = current_engine()?
-        .context_breakdown(thread_id, leaf_node_id, draft)
-        .await
-        .map_err(crate::dto_mapping::ffi_err)?;
-    Ok(FfiContextBreakdown {
-        total_sent: b.total_sent(),
-        categories: b
-            .categories
-            .iter()
-            .map(|c| FfiContextCategory {
-                kind: c.kind.as_str().to_owned(),
-                tokens: c.tokens,
-                count: c.count,
-                sent: c.sent,
-            })
-            .collect(),
-        limit_tokens: b.limit_tokens,
-        reserve_tokens: b.reserve_tokens,
-        mcp: b
-            .mcp
-            .into_iter()
-            .map(|srv| FfiMcpServerUsage {
-                server_id: srv.server_id,
-                label: srv.label,
-                tools: srv
-                    .tools
-                    .into_iter()
-                    .map(|t| FfiMcpToolUsage {
-                        name: t.name,
-                        tokens: t.tokens,
-                        deferred: t.deferred,
-                    })
-                    .collect(),
-            })
-            .collect(),
-        mcp_truncated: b.mcp_truncated,
-    })
-}
-
 /// Starts a public price-list refresh now.
 #[frb]
 pub async fn refresh_prices() -> Result<(), String> {
@@ -1346,20 +956,9 @@ pub async fn refresh_prices() -> Result<(), String> {
         .map_err(crate::dto_mapping::ffi_err)
 }
 
-/// Cleanly shuts down the active engine and checkpoints SQLite WAL.
+/// Cleanly shuts down the active engine (in-process: checkpoints SQLite WAL; daemon: leaves
+/// it, so it keeps live work running and exits on its own once idle).
 #[frb]
 pub async fn shutdown_runtime() -> Result<(), String> {
-    let maybe_engine = {
-        let mut guard = ENGINE
-            .write()
-            .map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())?;
-        guard.take()
-    };
-    if let Some(engine) = maybe_engine {
-        engine
-            .shutdown()
-            .await
-            .map_err(crate::dto_mapping::ffi_err)?;
-    }
-    Ok(())
+    retire_engine().await
 }

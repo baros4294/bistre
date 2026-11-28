@@ -1,4 +1,5 @@
-//! Writing & Roleplay Studio FFI entrypoints (character cards, personas, story bible) as JSON.
+//! Writing & Roleplay Studio FFI entrypoints: character cards, personas, and the story bible
+//! as JSON; the writing tools (rewrite, scene brief, chapter summary) typed.
 
 use flutter_rust_bridge::frb;
 
@@ -265,4 +266,53 @@ pub async fn inspect_story_prompt_json(
         .await
         .map_err(crate::dto_mapping::ffi_err)?;
     serde_json::to_string(&report).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
+}
+
+/// The continuity librarian's answer for a chapter: the era summary to save and the
+/// contradictions with earlier chapters (shown, never saved).
+#[frb]
+#[derive(Debug, Clone)]
+pub struct FfiChapterSummary {
+    pub era_summary: String,
+    pub contradictions: Vec<String>,
+}
+
+/// The replacement for a manuscript excerpt under `mode` (`rewrite`, `expand`, `shorten`,
+/// `polish`), with the scene text `context` around it; nothing is saved.
+#[frb]
+pub async fn rewrite_passage(
+    thread_id: String,
+    mode: String,
+    excerpt: String,
+    context: String,
+) -> Result<String, String> {
+    current_engine()?
+        .rewrite_passage(thread_id, mode, excerpt, context)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)
+}
+
+/// A writing brief for a scene from its title and beats as they stand in the editor.
+#[frb]
+pub async fn plan_scene(thread_id: String, title: String, beats: String) -> Result<String, String> {
+    current_engine()?
+        .plan_scene(thread_id, title, beats)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)
+}
+
+/// The era summary of a chapter's saved scenes and its contradictions with earlier chapters.
+#[frb]
+pub async fn summarize_chapter(
+    thread_id: String,
+    chapter_id: String,
+) -> Result<FfiChapterSummary, String> {
+    let s = current_engine()?
+        .summarize_chapter(thread_id, chapter_id)
+        .await
+        .map_err(crate::dto_mapping::ffi_err)?;
+    Ok(FfiChapterSummary {
+        era_summary: s.era_summary,
+        contradictions: s.contradictions,
+    })
 }
