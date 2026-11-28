@@ -23,15 +23,20 @@ Bistre is built for people who want one calm, responsive AI workspace across des
 - Multi-provider by design: Connect OpenAI, Google Gemini, Anthropic, or any Custom OpenAI-compatible server, fetching live models dynamically instead of hardcoding stale lists.
 - Pure-Rust engine (`crates/`): Streaming SSE framing, multi-key rotation and self-healing retries, exact integer spending limits (`MoneyMicros`), offline BPE tokenization, reversible context compaction, sandboxed workspace tools, MCP support, and Ed25519-signed updates all run in Rust.
 - Lightweight Flutter UI (`apps/bistre_app`): Built strictly on `package:flutter/widgets.dart` with zero Material/Cupertino kits or webviews. Supports warm light/dark and curated color presets, Bubbles and Document layouts, GFM tables, offline LaTeX math, Mermaid diagrams, inline SVG preview, 200% text scaling, and full RTL support (`en`, `vi`, `ar`).
-- Writing & Coding workflows: Branching conversation trees, pinned replies, chat notes, cross-chat memory, `SKILL.md` skills, workspace diff & 1-tap rewind, Story Bible & Lorebook V3 with chronological progressions, and a long-form manuscript canvas.
+- Projects & agents: Group chats into projects with their own folder and instructions, run any number of chats at once, and schedule runs that skip, sandbox, or wait for approval when nobody is watching. Replies keep going in the background on desktop and Android.
+- Writing & Coding workflows: Branching conversation trees, pinned replies, cross-chat memory, `SKILL.md` skills, workspace diff & 1-tap rewind, Story Bible & Lorebook V3 with chronological progressions, and a long-form manuscript canvas with scene planning, chapter summaries that flag contradictions, and in-place rewrite tools.
 
 ## Platforms
 
 | Platform | Distribution | Highlights |
 |---|---|---|
-| Windows | Direct GitHub Release | Per-user installer (`-setup.exe`) & portable `.zip`, native Win11 DWM frame, system file dialogs. Builds are not code-signed, so SmartScreen may warn on first run; check the published SHA-256 sums and build attestations |
+| Windows | Direct GitHub Release | Per-user installer (`-setup.exe`) & portable `.zip`, native Win11 DWM frame, system file dialogs, a shortcut that opens a new chat from any app. Builds are not code-signed, so SmartScreen may warn on first run; check the published SHA-256 sums and build attestations |
 | Linux | Direct GitHub Release | `.AppImage`, `.deb`, `.rpm`, & portable `.tar.gz`, native Wayland/X11 desktop build, active-scoped daemon |
 | Android | Direct GitHub APK (`arm64-v8a`) | Edge-to-edge layout, 16 KB page alignment, Keystore-backed vault, run-scoped foreground service |
+
+## Install
+
+Download the installer for your platform from [GitHub Releases](https://github.com/baros4294/bistre/releases). Installed builds check for signed updates in Settings > Updates & Storage. What changed in each version: [`changelog.md`](changelog.md).
 
 ## Architecture
 
