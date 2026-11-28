@@ -18,7 +18,6 @@ Scope (owner): the next release completes everything `docs/` describes, not only
 - [ ] G5 Linux drag and drop; pasted files and pictures on Linux and Android; touch toolbar Paste for files (Spec 08)
 - [ ] G6 Lag repair replays an event cursor instead of reconciling against the run list (Spec 08)
 - [ ] G7 Windowed node loads and a `history_rev`, so a finished run reloads only what changed (Spec 11)
-- [ ] G8 Native tool and reasoning replay contract: `tools` serialized first, same-provider signature replay guard (Spec 02)
 - [ ] G9 MCP tasks extension, resource subscriptions and listen filters, `2025-03-26` servers (Spec 04)
 - [ ] G10 Android full-duplex voice: `microphone` service type, Oboe, AEC, VAD, BLE Audio routing (Spec 05, ADR-0012)
 - [ ] G11 Remote Bridge over TLS 1.3 mTLS with QR pairing (Spec 07, Spec 00 Planned)
