@@ -419,7 +419,6 @@ extension _ProviderCreateFlow on _ProvidersSettingsViewState {
         ),
         const SizedBox(height: BistreSpacing.s16),
         BistreSettingsSection(
-          title: l10n.t(L10nKey.providerAddButton),
           children: [
             BistreSettingRow(
               label: l10n.t(L10nKey.providerFieldName),

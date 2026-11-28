@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
+import '../../design/bistre_controls.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
@@ -62,93 +63,83 @@ class _AppSkillsSectionState extends State<AppSkillsSection> {
     final l10n = BistreLocalizations.of(context);
     final ctrl = widget.controller;
     final busy = ctrl.installingSkill;
-    return FolioSurface(
-      tone: FolioTone.elevated,
-      padding: const EdgeInsetsDirectional.all(18),
-      boxShadow: theme.cardShadow,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
+    return BistreSettingsSection(
+      title: l10n.t(L10nKey.skillsAppTitle),
+      subtitle: l10n.t(L10nKey.skillsAppHint),
+      children: [
+        Padding(
+          padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              BistreIcon(
-                BistreUiIcon.bookOpen,
-                size: 16,
-                color: theme.accentBrass,
+              QuillInput(
+                controller: _linkCtrl,
+                focusNode: _linkFocus,
+                placeholder: l10n.t(L10nKey.skillsLinkPlaceholder),
+                onSubmitted: () => unawaited(_installLink()),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: InkText(
-                  l10n.t(L10nKey.skillsAppTitle),
-                  role: InkTextRole.titleMedium,
-                ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: BistreSpacing.s8,
+                runSpacing: BistreSpacing.s8,
+                children: [
+                  EngravedButton(
+                    label: l10n.t(L10nKey.skillsInstallLink),
+                    compact: true,
+                    primary: true,
+                    onPressed: busy ? null : () => unawaited(_installLink()),
+                  ),
+                  EngravedButton(
+                    label: l10n.t(L10nKey.skillsInstallFolder),
+                    compact: true,
+                    leading: BistreIcon(
+                      BistreUiIcon.folder,
+                      size: 12,
+                      color: theme.inkSecondary,
+                    ),
+                    onPressed: busy
+                        ? null
+                        : () => unawaited(
+                            _installFolder(l10n.t(L10nKey.skillsInstallFolder)),
+                          ),
+                  ),
+                  EngravedButton(
+                    label: l10n.t(L10nKey.skillsInstallFile),
+                    compact: true,
+                    leading: BistreIcon(
+                      BistreUiIcon.paperclip,
+                      size: 12,
+                      color: theme.inkSecondary,
+                    ),
+                    onPressed: busy
+                        ? null
+                        : () => unawaited(
+                            _installFile(l10n.t(L10nKey.skillsInstallFile)),
+                          ),
+                  ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          InkText(
-            l10n.t(L10nKey.skillsAppHint),
-            role: InkTextRole.captionMeta,
-            color: theme.inkMuted,
-          ),
-          const SizedBox(height: 10),
-          QuillInput(
-            controller: _linkCtrl,
-            focusNode: _linkFocus,
-            placeholder: l10n.t(L10nKey.skillsLinkPlaceholder),
-            onSubmitted: () => unawaited(_installLink()),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: BistreSpacing.s8,
-            runSpacing: BistreSpacing.s8,
-            children: [
-              EngravedButton(
-                label: l10n.t(L10nKey.skillsInstallLink),
-                compact: true,
-                primary: true,
-                onPressed: busy ? null : () => unawaited(_installLink()),
-              ),
-              EngravedButton(
-                label: l10n.t(L10nKey.skillsInstallFolder),
-                compact: true,
-                leading: BistreIcon(
-                  BistreUiIcon.folder,
-                  size: 12,
-                  color: theme.inkSecondary,
-                ),
-                onPressed: busy
-                    ? null
-                    : () => unawaited(
-                        _installFolder(l10n.t(L10nKey.skillsInstallFolder)),
-                      ),
-              ),
-              EngravedButton(
-                label: l10n.t(L10nKey.skillsInstallFile),
-                compact: true,
-                leading: BistreIcon(
-                  BistreUiIcon.paperclip,
-                  size: 12,
-                  color: theme.inkSecondary,
-                ),
-                onPressed: busy
-                    ? null
-                    : () => unawaited(
-                        _installFile(l10n.t(L10nKey.skillsInstallFile)),
-                      ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (ctrl.appSkills.isEmpty)
-            InkText(
+        ),
+        if (ctrl.appSkills.isEmpty)
+          Padding(
+            padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
+            child: InkText(
               l10n.t(L10nKey.skillsAppEmpty),
               role: InkTextRole.bodyCompact,
               color: theme.inkMuted,
             ),
-          for (final sk in ctrl.appSkills) ...[
-            FolioSurface(
-              padding: const EdgeInsetsDirectional.fromSTEB(10, 6, 4, 6),
+          )
+        else
+          for (final sk in ctrl.appSkills)
+            Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                BistreSpacing.s16,
+                12,
+                10,
+                12,
+              ),
               child: Row(
                 children: [
                   Expanded(
@@ -169,7 +160,8 @@ class _AppSkillsSectionState extends State<AppSkillsSection> {
                   ),
                   BistreIconButton(
                     icon: BistreUiIcon.trash,
-                    size: 13,
+                    size: 14,
+                    dimension: 28,
                     semanticsLabel: l10n.t(
                       L10nKey.skillsRemove,
                       <String, Object?>{'name': sk.name},
@@ -179,10 +171,7 @@ class _AppSkillsSectionState extends State<AppSkillsSection> {
                 ],
               ),
             ),
-            const SizedBox(height: 6),
-          ],
-        ],
-      ),
+      ],
     );
   }
 }

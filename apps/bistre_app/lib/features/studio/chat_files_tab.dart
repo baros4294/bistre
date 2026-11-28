@@ -75,6 +75,7 @@ class _ChatFilesTabState extends State<ChatFilesTab> {
           children: [
             BistreSegmentedControl<ChatFileFilter>(
               selected: _filter,
+              expand: true,
               onSelected: (v) => setState(() => _filter = v),
               options: <BistreSegmentedOption<ChatFileFilter>>[
                 BistreSegmentedOption(

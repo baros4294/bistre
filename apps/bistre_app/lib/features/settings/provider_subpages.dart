@@ -365,21 +365,33 @@ class _ProviderAdvancedSubpageState extends State<ProviderAdvancedSubpage> {
         BistreSettingsSection(
           title: l10n.t(L10nKey.chatReasoningEffort),
           children: [
-            BistreSettingRow(
-              label: l10n.t(L10nKey.chatReasoningEffort),
-              trailing: isThinkingLevel(_cfg.defaultThinkingEffort)
-                  ? InkText(
-                      l10n.t(thinkingLabelKey(_cfg.defaultThinkingEffort)),
-                      role: InkTextRole.captionMeta,
-                      color: theme.accentBrass,
-                    )
-                  : null,
-              bottom: ThinkingEffortPicker(
-                value: _cfg.defaultThinkingEffort,
-                reduceMotionOverride: ctrl.reduceMotionOverride,
-                onChanged: (effort) => unawaited(
-                  _persist(_cfg.copyWith(defaultThinkingEffort: effort)),
-                ),
+            Padding(
+              padding: const EdgeInsetsDirectional.symmetric(
+                horizontal: BistreSpacing.s16,
+                vertical: 14,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (isThinkingLevel(_cfg.defaultThinkingEffort)) ...[
+                    Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: InkText(
+                        l10n.t(thinkingLabelKey(_cfg.defaultThinkingEffort)),
+                        role: InkTextRole.captionMeta,
+                        color: theme.accentBrass,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                  ThinkingEffortPicker(
+                    value: _cfg.defaultThinkingEffort,
+                    reduceMotionOverride: ctrl.reduceMotionOverride,
+                    onChanged: (effort) => unawaited(
+                      _persist(_cfg.copyWith(defaultThinkingEffort: effort)),
+                    ),
+                  ),
+                ],
               ),
             ),
             BistreSettingRow(

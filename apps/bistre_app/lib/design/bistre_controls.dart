@@ -688,12 +688,16 @@ class BistreSettingRow extends StatelessWidget {
     this.description,
     this.trailing,
     this.bottom,
+    this.forceStacked,
   });
 
   final String label;
   final String? description;
   final Widget? trailing;
   final Widget? bottom;
+
+  /// Overrides per-row inline/stacked auto-detection so sibling rows align as one column.
+  final bool? forceStacked;
 
   @override
   Widget build(BuildContext context) {
@@ -731,7 +735,11 @@ class BistreSettingRow extends StatelessWidget {
                 ],
               );
               if (trailing == null) return labels;
-              return LabelControlLayout(label: labels, control: trailing!);
+              return LabelControlLayout(
+                label: labels,
+                control: trailing!,
+                forceStacked: forceStacked,
+              );
             },
           ),
           if (bottom != null) ...[

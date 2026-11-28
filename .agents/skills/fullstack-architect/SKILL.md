@@ -33,12 +33,16 @@ Work as Bistre's principal engineer and design lead. `AGENTS.md` is the contract
 8. Self-check before saying done: re-read the request against the implementation at every width and report any remaining gap explicitly.
 
 ### 3.2 Visual discipline
-- One focal point per screen, and one bold mark (the `rubricMark`) per view. Do not repeat it on cards or banners.
-- Surfaces separate by tonal steps and translucent hairlines. Never solid ink outlines, gradients, card grids, or shadow stacks.
-- Structure carries information. Add a border, number, label, or divider only when it encodes something the user needs.
+- One focal point per screen, at most one primary CTA per screen or section, and one bold mark (the `rubricMark`) per view. Do not repeat primary fills or accent borders on competing controls, cards, or banners.
+- Opening format fit: workspace screens open directly into live content or controls with zero marketing banner; empty states stay focused on one concise line and one next action.
+- Surfaces separate by tonal steps, whitespace, and 1px translucent hairlines (`FolioDivider`). Never nest bordered cards inside cards, and never use solid ink outlines, gradients, card grids, or shadow stacks.
+- Structure carries information. Add a border, number, label, or divider only when it encodes something the user needs. Use connected selection controls (`BistreSegmentedControl`, switches, `InkChip`) for mode, filter, or option choices instead of button walls.
+- Typography discipline: two font families (`Inter` prose/UI, `JetBrainsMono` code, plus lazy `NotoSansMath`), consistent body scale across prose and lists, sentence-case UI labels, tabular numerals for aligned counts and prices, and no tiny unreadable text above the fold.
+- Spatial stability and alignment: repeated rows of the same control type (such as permission lists) resolve inline versus stacked once for the entire group so controls align in one column with zero zig-zag. Keep paired form actions (such as `Reset` and `Save`) together in one action row below their field, never split above and below it.
+- Directional icons (`arrowBack`, `chevronStart`, `chevronEnd`) mirror in RTL.
 - Status appears only when it matters. Warning colours and icons are for real warnings, never for normal states, and colour never carries the meaning alone.
 - One control per concept. If two pickers set related things (model and assistant, say), merge them or nest one under the other.
-- Avoid template tells: an eyebrow label over every heading, all-caps labels, `→` appended to buttons, `A · B · C` meta strings (also not RTL-safe), emoji icons, and accenting a single word in a heading.
+- Avoid template tells: pre-heading eyebrow kickers, all-caps micro-labels, decorative non-interactive badges or tags, decorative 01/02 numbering prefixes, redundant labels that repeat their section heading or button, `→` appended to buttons, `A · B · C` meta strings (also not RTL-safe), emoji icons, and accenting a single word in a heading.
 
 ### 3.3 Copy
 - Write from the user's side, in plain everyday words. Follow the `design.md` §9 glossary, and keep all UI strings compliant with `just i18n-check`.

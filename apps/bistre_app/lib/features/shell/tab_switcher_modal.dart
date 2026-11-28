@@ -137,73 +137,99 @@ class _TabSwitcherModalState extends State<TabSwitcherModal> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Wrap(
-                        alignment: WrapAlignment.spaceBetween,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: BistreSpacing.s8,
-                        runSpacing: BistreSpacing.s8,
+                      // Keep the close button pinned to the top-end corner at every width.
+                      Row(
                         children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              BistreIcon(
-                                BistreUiIcon.chat,
-                                size: 17,
-                                color: theme.accentBrass,
-                              ),
-                              const SizedBox(width: BistreSpacing.s8),
-                              Flexible(
-                                child: InkText(
-                                  l10n.joinMeta(headingParts),
-                                  role: InkTextRole.titleMedium,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
+                          BistreIcon(
+                            BistreUiIcon.chat,
+                            size: 17,
+                            color: theme.accentBrass,
                           ),
-                          Wrap(
-                            spacing: BistreSpacing.s4,
-                            runSpacing: BistreSpacing.s4,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              if (ctrl.emptyOpenTabs.isNotEmpty)
-                                EngravedButton(
-                                  label: l10n.t(
-                                    L10nKey.shellTabsCloseEmpty,
-                                    <String, Object?>{
-                                      'count': ctrl.emptyOpenTabs.length,
-                                    },
-                                  ),
-                                  compact: true,
-                                  onPressed: ctrl.closeEmptyTabs,
-                                ),
+                          const SizedBox(width: BistreSpacing.s8),
+                          Expanded(
+                            child: InkText(
+                              l10n.joinMeta(headingParts),
+                              role: InkTextRole.titleMedium,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (!compact && scale < 1.3) ...[
+                            const SizedBox(width: BistreSpacing.s8),
+                            if (ctrl.emptyOpenTabs.isNotEmpty) ...[
                               EngravedButton(
-                                label: l10n.t(L10nKey.shellTabsNewTab),
-                                primary: true,
+                                label: l10n.t(
+                                  L10nKey.shellTabsCloseEmpty,
+                                  <String, Object?>{
+                                    'count': ctrl.emptyOpenTabs.length,
+                                  },
+                                ),
                                 compact: true,
-                                leading: BistreIcon(
-                                  BistreUiIcon.plus,
-                                  size: 13,
-                                  color: theme.onAccentWax,
-                                ),
-                                onPressed: () {
-                                  widget.onClose();
-                                  unawaited(ctrl.createNewFolio());
-                                },
+                                onPressed: ctrl.closeEmptyTabs,
                               ),
-                              BistreIconButton(
-                                icon: BistreUiIcon.close,
-                                size: 15,
-                                semanticsLabel: l10n.t(
-                                  L10nKey.shellTabsCloseOverview,
-                                ),
-                                onPressed: widget.onClose,
-                              ),
+                              const SizedBox(width: BistreSpacing.s4),
                             ],
+                            EngravedButton(
+                              label: l10n.t(L10nKey.shellTabsNewTab),
+                              primary: true,
+                              compact: true,
+                              leading: BistreIcon(
+                                BistreUiIcon.plus,
+                                size: 13,
+                                color: theme.onAccentWax,
+                              ),
+                              onPressed: () {
+                                widget.onClose();
+                                unawaited(ctrl.createNewFolio());
+                              },
+                            ),
+                            const SizedBox(width: BistreSpacing.s4),
+                          ],
+                          BistreIconButton(
+                            icon: BistreUiIcon.close,
+                            size: 15,
+                            semanticsLabel: l10n.t(
+                              L10nKey.shellTabsCloseOverview,
+                            ),
+                            onPressed: widget.onClose,
                           ),
                         ],
                       ),
+                      if (compact || scale >= 1.3) ...[
+                        const SizedBox(height: BistreSpacing.s8),
+                        Wrap(
+                          spacing: BistreSpacing.s8,
+                          runSpacing: BistreSpacing.s8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            EngravedButton(
+                              label: l10n.t(L10nKey.shellTabsNewTab),
+                              primary: true,
+                              compact: true,
+                              leading: BistreIcon(
+                                BistreUiIcon.plus,
+                                size: 13,
+                                color: theme.onAccentWax,
+                              ),
+                              onPressed: () {
+                                widget.onClose();
+                                unawaited(ctrl.createNewFolio());
+                              },
+                            ),
+                            if (ctrl.emptyOpenTabs.isNotEmpty)
+                              EngravedButton(
+                                label: l10n.t(
+                                  L10nKey.shellTabsCloseEmpty,
+                                  <String, Object?>{
+                                    'count': ctrl.emptyOpenTabs.length,
+                                  },
+                                ),
+                                compact: true,
+                                onPressed: ctrl.closeEmptyTabs,
+                              ),
+                          ],
+                        ),
+                      ],
                       if (tabs.length > 3) ...[
                         const SizedBox(height: BistreSpacing.s12),
                         QuillInput(

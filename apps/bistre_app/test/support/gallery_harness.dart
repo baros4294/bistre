@@ -125,7 +125,16 @@ Future<void> capturePng(
     image.dispose();
     if (byteData != null) {
       captured = byteData.buffer.asUint8List();
-      File('${outDir.path}/$fileName').writeAsBytesSync(captured!);
+      final target = File('${outDir.path}/$fileName');
+      // Skip redundant overwrites and replace via temp rename so Windows AV/indexer memory maps
+      // on an existing PNG never fail `CreateFile` with ERROR_USER_MAPPED_FILE (errno 1224).
+      final unchanged =
+          target.existsSync() && listEquals(target.readAsBytesSync(), captured);
+      if (!unchanged) {
+        final tmp = File('${outDir.path}/.$fileName.$pid.tmp');
+        tmp.writeAsBytesSync(captured!);
+        tmp.renameSync(target.path);
+      }
     }
   });
   final bytes = captured;
@@ -670,7 +679,8 @@ flowchart LR
   final Map<String, Duration> listNodesDelays = <String, Duration>{};
 
   @override
-  Future<List<EngineThread>> listThreads() async => _threads;
+  Future<List<EngineThread>> listThreads() async =>
+      List<EngineThread>.of(_threads);
 
   @override
   Future<void> moveThreadToProject(String threadId, String? projectId) async {

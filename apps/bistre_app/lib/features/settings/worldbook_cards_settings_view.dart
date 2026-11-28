@@ -165,60 +165,68 @@ class _WorldbookCardsSettingsViewState
               title: l10n.t(L10nKey.settingsWorldBookLoreHeading),
               subtitle: l10n.t(L10nKey.settingsWorldBookLoreHint),
               children: [
-                BistreSettingRow(
-                  label: l10n.t(L10nKey.settingsWorldBookAddEntry),
-                  bottom: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
+                Padding(
+                  padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
+                  child: LayoutBuilder(
+                    builder: (context, box) {
+                      final narrow = box.maxWidth < 460;
+                      final titleField = QuillInput(
+                        controller: _entryTitleCtrl,
+                        focusNode: _entryTitleFocus,
+                        placeholder: l10n.t(
+                          L10nKey.settingsWorldBookEntryTitle,
+                        ),
+                        maxLines: 1,
+                        submitOnEnter: false,
+                        onSubmitted: () {},
+                      );
+                      final keysField = QuillInput(
+                        controller: _entryKeysCtrl,
+                        focusNode: _entryKeysFocus,
+                        placeholder: l10n.t(L10nKey.settingsWorldBookEntryKeys),
+                        maxLines: 1,
+                        submitOnEnter: false,
+                        onSubmitted: () {},
+                      );
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Expanded(
-                            child: QuillInput(
-                              controller: _entryTitleCtrl,
-                              focusNode: _entryTitleFocus,
-                              placeholder: l10n.t(
-                                L10nKey.settingsWorldBookEntryTitle,
-                              ),
-                              maxLines: 1,
-                              submitOnEnter: false,
-                              onSubmitted: () {},
+                          if (narrow) ...[
+                            titleField,
+                            const SizedBox(height: 8),
+                            keysField,
+                          ] else
+                            Row(
+                              children: [
+                                Expanded(child: titleField),
+                                const SizedBox(width: 8),
+                                Expanded(child: keysField),
+                              ],
                             ),
+                          const SizedBox(height: 8),
+                          QuillInput(
+                            controller: _entryBodyCtrl,
+                            focusNode: _entryBodyFocus,
+                            placeholder: l10n.t(
+                              L10nKey.settingsWorldBookEntryBody,
+                            ),
+                            maxLines: 3,
+                            submitOnEnter: false,
+                            onSubmitted: () {},
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: QuillInput(
-                              controller: _entryKeysCtrl,
-                              focusNode: _entryKeysFocus,
-                              placeholder: l10n.t(
-                                L10nKey.settingsWorldBookEntryKeys,
-                              ),
-                              maxLines: 1,
-                              submitOnEnter: false,
-                              onSubmitted: () {},
+                          const SizedBox(height: 10),
+                          Align(
+                            alignment: AlignmentDirectional.centerStart,
+                            child: EngravedButton(
+                              label: l10n.t(L10nKey.settingsWorldBookAddEntry),
+                              primary: true,
+                              compact: true,
+                              onPressed: () => unawaited(_addLoreEntry()),
                             ),
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 8),
-                      QuillInput(
-                        controller: _entryBodyCtrl,
-                        focusNode: _entryBodyFocus,
-                        placeholder: l10n.t(L10nKey.settingsWorldBookEntryBody),
-                        maxLines: 3,
-                        submitOnEnter: false,
-                        onSubmitted: () {},
-                      ),
-                      const SizedBox(height: 8),
-                      Align(
-                        alignment: AlignmentDirectional.centerEnd,
-                        child: EngravedButton(
-                          label: l10n.t(L10nKey.settingsWorldBookAddEntry),
-                          primary: true,
-                          compact: true,
-                          onPressed: () => unawaited(_addLoreEntry()),
-                        ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
                 ),
                 if (entries.isEmpty)

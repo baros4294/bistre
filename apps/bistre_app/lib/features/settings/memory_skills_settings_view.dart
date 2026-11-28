@@ -133,35 +133,16 @@ class _MemorySkillsSettingsViewState extends State<MemorySkillsSettingsView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 1. Cross-Chat Saved Memory
-            FolioSurface(
-              tone: FolioTone.elevated,
-              padding: const EdgeInsetsDirectional.all(18),
-              boxShadow: theme.cardShadow,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      BistreIcon(
-                        BistreUiIcon.memory,
-                        size: 16,
-                        color: theme.accentBrass,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: InkText(
-                          l10n.t(L10nKey.memoryTitle),
-                          role: InkTextRole.titleMedium,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // Stacked on a phone, so the placeholder is never cut off.
-                  LayoutBuilder(
+            // 1. Cross-Chat Saved Memory: creation form cleanly separated from saved rows
+            // by a 1px divider (zero nested card cages).
+            BistreSettingsSection(
+              title: l10n.t(L10nKey.memoryTitle),
+              children: [
+                Padding(
+                  padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
+                  child: LayoutBuilder(
                     builder: (context, box) {
-                      final narrow = box.maxWidth < 600;
+                      final narrow = box.maxWidth < 520;
                       final field = QuillInput(
                         controller: _memContentCtrl,
                         focusNode: _memContentFocus,
@@ -180,9 +161,9 @@ class _MemorySkillsSettingsViewState extends State<MemorySkillsSettingsView> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             field,
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 10),
                             Align(
-                              alignment: AlignmentDirectional.centerEnd,
+                              alignment: AlignmentDirectional.centerStart,
                               child: save,
                             ),
                           ],
@@ -197,85 +178,70 @@ class _MemorySkillsSettingsViewState extends State<MemorySkillsSettingsView> {
                       );
                     },
                   ),
-                  const SizedBox(height: 12),
-                  if (memories.isEmpty)
-                    InkText(
+                ),
+                if (memories.isEmpty)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
+                    child: InkText(
                       l10n.t(L10nKey.memoryEmpty),
                       role: InkTextRole.bodyCompact,
                       color: theme.inkMuted,
-                    )
-                  else
-                    for (final mem in memories) ...[
-                      FolioSurface(
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: InkText(
-                                mem.content,
-                                role: InkTextRole.bodyCompact,
-                                color: theme.inkPrimary,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            BistreIconButton(
-                              icon: mem.pinned
-                                  ? BistreUiIcon.pinFilled
-                                  : BistreUiIcon.pin,
-                              size: 13,
-                              dimension: 26,
-                              color: mem.pinned
-                                  ? theme.accentBrass
-                                  : theme.inkMuted,
-                              semanticsLabel: l10n.t(L10nKey.threadPin),
-                              onPressed: () =>
-                                  unawaited(ctrl.toggleMemoryPinned(mem)),
-                            ),
-                            BistreIconButton(
-                              icon: BistreUiIcon.trash,
-                              size: 13,
-                              dimension: 26,
-                              semanticsLabel: l10n.t(L10nKey.threadDelete),
-                              onPressed: () =>
-                                  unawaited(ctrl.deleteMemoryEntry(mem.id)),
-                            ),
-                          ],
-                        ),
+                    ),
+                  )
+                else
+                  for (final mem in memories)
+                    Padding(
+                      padding: const EdgeInsetsDirectional.fromSTEB(
+                        BistreSpacing.s16,
+                        12,
+                        10,
+                        12,
                       ),
-                      const SizedBox(height: 6),
-                    ],
-                ],
-              ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: InkText(
+                              mem.content,
+                              role: InkTextRole.bodyCompact,
+                              color: theme.inkPrimary,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          BistreIconButton(
+                            icon: mem.pinned
+                                ? BistreUiIcon.pinFilled
+                                : BistreUiIcon.pin,
+                            size: 14,
+                            dimension: 28,
+                            color: mem.pinned
+                                ? theme.accentBrass
+                                : theme.inkMuted,
+                            semanticsLabel: l10n.t(L10nKey.threadPin),
+                            onPressed: () =>
+                                unawaited(ctrl.toggleMemoryPinned(mem)),
+                          ),
+                          BistreIconButton(
+                            icon: BistreUiIcon.trash,
+                            size: 14,
+                            dimension: 28,
+                            semanticsLabel: l10n.t(L10nKey.threadDelete),
+                            onPressed: () =>
+                                unawaited(ctrl.deleteMemoryEntry(mem.id)),
+                          ),
+                        ],
+                      ),
+                    ),
+              ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: BistreSpacing.s24),
 
             // 2. Scheduled Tasks (Automations)
-            FolioSurface(
-              tone: FolioTone.elevated,
-              padding: const EdgeInsetsDirectional.all(18),
-              boxShadow: theme.cardShadow,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      BistreIcon(
-                        BistreUiIcon.schedule,
-                        size: 16,
-                        color: theme.accentBrass,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: InkText(
-                          l10n.t(L10nKey.automationsTitle),
-                          role: InkTextRole.titleMedium,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // Side by side when there is room; stacked on a phone, so no placeholder
-                  // is cut off.
-                  LayoutBuilder(
+            BistreSettingsSection(
+              title: l10n.t(L10nKey.automationsTitle),
+              children: [
+                Padding(
+                  padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
+                  child: LayoutBuilder(
                     builder: (context, box) {
                       final name = QuillInput(
                         controller: _cronNameCtrl,
@@ -299,7 +265,7 @@ class _MemorySkillsSettingsViewState extends State<MemorySkillsSettingsView> {
                         placeholder: l10n.t(
                           L10nKey.automationsPromptPlaceholder,
                         ),
-                        maxLines: box.maxWidth < 600 ? 3 : 1,
+                        maxLines: box.maxWidth < 520 ? 3 : 1,
                         onSubmitted: () => unawaited(_addSchedule()),
                       );
                       final add = EngravedButton(
@@ -308,7 +274,7 @@ class _MemorySkillsSettingsViewState extends State<MemorySkillsSettingsView> {
                         compact: true,
                         onPressed: () => unawaited(_addSchedule()),
                       );
-                      if (box.maxWidth < 600) {
+                      if (box.maxWidth < 520) {
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
@@ -317,9 +283,9 @@ class _MemorySkillsSettingsViewState extends State<MemorySkillsSettingsView> {
                             schedule,
                             const SizedBox(height: 8),
                             prompt,
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 10),
                             Align(
-                              alignment: AlignmentDirectional.centerEnd,
+                              alignment: AlignmentDirectional.centerStart,
                               child: add,
                             ),
                           ],
@@ -346,197 +312,167 @@ class _MemorySkillsSettingsViewState extends State<MemorySkillsSettingsView> {
                       );
                     },
                   ),
-                  const SizedBox(height: 12),
-                  if (jobs.isEmpty)
-                    InkText(
+                ),
+                if (jobs.isEmpty)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
+                    child: InkText(
                       l10n.t(L10nKey.automationsEmpty),
                       role: InkTextRole.bodyCompact,
                       color: theme.inkMuted,
-                    )
-                  else
-                    for (final job in jobs) ...[
-                      FolioSurface(
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  InkText(
-                                    job.name,
-                                    role: InkTextRole.labelStrong,
+                    ),
+                  )
+                else
+                  for (final job in jobs)
+                    BistreSettingRow(
+                      label: job.name,
+                      description: _formatCronMeta(l10n, job),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          BistreSwitch(
+                            value: job.enabled,
+                            semanticsLabel: job.name,
+                            reduceMotionOverride: ctrl.reduceMotionOverride,
+                            onChanged: (enabled) => unawaited(
+                              ctrl.toggleCronJobEnabled(job, enabled),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          BistreIconButton(
+                            icon: BistreUiIcon.trash,
+                            size: 14,
+                            dimension: 28,
+                            semanticsLabel: l10n.t(L10nKey.threadDelete),
+                            onPressed: () =>
+                                unawaited(ctrl.deleteCronJob(job.id)),
+                          ),
+                        ],
+                      ),
+                    ),
+              ],
+            ),
+            const SizedBox(height: BistreSpacing.s24),
+
+            // 3. Progressive-Disclosure Workspace Skills (SKILL.md)
+            BistreSettingsSection(
+              title: l10n.t(L10nKey.skillsTitle),
+              children: [
+                if (skills.isEmpty)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        InkText(
+                          l10n.t(L10nKey.skillsEmpty),
+                          role: InkTextRole.bodyCompact,
+                          color: theme.inkMuted,
+                        ),
+                        const SizedBox(height: 10),
+                        EngravedButton(
+                          label: l10n.t(L10nKey.settingsAgentChooseFolder),
+                          compact: true,
+                          onPressed: () async {
+                            final picked =
+                                await BistreDesktopHost.pickLocalFolder(
+                                  title: l10n.t(
+                                    L10nKey.settingsAgentWorkspaceDir,
                                   ),
-                                  const SizedBox(height: 2),
-                                  InkText(
-                                    _formatCronMeta(l10n, job),
-                                    role: InkTextRole.captionMeta,
+                                );
+                            if (picked != null && picked.isNotEmpty) {
+                              await ctrl.setWorkspaceRootPath(picked);
+                              await ctrl.refreshMemorySkillsAndCron();
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  for (final sk in skills)
+                    Padding(
+                      padding: const EdgeInsetsDirectional.symmetric(
+                        horizontal: BistreSpacing.s16,
+                        vertical: 14,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          PressFeedback(
+                            pressScale: kRowPressScale,
+                            hoverScale: 1,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => unawaited(_toggleSkill(sk)),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        InkText(
+                                          sk.name,
+                                          role: InkTextRole.labelStrong,
+                                        ),
+                                        if (sk.description.isNotEmpty) ...[
+                                          const SizedBox(height: 2),
+                                          InkText(
+                                            sk.description,
+                                            role: InkTextRole.captionMeta,
+                                            color: theme.inkSecondary,
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                  BistreIcon(
+                                    _expandedSkillPath == sk.path
+                                        ? BistreUiIcon.chevronUp
+                                        : BistreUiIcon.chevronDown,
+                                    size: 13,
                                     color: theme.inkMuted,
                                   ),
                                 ],
                               ),
                             ),
-                            BistreSwitch(
-                              value: job.enabled,
-                              semanticsLabel: job.name,
-                              reduceMotionOverride: ctrl.reduceMotionOverride,
-                              onChanged: (enabled) => unawaited(
-                                ctrl.toggleCronJobEnabled(job, enabled),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            BistreIconButton(
-                              icon: BistreUiIcon.trash,
-                              size: 13,
-                              dimension: 26,
-                              semanticsLabel: l10n.t(L10nKey.threadDelete),
-                              onPressed: () =>
-                                  unawaited(ctrl.deleteCronJob(job.id)),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                    ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // 3. Progressive-Disclosure Workspace Skills (SKILL.md)
-            FolioSurface(
-              tone: FolioTone.elevated,
-              padding: const EdgeInsetsDirectional.all(18),
-              boxShadow: theme.cardShadow,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      BistreIcon(
-                        BistreUiIcon.worktree,
-                        size: 16,
-                        color: theme.accentBrass,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: InkText(
-                          l10n.t(L10nKey.skillsTitle),
-                          role: InkTextRole.titleMedium,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  if (skills.isEmpty) ...[
-                    InkText(
-                      l10n.t(L10nKey.skillsEmpty),
-                      role: InkTextRole.bodyCompact,
-                      color: theme.inkMuted,
-                    ),
-                    // The empty state carries the action it asks for.
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      child: EngravedButton(
-                        label: l10n.t(L10nKey.settingsAgentChooseFolder),
-                        compact: true,
-                        onPressed: () async {
-                          final picked =
-                              await BistreDesktopHost.pickLocalFolder(
-                                title: l10n.t(
-                                  L10nKey.settingsAgentWorkspaceDir,
-                                ),
-                              );
-                          if (picked != null && picked.isNotEmpty) {
-                            await ctrl.setWorkspaceRootPath(picked);
-                            await ctrl.refreshMemorySkillsAndCron();
-                          }
-                        },
-                      ),
-                    ),
-                  ] else
-                    for (final sk in skills) ...[
-                      FolioSurface(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            PressFeedback(
-                              pressScale: kRowPressScale,
-                              hoverScale: 1,
-                              child: GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () => unawaited(_toggleSkill(sk)),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          InkText(
-                                            sk.name,
-                                            role: InkTextRole.labelStrong,
-                                          ),
-                                          if (sk.description.isNotEmpty) ...[
-                                            const SizedBox(height: 2),
-                                            InkText(
-                                              sk.description,
-                                              role: InkTextRole.captionMeta,
-                                              color: theme.inkSecondary,
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                    BistreIcon(
-                                      _expandedSkillPath == sk.path
-                                          ? BistreUiIcon.chevronUp
-                                          : BistreUiIcon.chevronDown,
-                                      size: 13,
-                                      color: theme.inkMuted,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            DisclosureReveal(
-                              open:
-                                  _expandedSkillPath == sk.path &&
-                                  _expandedSkillBody.isNotEmpty,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  const SizedBox(height: 8),
-                                  const FolioDivider(),
-                                  const SizedBox(height: 8),
-                                  ConstrainedBox(
-                                    constraints: const BoxConstraints(
-                                      maxHeight: 200,
-                                    ),
-                                    child: SmoothScrollable(
-                                      builder: (_, scroll) =>
-                                          SingleChildScrollView(
-                                            controller: scroll,
-                                            child: InkText(
-                                              _expandedSkillBody,
-                                              role: InkTextRole.codeBlock,
-                                              color: theme.inkSecondary,
-                                            ),
-                                          ),
-                                    ),
+                          ),
+                          DisclosureReveal(
+                            open:
+                                _expandedSkillPath == sk.path &&
+                                _expandedSkillBody.isNotEmpty,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const SizedBox(height: 8),
+                                const FolioDivider(),
+                                const SizedBox(height: 8),
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxHeight: 200,
                                   ),
-                                ],
-                              ),
+                                  child: SmoothScrollable(
+                                    builder: (_, scroll) =>
+                                        SingleChildScrollView(
+                                          controller: scroll,
+                                          child: InkText(
+                                            _expandedSkillBody,
+                                            role: InkTextRole.codeBlock,
+                                            color: theme.inkSecondary,
+                                          ),
+                                        ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 6),
-                    ],
-                ],
-              ),
+                    ),
+              ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: BistreSpacing.s24),
             AppSkillsSection(controller: ctrl),
           ],
         ),

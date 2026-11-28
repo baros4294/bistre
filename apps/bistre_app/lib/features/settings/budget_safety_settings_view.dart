@@ -287,13 +287,13 @@ class _BudgetSafetySettingsViewState extends State<BudgetSafetySettingsView> {
                   BistreSettingRow(
                     label: l10n.t(L10nKey.settingsBudgetChatLimit),
                     description: l10n.t(L10nKey.settingsBudgetChatLimitHint),
-                    trailing: Wrap(
+                    bottom: Wrap(
                       spacing: 8,
                       runSpacing: 6,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         SizedBox(
-                          width: 120,
+                          width: 156,
                           child: QuillInput(
                             controller: _chatLimitCtrl,
                             focusNode: _chatLimitFocus,
@@ -343,7 +343,7 @@ class _BudgetSafetySettingsViewState extends State<BudgetSafetySettingsView> {
                     ),
                   ),
                   bottom: Align(
-                    alignment: AlignmentDirectional.centerEnd,
+                    alignment: AlignmentDirectional.centerStart,
                     child: EngravedButton(
                       label: l10n.t(L10nKey.settingsPricesRefreshNow),
                       compact: true,
