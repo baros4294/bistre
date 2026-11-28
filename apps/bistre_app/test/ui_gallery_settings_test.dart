@@ -8,6 +8,12 @@ import 'support/gallery_scenes.dart';
 
 /// `just ui-gallery`, Settings: every page and sub-page on desktop (populated, empty, and
 /// unconfigured states), and the phone list, search, and every page on a phone.
+/// A tab's name as a file name: `defaultModels` -> `default-models` (names are lowercase).
+String _fileName(SettingsTab tab) => tab.name.replaceAllMapped(
+  RegExp('[A-Z]'),
+  (m) => '-${m[0]!.toLowerCase()}',
+);
+
 void main() {
   testWidgets('gallery: settings', (tester) async {
     await loadBundledFonts();
@@ -27,7 +33,7 @@ void main() {
 
     for (final tab in SettingsTab.values) {
       await g.shoot(
-        'settings-${tab.name}',
+        'settings-${_fileName(tab)}',
         prepare: (s) async {
           if (tab == SettingsTab.memory) return populatedMemory(s);
           if (tab == SettingsTab.updates) await s.ctrl.checkForUpdates();
@@ -179,7 +185,7 @@ void main() {
     );
     for (final tab in SettingsTab.values) {
       await g.shoot(
-        'settings-phone-${tab.name}',
+        'settings-phone-${_fileName(tab)}',
         size: GallerySize.phone,
         prepare: (s) async {
           if (tab == SettingsTab.memory) return populatedMemory(s);
