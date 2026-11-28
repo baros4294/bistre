@@ -15,25 +15,23 @@
   <a href="SECURITY.md"><img src="https://img.shields.io/badge/telemetry-none-2B5E3F" alt="Zero Telemetry" /></a>
 </p>
 
----
-
 ## Why Bistre
 
 Bistre is built for people who want one calm, responsive AI workspace across desktop and mobile without cloud lock-in, analytics, or bloated browser shells.
 
-- **Local-first & zero telemetry**: Conversations, search indexes, attachments, and settings live on your device in an ACID SQLite WAL database. Requests default to stateless mode (`store: false`) with zero tracking or analytics.
-- **Multi-provider by design**: Connect OpenAI, Google Gemini, Anthropic, or any Custom OpenAI-compatible server—fetching live models dynamically instead of hardcoding stale lists.
-- **Pure-Rust engine (`crates/`)**: Streaming SSE framing, multi-key rotation and self-healing retries, exact integer spending limits (`MoneyMicros`), offline BPE tokenization, reversible context compaction, sandboxed workspace tools, MCP support, and Ed25519-signed updates all run in Rust.
-- **Lightweight Flutter UI (`apps/bistre_app`)**: Built strictly on `package:flutter/widgets.dart` with zero Material/Cupertino kits or webviews. Supports warm light/dark and curated color presets, Bubbles and Document layouts, GFM tables, offline LaTeX math, Mermaid diagrams, inline SVG preview, `200%` text scaling, and full RTL support (`en`, `vi`, `ar`).
-- **Writing & Coding workflows**: Branching conversation trees, pinned replies, chat notes, cross-chat memory, `SKILL.md` skills, workspace diff & 1-tap rewind, Story Bible & Lorebook V3 with chronological progressions, and a long-form manuscript canvas.
+- Local-first & zero telemetry: Conversations, search indexes, attachments, and settings live on your device in an ACID SQLite WAL database. Requests default to stateless mode (`store: false`) with zero tracking or analytics.
+- Multi-provider by design: Connect OpenAI, Google Gemini, Anthropic, or any Custom OpenAI-compatible server, fetching live models dynamically instead of hardcoding stale lists.
+- Pure-Rust engine (`crates/`): Streaming SSE framing, multi-key rotation and self-healing retries, exact integer spending limits (`MoneyMicros`), offline BPE tokenization, reversible context compaction, sandboxed workspace tools, MCP support, and Ed25519-signed updates all run in Rust.
+- Lightweight Flutter UI (`apps/bistre_app`): Built strictly on `package:flutter/widgets.dart` with zero Material/Cupertino kits or webviews. Supports warm light/dark and curated color presets, Bubbles and Document layouts, GFM tables, offline LaTeX math, Mermaid diagrams, inline SVG preview, 200% text scaling, and full RTL support (`en`, `vi`, `ar`).
+- Writing & Coding workflows: Branching conversation trees, pinned replies, chat notes, cross-chat memory, `SKILL.md` skills, workspace diff & 1-tap rewind, Story Bible & Lorebook V3 with chronological progressions, and a long-form manuscript canvas.
 
 ## Platforms
 
 | Platform | Distribution | Highlights |
 |---|---|---|
-| **Windows** | Direct GitHub Release | Per-user installer (`-setup.exe`) & portable `.zip`, native Win11 DWM frame, system file dialogs. Builds are not code-signed, so SmartScreen may warn on first run; check the published SHA-256 sums and build attestations |
-| **Linux** | Direct GitHub Release | `.AppImage`, `.deb`, `.rpm`, & portable `.tar.gz`, native Wayland/X11 desktop build, active-scoped daemon |
-| **Android** | Direct GitHub APK (`arm64-v8a`) | Edge-to-edge layout, 16 KB page alignment, Keystore-backed vault, run-scoped foreground service |
+| Windows | Direct GitHub Release | Per-user installer (`-setup.exe`) & portable `.zip`, native Win11 DWM frame, system file dialogs. Builds are not code-signed, so SmartScreen may warn on first run; check the published SHA-256 sums and build attestations |
+| Linux | Direct GitHub Release | `.AppImage`, `.deb`, `.rpm`, & portable `.tar.gz`, native Wayland/X11 desktop build, active-scoped daemon |
+| Android | Direct GitHub APK (`arm64-v8a`) | Edge-to-edge layout, 16 KB page alignment, Keystore-backed vault, run-scoped foreground service |
 
 ## Architecture
 
@@ -50,16 +48,16 @@ crates/bistre-updater  Signed side-by-side updater with crash-loop rollback
 
 - Architecture & live implementation status: [`docs/specs/00-architecture.md`](docs/specs/00-architecture.md)
 - Detailed specifications: [`docs/specs/`](docs/specs/) · Architecture Decision Records: [`docs/adr/`](docs/adr/)
-- Design system & tokens: [`docs/design/DESIGN.md`](docs/design/DESIGN.md)
+- Design system & tokens: [`docs/design/design.md`](docs/design/design.md)
 
 ## Quick Start (Development)
 
 ### Prerequisites
 
-- **Rust `1.100.0`** (pinned in `rust-toolchain.toml`) + `cargo-nextest` + `cargo-deny`
-- **Flutter `3.50.1`** (pinned in `.github/workflows/ci.yml`)
-- **Android NDK `30.0.16248370`** (for Android builds; pinned in `apps/bistre_app/android/app/build.gradle.kts`)
-- **just** command runner (`cargo install just` or OS package manager)
+- Rust 1.100.0 (pinned in `rust-toolchain.toml`) + `cargo-nextest` + `cargo-deny`
+- Flutter 3.50.1 (pinned in `.github/workflows/ci.yml`)
+- Android NDK 30.0.16248370 (for Android builds; pinned in `apps/bistre_app/android/app/build.gradle.kts`)
+- just command runner (`cargo install just` or OS package manager)
 
 ### Run & Verify
 
@@ -73,7 +71,7 @@ just check-all
 # Render UI gallery screenshots (desktop, phone, 200% text, RTL)
 just ui-gallery
 
-# Check local build cache budgets / prune superseded artifacts
+# Check local build cache budgets; keep only the debug and Android caches
 just disk
 just prune
 ```
@@ -90,7 +88,7 @@ Bistre ships with hot-loadable ICU message catalogs under [`l10n/catalog/`](l10n
 
 ## Security, Community & License
 
-- **Security**: See [`SECURITY.md`](SECURITY.md) for vulnerability reporting and our cryptographic release verification model.
-- **Contributing**: See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`AGENTS.md`](AGENTS.md) for engineering invariants.
-- **Code of Conduct**: Participation is governed by our [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
-- **License**: Released under the [MIT License](LICENSE). Third-party attributions live in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+- Security: See [`SECURITY.md`](SECURITY.md) for vulnerability reporting and our cryptographic release verification model.
+- Contributing: See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`AGENTS.md`](AGENTS.md) for engineering invariants.
+- Code of Conduct: Participation is governed by our [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
+- License: Released under the [MIT License](LICENSE). Third-party attributions live in [`third-party-notices.md`](third-party-notices.md).
