@@ -25,6 +25,7 @@ Each one cost a session time before it was written here. Add the next one you fi
 - Linux packages: the `.deb` and `.rpm` must list every library Flutter opens at start; a missing one aborts the app before its first frame (`libEGL.so.1`).
 - Flutter tests: a mocked method channel must reply or throw (`MissingPluginException`); a handler that returns nothing leaves the test waiting until it times out. A test that shows an error notice pumps 9 s at its end so the notice's timer does not outlive the test.
 - Case-only renames on Windows: use `git mv -f`; a `git reset` drops staged case renames.
+- Code behind `#[cfg(target_os = "linux")]` or `"android"` gets clippy only in CI: on Windows `cargo clippy --target x86_64-unknown-linux-gnu` (or the Android target) stops at `ring`'s build script, which needs that target's C compiler. Start a release dry run (`gh workflow run release.yml --ref <branch>`) as soon as such code is written, not at the end.
 
 ## Translating Bistre in One Pass (Human or AI Agent)
 1. Copy `l10n/catalog/en.bistre-l10n.json` to `l10n/catalog/<bcp47>.bistre-l10n.json`.
