@@ -123,27 +123,28 @@ async fn staging_requires_digest_and_rejects_mismatch() -> TestResult {
 }
 
 // Test-only minisign fixtures: "ED" (prehashed) signatures made with a throwaway key that
-// exists only for these tests (never a release key).
-pub(crate) const FIXTURE_PK: &str = "RWQAFXtep/FXfvzfI7Z2I50CNHQOdeirpSLf9jH7+SBcRig/c/84SvdR";
+// exists only for these tests (never a release key). They offer 99.0.0, newer than any
+// release, so a version bump never makes the offered update the installed one.
+pub(crate) const FIXTURE_PK: &str = "RWT7IrOCLc/O0aoKBhyVUd83g63ULp8gQabCBrFwRgSPIMa6w7TMOWVP";
 /// A v2 manifest with an asset for every target.
-pub(crate) const FIXTURE_MANIFEST: &str = r#"{"format":2,"semver":"0.2.0","track":"track_b","release_notes":"Faster startup","targets":{"android-arm64":{"url":"https://example.invalid/bistre-v0.2.0-android-arm64.apk","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":1024},"linux-x64":{"url":"https://example.invalid/bistre-v0.2.0-linux-x64.AppImage","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":1024},"windows-x64":{"url":"https://example.invalid/bistre-v0.2.0-windows-x64-setup.exe","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":1024}}}"#;
+pub(crate) const FIXTURE_MANIFEST: &str = r#"{"format":2,"semver":"99.0.0","track":"track_b","release_notes":"Faster startup","targets":{"android-arm64":{"url":"https://example.invalid/bistre-v99.0.0-android-arm64.apk","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":1024},"linux-x64":{"url":"https://example.invalid/bistre-v99.0.0-linux-x64.AppImage","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":1024},"windows-x64":{"url":"https://example.invalid/bistre-v99.0.0-windows-x64-setup.exe","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":1024}}}"#;
 pub(crate) const FIXTURE_SIG: &str = "untrusted comment: bistre test fixture\n\
-RUQAFXtep/FXfn7mrGEFdzchn/Fafqp+vvnqGJreMsVovBn5iALnYPIExlnFhoN4M1LxaeWHO3dW8zBziLds0drGypcOfeXUnwk=\n\
+RUT7IrOCLc/O0VmBhWBkOvW3BV2hFT5kUUzPdc7pRimVjy8PAHOIFsxmVupJ3dN261JY6VDj5/jVuyyTjtykOb99MQQo8RVJ4wE=\n\
 trusted comment: timestamp:0\tfile:manifest.json\tprehashed\n\
-oyEp6wVLXsxzj6ysZLwn+Gk5CPuSOA/YEn6s6b/JjDOd2QBwWLNpzMvDj8s9wfjY7OG7oCKnJ9WXBUMmJpUXAQ==\n";
+AZFwmNfXINpllUnF4ucGp0iCNmp31j+tUDko4Oaix23neCx5qsDB28C/UNNmqAV6eX2OX847CM0sYoqbX4sxDg==\n";
 /// The old (v1) shape, correctly signed: a v0.1.2 feed.
-pub(crate) const FIXTURE_MANIFEST_V1: &str = r#"{"semver":"0.2.0","track":"track_b","assets":[]}"#;
+pub(crate) const FIXTURE_MANIFEST_V1: &str = r#"{"semver":"99.0.0","track":"track_b","assets":[]}"#;
 pub(crate) const FIXTURE_SIG_V1: &str = "untrusted comment: bistre test fixture\n\
-RUQAFXtep/FXfpGaUohzN/0MU4YnSnVzcnWu+d6YJDbAdm3XQ5TODaShSR2UhxeWcwIHHqZnQRhTXrCSWq/uo2Y5RbOXjSuBPAQ=\n\
+RUT7IrOCLc/O0ZGGki4DlWdOTpo341O3IB9GjQMrh2fVv7c1byjqvMslpEgB1aLpACU1iLN21TcmcyOiTcIDEeV9BiQfU3COagg=\n\
 trusted comment: timestamp:0\tfile:manifest.json\tprehashed\n\
-oTrPXLPg0e2j7DiIjsWpHNSz7CPT4rZfzYSrlRrXVN8xvVVrMcqqkqZ5wSS2FW4eZnE1OdwY3LPTH1i6z+oxBg==\n";
+H/n8tE70kDTPHS2aWFR/PfJ3mGi1+CHgSDfxRb41+/eb888FEkmoEgVL+8jcpzrl6RslOsqOtjuWQ6N4XmpnAQ==\n";
 /// A v2 manifest with no targets at all.
 pub(crate) const FIXTURE_MANIFEST_NO_TARGETS: &str =
-    r#"{"format":2,"semver":"0.2.0","track":"track_b","release_notes":"","targets":{}}"#;
+    r#"{"format":2,"semver":"99.0.0","track":"track_b","release_notes":"","targets":{}}"#;
 pub(crate) const FIXTURE_SIG_NO_TARGETS: &str = "untrusted comment: bistre test fixture\n\
-RUQAFXtep/FXfuQHn+jhnNifQZ4V0dIZmGqmBEadtPrZp1sdKN/n5EWjfTx8b9ZDWYy9N1sqHtaeTOpnDXEygI0KHb1h1K9zVgE=\n\
+RUT7IrOCLc/O0UVNLx9n5n1sJJWkZzdm9ZZJweoXqpXeMiKuhE7ul23jf99k2ppK5qBs1VsQR5sVOiusrEK3TfjzPD/eZ8SYGQY=\n\
 trusted comment: timestamp:0\tfile:manifest.json\tprehashed\n\
-F0MWeykOYVpNE+ABqzC1o1Xohz532tKEdh4c7sFWkyMTMlLwexyu6xv/g3+Z0Yhe7YPc0HU16HcRbhPKIZnMDw==\n";
+0kOkUCpICZCJehN5Zu0k2Xhx4bQaIWgB/hlpKfzu56zIgNZxGyBMkYtbB9EONFFoNEHAcWXhEUk27658ov82Cg==\n";
 
 /// Serves `manifest` at any path and `sig` (or 404 when `None`) at `*.minisig`, for up to
 /// `max_requests` connections.
@@ -248,9 +249,9 @@ async fn signed_manifest_yields_verified_manifest() -> Result<(), Box<dyn std::e
     server.await?;
     assert!(summary.signature_verified);
     assert!(summary.update_available);
-    assert_eq!(verified.latest_version(), "0.2.0");
+    assert_eq!(verified.latest_version(), "99.0.0");
     let expected = crate::ota_manifest::OtaTarget::current()
-        .map(|t| format!("https://example.invalid/{}", t.asset_file_name("v0.2.0")));
+        .map(|t| format!("https://example.invalid/{}", t.asset_file_name("v99.0.0")));
     assert_eq!(Some(verified.download_url.clone()), expected);
     Ok(())
 }
