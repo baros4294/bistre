@@ -25,10 +25,27 @@ env:
 jobs:
   ci:
     name: ci
-    # The exact CI gates (lint, tests, launch + perf, Android) on the tagged commit.
-    uses: ./.github/workflows/ci.yml # zizmor: ignore[self-repository] -- actionlint 1.7.12 rejects `$/` (rhysd/actionlint#711); switch once supported
+    # The release builds only a commit on which CI already ran every gate and passed: the push
+    # to main (or a CI run started by hand on a dry-run branch). Pull request runs may plan
+    # jobs out, so they do not count.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     permissions:
-      contents: read
+      actions: read # list the CI runs of this commit
+    steps:
+      - name: Require a full CI run that passed on this commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          passed="$(gh run list --repo "$REPO" --workflow ci.yml --commit "$SHA" --status success             --limit 100 --json event             --jq '[.[] | select(.event == "push" or .event == "workflow_dispatch")] | length')"
+          if [ "$passed" -eq 0 ]; then
+            echo "ERROR: no full CI run passed on ${SHA}; start one with: gh workflow run ci.yml --ref <branch>"
+            exit 1
+          fi
 
   build-desktop-and-attest:
     name: build-desktop-and-attest (${{ matrix.os }}, ${{ matrix.target }})

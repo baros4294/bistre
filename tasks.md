@@ -5,13 +5,11 @@ Rules: re-read this file at session start and after every compaction. It holds o
 
 ## Current
 
-Wave: next release after v0.2.2   Next action: work through the gaps below, one tested slice per item.
+Wave: v1.0.0   Next action: merge the release pull request; `release-tag.yml` tags v1.0.0 and starts the release; then delete tags v0.1.0, v0.1.1, v0.1.2, v0.2.2 and Releases v0.1.2, v0.2.2.
 
 Scope (owner): the next release completes everything `docs/` describes, not only the items below. That is every Spec 00 section 6 row that is not Implemented (Partial, Built not wired, Planned), every `Open:` and `[UNVERIFIED]` note in `docs/specs/` and `docs/adr/` (for example ADR-0019 Not Built), and the design gaps in `docs/design/design.md`. Each one becomes a test and code, or an owner decision when it cannot be built (a live device, a paid service); the row or note changes in the same commit.
 
 - [ ] Windows code signing through SignPath Foundation's free open-source program: owner applies; then a signing step in `release.yml`, Spec 10, and the README SmartScreen note
-- [ ] Auto-tag: a workflow tags `v<version>` when a merge to `main` raises the version, then starts the release
-- [ ] `release.yml` checks that CI passed on the tagged commit (the push to `main`) instead of running the CI gates again, then builds, packages, and signs from that commit; Spec 10 and CONTRIBUTING
 
 ## Decisions (owner)
 
@@ -32,6 +30,7 @@ Scope (owner): the next release completes everything `docs/` describes, not only
 ### Needs a live run, a device, or CI
 - [u] In-app playback on Android (`MediaPlayer`, `VideoActivity.kt`) and Linux (GStreamer `playbin`): compiles in CI, runs on a device or host
 - [u] The daemon's second-checkout rebuild matches in the v1.0.0 release run
+- [u] `release-tag.yml` tags and starts the v1.0.0 release after the merge (a `workflow_run` runs only from `main`)
 - [u] W1.6 daemon pipe ACL: the refusal path (pipe served by a second Windows account) needs a second account
 - [u] W3.A 1b Ctrl+V passes in the test harness; needs a live Windows trace
 - [u] W3.S scroll stutter not yet measured (needs a Windows profile run)
