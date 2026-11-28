@@ -29,7 +29,7 @@ Bistre is an MIT open-source project built around strict layer boundaries, zero 
 5. Verify tests pass: `cd apps/bistre_app && flutter test`.
 
 ## Android Dependency Checksums
-Gradle checks every downloaded Android dependency against `apps/bistre_app/android/gradle/verification-metadata.xml` (sha256), so a changed or swapped artifact fails the build. After changing an Android dependency, plugin, or the Flutter or Gradle version (including Dependabot `gradle` updates), refresh the file from `apps/bistre_app/android`:
+Gradle checks every downloaded Android dependency against `apps/bistre_app/android/gradle/verification-metadata.xml` (sha256), so a changed or swapped artifact fails the build. After changing an Android dependency, plugin, or the Flutter or Gradle version (Dependabot does not update Gradle; these changes are made by hand), refresh the file from `apps/bistre_app/android`:
 
 ```
 flutter build apk --config-only --release --target-platform android-arm64
