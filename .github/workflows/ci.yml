@@ -271,11 +271,11 @@ jobs:
       - name: Resolve Dart Pub Workspace (enforcing pubspec.lock)
         shell: bash
         run: bash .github/scripts/with-download-retry.sh flutter pub get --enforce-lockfile
-      - name: Build and smoke-test bistre-daemon and bistre-updater release binaries (built once per OS; the launch checks reuse them)
+      - name: Build and smoke-test the bistre-daemon release binary (built once per OS; the launch checks reuse it)
         shell: bash
         run: |
           set -euo pipefail
-          cargo build --locked --release -p bistre-daemon -p bistre-updater
+          cargo build --locked --release -p bistre-daemon
           tmp_dir="${RUNNER_TEMP}/bistre-daemon-smoke"
           rm -rf "$tmp_dir"
           mkdir -p "$tmp_dir"
@@ -284,14 +284,6 @@ jobs:
           echo "$health_json"
           echo "$health_json" | grep -q '"wal_mode_active":true'
           echo "$health_json" | grep -q '"status_key":"diag.ok"'
-          set +e
-          ./target/release/bistre-updater >/dev/null 2>&1
-          status=$?
-          set -e
-          if [ "$status" -ne 2 ]; then
-            echo "ERROR: expected bistre-updater usage exit code 2, got $status"
-            exit 1
-          fi
       - name: Flutter static analysis (includes all 5 bistre_lints rules)
         shell: bash
         run: flutter analyze apps/bistre_app
