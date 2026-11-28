@@ -25,6 +25,7 @@ pub mod media;
 pub mod projects;
 pub mod providers;
 pub mod runs;
+pub mod runtime_handler;
 pub mod story;
 
 static ENGINE: LazyLock<RwLock<Option<Arc<dyn EngineClient>>>> =

@@ -114,14 +114,21 @@ class _CompactTabBadgeState extends State<_CompactTabBadge> {
 }
 
 class _BootFailedPage extends StatelessWidget {
-  const _BootFailedPage({required this.onRetry});
+  const _BootFailedPage({required this.onRetry, this.diagnosticKey});
 
   final VoidCallback onRetry;
+  final String? diagnosticKey;
 
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);
+    final detail =
+        diagnosticKey != null &&
+            diagnosticKey!.isNotEmpty &&
+            diagnosticKey != L10nKey.bootFailed.key
+        ? l10n.tRawKey(diagnosticKey!)
+        : null;
     return ColoredBox(
       color: theme.bgCanvas,
       child: Center(
@@ -132,10 +139,24 @@ class _BootFailedPage extends StatelessWidget {
             children: [
               Semantics(
                 liveRegion: true,
-                child: InkText(
-                  l10n.t(L10nKey.bootFailed),
-                  role: InkTextRole.titleMedium,
-                  textAlign: TextAlign.center,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    InkText(
+                      l10n.t(L10nKey.bootFailed),
+                      role: InkTextRole.titleMedium,
+                      textAlign: TextAlign.center,
+                    ),
+                    if (detail != null) ...[
+                      const SizedBox(height: BistreSpacing.s8),
+                      InkText(
+                        detail,
+                        role: InkTextRole.captionMeta,
+                        color: theme.inkMuted,
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ],
                 ),
               ),
               const SizedBox(height: BistreSpacing.s16),

@@ -11,6 +11,7 @@ import '../../app/shell_notifiers.dart';
 import '../../bridge/bistre_engine.dart';
 import '../../design/bistre_theme.dart';
 import '../../l10n/l10n_keys.g.dart';
+import '../../platform/crash_recorder.dart';
 import '../../platform/desktop_host.dart';
 import '../../platform/font_manager.dart';
 import '../../platform/host_memory.dart';

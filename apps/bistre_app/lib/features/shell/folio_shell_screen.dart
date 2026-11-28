@@ -118,6 +118,8 @@ class _FolioShellScreenState extends State<FolioShellScreen>
   final GlobalKey _providerPillKey = GlobalKey();
   bool _narrowDrawerOpen = false;
   bool _isWideViewport = true;
+  String? _cachedShortcutJson;
+  Map<ShortcutActivator, Intent>? _cachedShortcutMap;
 
   @override
   void initState() {
@@ -250,6 +252,14 @@ class _FolioShellScreenState extends State<FolioShellScreen>
     return map;
   }
 
+  Map<ShortcutActivator, Intent> _shortcutsFor(FolioController ctrl) {
+    final json = ctrl.settings.customShortcutsJson;
+    final cached = _cachedShortcutMap;
+    if (cached != null && _cachedShortcutJson == json) return cached;
+    _cachedShortcutJson = json;
+    return _cachedShortcutMap = _buildShortcutMap(ctrl);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = BistreLocalizations.of(context);
@@ -266,13 +276,14 @@ class _FolioShellScreenState extends State<FolioShellScreen>
             return ColoredBox(color: theme.bgCanvas);
           case BootState.failed:
             return _BootFailedPage(
+              diagnosticKey: ctrl.lastDiagnosticKey,
               onRetry: () => unawaited(ctrl.retryBootstrap()),
             );
           case BootState.ready:
             break;
         }
         return Shortcuts(
-          shortcuts: _buildShortcutMap(ctrl),
+          shortcuts: _shortcutsFor(ctrl),
           child: Actions(
             actions: <Type, Action<Intent>>{
               _TogglePaletteIntent: CallbackAction<_TogglePaletteIntent>(

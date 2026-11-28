@@ -20,6 +20,10 @@ import android.speech.tts.TextToSpeech
 import androidx.core.view.WindowCompat
 import java.io.File
 import java.util.Locale
+import java.util.concurrent.Callable
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -31,10 +35,22 @@ class MainActivity : FlutterActivity() {
     private var ttsReady: Boolean = false
     private var mediaPlayer: MediaPlayer? = null
     private var hostChannel: MethodChannel? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val ioExecutor: ExecutorService = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "bistre-android-io").apply { isDaemon = true }
+    }
+    private var prewarmedVaultKey: Future<Result<ByteArray>>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         super.onCreate(savedInstanceState)
+        val appContext = applicationContext
+        // Overlap native TLS verifier init and Keystore unwrap with Flutter engine boot so
+        // `obtainDataKey` and `DynamicLibrary.open` complete without cold-start stalls.
+        prewarmedVaultKey = ioExecutor.submit(Callable {
+            ensureTlsVerifierInitialized(appContext)
+            runCatching { VaultKeyStore.obtainDataKey(appContext) }
+        })
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -141,18 +157,32 @@ class MainActivity : FlutterActivity() {
         vaultChannel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "obtainDataKey" -> {
-                    // Keystore (especially StrongBox) calls can take hundreds of ms: keep them off
-                    // the UI thread and reply on the main looper as MethodChannel requires.
-                    val main = Handler(Looper.getMainLooper())
-                    Thread {
-                        val key = runCatching { VaultKeyStore.obtainDataKey(applicationContext) }
-                        main.post {
+                    // Keystore (especially StrongBox) calls can take hundreds of ms: consume the
+                    // pre-warmed task when available, keeping all work off the UI thread.
+                    val pending = prewarmedVaultKey
+                    prewarmedVaultKey = null
+                    val appContext = applicationContext
+                    ioExecutor.execute {
+                        val key = if (pending != null) {
+                            runCatching { pending.get() }.getOrElse { Result.failure(it) }
+                        } else {
+                            ensureTlsVerifierInitialized(appContext)
+                            runCatching { VaultKeyStore.obtainDataKey(appContext) }
+                        }
+                        mainHandler.post {
                             key.fold(
-                                onSuccess = { result.success(it) },
+                                onSuccess = { bytes ->
+                                    try {
+                                        result.success(bytes)
+                                    } finally {
+                                        // Result.success encodes synchronously into the reply buffer.
+                                        bytes.fill(0)
+                                    }
+                                },
                                 onFailure = { result.error("vault_key", it.javaClass.simpleName, null) },
                             )
                         }
-                    }.start()
+                    }
                 }
                 else -> result.notImplemented()
             }
@@ -181,11 +211,10 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "clipboardAttachments" -> {
                     // Copying can take a while: off the UI thread, replying on the main looper.
-                    val main = Handler(Looper.getMainLooper())
-                    Thread {
+                    ioExecutor.execute {
                         val files = SharedFiles.clipboardFiles(this)
-                        main.post { result.success(mapOf("files" to files)) }
-                    }.start()
+                        mainHandler.post { result.success(mapOf("files" to files)) }
+                    }
                 }
                 "openFile" -> {
                     val path = call.argument<String>("path")
@@ -264,18 +293,34 @@ class MainActivity : FlutterActivity() {
                 "playWavBytes" -> {
                     val bytes = call.argument<ByteArray>("bytes")
                     if (bytes != null && bytes.isNotEmpty()) {
-                        runCatching {
-                            mediaPlayer?.release()
-                            val tmp = File.createTempFile("bistre_audio_", ".wav", cacheDir)
-                            tmp.writeBytes(bytes)
-                            mediaPlayer = MediaPlayer().apply {
-                                setDataSource(tmp.absolutePath)
-                                setOnCompletionListener {
-                                    it.release()
-                                    tmp.delete()
+                        val cache = cacheDir
+                        ioExecutor.execute {
+                            val tmp = runCatching {
+                                File.createTempFile("bistre_audio_", ".wav", cache).apply {
+                                    writeBytes(bytes)
                                 }
-                                prepare()
-                                start()
+                            }.getOrNull() ?: return@execute
+                            mainHandler.post {
+                                runCatching {
+                                    mediaPlayer?.release()
+                                    mediaPlayer = MediaPlayer().apply {
+                                        setDataSource(tmp.absolutePath)
+                                        setOnPreparedListener { it.start() }
+                                        setOnCompletionListener {
+                                            it.release()
+                                            if (mediaPlayer === it) mediaPlayer = null
+                                            tmp.delete()
+                                        }
+                                        setOnErrorListener { player, _, _ ->
+                                            player.release()
+                                            if (mediaPlayer === player) mediaPlayer = null
+                                            tmp.delete()
+                                            mediaPlaybackFailed()
+                                            true
+                                        }
+                                        prepareAsync()
+                                    }
+                                }.onFailure { tmp.delete() }
                             }
                         }
                     }
@@ -328,6 +373,9 @@ class MainActivity : FlutterActivity() {
         runCatching { mediaPlayer?.release() }
         mediaPlayer = null
         activePowerChannel = null
+        prewarmedVaultKey?.cancel(false)
+        prewarmedVaultKey = null
+        ioExecutor.shutdownNow()
         super.onDestroy()
     }
 
@@ -385,7 +433,6 @@ class MainActivity : FlutterActivity() {
      * to Dart as `onFilesDropped`, as Windows does; a text-only drag is left to Flutter.
      */
     private fun listenForDrops(hostChannel: MethodChannel) {
-        val main = Handler(Looper.getMainLooper())
         window.decorView.setOnDragListener { _, event ->
             when (event.action) {
                 DragEvent.ACTION_DRAG_STARTED -> {
@@ -395,13 +442,13 @@ class MainActivity : FlutterActivity() {
                 DragEvent.ACTION_DROP -> {
                     val permissions = requestDragAndDropPermissions(event)
                     val clip = event.clipData
-                    Thread {
+                    ioExecutor.execute {
                         val files = SharedFiles.copyClip(this, clip)
                         permissions?.release()
                         if (files.isNotEmpty()) {
-                            main.post { hostChannel.invokeMethod("onFilesDropped", files) }
+                            mainHandler.post { hostChannel.invokeMethod("onFilesDropped", files) }
                         }
-                    }.start()
+                    }
                     true
                 }
                 else -> true
@@ -430,6 +477,25 @@ class MainActivity : FlutterActivity() {
 
         @Volatile
         private var activePowerChannel: MethodChannel? = null
+
+        @Volatile
+        private var tlsVerifierInitialized: Boolean = false
+
+        @JvmStatic
+        private external fun nativeInitTlsVerifier(context: Context): Boolean
+
+        private fun ensureTlsVerifierInitialized(context: Context) {
+            if (tlsVerifierInitialized) return
+            synchronized(this) {
+                if (tlsVerifierInitialized) return
+                runCatching {
+                    System.loadLibrary("bistre_ffi")
+                    tlsVerifierInitialized = nativeInitTlsVerifier(context.applicationContext)
+                }.onFailure { err ->
+                    Log.w("Bistre", "Android TLS verifier init failed: ${err.javaClass.simpleName}: ${err.message}")
+                }
+            }
+        }
 
         fun emitPowerEvent(eventKind: String) {
             val ch = activePowerChannel ?: return

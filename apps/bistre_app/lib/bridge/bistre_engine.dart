@@ -57,8 +57,8 @@ class FrbBistreEngineGateway
       final h = await frb.initRuntime(dataDir: dataDir, vaultKey: vaultKey);
       return _mapHealth(h);
     } finally {
-      // Best-effort wipe of the Dart copy; the Rust core keeps its own zeroizing copy.
-      vaultKey?.fillRange(0, vaultKey.length, 0);
+      // Best-effort wipe of mutable Dart copies; Flutter platform-channel views are read-only.
+      wipeVaultKeyBytes(vaultKey);
     }
   }
 
