@@ -16,11 +16,8 @@ Bistre ships zero hardcoded model IDs or pricing tables in application binaries.
 `User Override > Local Endpoint Probe > Live Provider /models > Upstream Aggregator > Signed Baseline Pack`.
 All merged pricing is normalized into exact integer `MoneyMicros(i64)` per 1M tokens (or per media unit) at ingest time; invalid/NaN values are rejected.
 
-## 3. Dedicated AIO Task Slots
-Each workspace/profile binds models by capability slot rather than a single global dropdown:
-- `chat_primary`, `code_agent`, `write_roleplay`, `fast_cheap`, `compaction_summarizer`, `inline_translate`
-- Wave 2/3 AIO slots: `stt_transcribe`, `tts_speech`, `image_generate_edit`, `video_generate_edit`, `voice_full_duplex`.
-When Wallet Shield "$0 Local Priority" is enabled, local probed models satisfying slot capabilities are ranked first.
+## 3. Default Models
+Settings > Default models holds one app-wide choice for chats and one per background task (`UtilitySlot` in `crates/bistre-core/src/utility.rs`: chat titles, summaries, translations); each task follows the chat default until the user sets its own, and side questions always use the chat's model. A chat or its assistant can set its own model, which wins (Model resolution order below). Picture, speech, and video models answer a chat turn as the chat's model (Spec 02 Media), so they need no separate setting. When Settings > Safety & Budget > Prefer free local models is on, a background task that follows the default runs on an enabled local provider instead (Spec 06).
 
 ## Live Model Catalog (`registry.rs`, `registry_parse.rs`)
 - Zero hardcoded model facts: a single-flight, detached background sync reads four public lists in order: OpenRouter `GET /api/v1/models?output_modalities=all` (the bare list holds text models only), OpenRouter `GET /api/v1/images/models` (picture shapes and sizes from `supported_parameters.aspect_ratio|resolution.values`; it has no prices, so a model that also writes text takes only its choices from it), OpenRouter `GET /api/v1/videos/models` (video `pricing_skus` and `supported_durations`), and LiteLLM `model_prices_and_context_window.json`. Earlier sources win per field; later ones fill gaps. Vercel AI Gateway and models.dev are not read: models.dev holds per-token costs only, and both repeat what these two carry.

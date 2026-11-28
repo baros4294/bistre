@@ -21,7 +21,7 @@
 
 ## Rejected Alternatives
 - A third-party SSRF/egress crate or `hickory` resolver: adds dependency weight for logic that fits in one audited module over `reqwest`'s `Resolve` trait.
-- Win32 Job Objects inside `bistre-core`: requires `unsafe`; deferred to an audited shim crate (tracked open gap in Spec 04 and `SECURITY.md`).
+- Win32 Job Objects inside `bistre-core`: requires `unsafe`; they live in the audited `bistre-crypto` containment shim instead (`containment.rs`, ADR-0010).
 - Shipping a bundled price table: rots within weeks and silently mis-bills; a live registry with explicit "unknown" is honest.
 - Floating-point registry math: violates the `MoneyMicros` invariant; decimal text is parsed exactly instead.
 
