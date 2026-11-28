@@ -62,7 +62,7 @@ Section: utils
 Priority: optional
 Architecture: amd64
 Installed-Size: ${installed_kb}
-Depends: libc6 (>= 2.31), libgtk-3-0 | libgtk-3-0t64, liblzma5, libstdc++6
+Depends: libc6 (>= 2.31), libgtk-3-0 | libgtk-3-0t64, liblzma5, libstdc++6, libegl1, libgles2, libgl1
 Maintainer: Bistre Maintainers <noreply@users.noreply.github.com>
 Homepage: https://github.com/baros4294/bistre
 Description: Local-first, zero-telemetry AI workspace
@@ -144,7 +144,7 @@ Summary:        Local-first, zero-telemetry AI workspace
 License:        MIT
 URL:            https://github.com/baros4294/bistre
 AutoReqProv:    no
-Requires:       libgtk-3.so.0()(64bit), liblzma.so.5()(64bit), libstdc++.so.6()(64bit)
+Requires:       libgtk-3.so.0()(64bit), liblzma.so.5()(64bit), libstdc++.so.6()(64bit), libEGL.so.1()(64bit), libGLESv2.so.2()(64bit), libGL.so.1()(64bit)
 
 %description
 Bistre is an MIT-licensed, local-first AI client powered by a pure-Rust
