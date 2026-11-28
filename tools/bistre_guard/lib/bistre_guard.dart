@@ -538,11 +538,14 @@ void checkToolchainAndVersionSync(Directory repoRoot, List<String> errors) {
       r'FLUTTER_VERSION:\s*"?([0-9]+\.[0-9]+\.[0-9]+)"?',
     ).firstMatch(ciText)?.group(1);
     if (flutterVersion != null) {
-      if (releaseFile.existsSync() &&
-          !releaseFile.readAsStringSync().contains(flutterVersion)) {
-        errors.add(
-          '[version-sync] .github/workflows/release.yml does not match Flutter version $flutterVersion in ci.yml.',
-        );
+      for (final name in const <String>['release.yml', 'version-bump.yml']) {
+        final workflow = File('${repoRoot.path}/.github/workflows/$name');
+        if (workflow.existsSync() &&
+            !workflow.readAsStringSync().contains(flutterVersion)) {
+          errors.add(
+            '[version-sync] .github/workflows/$name does not match Flutter version $flutterVersion in ci.yml.',
+          );
+        }
       }
       if (readmeFile.existsSync() &&
           !readmeFile.readAsStringSync().contains(flutterVersion)) {

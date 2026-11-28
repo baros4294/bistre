@@ -1,0 +1,73 @@
+name: Version bump
+
+# Every pull request into main ships a version above main's: when the branch has not raised
+# it (`just bump`), this commits the next patch to the branch. A larger version set by hand
+# is kept. Bot and fork pull requests are skipped (Dependabot updates ship with the next
+# version; a fork branch cannot be pushed to).
+on:
+  pull_request:
+    branches: ["main"]
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  group: version-bump-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.50.1"
+
+jobs:
+  bump:
+    name: bump
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.type != 'Bot'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write # push the version commit to the pull request branch
+      actions: write # start CI on the new commit (a GITHUB_TOKEN push starts no workflow)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Raise the version above main's when the branch has not
+        id: bump
+        shell: bash
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          base_dir="$(mktemp -d)"
+          git show "origin/${BASE_REF}:Cargo.toml" > "$base_dir/Cargo.toml"
+          git show "origin/${BASE_REF}:apps/bistre_app/pubspec.yaml" > "$base_dir/pubspec.yaml"
+          flutter pub get --enforce-lockfile > /dev/null
+          next="$(dart run tools/bistre_guard/bin/bistre_version.dart above "$base_dir/Cargo.toml" "$base_dir/pubspec.yaml")"
+          echo "next=${next}" >> "$GITHUB_OUTPUT"
+      - name: Commit the version and start CI on it
+        if: steps.bump.outputs.next != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          NEXT: ${{ steps.bump.outputs.next }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock apps/bistre_app/pubspec.yaml
+          # The branch's code ran in the step before; its git hooks never run with the token.
+          git -c core.hooksPath=/dev/null commit -m "chore(release): v${NEXT}"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:refs/heads/${HEAD_REF}"
+          gh workflow run ci.yml --repo "$REPO" --ref "$HEAD_REF"

@@ -187,7 +187,7 @@ void main() {
     final good = _repo(<String, Object>{
       'Cargo.toml': '[workspace.package]\nversion = "1.2.3"\n',
       'apps/bistre_app/pubspec.yaml': 'version: 1.2.3+4\n',
-      'apps/bistre_app/windows/runner/runner.rc': '#define VERSION_AS_NUMBER 1,2,3,4\r\n#define VERSION_AS_STRING "1.2.3"\r\nVALUE "ProductName", "Bistre" "\\0"\r\n',
+      'apps/bistre_app/windows/runner/runner.rc': '#define VERSION_AS_NUMBER FLUTTER_VERSION_MAJOR,FLUTTER_VERSION_MINOR,FLUTTER_VERSION_PATCH,FLUTTER_VERSION_BUILD\r\n#define VERSION_AS_STRING FLUTTER_VERSION\r\nVALUE "ProductName", "Bistre" "\\0"\r\n',
       'crates/bistre-core/src/mcp.rs':
           '"clientInfo": { "name": "Bistre", "version": crate::CORE_VERSION }',
     });
@@ -205,7 +205,10 @@ void main() {
     checkSingleVersionSource(bad.$1, badErrors);
     final joined = badErrors.join('\n');
     expect(joined, contains('!= apps/bistre_app/pubspec.yaml version 1.3.0'));
-    expect(joined, contains('runner.rc fallback version'));
+    expect(
+      joined,
+      contains('runner.rc must take its version from FLUTTER_VERSION'),
+    );
     expect(joined, contains('generator boilerplate'));
     expect(joined, contains('must use crate::CORE_VERSION'));
   });
@@ -266,7 +269,7 @@ void main() {
     final pre = _repo(<String, Object>{
       'Cargo.toml': '[workspace.package]\nversion = "1.2.3-rc.1"\n',
       'apps/bistre_app/pubspec.yaml': 'version: 1.2.3-rc.1+4\n',
-      'apps/bistre_app/windows/runner/runner.rc': '#define VERSION_AS_NUMBER 1,2,3,4\r\n#define VERSION_AS_STRING "1.2.3-rc.1"\r\nVALUE "ProductName", "Bistre" "\\0"\r\n',
+      'apps/bistre_app/windows/runner/runner.rc': '#define VERSION_AS_NUMBER FLUTTER_VERSION_MAJOR,FLUTTER_VERSION_MINOR,FLUTTER_VERSION_PATCH,FLUTTER_VERSION_BUILD\r\n#define VERSION_AS_STRING FLUTTER_VERSION\r\nVALUE "ProductName", "Bistre" "\\0"\r\n',
       'crates/bistre-core/src/mcp.rs':
           '"clientInfo": { "name": "Bistre", "version": crate::CORE_VERSION }',
     });

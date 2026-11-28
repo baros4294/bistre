@@ -529,7 +529,8 @@ void checkMarkdownAnchors(
   }
 }
 
-/// 8c. One app version across Cargo, pubspec, the Win32 resource fallback, and MCP `clientInfo`.
+/// 8c. One app version: Cargo and pubspec equal (written by `just bump`), the Win32 resource
+/// and MCP `clientInfo` reading it rather than copying it.
 void checkSingleVersionSource(Directory root, List<String> errors) {
   final cargo = File('${root.path}/Cargo.toml');
   final pubspec = File('${root.path}/apps/bistre_app/pubspec.yaml');
@@ -554,8 +555,6 @@ void checkSingleVersionSource(Directory root, List<String> errors) {
     return;
   }
   final pubVersion = pubMatch.group(1)!;
-  final coreTriple = pubVersion.split('-').first;
-  final build = pubMatch.group(2) ?? '0';
   if (cargoVersion != pubVersion) {
     errors.add(
       '[version-sync] Cargo.toml version $cargoVersion != apps/bistre_app/pubspec.yaml version $pubVersion.',
@@ -563,11 +562,12 @@ void checkSingleVersionSource(Directory root, List<String> errors) {
   }
   if (rc.existsSync()) {
     final text = rc.readAsStringSync();
-    final expectedNumber = '${coreTriple.replaceAll('.', ',')},$build';
-    if (!text.contains('#define VERSION_AS_NUMBER $expectedNumber') ||
-        !text.contains('#define VERSION_AS_STRING "$pubVersion"')) {
+    // The Windows resource takes pubspec's version from the Flutter build; a literal copy
+    // drifts at the next bump.
+    if (!text.contains('#define VERSION_AS_STRING FLUTTER_VERSION') ||
+        RegExp(r'#define VERSION_AS_(STRING\s+"|NUMBER\s+\d)').hasMatch(text)) {
       errors.add(
-        '[version-sync] runner.rc fallback version must be $pubVersion ($expectedNumber).',
+        '[version-sync] runner.rc must take its version from FLUTTER_VERSION, with no literal copy.',
       );
     }
     for (final boilerplate in const <String>['"bistre_app" "', 'dev.bistre']) {
