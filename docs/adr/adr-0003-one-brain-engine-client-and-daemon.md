@@ -1,4 +1,4 @@
-# ADR-0003: Unified `EngineClient` Trait, Resident Desktop Daemon & mTLS Remote Bridge
+# ADR-0003: Unified `EngineClient` Trait & Resident Desktop Daemon
 
 - Status: Accepted
 - Deciders: Bistre Principal Architecture
@@ -6,16 +6,13 @@
 ## Context & Live-Verified Evidence
 - Keeping a hidden Flutter/Impeller window alive on desktop consumes 80–200 MB GPU/Dart RAM.
 - On Linux KDE Plasma 6 Wayland, `libayatana-appindicator` and legacy tray wrappers frequently fail to register with `StatusNotifierWatcher` or break Wayland window focus.
-- Over LAN and Tailscale WireGuard networks, raw UDP QUIC encounters corporate UDP filtering and WireGuard-over-UDP MTU fragmentation.
 
 ## Decision
-1. Define a single async `EngineClient` trait in `crates/bistre-core` behind one FRB v2 API in `crates/bistre-ffi`, with three interchangeable backends: `InProcessEngine` (Android embedded and standalone desktop), `LocalIpcEngine` (Desktop UDS / Windows Named Pipe), and `RemoteBridgeEngine` (LAN/Tailscale).
+1. Define a single async `EngineClient` trait in `crates/bistre-core` behind one FRB v2 API in `crates/bistre-ffi`, with two interchangeable backends: `InProcessEngine` (Android embedded and standalone desktop) and `LocalIpcEngine` (Desktop UDS / Windows Named Pipe).
 2. On desktop, run a dedicated resident `bistre-daemon` binary (~15–30 MB RSS) owning the data folder's single-writer file lock (`daemon.lock`: `flock` / `LockFileEx`), SQLite WAL writer, active LLM/agent/MCP runs, Wayland clipboard serving, and system tray (`ksni 0.3.7` pure-Rust D-Bus on Linux, Win32 `Shell_NotifyIconW` on Windows). Closing the window exits the Flutter UI process completely (0 MB GUI idle RAM).
-3. Use TLS 1.3 mTLS WebSocket over TCP with QR-exchanged certificate fingerprint pinning, monotonic `u64` cursor replay, and single-writer lease fencing for Remote Bridge.
 
 ## Rejected Alternatives
 - Hide Flutter window to tray: Violates ≤30 MB idle RAM budget and ties background agent survivability to GPU/compositor stability.
-- QUIC-only Remote Bridge: Fragile under enterprise firewalls and Tailscale WireGuard encapsulation.
 
 ## Consequences & Verification
 - The IPC channel is private to the signed-in user: owner-only pipe DACL and remote-client rejection on the daemon side, server-identity (Windows token SID / Unix peer uid) verification on the client side, before any request is written.
@@ -24,5 +21,5 @@
 - An app is attached exactly while its event stream (`subscribe_events`) is open, so a closed or crashed window detaches without saying so. A reconnect replays the durable event log after the last cursor the app saw (at most 2,000 events), then forwards live events; the cursor advances only when no event is queued. A lost connection is retried with backoff (100 ms doubling to 2 s, 6 tries), starting the daemon again at most 3 times per 10 min; then the app raises `diag.daemon.unavailable` (`daemon_lost`) once and stops trying, so nothing polls. Tests: `daemon_ipc_tests::events_arrive_live_and_replay_after_a_reconnect`, `daemon_ipc_tests::an_app_is_attached_while_its_stream_is_open`.
 - Start-up (`daemon_launch::open_desktop_engine`, called by `init_runtime` on Windows and Linux): the folder's daemon when it answers; else `bistre-daemon --active-scoped` started from beside the app with `process_util::spawn_detached_daemon` (through `spawn_detached`), the one uncontained child besides the update installer (no window, its own process group, no kill-on-close job, no parent-death signal), so runs survive closing the window; else, with no daemon installed, the engine in this process. The daemon and the in-process engine both hold `daemon.lock` (`WriterLock`), so one process writes a folder: a holder that does not answer is `diag.runtime.already_running` (`data_folder_busy`), never a second writer. A daemon of another core version is left to exit once idle (up to 10 s) before a new one starts (`daemon_version_mismatch` while it is still busy). Tests: `daemon_ipc_tests::a_second_writer_is_refused`, `daemon_ipc_tests::a_running_daemon_is_used_instead_of_the_database`, `bistre-daemon/tests/launch.rs` (the real binary started, shared by two windows, gone once idle).
 - With every window closed the active-scoped daemon stays only while work is live and Settings > Agent "Keep replies going after you close the window" (`daemon_keep_alive_when_active`, shown while the daemon is in use) is on; off, it exits once no app is attached. Test: `bistre-daemon` `keep_alive_off_lets_a_closed_window_end_live_work`.
-- Flutter UI stays 100% topology-agnostic across Android, Desktop Daemon, and Remote Bridge.
+- Flutter UI stays 100% topology-agnostic across Android and the desktop daemon.
 - Verified via `bistre-daemon --health-check` (RSS ≤30 MB) and single-instance lock contention tests.

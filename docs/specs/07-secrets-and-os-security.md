@@ -1,13 +1,7 @@
-# Spec 07: Remote Bridge, Pairing & OS Security Model
+# Spec 07: Secrets & OS Security Model
 
-## 1. QR-Paired Remote Bridge (LAN & Tailscale)
-- Transport: TLS 1.3 mutual-TLS (mTLS) WebSocket over TCP (`ADR-0003`), avoiding corporate UDP blocks and QUIC-over-WireGuard double-encapsulation MTU fragmentation on Tailscale.
-- QR Pairing Protocol: Host `bistre-daemon` generates an ephemeral self-signed Ed25519/ECDSA leaf cert + short-lived pairing nonce encoded in QR (`bistre-pair://v1?addr=<host:port>&fp=<sha256>&token=<one-time-nonce>`). Client pins the exact server certificate SHA-256 fingerprint and submits its own client leaf cert during the pairing handshake, establishing zero-CA MITM-proof mTLS.
-- Resumable Event Cursors & Single-Writer Safety: Every committed engine event carries a monotonic `u64` cursor persisted in SQLite. Reconnecting clients send `resume_after_cursor` to replay missed frames losslessly. Mutations require a short-lived single-writer lease token fenced by generation number so multi-client writes cannot race.
-- Protocol Version Negotiation: The initial `Hello` frame negotiates `(protocol_major, min_supported, max_supported)`; incompatible skew surfaces a structured `DiagnosticKey` upgrade prompt rather than silent deserialization crashes.
-
-## 2. Execution-Node Secret Isolation (`SecretVault`)
-API keys and pairing private keys never leave the execution node or cross Remote Bridge, and are wrapped in `Zeroizing<Vec<u8>>` in memory with a global tracing redaction layer blocking secret patterns (`sk-`, `AIza`, `sk-ant-`).
+## 1. Execution-Node Secret Isolation (`SecretVault`)
+API keys never leave the device and are wrapped in `Zeroizing<Vec<u8>>` in memory with a global tracing redaction layer blocking secret patterns (`sk-`, `AIza`, `sk-ant-`).
 - Shared format (Linux & Android): `LocalSecretVault` (`crates/bistre-crypto/src/lib.rs`, `sealed.rs`) stores `x1:<hex(nonce24 || ciphertext)>` entries sealed with XChaCha20-Poly1305 under a 32-byte `VaultKey`, with the entry name as associated data, plus a sealed `__bistre_vault_check__` entry that detects a changed key (the old file is then set aside as `bistre_vault.local.json.key-mismatch-<ms>`). Plaintext entries written by older versions are encrypted in place on the first keyed open. Writes are atomic (0600 temp file, `sync_all`, rename). With no key source the vault opens read-only for legacy entries and `put` fails with `diag.crypto.vault_unavailable` (`no_vault_key`).
 - Android: `VaultKeyStore.kt` keeps a non-exportable Android Keystore `AES-256-GCM` key (`bistre_vault_kek_v1`, StrongBox preferred, TEE fallback) that wraps the random vault data key in `noBackupFilesDir/bistre_vault.key.wrapped` (`AtomicFile`); the `dev.bistre.app/vault_key` channel hands the unwrapped key to `init_runtime(data_dir, vault_key)`, and Dart wipes its copy afterwards. A Keystore key that can no longer unwrap sets the wrapped file aside and starts a new data key. Everything is excluded from Auto Backup (`android:allowBackup="false"` + `data_extraction_rules.xml`). Deprecated `EncryptedSharedPreferences` is strictly forbidden.
 - Windows (implemented): DPAPI (`CryptProtectData` `CurrentUser`) encrypted entries in `bistre_vault.dpapi.json` inside the data directory.

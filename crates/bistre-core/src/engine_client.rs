@@ -1,4 +1,4 @@
-//! The `EngineClient` boundary shared by in-process, daemon IPC, and remote bridge engines.
+//! The `EngineClient` boundary shared by the in-process and daemon IPC engines.
 
 use super::{
     AgentRunRecord, AppHealthSnapshot, AppSettings, AssistantPatch, AssistantRecord,
@@ -15,8 +15,6 @@ use super::{
 /// Unified engine boundary implemented by:
 /// - `InProcessEngine` (Android embedded & desktop direct mode)
 /// - `LocalIpcEngine` (Desktop UDS/Named Pipe to `bistre-daemon`)
-///
-/// A remote engine over TLS 1.3 mTLS (Spec 07) would implement it too; it is not built.
 pub trait EngineClient: Send + Sync {
     fn health(&self) -> BoxFuture<'_, BistreResult<AppHealthSnapshot>>;
     fn list_projects(&self) -> BoxFuture<'_, BistreResult<Vec<ProjectRecord>>>;
