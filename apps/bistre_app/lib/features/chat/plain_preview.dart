@@ -53,28 +53,18 @@ String markdownToPlainText(String markdown) {
   return out.join('\n').trim();
 }
 
-/// One line of a message as plain words, for previews (the conversation tree): Markdown
-/// marks are dropped (headings, quotes, list bullets, emphasis, code ticks, link targets)
-/// and runs of space fold to one. Bounded: at most [maxChars] characters, then "…".
+/// One line of a message as plain words, for previews (the conversation tree): the marks
+/// [markdownToPlainText] drops plus list bullets, with runs of space folded to one, so an
+/// identifier keeps its underscores. Bounded: at most [maxChars] characters, then "…".
 String plainPreview(String markdown, {int maxChars = 108}) {
   final source = markdown.length > 4096
       ? markdown.substring(0, 4096)
       : markdown;
-  final lines = <String>[];
-  for (final raw in source.split('\n')) {
-    var line = raw.trim();
-    if (line.startsWith('```') || line.startsWith('~~~')) continue;
-    line = line
-        .replaceFirst(RegExp(r'^#{1,6}\s+'), '')
-        .replaceFirst(RegExp(r'^(>\s*)+'), '')
-        .replaceFirst(RegExp(r'^([-*+]|\d+[.)])\s+'), '');
-    if (line.isNotEmpty) lines.add(line);
-  }
-  final single = lines
+  final single = markdownToPlainText(source)
+      .split('\n')
+      .map((l) => l.trim().replaceFirst(RegExp(r'^([-*+]|\d+[.)])\s+'), ''))
+      .where((l) => l.isNotEmpty)
       .join(' ')
-      .replaceAllMapped(RegExp(r'!?\[([^\]]*)\]\([^)]*\)'), (m) => m[1] ?? '')
-      .replaceAll(RegExp(r'(\*\*|__|\*|_|`|~~)'), '')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
+      .replaceAll(RegExp(r'\s+'), ' ');
   return clipText(single, maxChars);
 }

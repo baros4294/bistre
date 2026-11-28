@@ -104,6 +104,10 @@ void main() {
       plainPreview('## Plan\n- **ship** `v2` [notes](https://x.test)'),
       'Plan ship v2 notes',
     );
+    expect(
+      plainPreview('Isolating writes avoids `SQLITE_BUSY` in snake_case code'),
+      'Isolating writes avoids SQLITE_BUSY in snake_case code',
+    );
     expect(plainPreview('a' * 200).length, 109);
   });
 
