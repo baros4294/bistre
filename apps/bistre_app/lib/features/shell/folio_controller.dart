@@ -372,6 +372,7 @@ class FolioController extends ChangeNotifier {
   bool _checkingUpdates = false;
   bool _stagingUpdate = false;
   bool _installingUpdate = false;
+  ComposerAttachment? _playingAttachment;
   String? _pendingUpdateVersion;
   bool _updateBannerDismissed = false;
   String? _lastOtaDiagnostic;

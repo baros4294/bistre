@@ -19,14 +19,12 @@
 7. Format (picture shape, size, video length) is one setting for every chat, like the thinking level. Each value goes only to a model whose catalog entry lists it, in that API's field names; the composer offers only the listed values, shapes drawn at their true proportions. Controls follow what the model does: Thinking for a model that writes text, Format for one with listed choices, both for a model that thinks and draws.
 8. A reply's generated files go back to the model with the next user message, the one form every dialect takes, for the kinds the model reads. A Gemini reply whose every picture part carried a `thoughtSignature` sends them back as its own parts instead, with those signatures, when the target may replay that reply's reasoning (Spec 02 §7).
 9. A submitted video job is kept (`media_jobs.rs`, `kv_meta` `media.video_jobs`, at most 16) until it is fetched or the provider fails it. A launch books each job a crash cut off under its turn's request id, so one settled before the crash is not booked twice; Try again on the same message with the same model, within 24 h of the start, polls that job and reserves nothing more. A stop or a broken wait keeps the job the same way.
-
-## Not Built
-- In-app audio and video playback: WAV plays on Windows and Android; any other sound or video opens in its default app (on Android, the app the user picks).
+10. A sound or video file plays in the app through the platform player the runner already links (`host_media.cpp` Media Foundation on Windows, `host_media.cc` GStreamer `playbin` loaded with `dlopen` on Linux, `MediaPlayer` and `VideoActivity.kt` on Android). A video gets its own window. A file the player cannot start, or one that fails before it starts playing, opens in its default app once (`onMediaPlaybackFailed`). On Linux without GStreamer every file opens in its default app; the `.deb` and `.rpm` recommend the base and good plugin sets. Test: `catalog_fill_and_media_viewer_test.dart`; Windows playback ran in a harness (a WAV, an MP4 sized to its video, an undecodable file reported failed); Android and Linux playback are `[UNVERIFIED]` (no device or host).
 
 ## Rejected Alternatives
 - A per-provider or per-model media table: it goes stale with every release and breaks "never hardcode".
 - The fal.ai queue schemas as the shared shape: one aggregator's format, and no provider Bistre speaks uses it.
-- A media player package: no such dependency without an owner request (AGENTS §3).
+- A media player package: each runner already has the platform player (Media Foundation, GStreamer, `MediaPlayer`), so a package would add a dependency for no new format.
 
 ## Consequences & Verification
 - `PRICE_CACHE_FORMAT` 8 (per-call fees and picture and sound token rates); Vercel and models.dev are no longer fetched.

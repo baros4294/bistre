@@ -30,6 +30,7 @@ class MainActivity : FlutterActivity() {
     private var ttsEngine: TextToSpeech? = null
     private var ttsReady: Boolean = false
     private var mediaPlayer: MediaPlayer? = null
+    private var hostChannel: MethodChannel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -37,6 +38,10 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == REQ_PLAY_VIDEO) {
+            if (resultCode != Activity.RESULT_OK) mediaPlaybackFailed()
+            return
+        }
         if (requestCode == REQ_VOICE_INPUT) {
             val cb = pendingVoiceResult
             pendingVoiceResult = null
@@ -170,6 +175,7 @@ class MainActivity : FlutterActivity() {
         }
 
         val hostChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, HOST_CHANNEL)
+        this.hostChannel = hostChannel
         listenForDrops(hostChannel)
         hostChannel.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -246,6 +252,15 @@ class MainActivity : FlutterActivity() {
                     }
                     result.success(true)
                 }
+                "playMediaFile" -> {
+                    val path = call.argument<String>("path")
+                    val started = path != null && if (call.argument<Boolean>("video") == true) {
+                        playVideo(path, call.argument<String>("title") ?: "")
+                    } else {
+                        playSound(path)
+                    }
+                    result.success(started)
+                }
                 "playWavBytes" -> {
                     val bytes = call.argument<ByteArray>("bytes")
                     if (bytes != null && bytes.isNotEmpty()) {
@@ -316,6 +331,43 @@ class MainActivity : FlutterActivity() {
         super.onDestroy()
     }
 
+    /** Plays a sound file Bistre holds; a file that cannot be decoded tells Dart. */
+    private fun playSound(path: String): Boolean {
+        runCatching { mediaPlayer?.release() }
+        mediaPlayer = null
+        return runCatching {
+            mediaPlayer = MediaPlayer().apply {
+                setDataSource(path)
+                setOnPreparedListener { it.start() }
+                setOnCompletionListener {
+                    it.release()
+                    if (mediaPlayer === it) mediaPlayer = null
+                }
+                setOnErrorListener { player, _, _ ->
+                    player.release()
+                    if (mediaPlayer === player) mediaPlayer = null
+                    mediaPlaybackFailed()
+                    true
+                }
+                prepareAsync()
+            }
+        }.onFailure { Log.w("Bistre", "sound not played: ${it.message}") }.isSuccess
+    }
+
+    /** Opens the video in Bistre's own player screen (`VideoActivity`). */
+    private fun playVideo(path: String, title: String): Boolean {
+        val intent = Intent(this, VideoActivity::class.java)
+            .putExtra(VideoActivity.EXTRA_PATH, path)
+            .putExtra(VideoActivity.EXTRA_TITLE, title)
+        return runCatching { startActivityForResult(intent, REQ_PLAY_VIDEO) }
+            .onFailure { Log.w("Bistre", "video not played: ${it.message}") }
+            .isSuccess
+    }
+
+    private fun mediaPlaybackFailed() {
+        hostChannel?.invokeMethod("onMediaPlaybackFailed", null)
+    }
+
     /** Opens an http(s) page in the browser; any other scheme or a link with a login is refused. */
     private fun openWebLink(url: String): Boolean {
         val uri = Uri.parse(url)
@@ -374,6 +426,7 @@ class MainActivity : FlutterActivity() {
         private const val VAULT_CHANNEL = "dev.bistre.app/vault_key"
         private const val REQ_PICK_FOLDER = 42941
         private const val REQ_VOICE_INPUT = 42942
+        private const val REQ_PLAY_VIDEO = 42943
 
         @Volatile
         private var activePowerChannel: MethodChannel? = null

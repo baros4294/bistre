@@ -16,6 +16,7 @@
 #include <thread>
 #include <vector>
 
+#include "host_media.h"
 #include "win32_window.h"
 
 // A window hosting the Flutter view plus Bistre's native Win32 desktop host channel
@@ -62,6 +63,7 @@ class FlutterWindow : public Win32Window {
   flutter::DartProject project_;
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> host_channel_;
+  std::unique_ptr<HostMedia> media_;
   bool has_shown_ = false;
   bool pending_maximized_ = false;
   bool tray_enabled_ = false;

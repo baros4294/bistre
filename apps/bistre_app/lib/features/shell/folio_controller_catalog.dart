@@ -420,27 +420,31 @@ extension FolioCatalogActions on FolioController {
     }
   }
 
-  /// WAV plays in the app where the host can play it (Windows, Android).
+  /// A sound or video plays in the app on Windows, Linux, and Android.
   bool canPlayOf(ComposerAttachment attachment) =>
-      (Platform.isWindows || Platform.isAndroid) &&
+      (Platform.isWindows || Platform.isAndroid || Platform.isLinux) &&
       attachment.path.isNotEmpty &&
-      (attachment.mimeType == 'audio/wav' ||
-          attachment.mimeType == 'audio/x-wav' ||
-          _extensionOf(attachment.name) == 'wav');
+      (attachment.mimeType.startsWith('audio/') ||
+          attachment.mimeType.startsWith('video/'));
 
-  /// Plays at most [kMaxPlayedWavBytes]; a longer file opens in its default app instead.
+  /// Plays [attachment] in Bistre's player: a sound in the background, a video in its own
+  /// window. A file the platform's player cannot take opens in its default app instead,
+  /// also when it fails after starting ([onMediaPlaybackFailed]).
   Future<void> playOf(ComposerAttachment attachment) async {
-    try {
-      final file = File(attachment.path);
-      if (await file.length() > kMaxPlayedWavBytes) {
-        await openInAppOf(attachment);
-        return;
-      }
-      await BistreDesktopHost.playWavBytes(await file.readAsBytes());
-    } on FileSystemException catch (e) {
-      _noteNonFatal('play_wav', e);
-      showToast(L10nKey.viewerOpenFailed, tone: ToastTone.error);
-    }
+    _playingAttachment = attachment;
+    final started = await BistreDesktopHost.playMediaFile(
+      path: attachment.path,
+      title: attachment.name,
+      video: attachment.mimeType.startsWith('video/'),
+    );
+    if (!started) await openInAppOf(attachment);
+  }
+
+  /// The host could not decode the file it started: open it in its default app.
+  void onMediaPlaybackFailed() {
+    final attachment = _playingAttachment;
+    _playingAttachment = null;
+    if (attachment != null) unawaited(openInAppOf(attachment));
   }
 
   Future<void> stopPlayback() => BistreDesktopHost.stopAudioPlayback();
@@ -832,6 +836,3 @@ String _extensionOf(String name) {
   final dot = name.lastIndexOf('.');
   return dot > 0 ? name.substring(dot + 1).toLowerCase() : '';
 }
-
-/// Largest WAV the app reads into memory to play (64 MiB, the generated-media bound).
-const int kMaxPlayedWavBytes = 64 * 1024 * 1024;
