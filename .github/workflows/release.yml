@@ -501,12 +501,23 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $setup = (Get-ChildItem dist -Filter 'bistre-*-windows-x64-setup.exe').FullName
           $dir = Join-Path $env:RUNNER_TEMP 'bistre-install'
-          $p = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$dir" -Wait -PassThru
+          # A silent setup opens Bistre when it finishes (the in-app update path), and that app
+          # outlives setup: wait for setup alone, since `-Wait` also waits for its descendants.
+          $p = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$dir" -PassThru
+          $null = $p.Handle # keeps the handle, so ExitCode is readable after exit
+          if (-not $p.WaitForExit(300000)) { throw 'setup.exe did not finish within 300 s' }
           if ($p.ExitCode -ne 0) { throw "setup.exe exited with $($p.ExitCode)" }
           $data = Join-Path $env:RUNNER_TEMP 'bistre-smoke-data'
           $health = & (Join-Path $dir 'bistre-daemon.exe') --health-check --data-dir $data
           if ($health -notmatch '"status_key":"diag.ok"') { throw "daemon health check failed: $health" }
-          $app = Start-Process (Join-Path $dir 'bistre_app.exe') -PassThru
+          $exe = Join-Path $dir 'bistre_app.exe'
+          $app = $null
+          $deadline = (Get-Date).AddSeconds(30)
+          while (-not $app -and (Get-Date) -lt $deadline) {
+            $app = Get-Process -Name bistre_app -ErrorAction Ignore | Where-Object Path -eq $exe | Select-Object -First 1
+            if (-not $app) { Start-Sleep -Seconds 1 }
+          }
+          if (-not $app) { throw 'the silent setup did not open Bistre within 30 s' }
           Start-Sleep -Seconds 15
           if ($app.HasExited) { throw "the installed app exited early ($($app.ExitCode))" }
           Stop-Process -Id $app.Id -Force
