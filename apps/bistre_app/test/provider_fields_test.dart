@@ -46,23 +46,22 @@ Future<(FolioController, BistreLocalizationController)> _pump(
 }
 
 void main() {
-  testWidgets(
-    'a new Gemini provider starts from core\'s server URL',
-    (tester) async {
-      final (_, l10n) = await _pump(tester);
-      await tester.tap(find.text(l10n.t(L10nKey.providerAddButton)).first);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Google Gemini').last);
-      await tester.pumpAndSettle();
-      final urls = tester
-          .widgetList<EditableText>(find.byType(EditableText))
-          .map((e) => e.controller.text)
-          .where((t) => t.startsWith('http'))
-          .toList();
-      expect(urls, contains('https://generativelanguage.googleapis.com'));
-      expect(urls.any((u) => u.endsWith('/v1beta')), isFalse);
-    },
-  );
+  testWidgets('a new Gemini provider starts from core\'s server URL', (
+    tester,
+  ) async {
+    final (_, l10n) = await _pump(tester);
+    await tester.tap(find.text(l10n.t(L10nKey.providerAddButton)).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Google Gemini').last);
+    await tester.pumpAndSettle();
+    final urls = tester
+        .widgetList<EditableText>(find.byType(EditableText))
+        .map((e) => e.controller.text)
+        .where((t) => t.startsWith('http'))
+        .toList();
+    expect(urls, contains('https://generativelanguage.googleapis.com'));
+    expect(urls.any((u) => u.endsWith('/v1beta')), isFalse);
+  });
 
   testWidgets('headers and body fields live only in Advanced', (tester) async {
     final (_, l10n) = await _pump(tester);
