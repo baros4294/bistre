@@ -29,10 +29,11 @@ const MAX_HTTP_ERAS: usize = 64;
 /// The `_meta` every modern request carries.
 #[must_use]
 pub fn modern_meta() -> Value {
+    let tasks = crate::mcp_tasks::TASKS_EXTENSION;
     json!({
         "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_2026,
         "io.modelcontextprotocol/clientInfo": { "name": "Bistre", "version": crate::CORE_VERSION },
-        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientCapabilities": { "extensions": { tasks: {} } },
     })
 }
 

@@ -28,6 +28,9 @@ fn mock_stdio_server_entry() -> std::io::Result<()> {
         .find_map(|a| a.strip_prefix("heartbeat="))
         .map(std::path::PathBuf::from);
     let modern = args.iter().any(|a| a == "modern");
+    // A `2025-03-26` server answers `initialize` with its own version, not the client's.
+    let march_2025 = args.iter().any(|a| a == "v2025-03-26");
+    let mut task_polls = 0_u32;
     let note = |text: &str| -> std::io::Result<()> {
         if let Some(path) = heartbeat.as_deref() {
             let mut f = std::fs::OpenOptions::new()
@@ -56,24 +59,19 @@ fn mock_stdio_server_entry() -> std::io::Result<()> {
                 let [ack, change] = listen_notices(&id);
                 writeln!(out, "{ack}\n{change}")?;
             }
+            Some("tasks/get") if modern => {
+                task_polls += 1;
+                writeln!(out, "{}", reply(task_poll(task_polls)))?;
+            }
             Some("initialize") if !modern => {
-                let ver = msg.pointer("/params/protocolVersion").cloned();
-                writeln!(out, "{}", reply(json!({ "protocolVersion": ver })))?;
+                writeln!(out, "{}", reply(initialize_answer(march_2025, &msg)))?;
             }
             Some("initialize" | "server/discover") => writeln!(
                 out,
                 "{}",
                 json!({ "jsonrpc": "2.0", "id": id, "error": { "code": -32601, "message": "Method not found" } })
             )?,
-            Some("tools/list") => {
-                // Two pages: the first names the second with `nextCursor`.
-                let tools = if msg.pointer("/params/cursor").and_then(Value::as_str) == Some("p2") {
-                    json!({ "tools": [{ "name": "echo", "inputSchema": { "type": "object" } }] })
-                } else {
-                    json!({ "tools": [{ "name": "pid", "inputSchema": { "type": "object" } }], "nextCursor": "p2" })
-                };
-                writeln!(out, "{}", reply(tools))?;
-            }
+            Some("tools/list") => writeln!(out, "{}", reply(tools_page(&msg)))?,
             Some("tools/call") => match msg.pointer("/params/name").and_then(Value::as_str) {
                 Some(name) if instant_result(name, &msg).is_some() => {
                     let result = instant_result(name, &msg).unwrap_or(Value::Null);
@@ -145,6 +143,37 @@ fn mock_stdio_server_entry() -> std::io::Result<()> {
     note("eof")
 }
 
+/// A `tools/list` page: two pages, the first naming the second with `nextCursor`.
+fn tools_page(msg: &Value) -> Value {
+    if msg.pointer("/params/cursor").and_then(Value::as_str) == Some("p2") {
+        json!({ "tools": [{ "name": "echo", "inputSchema": { "type": "object" } }] })
+    } else {
+        json!({ "tools": [{ "name": "pid", "inputSchema": { "type": "object" } }], "nextCursor": "p2" })
+    }
+}
+
+/// The `initialize` answer: the client's version, or a `2025-03-26` server's own.
+fn initialize_answer(march_2025: bool, msg: &Value) -> Value {
+    let ver = if march_2025 {
+        json!("2025-03-26")
+    } else {
+        msg.pointer("/params/protocolVersion")
+            .cloned()
+            .unwrap_or(Value::Null)
+    };
+    json!({ "protocolVersion": ver })
+}
+
+/// The task `long` started: working on the first poll, done on the second.
+fn task_poll(polls: u32) -> Value {
+    if polls < 2 {
+        json!({ "resultType": "complete", "taskId": "job-1", "status": "working", "pollIntervalMs": 250 })
+    } else {
+        json!({ "resultType": "complete", "taskId": "job-1", "status": "completed",
+            "result": { "content": [{ "type": "text", "text": "long done" }] } })
+    }
+}
+
 /// The answer to `subscriptions/listen` with request `id`: the acknowledgement, then at once a
 /// tool list change on that subscription.
 fn listen_notices(id: &Value) -> [Value; 2] {
@@ -168,6 +197,13 @@ fn instant_result(name: &str, msg: &Value) -> Option<Value> {
                 .unwrap_or("none")
                 .to_owned(),
         )),
+        // A long tool answers with a task handle, but only to a client that declared tasks.
+        "long" if msg
+            .pointer("/params/_meta/io.modelcontextprotocol~1clientCapabilities/extensions/io.modelcontextprotocol~1tasks")
+            .is_some() =>
+        {
+            Some(json!({ "resultType": "task", "taskId": "job-1", "status": "working", "pollIntervalMs": 250 }))
+        }
         "needs_input" => Some(
             json!({ "resultType": "input_required", "inputRequests": { "q": { "method": "elicitation/create" } } }),
         ),
@@ -359,6 +395,32 @@ async fn a_legacy_server_falls_back_to_initialize() -> Result<(), Box<dyn std::e
     let _session = SessionGuard(server.id.clone());
     let out = call_stdio_mcp_tool(&server, "meta", &json!({}), None).await?;
     assert_eq!(out.text, "none");
+    Ok(())
+}
+
+/// A modern server may answer a long call with a task: Bistre declares the tasks extension,
+/// polls `tasks/get`, and reads the finished task's result as the tool's answer.
+#[tokio::test]
+async fn a_task_handle_is_polled_until_the_tool_finishes() -> Result<(), Box<dyn std::error::Error>>
+{
+    let server = mock_server_era("tasks", None, true)?;
+    let _session = SessionGuard(server.id.clone());
+    let out = call_stdio_mcp_tool(&server, "long", &json!({}), None).await?;
+    assert_eq!(out.text, "long done");
+    Ok(())
+}
+
+/// A `2025-03-26` server negotiates its own older version and still serves tools.
+#[tokio::test]
+async fn a_2025_03_26_server_is_used_at_its_own_version() -> Result<(), Box<dyn std::error::Error>>
+{
+    let mut server = mock_server("march-2025", None)?;
+    server.args.push("v2025-03-26".to_owned());
+    let _session = SessionGuard(server.id.clone());
+    let report = discover_stdio_mcp_server(&server).await?;
+    assert_eq!(report.negotiated_protocol, "2025-03-26");
+    let out = call_stdio_mcp_tool(&server, "meta", &json!({}), None).await?;
+    assert_eq!(out.text, "none", "no modern _meta on an older session");
     Ok(())
 }
 

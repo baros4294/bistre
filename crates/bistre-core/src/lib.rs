@@ -49,6 +49,7 @@ mod mcp_listen;
 mod mcp_refresh;
 pub mod mcp_registry;
 pub mod mcp_stdio;
+pub mod mcp_tasks;
 mod media_gen;
 mod media_jobs;
 pub(crate) mod media_wire;

@@ -735,7 +735,28 @@ pub async fn call_stdio_mcp_tool(
         }),
     )
     .await?;
-    Ok(parse_mcp_call_result(complete_result(&resp)?, data_dir))
+    let result = match crate::mcp_tasks::read_call_answer(&resp)? {
+        crate::mcp_tasks::CallAnswer::Result(result) => result.clone(),
+        crate::mcp_tasks::CallAnswer::Task { task_id, poll } => {
+            let mut rpc = StdioTaskRpc { server };
+            crate::mcp_tasks::await_task(&mut rpc, &task_id, poll, crate::mcp_tasks::MAX_TASK_WAIT)
+                .await?
+        }
+    };
+    Ok(parse_mcp_call_result(&result, data_dir))
+}
+
+/// Task polls on the server's one session.
+struct StdioTaskRpc<'a> {
+    server: &'a McpServerConfig,
+}
+
+impl crate::mcp_tasks::TaskRpc for StdioTaskRpc<'_> {
+    async fn call(&mut self, method: &'static str, params: Value) -> BistreResult<Value> {
+        session_rpc(self.server, method, params)
+            .await
+            .map(|(resp, _, _)| resp)
+    }
 }
 
 #[cfg(test)]
