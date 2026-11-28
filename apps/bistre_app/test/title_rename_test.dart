@@ -65,21 +65,20 @@ void main() {
     expect(await _storedTitle(shell, a.id), 'Trip plans');
   });
 
-  testWidgets(
-    'Esc cancels the rename only and never stops a reply',
-    (tester) async {
-      final (shell, a, _) = await _open(tester);
-      shell.gateway.emit(RunStartedEvent(threadId: a.id, nodeId: 'live'));
-      await tester.pump();
-      await tester.enterText(_titleEditor(), 'Trip typo');
-      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-      // A reply is streaming, so the page never settles; pump a few frames instead.
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(await _storedTitle(shell, a.id), 'Trip');
-      expect(shell.gateway.callsTo('cancelActiveRun'), isEmpty);
-      expect(_titleEditor(), findsNothing);
-    },
-  );
+  testWidgets('Esc cancels the rename only and never stops a reply', (
+    tester,
+  ) async {
+    final (shell, a, _) = await _open(tester);
+    shell.gateway.emit(RunStartedEvent(threadId: a.id, nodeId: 'live'));
+    await tester.pump();
+    await tester.enterText(_titleEditor(), 'Trip typo');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    // A reply is streaming, so the page never settles; pump a few frames instead.
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(await _storedTitle(shell, a.id), 'Trip');
+    expect(shell.gateway.callsTo('cancelActiveRun'), isEmpty);
+    expect(_titleEditor(), findsNothing);
+  });
 
   testWidgets('switching chats ends the edit without saving it elsewhere', (
     tester,

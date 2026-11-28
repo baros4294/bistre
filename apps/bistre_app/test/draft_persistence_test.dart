@@ -6,26 +6,25 @@ import 'support/shell_harness.dart';
 
 void main() {
   for (final layout in ShellLayout.values) {
-    testWidgets(
-      'a sent message does not come back as the draft ($layout)',
-      (tester) async {
-        final shell = await ShellHarness.pump(tester, layout: layout);
-        await tester.enterText(find.byType(EditableText).last, 'hello');
-        // Let the debounced draft save run, as when the user pauses before sending.
-        await tester.pump(const Duration(milliseconds: 400));
-        final threadId = shell.controller.activeThread!.id;
-        expect(await shell.gateway.loadDraft(threadId), 'hello');
+    testWidgets('a sent message does not come back as the draft ($layout)', (
+      tester,
+    ) async {
+      final shell = await ShellHarness.pump(tester, layout: layout);
+      await tester.enterText(find.byType(EditableText).last, 'hello');
+      // Let the debounced draft save run, as when the user pauses before sending.
+      await tester.pump(const Duration(milliseconds: 400));
+      final threadId = shell.controller.activeThread!.id;
+      expect(await shell.gateway.loadDraft(threadId), 'hello');
 
-        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-        await tester.pumpAndSettle();
-        expect(shell.gateway.callsTo('sendAndStreamReply'), hasLength(1));
-        expect(
-          await shell.gateway.loadDraft(threadId),
-          isEmpty,
-          reason: 'reopening the chat must not show the sent text again',
-        );
-      },
-    );
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(shell.gateway.callsTo('sendAndStreamReply'), hasLength(1));
+      expect(
+        await shell.gateway.loadDraft(threadId),
+        isEmpty,
+        reason: 'reopening the chat must not show the sent text again',
+      );
+    });
   }
 
   testWidgets('a slash command clears the saved draft', (tester) async {
