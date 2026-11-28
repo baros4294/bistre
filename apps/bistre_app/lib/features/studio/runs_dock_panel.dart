@@ -343,23 +343,29 @@ class _StoryPlaceholderBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);
-    return Padding(
-      padding: const EdgeInsetsDirectional.all(14),
-      child: FolioSurface(
-        tone: FolioTone.elevated,
+    return Align(
+      alignment: AlignmentDirectional.topStart,
+      child: Padding(
         padding: const EdgeInsetsDirectional.all(14),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            InkText(l10n.t(titleKey), role: InkTextRole.labelStrong),
-            const SizedBox(height: 6),
-            InkText(
-              l10n.t(bodyKey),
-              role: InkTextRole.bodyCompact,
-              color: theme.inkSecondary,
+        child: SizedBox(
+          width: double.infinity,
+          child: FolioSurface(
+            tone: FolioTone.elevated,
+            padding: const EdgeInsetsDirectional.all(14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                InkText(l10n.t(titleKey), role: InkTextRole.labelStrong),
+                const SizedBox(height: 6),
+                InkText(
+                  l10n.t(bodyKey),
+                  role: InkTextRole.bodyCompact,
+                  color: theme.inkSecondary,
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

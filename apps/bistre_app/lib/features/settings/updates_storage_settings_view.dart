@@ -196,16 +196,23 @@ class _UpdatesStorageSettingsViewState
                           const SizedBox(width: 8),
                         ],
                       ],
+                      // Drop to secondary when Download/Install is shown so one primary CTA leads.
                       EngravedButton(
                         label: ctrl.checkingUpdates
                             ? l10n.t(L10nKey.settingsOtaChecking)
                             : l10n.t(L10nKey.settingsOtaCheckButton),
-                        primary: true,
+                        primary:
+                            !(check != null && check.updateAvailable) &&
+                            ctrl.pendingUpdateVersion == null,
                         compact: true,
                         leading: BistreIcon(
                           BistreUiIcon.download,
                           size: 13,
-                          color: theme.onAccentWax,
+                          color:
+                              !(check != null && check.updateAvailable) &&
+                                  ctrl.pendingUpdateVersion == null
+                              ? theme.onAccentWax
+                              : theme.inkSecondary,
                         ),
                         onPressed: ctrl.checkingUpdates
                             ? null
@@ -407,19 +414,6 @@ class _UpdatesStorageSettingsViewState
                 BistreSettingRow(
                   label: l10n.t(L10nKey.settingsOtaFeedUrl),
                   description: l10n.t(L10nKey.settingsOtaRepoHint),
-                  trailing: EngravedButton(
-                    label: l10n.t(L10nKey.settingsAppearanceFontReset),
-                    compact: true,
-                    onPressed: () {
-                      setState(() => _feedUrlCtrl.text = _kDefaultRepoSlug);
-                      unawaited(
-                        ctrl.updateSettings(
-                          s.copyWith(otaFeedUrl: _kDefaultRepoSlug),
-                          quiet: true,
-                        ),
-                      );
-                    },
-                  ),
                   bottom: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -430,6 +424,25 @@ class _UpdatesStorageSettingsViewState
                         maxLines: 1,
                         submitOnEnter: false,
                         onSubmitted: () => unawaited(_saveFeedAndCheck()),
+                      ),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: AlignmentDirectional.centerEnd,
+                        child: EngravedButton(
+                          label: l10n.t(L10nKey.settingsAppearanceFontReset),
+                          compact: true,
+                          onPressed: () {
+                            setState(
+                              () => _feedUrlCtrl.text = _kDefaultRepoSlug,
+                            );
+                            unawaited(
+                              ctrl.updateSettings(
+                                s.copyWith(otaFeedUrl: _kDefaultRepoSlug),
+                                quiet: true,
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ],
                   ),

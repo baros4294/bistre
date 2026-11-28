@@ -227,17 +227,16 @@ class _ProjectsSettingsViewState extends State<ProjectsSettingsView> {
     BistreLocalizationController l10n,
     FolioController ctrl,
   ) {
-    final creating = _selectedId.isEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // Secondary button: Create/Save in the editor carries the single primary CTA weight.
         EngravedButton(
           label: l10n.t(L10nKey.settingsProjectsNew),
-          primary: creating,
           leading: BistreIcon(
             BistreUiIcon.plus,
             size: 14,
-            color: creating ? theme.onAccentWax : theme.accentBrass,
+            color: theme.accentBrass,
           ),
           onPressed: () => setState(_startNew),
         ),

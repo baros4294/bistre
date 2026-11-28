@@ -289,27 +289,35 @@ class _GaugePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final stroke = size.width * 0.16;
+    final stroke = (size.width * 0.12).clamp(1.6, 2.5);
     final rect = Offset.zero & size;
     final arcRect = rect.deflate(stroke / 2);
+    final radius = arcRect.width / 2;
     final trackPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
+      ..isAntiAlias = true
       ..color = track;
-    canvas.drawArc(arcRect, 0, math.pi * 2, false, trackPaint);
+    // Use drawCircle for the full 360-degree track to avoid Impeller/Skia drawArc seam artifacts.
+    canvas.drawCircle(rect.center, radius, trackPaint);
     if (fraction > 0) {
       final fillPaint = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = stroke
         ..strokeCap = StrokeCap.round
+        ..isAntiAlias = true
         ..color = fill;
-      canvas.drawArc(
-        arcRect,
-        -math.pi / 2,
-        math.pi * 2 * fraction,
-        false,
-        fillPaint,
-      );
+      if (fraction >= 0.999) {
+        canvas.drawCircle(rect.center, radius, fillPaint);
+      } else {
+        canvas.drawArc(
+          arcRect,
+          -math.pi / 2,
+          math.pi * 2 * fraction,
+          false,
+          fillPaint,
+        );
+      }
     }
   }
 

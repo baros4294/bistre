@@ -173,20 +173,26 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
             BistreSettingsSection(
               title: l10n.t(L10nKey.settingsProfileSection),
               children: [
-                BistreSettingRow(
-                  label: l10n.t(L10nKey.settingsProfileName),
-                  description: l10n.t(L10nKey.settingsProfileNameHint),
-                  trailing: SizedBox(
-                    width: 240,
-                    child: QuillInput(
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final nameField = QuillInput(
                       controller: _nameCtrl,
                       focusNode: _nameFocus,
                       placeholder: l10n.t(L10nKey.settingsProfileName),
                       maxLines: 1,
                       compact: true,
                       onSubmitted: _commitName,
-                    ),
-                  ),
+                    );
+                    final stackField = constraints.maxWidth < 520;
+                    return BistreSettingRow(
+                      label: l10n.t(L10nKey.settingsProfileName),
+                      description: l10n.t(L10nKey.settingsProfileNameHint),
+                      trailing: stackField
+                          ? null
+                          : SizedBox(width: 240, child: nameField),
+                      bottom: stackField ? nameField : null,
+                    );
+                  },
                 ),
                 BistreSettingRow(
                   label: l10n.t(L10nKey.settingsProfileAvatar),

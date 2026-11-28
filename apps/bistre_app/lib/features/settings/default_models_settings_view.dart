@@ -212,15 +212,6 @@ class _DefaultModelsSettingsViewState extends State<DefaultModelsSettingsView> {
                   ),
                 BistreSettingRow(
                   label: l10n.t(L10nKey.settingsDefaultModelsTitlePrompt),
-                  trailing: EngravedButton(
-                    label: l10n.t(L10nKey.settingsAppearanceFontReset),
-                    compact: true,
-                    onPressed: () {
-                      _titlePromptCtrl.text =
-                          widget.controller.builtInTitlePrompt;
-                      unawaited(_save(dm.copyWith(titlePromptTemplate: '')));
-                    },
-                  ),
                   bottom: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -234,20 +225,37 @@ class _DefaultModelsSettingsViewState extends State<DefaultModelsSettingsView> {
                         submitOnEnter: false,
                         onSubmitted: () {},
                       ),
-                      const SizedBox(height: 8),
-                      Align(
-                        alignment: AlignmentDirectional.centerEnd,
-                        child: EngravedButton(
-                          label: l10n.t(L10nKey.threadSave),
-                          compact: true,
-                          onPressed: () => unawaited(
-                            _save(
-                              dm.copyWith(
-                                titlePromptTemplate: _ownTitlePrompt(),
+                      const SizedBox(height: 10),
+                      // Keep Reset and Save together in one action row below the field.
+                      Wrap(
+                        alignment: WrapAlignment.end,
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          EngravedButton(
+                            label: l10n.t(L10nKey.settingsAppearanceFontReset),
+                            compact: true,
+                            onPressed: () {
+                              _titlePromptCtrl.text =
+                                  widget.controller.builtInTitlePrompt;
+                              unawaited(
+                                _save(dm.copyWith(titlePromptTemplate: '')),
+                              );
+                            },
+                          ),
+                          EngravedButton(
+                            label: l10n.t(L10nKey.threadSave),
+                            primary: true,
+                            compact: true,
+                            onPressed: () => unawaited(
+                              _save(
+                                dm.copyWith(
+                                  titlePromptTemplate: _ownTitlePrompt(),
+                                ),
                               ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
                     ],
                   ),

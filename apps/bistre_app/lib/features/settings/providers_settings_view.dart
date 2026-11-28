@@ -323,13 +323,14 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // Only primary when no providers exist and the add form is not already open.
         EngravedButton(
           label: l10n.t(L10nKey.providerAddButton),
-          primary: _creating || ctrl.providers.isEmpty,
+          primary: !_creating && ctrl.providers.isEmpty,
           leading: BistreIcon(
             BistreUiIcon.plus,
             size: 14,
-            color: (_creating || ctrl.providers.isEmpty)
+            color: (!_creating && ctrl.providers.isEmpty)
                 ? theme.onAccentWax
                 : theme.accentBrass,
           ),

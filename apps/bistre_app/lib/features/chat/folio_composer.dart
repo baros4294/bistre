@@ -864,11 +864,11 @@ class _FolioComposerState extends State<FolioComposer> {
                       const FolioDivider(),
                     ],
                     Padding(
-                      padding: const EdgeInsetsDirectional.fromSTEB(
+                      padding: EdgeInsetsDirectional.fromSTEB(
                         BistreSpacing.s16,
-                        13,
+                        phone ? 10 : 13,
                         BistreSpacing.s16,
-                        BistreSpacing.s8,
+                        phone ? 10 : BistreSpacing.s8,
                       ),
                       child: phone
                           ? Row(
@@ -898,7 +898,18 @@ class _FolioComposerState extends State<FolioComposer> {
                                   child: Center(child: gaugeFor(true)),
                                 ),
                                 const SizedBox(width: BistreSpacing.s8),
-                                Expanded(child: composerField),
+                                Expanded(
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      minHeight: 36 * iconScaleOf(context),
+                                    ),
+                                    child: Align(
+                                      alignment:
+                                          AlignmentDirectional.centerStart,
+                                      child: composerField,
+                                    ),
+                                  ),
+                                ),
                                 const SizedBox(width: BistreSpacing.s4),
                                 ValueListenableBuilder<TextEditingValue>(
                                   valueListenable: _textController,

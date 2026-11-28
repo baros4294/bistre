@@ -16,6 +16,7 @@ class LabelControlLayout extends MultiChildRenderObjectWidget {
     this.gap = 16,
     this.stackGap = 8,
     this.minLabelWidth = 120,
+    this.forceStacked,
   }) : super(children: <Widget>[label, control]);
 
   /// Space between the label and the control in a row.
@@ -28,6 +29,9 @@ class LabelControlLayout extends MultiChildRenderObjectWidget {
   /// drops below it; a label shorter than that only needs its own width.
   final double minLabelWidth;
 
+  /// When non-null, overrides per-row auto-stacking so a group of sibling rows aligns uniformly.
+  final bool? forceStacked;
+
   @override
   RenderLabelControlLayout createRenderObject(BuildContext context) =>
       RenderLabelControlLayout(
@@ -36,6 +40,7 @@ class LabelControlLayout extends MultiChildRenderObjectWidget {
         gap: gap,
         stackGap: stackGap,
         minLabelWidth: minLabelWidth,
+        forceStacked: forceStacked,
       );
 
   @override
@@ -48,7 +53,8 @@ class LabelControlLayout extends MultiChildRenderObjectWidget {
       ..textScale = MediaQuery.textScalerOf(context).scale(14) / 14
       ..gap = gap
       ..stackGap = stackGap
-      ..minLabelWidth = minLabelWidth;
+      ..minLabelWidth = minLabelWidth
+      ..forceStacked = forceStacked;
   }
 }
 
@@ -65,11 +71,13 @@ class RenderLabelControlLayout extends RenderBox
     required double gap,
     required double stackGap,
     required double minLabelWidth,
+    bool? forceStacked,
   }) : _textDirection = textDirection,
        _textScale = textScale,
        _gap = gap,
        _stackGap = stackGap,
-       _minLabelWidth = minLabelWidth;
+       _minLabelWidth = minLabelWidth,
+       _forceStacked = forceStacked;
 
   TextDirection _textDirection;
   set textDirection(TextDirection v) {
@@ -103,6 +111,13 @@ class RenderLabelControlLayout extends RenderBox
   set minLabelWidth(double v) {
     if (v == _minLabelWidth) return;
     _minLabelWidth = v;
+    markNeedsLayout();
+  }
+
+  bool? _forceStacked;
+  set forceStacked(bool? v) {
+    if (v == _forceStacked) return;
+    _forceStacked = v;
     markNeedsLayout();
   }
 
@@ -140,7 +155,7 @@ class RenderLabelControlLayout extends RenderBox
       label.getMaxIntrinsicWidth(double.infinity),
       _minLabelWidth * _textScale,
     );
-    final stacked = labelNeed + _gap + controlW > maxW;
+    final stacked = _forceStacked ?? (labelNeed + _gap + controlW > maxW);
 
     Size measure(RenderBox child, BoxConstraints c) => dry
         ? child.getDryLayout(c)

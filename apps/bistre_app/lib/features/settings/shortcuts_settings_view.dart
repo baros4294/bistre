@@ -211,53 +211,61 @@ class _ShortcutsSettingsViewState extends State<ShortcutsSettingsView> {
     return BistreSettingsSection(
       title: l10n.t(L10nKey.shortcutsQuickEntryTitle),
       children: [
-        _ShortcutRow(
-          label: l10n.t(L10nKey.shortcutsQuickEntry),
-          combo: combo,
-          emptyLabel: l10n.t(L10nKey.shortcutsOff),
-          recording: _recordingActionId == _kQuickEntryId,
-          recordHint: _refusal ?? l10n.t(L10nKey.shortcutsRecordHint),
-          onTap: () => _startRecording(_kQuickEntryId),
-        ),
-        Padding(
-          padding: const EdgeInsetsDirectional.symmetric(
-            horizontal: BistreSpacing.s16,
-            vertical: 12,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              InkText(
-                l10n.t(L10nKey.shortcutsQuickEntryHint),
-                role: InkTextRole.captionMeta,
-                color: theme.inkMuted,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _ShortcutRow(
+              label: l10n.t(L10nKey.shortcutsQuickEntry),
+              combo: combo,
+              emptyLabel: l10n.t(L10nKey.shortcutsOff),
+              recording: _recordingActionId == _kQuickEntryId,
+              recordHint: _refusal ?? l10n.t(L10nKey.shortcutsRecordHint),
+              onTap: () => _startRecording(_kQuickEntryId),
+            ),
+            Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                BistreSpacing.s16,
+                0,
+                BistreSpacing.s16,
+                14,
               ),
-              ValueListenableBuilder<bool>(
-                valueListenable: BistreDesktopHost.quickEntryRefused,
-                builder: (context, refused, _) => refused && combo.isNotEmpty
-                    ? Padding(
-                        padding: const EdgeInsetsDirectional.only(top: 6),
-                        child: InkText(
-                          l10n.t(L10nKey.shortcutsQuickEntryRefused),
-                          role: InkTextRole.captionMeta,
-                          color: theme.statusWarn,
-                        ),
-                      )
-                    : const SizedBox.shrink(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  InkText(
+                    l10n.t(L10nKey.shortcutsQuickEntryHint),
+                    role: InkTextRole.captionMeta,
+                    color: theme.inkMuted,
+                  ),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: BistreDesktopHost.quickEntryRefused,
+                    builder: (context, refused, _) =>
+                        refused && combo.isNotEmpty
+                        ? Padding(
+                            padding: const EdgeInsetsDirectional.only(top: 6),
+                            child: InkText(
+                              l10n.t(L10nKey.shortcutsQuickEntryRefused),
+                              role: InkTextRole.captionMeta,
+                              color: theme.statusWarn,
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                  if (combo.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    EngravedButton(
+                      label: l10n.t(L10nKey.shortcutsTurnOff),
+                      compact: true,
+                      onPressed: () {
+                        setState(() => _recordingActionId = null);
+                        unawaited(ctrl.setQuickEntryShortcut(''));
+                      },
+                    ),
+                  ],
+                ],
               ),
-              if (combo.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                EngravedButton(
-                  label: l10n.t(L10nKey.shortcutsTurnOff),
-                  compact: true,
-                  onPressed: () {
-                    setState(() => _recordingActionId = null);
-                    unawaited(ctrl.setQuickEntryShortcut(''));
-                  },
-                ),
-              ],
-            ],
-          ),
+            ),
+          ],
         ),
       ],
     );

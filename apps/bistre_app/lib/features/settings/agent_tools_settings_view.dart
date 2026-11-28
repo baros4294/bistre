@@ -161,154 +161,177 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // 1. Workspace Folders (native OS folder picker + Git branch indicator)
-            FolioSurface(
-              tone: FolioTone.elevated,
-              padding: const EdgeInsetsDirectional.all(18),
-              boxShadow: theme.cardShadow,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+            BistreSettingsSection(
+              title: l10n.t(L10nKey.settingsAgentWorkspaceDir),
+              children: [
+                Padding(
+                  padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      BistreIcon(
-                        BistreUiIcon.folder,
-                        size: 16,
-                        color: theme.accentBrass,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: InkText(
-                          l10n.t(L10nKey.settingsAgentWorkspaceDir),
-                          role: InkTextRole.titleMedium,
-                        ),
-                      ),
-                      if (ctrl.activeGitBranch.isNotEmpty)
+                      if (ctrl.activeGitBranch.isNotEmpty) ...[
                         WaxSealBadge(label: ctrl.activeGitBranch),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  if (ctrl.workspaceFolders.isEmpty)
-                    InkText(
-                      l10n.t(L10nKey.settingsAgentNoFolders),
-                      role: InkTextRole.bodyCompact,
-                      color: theme.inkMuted,
-                    )
-                  else
-                    for (final folder in ctrl.workspaceFolders) ...[
-                      FolioSurface(
-                        padding: const EdgeInsetsDirectional.fromSTEB(
-                          10,
-                          6,
-                          6,
-                          6,
-                        ),
-                        borderRadius: 8,
-                        child: Row(
-                          children: [
-                            BistreIcon(
-                              BistreUiIcon.folder,
-                              size: 13,
-                              color: theme.accentBrass,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: OwnDirection(
-                                text: folder,
-                                child: InkText(
-                                  folder,
-                                  role: InkTextRole.codeBlock,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                        const SizedBox(height: 8),
+                      ],
+                      if (ctrl.workspaceFolders.isEmpty)
+                        InkText(
+                          l10n.t(L10nKey.settingsAgentNoFolders),
+                          role: InkTextRole.bodyCompact,
+                          color: theme.inkMuted,
+                        )
+                      else
+                        for (final folder in ctrl.workspaceFolders) ...[
+                          Row(
+                            children: [
+                              BistreIcon(
+                                BistreUiIcon.folder,
+                                size: 13,
+                                color: theme.accentBrass,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: OwnDirection(
+                                  text: folder,
+                                  child: InkText(
+                                    folder,
+                                    role: InkTextRole.codeBlock,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                               ),
+                              BistreIconButton(
+                                icon: BistreUiIcon.close,
+                                size: 12,
+                                dimension: 26,
+                                semanticsLabel: l10n.t(L10nKey.threadDelete),
+                                onPressed: () => unawaited(
+                                  ctrl.removeWorkspaceFolder(folder),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                        ],
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          EngravedButton(
+                            label: ctrl.workspaceFolders.isEmpty
+                                ? l10n.t(L10nKey.settingsAgentChooseFolder)
+                                : l10n.t(L10nKey.settingsAgentAddFolder),
+                            primary: true,
+                            compact: true,
+                            leading: BistreIcon(
+                              BistreUiIcon.folder,
+                              size: 13,
+                              color: theme.onAccentWax,
                             ),
-                            BistreIconButton(
-                              icon: BistreUiIcon.close,
-                              size: 12,
-                              dimension: 26,
-                              semanticsLabel: l10n.t(L10nKey.threadDelete),
+                            onPressed: () async {
+                              final picked =
+                                  await BistreDesktopHost.pickLocalFolder(
+                                    title: l10n.t(
+                                      L10nKey.settingsAgentWorkspaceDir,
+                                    ),
+                                  );
+                              if (picked != null && picked.isNotEmpty) {
+                                await ctrl.addWorkspaceFolder(picked);
+                                if (mounted) {
+                                  _workspaceCtrl.text = picked;
+                                }
+                              }
+                            },
+                          ),
+                          if (ctrl.workspaceFolders.isNotEmpty)
+                            EngravedButton(
+                              label: l10n.t(L10nKey.settingsProfileAvatarClear),
+                              compact: true,
                               onPressed: () =>
-                                  unawaited(ctrl.removeWorkspaceFolder(folder)),
+                                  unawaited(ctrl.clearWorkspaceFolders()),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // 1b. Per-tool permissions (Ask / Allow / Off). Decide inline vs stacked once
+            // for the whole section from real measured widths so controls never zig-zag.
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final textDirection = Directionality.of(context);
+                final scaler = MediaQuery.textScalerOf(context);
+                double measureText(String text, TextStyle style) {
+                  final tp = TextPainter(
+                    text: TextSpan(text: text, style: style),
+                    textDirection: textDirection,
+                    textScaler: scaler,
+                    maxLines: 1,
+                  )..layout();
+                  return tp.width;
+                }
+
+                final labelStyle = BistreTypography.bodyCompact(
+                  theme.inkPrimary,
+                  config: theme.typography,
+                );
+                final segStyle = BistreTypography.captionMeta(
+                  theme.inkPrimary,
+                  config: theme.typography,
+                );
+                final askLabel = l10n.t(L10nKey.settingsAgentPermAsk);
+                final allowLabel = l10n.t(L10nKey.settingsAgentPermAllow);
+                final offLabel = l10n.t(L10nKey.settingsAgentPermOff);
+                // 3 segments (22 px horizontal padding each) + 6 px outer padding + 4 px gaps + 2 px border.
+                final segWidth =
+                    measureText(askLabel, segStyle) +
+                    measureText(allowLabel, segStyle) +
+                    measureText(offLabel, segStyle) +
+                    78;
+                var widestLabel = 0.0;
+                for (final (_, name) in _kPermissionTools) {
+                  final w = measureText(l10n.t(name), labelStyle);
+                  if (w > widestLabel) widestLabel = w;
+                }
+                final rowInnerWidth =
+                    constraints.maxWidth - (BistreSpacing.s16 * 2) - 2;
+                final stackAll = widestLabel + 16 + segWidth > rowInnerWidth;
+                return BistreSettingsSection(
+                  title: l10n.t(L10nKey.settingsAgentPermissionsTitle),
+                  children: [
+                    for (final (tool, name) in _kPermissionTools)
+                      BistreSettingRow(
+                        key: ValueKey<String>('tool_perm_row_$tool'),
+                        label: l10n.t(name),
+                        forceStacked: stackAll,
+                        trailing: BistreSegmentedControl<String>(
+                          selected: ctrl.toolPermissionFor(tool),
+                          onSelected: (v) =>
+                              unawaited(ctrl.setToolPermission(tool, v)),
+                          options: <BistreSegmentedOption<String>>[
+                            BistreSegmentedOption<String>(
+                              value: 'ask',
+                              label: askLabel,
+                            ),
+                            BistreSegmentedOption<String>(
+                              value: 'allow',
+                              label: allowLabel,
+                            ),
+                            BistreSegmentedOption<String>(
+                              value: 'off',
+                              label: offLabel,
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 6),
-                    ],
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    children: [
-                      EngravedButton(
-                        label: ctrl.workspaceFolders.isEmpty
-                            ? l10n.t(L10nKey.settingsAgentChooseFolder)
-                            : l10n.t(L10nKey.settingsAgentAddFolder),
-                        primary: true,
-                        compact: true,
-                        leading: BistreIcon(
-                          BistreUiIcon.folder,
-                          size: 13,
-                          color: theme.onAccentWax,
-                        ),
-                        onPressed: () async {
-                          final picked =
-                              await BistreDesktopHost.pickLocalFolder(
-                                title: l10n.t(
-                                  L10nKey.settingsAgentWorkspaceDir,
-                                ),
-                              );
-                          if (picked != null && picked.isNotEmpty) {
-                            await ctrl.addWorkspaceFolder(picked);
-                            if (mounted) {
-                              _workspaceCtrl.text = picked;
-                            }
-                          }
-                        },
-                      ),
-                      if (ctrl.workspaceFolders.isNotEmpty)
-                        EngravedButton(
-                          label: l10n.t(L10nKey.settingsProfileAvatarClear),
-                          compact: true,
-                          onPressed: () =>
-                              unawaited(ctrl.clearWorkspaceFolders()),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // 1b. Per-tool permissions (Ask / Allow / Off)
-            BistreSettingsSection(
-              title: l10n.t(L10nKey.settingsAgentPermissionsTitle),
-              children: [
-                for (final (tool, name) in _kPermissionTools)
-                  BistreSettingRow(
-                    key: ValueKey<String>('tool_perm_row_$tool'),
-                    label: l10n.t(name),
-                    trailing: BistreSegmentedControl<String>(
-                      selected: ctrl.toolPermissionFor(tool),
-                      onSelected: (v) =>
-                          unawaited(ctrl.setToolPermission(tool, v)),
-                      options: <BistreSegmentedOption<String>>[
-                        BistreSegmentedOption<String>(
-                          value: 'ask',
-                          label: l10n.t(L10nKey.settingsAgentPermAsk),
-                        ),
-                        BistreSegmentedOption<String>(
-                          value: 'allow',
-                          label: l10n.t(L10nKey.settingsAgentPermAllow),
-                        ),
-                        BistreSegmentedOption<String>(
-                          value: 'off',
-                          label: l10n.t(L10nKey.settingsAgentPermOff),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 16),
 

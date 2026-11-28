@@ -272,17 +272,21 @@ class _ContextBreakdownPanelState extends State<ContextBreakdownPanel> {
         const SizedBox(height: BistreSpacing.s8),
         ClipRRect(
           borderRadius: BorderRadius.circular(4),
-          child: SizedBox(
-            height: 8,
-            child: Row(
-              children: [
-                for (final r in bar)
-                  if (r.$1 > 0 && barTotal > 0)
-                    Expanded(
-                      flex: math.max(1, r.$1 * 1000 ~/ barTotal),
-                      child: ColoredBox(color: r.$2),
-                    ),
-              ],
+          child: ColoredBox(
+            color: theme.bgSurface,
+            child: SizedBox(
+              height: 8,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final r in bar)
+                    if (r.$1 > 0 && barTotal > 0)
+                      Expanded(
+                        flex: math.max(1, r.$1 * 1000 ~/ barTotal),
+                        child: ColoredBox(color: r.$2),
+                      ),
+                ],
+              ),
             ),
           ),
         ),

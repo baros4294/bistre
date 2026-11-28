@@ -79,6 +79,12 @@ enum BistreUiIcon {
   final String fileStem;
 
   String get assetPath => 'assets/icons/ui/$fileStem.vec';
+
+  /// Horizontal directional glyphs mirror in RTL so back and disclosure cues match reading flow.
+  bool get mirrorsInRtl =>
+      this == BistreUiIcon.arrowBack ||
+      this == BistreUiIcon.chevronStart ||
+      this == BistreUiIcon.chevronEnd;
 }
 
 /// Renders one of Bistre's bespoke `.vec` UI icons tinted cleanly to the active ink color.
@@ -99,13 +105,17 @@ class BistreIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
-    return EngravedIcon(
+    final glyph = EngravedIcon(
       assetPath: icon.assetPath,
       semanticsLabel: semanticsLabel,
       // Grows with the text size (capped), so icons keep pace with the words beside them.
       size: size * iconScaleOf(context),
       color: color ?? theme.inkSecondary,
     );
+    if (icon.mirrorsInRtl && Directionality.of(context) == TextDirection.rtl) {
+      return Transform.flip(flipX: true, child: glyph);
+    }
+    return glyph;
   }
 }
 
