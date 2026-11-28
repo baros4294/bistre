@@ -178,7 +178,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bistre-core"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "base64",
  "bistre-crypto",
@@ -211,7 +211,7 @@ dependencies = [
 
 [[package]]
 name = "bistre-crypto"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "argon2",
  "bistre-protocol",
@@ -229,7 +229,7 @@ dependencies = [
 
 [[package]]
 name = "bistre-daemon"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "bistre-core",
  "bistre-crypto",
@@ -244,11 +244,13 @@ dependencies = [
 
 [[package]]
 name = "bistre-ffi"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "bistre-core",
  "bistre-protocol",
  "flutter_rust_bridge",
+ "jni",
+ "rustls-platform-verifier",
  "serde_json",
  "tokio",
  "tracing",
@@ -257,7 +259,7 @@ dependencies = [
 
 [[package]]
 name = "bistre-protocol"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -267,7 +269,7 @@ dependencies = [
 
 [[package]]
 name = "bistre-storage"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "bistre-protocol",
  "rusqlite",

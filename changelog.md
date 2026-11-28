@@ -2,6 +2,25 @@
 
 Each release, newest first. Release dates, installers, checksums, and build attestations are on [GitHub Releases](https://github.com/baros4294/bistre/releases). What each feature does in detail, and what is still partial, is in [`docs/specs/00-architecture.md`](docs/specs/00-architecture.md) (Implementation Status).
 
+## v1.1.0
+
+### Android
+
+- Fixed startup failure on Android where unmodifiable platform-channel vault key buffers threw `UnsupportedError`, and initialized `rustls-platform-verifier` over JNI before the first network request.
+- Fixed the black adaptive launcher icon background with an opaque warm parchment plate, added a themed monochrome icon layer and notification icon, matched launch backgrounds and system bar icon brightness to light and dark themes, and hardened Keystore StrongBox fallback and next-start device erase.
+- Reduced Android cold-start latency, memory, thread count, and APK size by bounding the Tokio runtime (2 workers and 4 blocking threads on Android), pre-warming the native library and vault key off the UI thread, minifying bundled locale assets, stripping non-arm64 JNI libraries, and clearing image and Markdown parse caches on memory pressure.
+
+### UI and ergonomics
+
+- Aligned the phone composer input vertically with its action controls and fixed the context ring seam on Vulkan.
+- Aligned all Tool permissions rows uniformly so `Ask`, `Allow`, and `Off` controls never zig-zag on narrow screens or at 200% text.
+- Unified `Reset` and `Save` actions below Title prompt, removed nested card-in-card boxes in Memory & Skills, and enforced one primary action per settings screen.
+- Fixed the invisible stacked context breakdown bar, pinned the phone tab switcher close button to the top-end corner, prevented `Made by AI` from clipping in Studio Files, top-aligned empty Studio panels, stacked narrow World Book fields, and mirrored directional back and disclosure icons in RTL.
+
+### CI and tooling
+
+- Sharded Flutter CI tests 3 ways in parallel with desktop builds, cached Android SDK and NDK provisioning, combined desktop Rust builds, and added parallel lock-free static checks to local `just check-all`.
+
 ## v1.0.0
 
 ### Updating from v0.2.2
