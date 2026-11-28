@@ -574,14 +574,16 @@ jobs:
           chmod 600 "${tmp_dir}/release.key"
           # The manifest is written by the same Rust types the app reads (format 2:
           # one installable file per platform, pinned URLs, the SBOM never listed).
-          cargo run --locked --release -p bistre-core --example ota_manifest -- build dist "$RELEASE_TAG" "$REPO"
+          # Dev profile skips full release LTO (~2.5 min saved); `[profile.dev.package."*"]`
+          # already builds sha2 and minisign-verify at opt-level 2.
+          cargo run --locked -p bistre-core --example ota_manifest -- build dist "$RELEASE_TAG" "$REPO"
           printf '%s\n' "${MINISIGN_PASSWORD:-}" | "$minisign_bin" -S -s "${tmp_dir}/release.key" -m dist/manifest.json -x dist/manifest.json.minisig -t "bistre ${RELEASE_TAG}"
           # Self-verify the signed OTA manifest offline against the embedded release public key (fail closed).
           pubkey="$(python3 -c "import pathlib, re; m = re.search(r'OFFICIAL_RELEASE_PUBKEY_B64[^\\\"]*\\\"([^\\\"]+)\\\"', pathlib.Path('crates/bistre-core/src/ota.rs').read_text(encoding='utf-8'), re.S); print(m.group(1) if m else '')")"
           test -n "$pubkey"
           "$minisign_bin" -V -P "$pubkey" -m dist/manifest.json -x dist/manifest.json.minisig
           # Fail closed: the app's own parser, platform selection, and every file's digest + size.
-          cargo run --locked --release -p bistre-core --example ota_manifest -- verify dist "$pubkey"
+          cargo run --locked -p bistre-core --example ota_manifest -- verify dist "$pubkey"
       - name: Publish the GitHub Release
         shell: bash
         env:

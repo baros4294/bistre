@@ -165,10 +165,7 @@ jobs:
         run: dart analyze tools/bistre_lints tools/bistre_i18n tools/bistre_guard
       - name: Run Dart tooling unit tests
         shell: bash
-        run: |
-          dart test tools/bistre_lints
-          dart test tools/bistre_i18n
-          dart test tools/bistre_guard
+        run: dart test tools/bistre_lints tools/bistre_i18n tools/bistre_guard
 
   rust-fortress:
     name: rust-fortress (${{ matrix.os }})
@@ -196,7 +193,7 @@ jobs:
           cache-bin: false
       - uses: taiki-e/install-action@25f51f6b1bf4e18876107cece836f4f77ac17c8c # v2.90.7
         with:
-          tool: cargo-nextest@0.9.152,cargo-deny@0.22.0
+          tool: ${{ runner.os == 'Linux' && 'cargo-nextest@0.9.152,cargo-deny@0.22.0' || 'cargo-nextest@0.9.152' }}
       - name: Rust format check
         shell: bash
         run: cargo fmt --all -- --check
@@ -228,6 +225,68 @@ jobs:
             exit 1
           fi
 
+  flutter-test:
+    name: flutter-test (${{ matrix.os }}, shard ${{ matrix.shard }})
+    needs: [plan]
+    if: needs.plan.outputs.flutter == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+        shard: [0, 1, 2]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: bash .github/scripts/install-rust.sh
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          shared-key: flutter-test-${{ matrix.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.shard == 0 }}
+          cache-bin: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Install Linux gallery fallback font
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          # fonts-noto-core: the Arabic fallback the gallery harness loads (no tofu in RTL goldens).
+          sudo apt-get install -y --no-install-recommends fonts-noto-core
+      - name: Resolve Dart Pub Workspace (enforcing pubspec.lock)
+        shell: bash
+        run: bash .github/scripts/with-download-retry.sh flutter pub get --enforce-lockfile
+      - name: Flutter widget, a11y, RTL, contrast, and live Rust FRB v2 Native Assets tests
+        working-directory: apps/bistre_app
+        shell: bash
+        env:
+          # Linux runners have no Secret Service; a fixed test-only passphrase gives the FFI
+          # round-trip a vault key (Spec 06). Never a real secret.
+          BISTRE_VAULT_PASSPHRASE: ci-test-only-vault-passphrase
+          # Linux compares gallery captures with apps/bistre_app/test/goldens/linux/ (Spec 08).
+          BISTRE_GOLDENS: ${{ runner.os == 'Linux' && 'compare' || '' }}
+          SHARD_INDEX: ${{ matrix.shard }}
+          TOTAL_SHARDS: "3"
+        run: flutter test --total-shards="$TOTAL_SHARDS" --shard-index="$SHARD_INDEX"
+      - name: Upload the Linux gallery captures for review
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: ui-gallery-linux-${{ matrix.shard }}
+          path: apps/bistre_app/build/ui_gallery/
+          if-no-files-found: ignore
+          retention-days: 14
+
   flutter-desktop:
     name: flutter-desktop (${{ matrix.os }})
     needs: [plan]
@@ -237,7 +296,7 @@ jobs:
       matrix:
         os: [ubuntu-24.04, windows-2025]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
@@ -263,17 +322,22 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          # fonts-noto-core: the Arabic fallback the gallery harness loads (no tofu in RTL goldens).
           # xvfb: headless display server for the release launch and profile streaming checks.
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev fonts-noto-core xvfb
+          sudo apt-get install -y --no-install-recommends clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev xvfb
       - name: Resolve Dart Pub Workspace (enforcing pubspec.lock)
         shell: bash
         run: bash .github/scripts/with-download-retry.sh flutter pub get --enforce-lockfile
-      - name: Build and smoke-test the bistre-daemon release binary (built once per OS; the launch checks reuse it)
+      - name: Flutter static analysis (includes all 5 bistre_lints rules, OS-independent)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: flutter analyze apps/bistre_app
+      - name: Build release daemon and engine library once, then smoke-test bistre-daemon
         shell: bash
         run: |
           set -euo pipefail
-          cargo build --locked --release -p bistre-daemon
+          # Building both crates in one Cargo pass shares compiled core rlibs so `flutter build`
+          # finds libbistre_ffi ready in target/release/.
+          cargo build --locked --release -p bistre-daemon -p bistre-ffi
           tmp_dir="${RUNNER_TEMP}/bistre-daemon-smoke"
           rm -rf "$tmp_dir"
           mkdir -p "$tmp_dir"
@@ -282,27 +346,6 @@ jobs:
           echo "$health_json"
           echo "$health_json" | grep -q '"wal_mode_active":true'
           echo "$health_json" | grep -q '"status_key":"diag.ok"'
-      - name: Flutter static analysis (includes all 5 bistre_lints rules)
-        shell: bash
-        run: flutter analyze apps/bistre_app
-      - name: Flutter widget, a11y, RTL, contrast, and live Rust FRB v2 Native Assets tests
-        working-directory: apps/bistre_app
-        shell: bash
-        env:
-          # Linux runners have no Secret Service; a fixed test-only passphrase gives the FFI
-          # round-trip a vault key (Spec 06). Never a real secret.
-          BISTRE_VAULT_PASSPHRASE: ci-test-only-vault-passphrase
-          # Linux compares gallery captures with apps/bistre_app/test/goldens/linux/ (Spec 08).
-          BISTRE_GOLDENS: ${{ runner.os == 'Linux' && 'compare' || '' }}
-        run: flutter test
-      - name: Upload the Linux gallery captures for review
-        if: always() && runner.os == 'Linux'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: ui-gallery-linux
-          path: apps/bistre_app/build/ui_gallery/
-          if-no-files-found: error
-          retention-days: 14
       - name: Build Linux release bundle
         if: runner.os == 'Linux'
         working-directory: apps/bistre_app
@@ -392,9 +435,11 @@ jobs:
           # re-downloads them and trips Maven's rate limit (HTTP 429).
           cache: gradle
           cache-dependency-path: |
+            Cargo.lock
             apps/bistre_app/android/*.gradle.kts
             apps/bistre_app/android/app/*.gradle.kts
             apps/bistre_app/android/gradle/wrapper/gradle-wrapper.properties
+            apps/bistre_app/android/gradle/verification-metadata.xml
       - name: Install pinned Rust toolchain
         shell: bash
         run: bash .github/scripts/install-rust.sh --component clippy --target aarch64-linux-android
@@ -408,23 +453,29 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-      # The pinned NDK is about 2 GB; restore it instead of downloading it on every run.
-      # Saved from main only, like rust-cache; release.yml never restores caches.
-      - name: Restore the pinned Android NDK
+      # The pinned SDK platform, build-tools, and NDK (~2 GB) restore instead of re-downloading
+      # on every run. Saved from main only, like rust-cache; release.yml never restores caches.
+      - name: Restore the pinned Android SDK and NDK
         id: ndk-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: /usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
-          key: android-ndk-${{ runner.os }}-${{ env.ANDROID_NDK_VERSION }}
+          path: |
+            /usr/local/lib/android/sdk/platforms/android-${{ env.ANDROID_COMPILE_SDK }}
+            /usr/local/lib/android/sdk/build-tools/${{ env.ANDROID_BUILD_TOOLS }}
+            /usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
+          key: android-sdk-${{ runner.os }}-api${{ env.ANDROID_COMPILE_SDK }}-bt${{ env.ANDROID_BUILD_TOOLS }}-ndk${{ env.ANDROID_NDK_VERSION }}
       - name: Provision Android SDK API 36 and pinned NDK r30
         shell: bash
         run: bash .github/scripts/provision-android-sdk.sh
-      - name: Save the pinned Android NDK
+      - name: Save the pinned Android SDK and NDK
         if: github.ref == 'refs/heads/main' && steps.ndk-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: /usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
-          key: android-ndk-${{ runner.os }}-${{ env.ANDROID_NDK_VERSION }}
+          path: |
+            /usr/local/lib/android/sdk/platforms/android-${{ env.ANDROID_COMPILE_SDK }}
+            /usr/local/lib/android/sdk/build-tools/${{ env.ANDROID_BUILD_TOOLS }}
+            /usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
+          key: android-sdk-${{ runner.os }}-api${{ env.ANDROID_COMPILE_SDK }}-bt${{ env.ANDROID_BUILD_TOOLS }}-ndk${{ env.ANDROID_NDK_VERSION }}
       - name: Resolve Dart Pub Workspace (enforcing pubspec.lock)
         shell: bash
         run: bash .github/scripts/with-download-retry.sh flutter pub get --enforce-lockfile
@@ -433,9 +484,9 @@ jobs:
         run: |
           set -euo pipefail
           tc="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          export CC_aarch64_linux_android="${tc}/aarch64-linux-android24-clang"
+          export CC_aarch64_linux_android="${tc}/aarch64-linux-android29-clang"
           export AR_aarch64_linux_android="${tc}/llvm-ar"
-          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="${tc}/aarch64-linux-android24-clang"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="${tc}/aarch64-linux-android29-clang"
           cargo clippy --locked --target aarch64-linux-android -p bistre-crypto -p bistre-core -p bistre-ffi -- -D warnings
       - name: Build Android arm64-v8a direct release APK
         working-directory: apps/bistre_app
@@ -505,6 +556,7 @@ jobs:
       - security-and-hygiene
       - repo-guard-and-docs
       - rust-fortress
+      - flutter-test
       - flutter-desktop
       - android-arm64-16kb
     env:
@@ -515,6 +567,7 @@ jobs:
       RES_SECURITY: ${{ needs.security-and-hygiene.result }}
       RES_GUARD: ${{ needs.repo-guard-and-docs.result }}
       RES_RUST: ${{ needs.rust-fortress.result }}
+      RES_FLUTTER_TEST: ${{ needs.flutter-test.result }}
       RES_DESKTOP: ${{ needs.flutter-desktop.result }}
       RES_ANDROID: ${{ needs.android-arm64-16kb.result }}
     steps:
@@ -540,6 +593,7 @@ jobs:
           require security-and-hygiene "$RES_SECURITY"
           require repo-guard-and-docs "$RES_GUARD"
           optional rust-fortress "$PLAN_RUST" "$RES_RUST"
+          optional flutter-test "$PLAN_FLUTTER" "$RES_FLUTTER_TEST"
           optional flutter-desktop "$PLAN_FLUTTER" "$RES_DESKTOP"
           optional android-arm64-16kb "$PLAN_ANDROID" "$RES_ANDROID"
           echo "OK: all Bistre CI gates passed."

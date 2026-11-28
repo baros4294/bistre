@@ -123,8 +123,23 @@ PruneReport pruneWorkspace(Directory repoRoot) {
       pruneNestedBuildUnits(profileDir, keep, report);
     }
   }
+  pruneFlutterBuildSessions(
+    Directory('${repoRoot.path}/apps/bistre_app/.dart_tool/flutter_build'),
+    report,
+  );
   pruneVerificationLogs(Directory('${repoRoot.path}/.bistre-local'), report);
   return report;
+}
+
+/// Keeps the two newest hashed `flutter_build/<hash>` session directories so `.dart_tool/`
+/// stays within its 512 MiB budget without removing `dart_plugin_registrant.dart`.
+void pruneFlutterBuildSessions(Directory flutterBuildDir, PruneReport report) {
+  if (!flutterBuildDir.existsSync()) return;
+  final sessions = flutterBuildDir.listSync().whereType<Directory>().toList()
+    ..sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
+  for (final stale in sessions.skip(2)) {
+    _deleteRecorded(stale, report);
+  }
 }
 
 /// Runs [pruneWorkspace] only when any budget is exceeded. Returns `null` when within budget.

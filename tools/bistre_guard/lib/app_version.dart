@@ -129,6 +129,29 @@ void writeAppVersion(Directory root, AppVersion next) {
   _pubspec(root).writeAsStringSync(
     pubspec.replaceFirst(_pubspecVersionLine, 'version: $next'),
   );
+
+  // Keep README direct download URLs and version badge aligned with the bumped release.
+  final readme = File('${root.path}/README.md');
+  if (readme.existsSync()) {
+    final text = readme.readAsStringSync();
+    final updated = text
+        .replaceAll(
+          '/releases/download/v${current.semver}/bistre-v${current.semver}-',
+          '/releases/download/v${next.semver}/bistre-v${next.semver}-',
+        )
+        .replaceAll(
+          '/releases/download/v${current.semver}/sha256sums-',
+          '/releases/download/v${next.semver}/sha256sums-',
+        )
+        .replaceAll('version-v${current.semver}-', 'version-v${next.semver}-')
+        .replaceAll(
+          'alt="Version v${current.semver}"',
+          'alt="Version v${next.semver}"',
+        );
+    if (updated != text) {
+      readme.writeAsStringSync(updated);
+    }
+  }
 }
 
 /// The version a pull request ships: its own when above [base] (a jump set by hand), else

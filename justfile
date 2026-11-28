@@ -63,7 +63,7 @@ test-flutter:
 # Render the UI gallery from scratch into apps/bistre_app/build/ui_gallery/ (stale PNGs are removed first)
 [working-directory: 'apps/bistre_app']
 ui-gallery:
-  git clean -fdXq -- build/ui_gallery
+  dart run ../../tools/bistre_guard/bin/bistre_guard.dart clean-gallery
   dart run ../../tools/bistre_guard/bin/bistre_guard.dart locked flutter test test/ui_gallery_shell_test.dart test/ui_gallery_overlays_test.dart test/ui_gallery_settings_test.dart test/ui_gallery_matrix_test.dart test/ui_gallery_stress_test.dart test/ui_gallery_sheets_test.dart
 
 # Run all Dart & Flutter tests (cross-platform safe on Windows PowerShell and Linux bash)
@@ -97,6 +97,6 @@ perf *flags:
 install-hooks:
   git config core.hooksPath .githooks
 
-# Run full local verification suite and record the verification ledger on success
-check-all: fmt-check guard lint-rust i18n-check lint-dart test-rust test-dart
-  dart run tools/bistre_guard/bin/bistre_guard.dart record
+# Run full local verification suite (parallel fast gates, then locked Rust/Flutter tests) and record ledger
+check-all:
+  dart run tools/bistre_guard/bin/bistre_guard.dart check-all
