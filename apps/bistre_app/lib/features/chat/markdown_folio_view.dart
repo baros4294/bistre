@@ -236,6 +236,13 @@ class MarkdownFolioView extends StatelessWidget {
   static const int parseCacheMaxChars = 4 * 1024 * 1024;
   static int _parsedChars = 0;
 
+  /// Releases cached parsed Markdown ASTs (called on OS memory pressure).
+  static void clearParseCache() {
+    _parsedBlocks.clear();
+    _openFenceMemos.clear();
+    _parsedChars = 0;
+  }
+
   /// Test hooks: parse [source] as the view does, and inspect the cache.
   @visibleForTesting
   static void debugParse(String source) => _parseBlocksStreaming(source);
@@ -244,11 +251,7 @@ class MarkdownFolioView extends StatelessWidget {
   @visibleForTesting
   static int get debugParseCacheChars => _parsedChars;
   @visibleForTesting
-  static void debugClearParseCache() {
-    _parsedBlocks.clear();
-    _openFenceMemos.clear();
-    _parsedChars = 0;
-  }
+  static void debugClearParseCache() => clearParseCache();
 
   static void _evictParsed(String key) {
     if (_parsedBlocks.remove(key) != null) _parsedChars -= key.length;

@@ -7,4 +7,5 @@
 -keep class io.flutter.view.** { *; }
 -keep class io.flutter.embedding.** { *; }
 -keep class com.github.dart_lang.jni.** { *; }
+-keep class org.rustls.platformverifier.** { *; }
 -dontwarn io.flutter.embedding.**

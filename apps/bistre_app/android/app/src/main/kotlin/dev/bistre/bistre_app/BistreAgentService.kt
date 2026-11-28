@@ -199,7 +199,7 @@ class BistreAgentService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(summary)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_bistre)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(contentPending)

@@ -20,6 +20,7 @@ import 'package:bistre_app/features/sidebar/folio_sidebar.dart';
 import 'package:bistre_app/l10n/bistre_localizations.dart';
 import 'package:bistre_app/l10n/l10n_keys.g.dart';
 import 'package:bistre_app/main.dart';
+import 'package:bistre_app/platform/vault_key_host.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
@@ -353,6 +354,26 @@ void main() {
     ctrl.dispose();
     await gw.shutdown();
   });
+
+  test(
+    'wipeVaultKeyBytes handles unmodifiable platform-channel byte views',
+    () {
+      final mutable = Uint8List.fromList(List<int>.generate(32, (i) => i + 1));
+      wipeVaultKeyBytes(mutable);
+      expect(mutable.every((b) => b == 0), isTrue);
+
+      final reply = ByteData(32);
+      for (var i = 0; i < 32; i++) {
+        reply.setUint8(i, i + 1);
+      }
+      final unmodifiableView = reply.asUnmodifiableView().buffer.asUint8List(
+        0,
+        32,
+      );
+      expect(() => wipeVaultKeyBytes(unmodifiableView), returnsNormally);
+      expect(() => wipeVaultKeyBytes(null), returnsNormally);
+    },
+  );
 
   testWidgets(
     'small icon buttons accept taps across a 40 px target without growing',

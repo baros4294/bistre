@@ -7,6 +7,8 @@ const List<String> androidRustflags = <String>[
   '-C force-unwind-tables=no',
   '-C link-arg=-Wl,--gc-sections',
   '-C link-arg=-Wl,--icf=safe',
+  '-C link-arg=-Wl,--no-eh-frame-hdr',
+  '-C link-arg=-Wl,-soname,libbistre_ffi.so',
   '-C link-arg=-Wl,-z,max-page-size=16384',
 ];
 

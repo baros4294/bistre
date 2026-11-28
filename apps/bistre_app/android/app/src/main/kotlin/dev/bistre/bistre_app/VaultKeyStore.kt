@@ -3,8 +3,8 @@ package dev.bistre.bistre_app
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import android.security.keystore.StrongBoxUnavailableException
 import android.util.AtomicFile
+import android.util.Log
 import java.io.File
 import java.security.KeyStore
 import java.security.SecureRandom
@@ -25,6 +25,7 @@ object VaultKeyStore {
     private const val KEYSTORE = "AndroidKeyStore"
     private const val ALIAS = "bistre_vault_kek_v1"
     private const val WRAPPED_FILE = "bistre_vault.key.wrapped"
+    private const val WIPE_MARKER = "erase-on-start"
     private const val FORMAT_VERSION: Byte = 1
     private const val IV_LEN = 12
     private const val TAG_BITS = 128
@@ -32,6 +33,12 @@ object VaultKeyStore {
 
     /** Returns the vault data key, creating and wrapping a new one on first use. */
     fun obtainDataKey(context: Context): ByteArray {
+        // Erase-at-next-start (T5): `bistre_data/erase-on-start` is created before restart;
+        // rotate and remove the wrapped key + Keystore KEK here before core deletes the marker.
+        val wipeMarker = File(File(context.filesDir, "bistre_data"), WIPE_MARKER)
+        if (wipeMarker.exists()) {
+            eraseVaultKeyMaterial(context)
+        }
         val kek = loadOrCreateKek()
         val file = AtomicFile(File(context.noBackupFilesDir, WRAPPED_FILE))
         val stored = if (file.baseFile.exists()) file.readFully() else null
@@ -59,12 +66,32 @@ object VaultKeyStore {
         return dataKey
     }
 
+    private fun eraseVaultKeyMaterial(context: Context) {
+        val noBackup = context.noBackupFilesDir
+        noBackup.listFiles()?.forEach { candidate ->
+            if (candidate.name == WRAPPED_FILE || candidate.name.startsWith("$WRAPPED_FILE.")) {
+                if (!candidate.delete()) {
+                    Log.w("Bistre", "could not delete wrapped vault key file: ${candidate.name}")
+                }
+            }
+        }
+        runCatching {
+            val ks = KeyStore.getInstance(KEYSTORE).apply { load(null) }
+            if (ks.containsAlias(ALIAS)) ks.deleteEntry(ALIAS)
+        }.onFailure {
+            Log.w("Bistre", "could not delete Keystore alias during erase: ${it.javaClass.simpleName}")
+        }
+    }
+
     private fun loadOrCreateKek(): SecretKey {
         val ks = KeyStore.getInstance(KEYSTORE).apply { load(null) }
         (ks.getKey(ALIAS, null) as? SecretKey)?.let { return it }
         return try {
             generateKek(strongBox = true)
-        } catch (_: StrongBoxUnavailableException) {
+        } catch (err: Exception) {
+            // Some Android Keystore HALs throw ProviderException or KeyStoreException instead of
+            // StrongBoxUnavailableException when StrongBox is unavailable or refuses AES-GCM.
+            Log.i("Bistre", "StrongBox KEK unavailable (${err.javaClass.simpleName}); falling back to TEE")
             generateKek(strongBox = false)
         }
     }

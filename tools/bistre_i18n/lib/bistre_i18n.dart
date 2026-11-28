@@ -154,8 +154,8 @@ void _validateGeneratedSync({
       );
       continue;
     }
-    if (_normalizeLf(bundled.readAsStringSync()) !=
-        _normalizeLf(file.readAsStringSync())) {
+    final expectedAsset = _normalizeLf(_renderCompactCatalogJson(file));
+    if (_normalizeLf(bundled.readAsStringSync()) != expectedAsset) {
       errors.add(
         '[i18n-sync] Bundled asset ${bundled.path} is out of sync with ${catalogDir.path}/$name; run `just i18n-gen`.',
       );
@@ -350,7 +350,8 @@ void generateL10nArtifacts({
     final name = file.uri.pathSegments.last;
     final locale = name.replaceAll('.bistre-l10n.json', '');
     locales.add(locale);
-    file.copySync('${assetOutDir.path}/$name');
+    File('${assetOutDir.path}/$name')
+        .writeAsStringSync(_renderCompactCatalogJson(file));
   }
   locales.sort();
   File('${assetOutDir.path}/manifest.json')
@@ -398,6 +399,27 @@ String _renderL10nKeysDart(Map<String, dynamic> entries) {
 
 String _renderManifestJson(List<String> locales) {
   return '${const JsonEncoder.withIndent('  ').convert(<String, Object?>{'locales': locales})}\n';
+}
+
+/// Renders a runtime-only compact locale asset (`locale`, `direction`, `entries: {key: message}`),
+/// stripping translator metadata (`context`, `tone`, `max_chars`, `placeholders`) and whitespace
+/// to cut APK asset size and cold-start JSON parse cost.
+String _renderCompactCatalogJson(File catalogFile) {
+  final decoded =
+      jsonDecode(catalogFile.readAsStringSync()) as Map<String, dynamic>;
+  final entries = decoded['entries'] as Map<String, dynamic>;
+  final sortedKeys = entries.keys.toList()..sort();
+  final compactEntries = <String, String>{};
+  for (final key in sortedKeys) {
+    final value = entries[key];
+    if (value is Map<String, dynamic>) {
+      final msg = value['message'];
+      if (msg is String) compactEntries[key] = msg;
+    } else if (value is String) {
+      compactEntries[key] = value;
+    }
+  }
+  return '${jsonEncode(<String, Object?>{'locale': decoded['locale'], 'direction': decoded['direction'], 'entries': compactEntries})}\n';
 }
 
 String _normalizeLf(String input) => input.replaceAll('\r\n', '\n');

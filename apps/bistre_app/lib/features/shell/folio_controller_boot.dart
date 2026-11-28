@@ -94,11 +94,13 @@ extension FolioBootActions on FolioController {
       _assistants = loadedAssistants;
       _threads = _withoutPendingDeletes(loadedThreads);
 
-      final savedBounds = DesktopWindowBounds.tryParseJson(
-        _settings.windowBoundsJson,
-      );
-      if (savedBounds != null) {
-        unawaited(BistreDesktopHost.restoreWindowBounds(savedBounds));
+      if (Platform.isWindows || Platform.isLinux) {
+        final savedBounds = DesktopWindowBounds.tryParseJson(
+          _settings.windowBoundsJson,
+        );
+        if (savedBounds != null) {
+          unawaited(BistreDesktopHost.restoreWindowBounds(savedBounds));
+        }
       }
 
       // An empty last chat is reused rather than adding another empty one.
@@ -124,7 +126,11 @@ extension FolioBootActions on FolioController {
       notifyListeners();
 
       unawaited(_hydratePostBootMetadata());
-    } catch (e) {
+    } catch (e, stack) {
+      debugPrint('[bistre] bootstrap failed: $e\n$stack');
+      if (dataDir.isNotEmpty && dataDir != 'memory') {
+        CrashRecorder.recordSync(dataDir, e, stack);
+      }
       _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
       _bootState = BootState.failed;
       notifyListeners();

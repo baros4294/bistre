@@ -3,12 +3,14 @@ import 'dart:io';
 import 'dart:ui' show AppExitResponse, FrameTiming;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show SystemChrome, SystemUiOverlayStyle;
 import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'app/app_appearance.dart';
 import 'bridge/bistre_engine.dart';
 import 'design/bistre_theme.dart';
+import 'features/chat/markdown_folio_view.dart';
 import 'features/shell/folio_controller.dart';
 import 'features/shell/folio_shell_screen.dart';
 import 'l10n/bistre_localizations.dart';
@@ -89,8 +91,10 @@ Future<void> main() async {
     ..maximumSizeBytes = 16 << 20;
   unawaited(configureGpuResourceCacheCap(lowMemory: false));
 
-  final l10nController = await BistreLocalizationController.loadBundled();
-  final (dataDir, isDevEnv) = await resolveBistreDataDir();
+  final (l10nController, (dataDir, isDevEnv)) = await (
+    BistreLocalizationController.loadBundled(),
+    resolveBistreDataDir(),
+  ).wait;
 
   // Local-only redacted crash recorder (zero telemetry; scrubs API keys/bearer tokens).
   final prevFlutterError = FlutterError.onError;
@@ -113,16 +117,19 @@ Future<void> main() async {
     pendingCrashReport: pendingCrashReport,
   );
   // New chats are named, and the tray menu reads, in the language showing.
+  final isDesktop = Platform.isWindows || Platform.isLinux;
   void followLanguage() {
     folioController.defaultThreadTitle = l10nController.t(
       L10nKey.shellThreadDefaultTitle,
     );
-    unawaited(
-      BistreDesktopHost.setTrayLabels(
-        open: l10nController.t(L10nKey.trayOpen),
-        quit: l10nController.t(L10nKey.trayQuit),
-      ),
-    );
+    if (isDesktop) {
+      unawaited(
+        BistreDesktopHost.setTrayLabels(
+          open: l10nController.t(L10nKey.trayOpen),
+          quit: l10nController.t(L10nKey.trayQuit),
+        ),
+      );
+    }
   }
 
   followLanguage();
@@ -219,29 +226,44 @@ class BistreApp extends StatefulWidget {
 
 class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
   BistreThemeData? _lastSyncedDesktopTheme;
+  bool? _lastSyncedAndroidDark;
+  Color? _lastSyncedAndroidNavBg;
+
+  static final bool _isDesktop = Platform.isWindows || Platform.isLinux;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _syncSystemBrightness();
-    BistreDesktopHost.attachSystemThemeListener(_syncSystemBrightness);
-    BistreDesktopHost.attachWindowBoundsListener(_onWindowBoundsChanged);
+    if (_isDesktop) {
+      BistreDesktopHost.attachSystemThemeListener(_syncSystemBrightness);
+      BistreDesktopHost.attachWindowBoundsListener(_onWindowBoundsChanged);
+      widget.folioController.addListener(_syncWindowTitle);
+      _syncWindowTitle();
+    }
     BistreDesktopHost.attachFilesDroppedListener(_onFilesDropped);
     BistreDesktopHost.attachMediaPlaybackFailedListener(_onMediaPlaybackFailed);
-    widget.folioController.addListener(_syncWindowTitle);
-    _syncWindowTitle();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    BistreDesktopHost.detachSystemThemeListener(_syncSystemBrightness);
-    BistreDesktopHost.detachWindowBoundsListener(_onWindowBoundsChanged);
+    if (_isDesktop) {
+      BistreDesktopHost.detachSystemThemeListener(_syncSystemBrightness);
+      BistreDesktopHost.detachWindowBoundsListener(_onWindowBoundsChanged);
+      widget.folioController.removeListener(_syncWindowTitle);
+    }
     BistreDesktopHost.detachFilesDroppedListener(_onFilesDropped);
     BistreDesktopHost.detachMediaPlaybackFailedListener(_onMediaPlaybackFailed);
-    widget.folioController.removeListener(_syncWindowTitle);
     super.dispose();
+  }
+
+  @override
+  void didHaveMemoryPressure() {
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+    MarkdownFolioView.clearParseCache();
   }
 
   void _onMediaPlaybackFailed() =>
@@ -257,8 +279,10 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
     unawaited(widget.folioController.persistWindowBounds(bounds));
   }
 
-  void _syncWindowTitle() =>
-      _scheduleWindowTitle(_windowTitle(widget.folioController));
+  void _syncWindowTitle() {
+    if (!_isDesktop) return;
+    _scheduleWindowTitle(_windowTitle(widget.folioController));
+  }
 
   @override
   void didChangePlatformBrightness() {
@@ -347,7 +371,25 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
   }
 
   void _scheduleDesktopThemeSync(BistreThemeData theme) {
-    if (_lastSyncedDesktopTheme == theme) return;
+    if (Platform.isAndroid) {
+      if (_lastSyncedAndroidDark == theme.isDark &&
+          _lastSyncedAndroidNavBg == theme.bgCanvas) {
+        return;
+      }
+      _lastSyncedAndroidDark = theme.isDark;
+      _lastSyncedAndroidNavBg = theme.bgCanvas;
+      final iconBrightness = theme.isDark ? Brightness.light : Brightness.dark;
+      SystemChrome.setSystemUIOverlayStyle(
+        SystemUiOverlayStyle(
+          statusBarColor: theme.bgCanvas.withValues(alpha: 0),
+          statusBarIconBrightness: iconBrightness,
+          systemNavigationBarColor: theme.bgCanvas,
+          systemNavigationBarIconBrightness: iconBrightness,
+        ),
+      );
+      return;
+    }
+    if (!_isDesktop || _lastSyncedDesktopTheme == theme) return;
     _lastSyncedDesktopTheme = theme;
     unawaited(
       BistreDesktopHost.syncWindowTheme(

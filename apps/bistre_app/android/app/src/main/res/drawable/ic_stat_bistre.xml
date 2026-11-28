@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Monochrome status-bar icon for the run-scoped foreground service notification. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M5,4.5C5,3.67 5.67,3 6.5,3H18.5C19.33,3 20,3.67 20,4.5V19.5C20,20.33 19.33,21 18.5,21H6.5C5.67,21 5,20.33 5,19.5V4.5ZM7,5V19H18V5H7ZM9.5,8H15.5V9.5H9.5V8ZM9.5,11.25H15.5V12.75H9.5V11.25ZM9.5,14.5H13.5V16H9.5V14.5Z" />
+</vector>
