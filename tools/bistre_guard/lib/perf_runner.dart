@@ -325,7 +325,9 @@ void printRssByMapping(int pid) {
 }
 
 /// Android cold start (`am start -W`) and PSS (`dumpsys meminfo`) on an installed APK.
-Future<List<PerfMetric>> runAndroidProbe() async {
+Future<List<PerfMetric>> runAndroidProbe({
+  String packageName = androidApplicationId,
+}) async {
   final start = await Process.run('adb', <String>[
     'shell',
     'am',
@@ -333,7 +335,7 @@ Future<List<PerfMetric>> runAndroidProbe() async {
     '-W',
     '-S',
     '-n',
-    '$androidApplicationId/dev.bistre.bistre_app.MainActivity',
+    '$packageName/dev.bistre.bistre_app.MainActivity',
   ]);
   final total = parseAmStartTotalTime('${start.stdout}');
   if (start.exitCode != 0 || total == null) {
@@ -344,7 +346,7 @@ Future<List<PerfMetric>> runAndroidProbe() async {
     'shell',
     'dumpsys',
     'meminfo',
-    androidApplicationId,
+    packageName,
   ]);
   final pssKb = parseDumpsysTotalPssKb('${mem.stdout}');
   return <PerfMetric>[

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:bistre_guard/app_memory.dart';
 import 'package:bistre_guard/binary_smoke.dart';
 import 'package:bistre_guard/bistre_guard.dart';
+import 'package:bistre_guard/check_all.dart';
 import 'package:bistre_guard/elf_verify.dart';
 import 'package:bistre_guard/ledger.dart';
 import 'package:bistre_guard/perf_runner.dart';
@@ -13,6 +14,7 @@ Usage: dart run tools/bistre_guard/bin/bistre_guard.dart [command]
 
 Commands:
   (none)               Run all repository guards
+  check-all            Run fast gates in parallel, then locked Rust/Flutter tests, then record ledger
   disk                 Report workspace build-cache usage against Spec 11 budgets
   prune                Non-destructively prune stale Cargo/Flutter caches and oversized logs
   status               Show storage warnings and files not yet verified by a green run
@@ -36,6 +38,13 @@ Future<void> main(List<String> args) async {
   switch (command) {
     case '':
       _runGuards(repoRoot);
+    case 'check-all':
+      exitCode = await runFastCheckAll(repoRoot);
+    case 'clean-gallery':
+      final galleryDir = Directory(
+        '${repoRoot.path}/apps/bistre_app/build/ui_gallery',
+      );
+      if (galleryDir.existsSync()) galleryDir.deleteSync(recursive: true);
     case 'disk':
       stdout.write(renderDiskReport(measureStorage(repoRoot)));
     case 'prune':
@@ -89,9 +98,14 @@ Future<void> main(List<String> args) async {
       }
       if (results.isEmpty || results.any((r) => !r.isValid)) exitCode = 1;
     case 'perf':
+      final pkgIdx = args.indexOf('--package');
+      final androidPkg = pkgIdx != -1 && pkgIdx + 1 < args.length
+          ? args[pkgIdx + 1]
+          : androidApplicationId;
       exitCode = await _perf(
         repoRoot,
         android: args.contains('--android'),
+        androidPackage: androidPkg,
         desktop: !args.contains('--skip-desktop'),
         strict: args.contains('--strict'),
         rssHardFail: !args.contains('--rss-report-only'),
@@ -107,6 +121,7 @@ Future<void> main(List<String> args) async {
 Future<int> _perf(
   Directory repoRoot, {
   required bool android,
+  String androidPackage = androidApplicationId,
   required bool desktop,
   bool strict = false,
   bool rssHardFail = true,
@@ -130,7 +145,9 @@ Future<int> _perf(
       () => runDesktopColdStart(repoRoot, rssHardFail: rssHardFail),
     );
   }
-  if (android) await section(runAndroidProbe);
+  if (android) {
+    await section(() => runAndroidProbe(packageName: androidPackage));
+  }
   for (final m in metrics) {
     stdout.writeln(m.describe());
   }
