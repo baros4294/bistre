@@ -1,7 +1,7 @@
 name: bistre_app
 description: Bistre cross-platform Sepia Book AI client (pure package:flutter/widgets.dart).
 publish_to: none
-version: 0.2.0+4
+version: 0.2.1+5
 resolution: workspace
 
 environment:
