@@ -12,7 +12,7 @@ DiagnosticRaisedEvent _backoff(int ms, int attempt) => DiagnosticRaisedEvent(
 
 void main() {
   testWidgets(
-    'the retry notice says which try it is and keeps counting (P20, U37)',
+    'the retry notice says which try it is and keeps counting',
     (tester) async {
       final shell = await ShellHarness.pump(tester);
       final threadId = shell.controller.activeThread!.id;

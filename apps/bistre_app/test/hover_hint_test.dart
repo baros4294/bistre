@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets(
-    'a hint goes away when its control moves out from under the pointer (S3)',
+    'a hint goes away when its control moves out from under the pointer',
     (tester) async {
       var shifted = false;
       late StateSetter setHost;

@@ -47,7 +47,7 @@ Future<(FolioController, BistreLocalizationController)> _pump(
 
 void main() {
   testWidgets(
-    'a new Gemini provider starts from core\'s server URL (S4, A-W 5b)',
+    'a new Gemini provider starts from core\'s server URL',
     (tester) async {
       final (_, l10n) = await _pump(tester);
       await tester.tap(find.text(l10n.t(L10nKey.providerAddButton)).first);

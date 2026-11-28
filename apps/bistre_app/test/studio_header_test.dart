@@ -6,7 +6,7 @@ import 'support/shell_harness.dart';
 
 void main() {
   for (final layout in ShellLayout.values) {
-    testWidgets('the Studio button is always in the header (A-W 4a, $layout)', (
+    testWidgets('the Studio button is always in the header ($layout)', (
       tester,
     ) async {
       final shell = await ShellHarness.pump(tester, layout: layout);

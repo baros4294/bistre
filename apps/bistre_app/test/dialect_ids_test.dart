@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test(
-    'Gemini providers show the storage badge (core id google_gemini, W8)',
+    'Gemini providers show the storage badge (core id google_gemini)',
     () {
       const gemini = EngineProvider(
         id: 'g',

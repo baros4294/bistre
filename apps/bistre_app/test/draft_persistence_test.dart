@@ -7,7 +7,7 @@ import 'support/shell_harness.dart';
 void main() {
   for (final layout in ShellLayout.values) {
     testWidgets(
-      'a sent message does not come back as the draft (U35, $layout)',
+      'a sent message does not come back as the draft ($layout)',
       (tester) async {
         final shell = await ShellHarness.pump(tester, layout: layout);
         await tester.enterText(find.byType(EditableText).last, 'hello');
