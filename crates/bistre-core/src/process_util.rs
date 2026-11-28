@@ -465,19 +465,18 @@ pub fn is_blocked_open_path(path: &str) -> bool {
         })
 }
 
-/// Validates a link before handing it to the OS browser: only `http://` / `https://`.
-pub fn validate_web_link(url: &str) -> BistreResult<&str> {
-    let trimmed = url.trim();
-    let lower = trimmed.to_ascii_lowercase();
-    if (lower.starts_with("https://") || lower.starts_with("http://"))
-        && !trimmed.chars().any(char::is_control)
-    {
-        Ok(trimmed)
+/// Validates a link before handing it to the OS browser: only an `http` or `https` URL with a
+/// host and no user name or password. Any other scheme would hand the opener a local file or
+/// another app's handler.
+pub fn validate_web_link(url: &str) -> BistreResult<reqwest::Url> {
+    let refused = || BistreError::with_detail(DiagnosticKey::InvalidInput, "web_link_refused");
+    let link = reqwest::Url::parse(url.trim()).map_err(|_| refused())?;
+    let has_host = link.host_str().is_some_and(|h| !h.is_empty());
+    let has_login = !link.username().is_empty() || link.password().is_some();
+    if matches!(link.scheme(), "http" | "https") && has_host && !has_login {
+        Ok(link)
     } else {
-        Err(BistreError::with_detail(
-            DiagnosticKey::InvalidInput,
-            "web_link_scheme_blocked",
-        ))
+        Err(refused())
     }
 }
 
@@ -506,6 +505,9 @@ mod tests {
         assert!(validate_web_link("file:///etc/passwd").is_err());
         assert!(validate_web_link("javascript:alert(1)").is_err());
         assert!(validate_web_link("ms-settings:privacy").is_err());
+        assert!(validate_web_link("https://user:pass@example.com").is_err());
+        assert!(validate_web_link("https://user@example.com").is_err());
+        assert!(validate_web_link("example.com").is_err());
     }
 
     /// A running command's output reaches the progress channel while it runs, not only
