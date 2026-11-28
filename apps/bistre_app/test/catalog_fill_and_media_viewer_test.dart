@@ -220,7 +220,7 @@ void main() {
       Platform.isWindows || Platform.isAndroid,
     );
     expect(ctrl.canPlayOf(file('song.mp3', 'audio/mpeg')), isFalse);
-    expect(ctrl.canSaveCopyOf(file('a.txt', 'text/plain')), Platform.isWindows);
+    expect(ctrl.canSaveCopyOf(file('a.txt', 'text/plain')), desktop);
     expect(isViewerText('application/json'), isTrue);
     expect(isViewerText('application/vnd.api+json'), isTrue);
     expect(isViewerText('application/pdf'), isFalse);

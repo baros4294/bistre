@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:bistre_app/bridge/bistre_engine.dart';
 import 'package:bistre_app/design/ink_primitives.dart';
 import 'package:bistre_app/features/shell/folio_controller.dart';
@@ -110,7 +112,7 @@ void main() {
       find.textContaining(shell.l10n.tRawKey('diag.provider.request_failed')),
       findsOneWidget,
     );
-  });
+  }, skip: !Platform.isWindows); // The live-voice mic is a Windows host call.
 }
 
 /// The desktop host channel, answering whether the microphone starts.

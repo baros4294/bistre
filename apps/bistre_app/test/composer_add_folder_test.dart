@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:bistre_app/design/bistre_icons.dart';
 import 'package:bistre_app/features/chat/composer_phone_controls.dart';
 import 'package:bistre_app/features/chat/folio_composer.dart';
@@ -57,6 +59,7 @@ void main() {
       expect(ctrl.workspaceRootPath, r'C:\work\notes');
       expect(tester.widget<BistreIconButton>(button).active, isTrue);
       await tester.pump(const Duration(seconds: 9));
-    });
+      // The mock is the Windows and Android host picker; on Linux core runs the picker.
+    }, skip: Platform.isLinux);
   }
 }

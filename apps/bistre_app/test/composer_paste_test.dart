@@ -12,6 +12,7 @@ import 'support/shell_harness.dart';
 void main() {
   late String clipboardText;
   late List<String> clipboardFiles;
+  late bool attachmentsFail;
 
   Future<ShellHarness> pump(WidgetTester tester) async {
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -21,12 +22,13 @@ void main() {
           : null,
     );
     const host = MethodChannel('bistre/desktop_host');
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      host,
-      (call) async => call.method == 'clipboardAttachments'
-          ? <String, Object?>{'files': clipboardFiles, 'png': ''}
-          : null,
-    );
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(host, (
+      call,
+    ) async {
+      if (call.method != 'clipboardAttachments') return null;
+      if (attachmentsFail) throw PlatformException(code: 'clipboard');
+      return <String, Object?>{'files': clipboardFiles, 'png': ''};
+    });
     addTearDown(() {
       tester.binding.defaultBinaryMessenger
         ..setMockMethodCallHandler(SystemChannels.platform, null)
@@ -38,6 +40,25 @@ void main() {
   setUp(() {
     clipboardText = '';
     clipboardFiles = <String>[];
+    attachmentsFail = false;
+  });
+
+  testWidgets('text still pastes when copied files cannot be read', (
+    tester,
+  ) async {
+    // On Linux core reads the clipboard; outside the app it fails like a host error.
+    attachmentsFail = true;
+    clipboardText = 'hello there';
+    final shell = await pump(tester);
+    final typed = await tester.runAsync(
+      () => shell.controller.takeComposerPaste(
+        textFileName: 'Pasted text',
+        imageFileName: 'Pasted picture',
+      ),
+    );
+    expect(typed, 'hello there');
+    expect(shell.controller.attachments, isEmpty);
+    await tester.pump(const Duration(seconds: 9));
   });
 
   testWidgets('short pasted text is typed at the cursor', (tester) async {
