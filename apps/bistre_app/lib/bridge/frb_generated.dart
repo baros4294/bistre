@@ -7094,8 +7094,8 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
   FfiModelCatalogInfo dco_decode_ffi_model_catalog_info(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 12)
-      throw Exception('unexpected arr length: expect 12 but see ${arr.length}');
+    if (arr.length != 13)
+      throw Exception('unexpected arr length: expect 13 but see ${arr.length}');
     return FfiModelCatalogInfo(
       contextWindow: dco_decode_opt_box_autoadd_u_32(arr[0]),
       maxOutputTokens: dco_decode_opt_box_autoadd_u_32(arr[1]),
@@ -7105,10 +7105,11 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       cacheWritePerMtokMicros: dco_decode_opt_box_autoadd_i_64(arr[5]),
       cacheWrite1HPerMtokMicros: dco_decode_opt_box_autoadd_i_64(arr[6]),
       reasoning: dco_decode_opt_box_autoadd_bool(arr[7]),
-      writesText: dco_decode_bool(arr[8]),
-      aspectRatios: dco_decode_list_String(arr[9]),
-      resolutions: dco_decode_list_String(arr[10]),
-      durationsS: dco_decode_list_prim_u_32_strict(arr[11]),
+      effortLevels: dco_decode_list_String(arr[8]),
+      writesText: dco_decode_bool(arr[9]),
+      aspectRatios: dco_decode_list_String(arr[10]),
+      resolutions: dco_decode_list_String(arr[11]),
+      durationsS: dco_decode_list_prim_u_32_strict(arr[12]),
     );
   }
 
@@ -8357,6 +8358,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       deserializer,
     );
     var var_reasoning = sse_decode_opt_box_autoadd_bool(deserializer);
+    var var_effortLevels = sse_decode_list_String(deserializer);
     var var_writesText = sse_decode_bool(deserializer);
     var var_aspectRatios = sse_decode_list_String(deserializer);
     var var_resolutions = sse_decode_list_String(deserializer);
@@ -8370,6 +8372,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       cacheWritePerMtokMicros: var_cacheWritePerMtokMicros,
       cacheWrite1HPerMtokMicros: var_cacheWrite1HPerMtokMicros,
       reasoning: var_reasoning,
+      effortLevels: var_effortLevels,
       writesText: var_writesText,
       aspectRatios: var_aspectRatios,
       resolutions: var_resolutions,
@@ -9806,6 +9809,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
     sse_encode_opt_box_autoadd_i_64(self.cacheWritePerMtokMicros, serializer);
     sse_encode_opt_box_autoadd_i_64(self.cacheWrite1HPerMtokMicros, serializer);
     sse_encode_opt_box_autoadd_bool(self.reasoning, serializer);
+    sse_encode_list_String(self.effortLevels, serializer);
     sse_encode_bool(self.writesText, serializer);
     sse_encode_list_String(self.aspectRatios, serializer);
     sse_encode_list_String(self.resolutions, serializer);

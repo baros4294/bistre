@@ -6,9 +6,11 @@
 
 use std::collections::BTreeMap;
 
+use bistre_protocol::ReasoningEffort;
 use serde::Deserialize;
 use serde::de::IgnoredAny;
 
+use crate::effort_levels::EffortSet;
 use crate::registry::{
     CatalogEntry, MAX_MEDIA_CHOICES, Modality, ModalitySet, ModelExtras, ModelRates,
     parse_decimal_scaled,
@@ -211,6 +213,11 @@ struct LiteSpec {
     max_tokens: Field<u64>,
     max_output_tokens: Field<u64>,
     supports_reasoning: Field<bool>,
+    reasoning_effort_levels: Field<Vec<String>>,
+    supports_none_reasoning_effort: Field<bool>,
+    supports_xhigh_reasoning_effort: Field<bool>,
+    supports_max_reasoning_effort: Field<bool>,
+    thinking_always_on: Field<bool>,
     supports_vision: Field<bool>,
     supports_audio_input: Field<bool>,
     supports_audio_output: Field<bool>,
@@ -414,6 +421,33 @@ fn litellm_mode_output(mode: &str, audio_out: bool) -> Option<ModalitySet> {
     }
 }
 
+/// A model's effort levels: its listed `reasoning_effort_levels`, else every level minus the
+/// ones a `supports_*` flag (or `thinking_always_on`, which rules out Off) says it lacks;
+/// `None` when the entry says nothing about effort.
+fn effort_levels(
+    listed: Option<Vec<String>>,
+    flags: [(Option<bool>, ReasoningEffort); 4],
+) -> Option<EffortSet> {
+    if let Some(names) = listed {
+        let set: EffortSet = names
+            .iter()
+            .filter_map(|n| EffortSet::level_of(n))
+            .collect();
+        return (!set.is_empty()).then_some(set);
+    }
+    let mut set = EffortSet::ALL;
+    let mut known = false;
+    for (supported, level) in flags {
+        if let Some(supported) = supported {
+            known = true;
+            if !supported {
+                set.remove(level);
+            }
+        }
+    }
+    known.then_some(set)
+}
+
 fn litellm_entry(key: String, spec: LiteSpec) -> Option<CatalogEntry> {
     let flag = |f: Field<bool>| field(f) == Some(true);
     let audio_out = flag(spec.supports_audio_output);
@@ -465,6 +499,27 @@ fn litellm_entry(key: String, spec: LiteSpec) -> Option<CatalogEntry> {
             cache_write_1h_per_mtok: per_million(spec.cache_creation_input_token_cost_above_1hr),
             context_tokens: count(spec.max_input_tokens).or(count(spec.max_tokens)),
             reasoning: field(spec.supports_reasoning),
+            effort_levels: effort_levels(
+                field(spec.reasoning_effort_levels),
+                [
+                    (
+                        field(spec.supports_none_reasoning_effort),
+                        ReasoningEffort::Off,
+                    ),
+                    (
+                        field(spec.supports_xhigh_reasoning_effort),
+                        ReasoningEffort::ExtraHigh,
+                    ),
+                    (
+                        field(spec.supports_max_reasoning_effort),
+                        ReasoningEffort::Max,
+                    ),
+                    (
+                        field(spec.thinking_always_on).map(|on| !on),
+                        ReasoningEffort::Off,
+                    ),
+                ],
+            ),
             max_output_tokens: count(spec.max_output_tokens),
             input_modalities: input_mods,
             output_modalities: output_mods,

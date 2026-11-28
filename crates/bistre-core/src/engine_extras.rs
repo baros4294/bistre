@@ -55,6 +55,9 @@ impl InProcessEngine {
                 cache_write_per_mtok_micros: r.cache_write_per_mtok,
                 cache_write_1h_per_mtok_micros: r.cache_write_1h_per_mtok,
                 reasoning: r.reasoning,
+                effort_levels: r.effort_levels.map_or_else(Vec::new, |set| {
+                    set.levels().map(|l| l.as_str().to_owned()).collect()
+                }),
                 writes_text: tokens,
                 aspect_ratios: extras.aspect_ratios,
                 resolutions: extras.resolutions,

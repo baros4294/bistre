@@ -518,6 +518,7 @@ List<Widget> _modelControls(
       compact: compact,
       value: ctrl.settings.reasoningEffort,
       reduceMotionOverride: ctrl.reduceMotionOverride,
+      allowedLevels: info?.effortLevels ?? const <String>[],
       onChanged: (v) => unawaited(ctrl.setReasoningEffort(v)),
     ),
   if (info != null && info.hasMediaChoices) ...[

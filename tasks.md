@@ -26,7 +26,6 @@ Scope (owner): the next release completes everything `docs/` describes, not only
 - [ ] G11 Remote Bridge over TLS 1.3 mTLS with QR pairing (Spec 07, Spec 00 Planned)
 - [ ] G12 Video dubbing (Spec 00 roadmap)
 - [ ] G13 Byte-for-byte reproducible release check (Spec 10)
-- [ ] G14 Per-model effort levels from LiteLLM `reasoning_effort_levels`, `supports_{none,xhigh,max}_reasoning_effort`, `thinking_always_on`; the picker shows only those (Spec 02)
 
 ## Decisions (owner)
 

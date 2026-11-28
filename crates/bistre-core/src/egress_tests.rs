@@ -676,6 +676,42 @@ async fn provider_advanced_model_overrides_feed_limits() -> TestResult {
     Ok(())
 }
 
+/// A level the catalog says the model lacks is sent as its nearest listed level below.
+#[tokio::test]
+async fn a_thinking_level_the_model_lacks_steps_down_to_one_it_has() -> TestResult {
+    use crate::effort_levels::EffortSet;
+    use bistre_protocol::ReasoningEffort::{High, Low, Medium};
+    let server = MockServer::start(vec![chat_reply("ok")]).await?;
+    let chat = local_chat(&server).await?;
+    chat.engine
+        .pricing
+        .publish(vec![crate::registry::CatalogEntry {
+            namespace: None,
+            id: "m".to_owned(),
+            rates: crate::registry::ModelRates {
+                reasoning: Some(true),
+                effort_levels: Some([Low, Medium, High].into_iter().collect::<EffortSet>()),
+                ..crate::registry::ModelRates::default()
+            },
+            extras: crate::registry::ModelExtras::default(),
+        }]);
+    chat.engine
+        .set_kv_meta(
+            format!("provider.adv:{}", chat.provider_id),
+            serde_json::json!({ "defaultThinkingEffort": "max" }).to_string(),
+        )
+        .await?;
+    let mut rx = chat.engine.subscribe_events();
+    chat.engine
+        .send_and_stream_reply(chat.thread_id.clone(), None, "think".to_owned())
+        .await?;
+    diagnostics_until_finished(&mut rx, &chat.thread_id).await?;
+    let seen = server.finish().await;
+    let body: serde_json::Value = serde_json::from_slice(&seen.first().ok_or("no request")?.body)?;
+    assert_eq!(body["reasoning_effort"], "high", "{body}");
+    Ok(())
+}
+
 /// A provider's default thinking effort applies when the global effort is left at Auto.
 #[tokio::test]
 async fn provider_advanced_default_thinking_effort_reaches_the_wire() -> TestResult {

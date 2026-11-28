@@ -795,6 +795,7 @@ class FrbBistreEngineGateway
       cacheWritePerMtokMicros: info.cacheWritePerMtokMicros,
       cacheWrite1hPerMtokMicros: info.cacheWrite1HPerMtokMicros,
       reasoning: info.reasoning,
+      effortLevels: info.effortLevels,
       writesText: info.writesText,
       aspectRatios: info.aspectRatios,
       resolutions: info.resolutions,

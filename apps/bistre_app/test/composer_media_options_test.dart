@@ -1,10 +1,12 @@
 import 'dart:convert';
 
 import 'package:bistre_app/bridge/bistre_engine.dart';
+import 'package:bistre_app/design/bistre_controls.dart';
 import 'package:bistre_app/design/ink_primitives.dart';
 import 'package:bistre_app/features/chat/composer_phone_controls.dart';
 import 'package:bistre_app/features/chat/media_options_control.dart';
 import 'package:bistre_app/features/chat/thinking_control.dart';
+import 'package:bistre_app/l10n/l10n_keys.g.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -112,4 +114,36 @@ void main() {
       await tester.pump(const Duration(seconds: 9));
     });
   }
+
+  testWidgets('the Thinking slider offers only the levels the model lists', (
+    tester,
+  ) async {
+    final gw = FakeEngineGateway(seedConnectedOpenAi: true)
+      ..modelInfo = const EngineModelCatalogInfo(
+        reasoning: true,
+        effortLevels: <String>['low', 'medium', 'high'],
+      );
+    await ShellHarness.pump(tester, gateway: gw);
+    await tester.tap(find.byType(ThinkingControl));
+    await tester.pumpAndSettle();
+    final slider = tester.widget<BistreSlider>(find.byType(BistreSlider));
+    expect(slider.max, 2, reason: 'Low, Medium, High: three stops');
+  });
+
+  testWidgets('a model with one thinking level shows it as a choice', (
+    tester,
+  ) async {
+    final gw = FakeEngineGateway(seedConnectedOpenAi: true)
+      ..modelInfo = const EngineModelCatalogInfo(
+        reasoning: true,
+        effortLevels: <String>['high'],
+      );
+    final shell = await ShellHarness.pump(tester, gateway: gw);
+    await tester.tap(find.byType(ThinkingControl));
+    await tester.pumpAndSettle();
+    expect(find.byType(BistreSlider), findsNothing);
+    await tester.tap(find.text(shell.t(L10nKey.chatEffortHigh)));
+    await tester.pumpAndSettle();
+    expect(shell.controller.settings.reasoningEffort, 'high');
+  });
 }

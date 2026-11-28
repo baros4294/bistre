@@ -47,17 +47,24 @@ class ThinkingEffortPicker extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.reduceMotionOverride = false,
+    this.allowedLevels = const <String>[],
   });
 
   final String value;
   final ValueChanged<String> onChanged;
   final bool reduceMotionOverride;
 
+  /// The levels the model accepts (catalog keys, `off` to `max`); empty offers every level.
+  final List<String> allowedLevels;
+
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);
-    final levels = kThinkingStops.sublist(1);
+    final levels = kThinkingStops
+        .sublist(1)
+        .where((s) => allowedLevels.isEmpty || allowedLevels.contains(s.$1))
+        .toList();
     final at = levels.indexWhere((s) => s.$1 == value);
     final isAuto = value != 'adaptive' && at < 0;
     return Column(
@@ -78,38 +85,49 @@ class ThinkingEffortPicker extends StatelessWidget {
               selected: value == 'adaptive',
               onSelected: () => onChanged('adaptive'),
             ),
+            // One level is a choice, not a range.
+            if (levels.length == 1)
+              InkChip(
+                label: l10n.t(levels.single.$2),
+                selected: at == 0,
+                onSelected: () => onChanged(levels.single.$1),
+              ),
           ],
         ),
-        const SizedBox(height: BistreSpacing.s8),
-        BistreSlider(
-          // Unset, the thumb rests mid-track: its place claims no level.
-          value: at < 0 ? (levels.length - 1) / 2 : at.toDouble(),
-          min: 0,
-          max: (levels.length - 1).toDouble(),
-          unset: at < 0,
-          valueLabel: l10n.t(at < 0 ? thinkingLabelKey(value) : levels[at].$2),
-          reduceMotionOverride: reduceMotionOverride,
-          semanticsLabel: l10n.t(L10nKey.chatReasoningEffort),
-          onChanged: (v) {
-            final i = v.round().clamp(0, levels.length - 1);
-            if (i != at) onChanged(levels[i].$1);
-          },
-        ),
-        Row(
-          children: [
-            InkText(
-              l10n.t(L10nKey.chatThinkingFaster),
-              role: InkTextRole.captionMeta,
-              color: theme.inkMuted,
+        if (levels.length > 1) ...[
+          const SizedBox(height: BistreSpacing.s8),
+          BistreSlider(
+            // Unset, the thumb rests mid-track: its place claims no level.
+            value: at < 0 ? (levels.length - 1) / 2 : at.toDouble(),
+            min: 0,
+            max: (levels.length - 1).toDouble(),
+            unset: at < 0,
+            valueLabel: l10n.t(
+              at < 0 ? thinkingLabelKey(value) : levels[at].$2,
             ),
-            const Spacer(),
-            InkText(
-              l10n.t(L10nKey.chatThinkingThorough),
-              role: InkTextRole.captionMeta,
-              color: theme.inkMuted,
-            ),
-          ],
-        ),
+            reduceMotionOverride: reduceMotionOverride,
+            semanticsLabel: l10n.t(L10nKey.chatReasoningEffort),
+            onChanged: (v) {
+              final i = v.round().clamp(0, levels.length - 1);
+              if (i != at) onChanged(levels[i].$1);
+            },
+          ),
+          Row(
+            children: [
+              InkText(
+                l10n.t(L10nKey.chatThinkingFaster),
+                role: InkTextRole.captionMeta,
+                color: theme.inkMuted,
+              ),
+              const Spacer(),
+              InkText(
+                l10n.t(L10nKey.chatThinkingThorough),
+                role: InkTextRole.captionMeta,
+                color: theme.inkMuted,
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }
@@ -125,7 +143,11 @@ class ThinkingControl extends StatefulWidget {
     required this.onChanged,
     this.reduceMotionOverride = false,
     this.compact = false,
+    this.allowedLevels = const <String>[],
   });
+
+  /// Passed to [ThinkingEffortPicker.allowedLevels].
+  final List<String> allowedLevels;
 
   /// Narrow windows and large text show only the icon and the level (`Auto`); screen readers
   /// and the hover hint still get the full `Thinking: Auto`.
@@ -241,6 +263,7 @@ class _ThinkingControlState extends State<ThinkingControl> {
                       value: widget.value,
                       onChanged: widget.onChanged,
                       reduceMotionOverride: widget.reduceMotionOverride,
+                      allowedLevels: widget.allowedLevels,
                     ),
                     const SizedBox(height: BistreSpacing.s8),
                     InkText(

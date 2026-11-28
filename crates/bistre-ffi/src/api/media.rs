@@ -20,6 +20,9 @@ pub struct FfiModelCatalogInfo {
     pub cache_write_per_mtok_micros: Option<i64>,
     pub cache_write_1h_per_mtok_micros: Option<i64>,
     pub reasoning: Option<bool>,
+    /// The thinking levels the model accepts (`off` to `max`), lowest first; empty when the
+    /// catalog lists none, so every level is offered.
+    pub effort_levels: Vec<String>,
     /// False for a model that only draws, films, or speaks (it has no thinking setting).
     pub writes_text: bool,
     /// Picture shapes the model offers (`16:9`); empty leaves the shape to the provider.
@@ -120,6 +123,7 @@ pub async fn lookup_model_catalog_info(
         cache_write_per_mtok_micros: c.cache_write_per_mtok_micros,
         cache_write_1h_per_mtok_micros: c.cache_write_1h_per_mtok_micros,
         reasoning: c.reasoning,
+        effort_levels: c.effort_levels,
         writes_text: c.writes_text,
         aspect_ratios: c.aspect_ratios,
         resolutions: c.resolutions,

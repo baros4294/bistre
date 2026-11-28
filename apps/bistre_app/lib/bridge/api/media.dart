@@ -231,6 +231,10 @@ class FfiModelCatalogInfo {
   final PlatformInt64? cacheWrite1HPerMtokMicros;
   final bool? reasoning;
 
+  /// The thinking levels the model accepts (`off` to `max`), lowest first; empty when the
+  /// catalog lists none, so every level is offered.
+  final List<String> effortLevels;
+
   /// False for a model that only draws, films, or speaks (it has no thinking setting).
   final bool writesText;
 
@@ -252,6 +256,7 @@ class FfiModelCatalogInfo {
     this.cacheWritePerMtokMicros,
     this.cacheWrite1HPerMtokMicros,
     this.reasoning,
+    required this.effortLevels,
     required this.writesText,
     required this.aspectRatios,
     required this.resolutions,
@@ -268,6 +273,7 @@ class FfiModelCatalogInfo {
       cacheWritePerMtokMicros.hashCode ^
       cacheWrite1HPerMtokMicros.hashCode ^
       reasoning.hashCode ^
+      effortLevels.hashCode ^
       writesText.hashCode ^
       aspectRatios.hashCode ^
       resolutions.hashCode ^
@@ -286,6 +292,7 @@ class FfiModelCatalogInfo {
           cacheWritePerMtokMicros == other.cacheWritePerMtokMicros &&
           cacheWrite1HPerMtokMicros == other.cacheWrite1HPerMtokMicros &&
           reasoning == other.reasoning &&
+          effortLevels == other.effortLevels &&
           writesText == other.writesText &&
           aspectRatios == other.aspectRatios &&
           resolutions == other.resolutions &&

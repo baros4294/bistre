@@ -255,6 +255,7 @@ class EngineModelCatalogInfo {
     this.cacheWritePerMtokMicros,
     this.cacheWrite1hPerMtokMicros,
     this.reasoning,
+    this.effortLevels = const <String>[],
     this.writesText = true,
     this.aspectRatios = const <String>[],
     this.resolutions = const <String>[],
@@ -269,6 +270,10 @@ class EngineModelCatalogInfo {
   final int? cacheWritePerMtokMicros;
   final int? cacheWrite1hPerMtokMicros;
   final bool? reasoning;
+
+  /// The thinking levels the model accepts (`off` to `max`); empty when the catalog lists
+  /// none, so every level is offered.
+  final List<String> effortLevels;
 
   /// False for a model that only draws, films, or speaks: it has no thinking setting.
   final bool writesText;

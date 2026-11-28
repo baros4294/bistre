@@ -7246,6 +7246,7 @@ impl SseDecode for crate::api::media::FfiModelCatalogInfo {
         let mut var_cacheWritePerMtokMicros = <Option<i64>>::sse_decode(deserializer);
         let mut var_cacheWrite1HPerMtokMicros = <Option<i64>>::sse_decode(deserializer);
         let mut var_reasoning = <Option<bool>>::sse_decode(deserializer);
+        let mut var_effortLevels = <Vec<String>>::sse_decode(deserializer);
         let mut var_writesText = <bool>::sse_decode(deserializer);
         let mut var_aspectRatios = <Vec<String>>::sse_decode(deserializer);
         let mut var_resolutions = <Vec<String>>::sse_decode(deserializer);
@@ -7259,6 +7260,7 @@ impl SseDecode for crate::api::media::FfiModelCatalogInfo {
             cache_write_per_mtok_micros: var_cacheWritePerMtokMicros,
             cache_write_1h_per_mtok_micros: var_cacheWrite1HPerMtokMicros,
             reasoning: var_reasoning,
+            effort_levels: var_effortLevels,
             writes_text: var_writesText,
             aspect_ratios: var_aspectRatios,
             resolutions: var_resolutions,
@@ -9207,6 +9209,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::media::FfiModelCatalogInfo {
                 .into_into_dart()
                 .into_dart(),
             self.reasoning.into_into_dart().into_dart(),
+            self.effort_levels.into_into_dart().into_dart(),
             self.writes_text.into_into_dart().into_dart(),
             self.aspect_ratios.into_into_dart().into_dart(),
             self.resolutions.into_into_dart().into_dart(),
@@ -10008,6 +10011,7 @@ impl SseEncode for crate::api::media::FfiModelCatalogInfo {
         <Option<i64>>::sse_encode(self.cache_write_per_mtok_micros, serializer);
         <Option<i64>>::sse_encode(self.cache_write_1h_per_mtok_micros, serializer);
         <Option<bool>>::sse_encode(self.reasoning, serializer);
+        <Vec<String>>::sse_encode(self.effort_levels, serializer);
         <bool>::sse_encode(self.writes_text, serializer);
         <Vec<String>>::sse_encode(self.aspect_ratios, serializer);
         <Vec<String>>::sse_encode(self.resolutions, serializer);

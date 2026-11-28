@@ -32,7 +32,7 @@ use crate::ssrf::PublicWebTransport;
 /// Freshness window for a successful sync.
 pub const REGISTRY_TTL: Duration = Duration::from_hours(24);
 /// Version of the on-disk price cache; a different version is ignored and rebuilt.
-pub const PRICE_CACHE_FORMAT: u32 = 8;
+pub const PRICE_CACHE_FORMAT: u32 = 9;
 /// Cooldown after a sync that yielded no rates.
 pub const REGISTRY_FAILURE_COOLDOWN: Duration = Duration::from_secs(60);
 /// Maximum wait for one model's rate.
@@ -149,6 +149,8 @@ pub struct ModelRates {
     pub context_tokens: Option<u32>,
     /// Whether the model accepts a reasoning/thinking effort, when the source reports it.
     pub reasoning: Option<bool>,
+    /// The thinking-effort levels the model accepts, when the source lists them.
+    pub effort_levels: Option<crate::effort_levels::EffortSet>,
     /// The most tokens one reply may have, when the source reports it (Anthropic's
     /// required `max_tokens` comes from here, not a fixed number).
     pub max_output_tokens: Option<u32>,
@@ -186,6 +188,7 @@ impl ModelRates {
         self.context_tokens = self.context_tokens.or(other.context_tokens);
         self.max_output_tokens = self.max_output_tokens.or(other.max_output_tokens);
         self.reasoning = self.reasoning.or(other.reasoning);
+        self.effort_levels = self.effort_levels.or(other.effort_levels);
         self.input_modalities = self.input_modalities.or(other.input_modalities);
         self.output_modalities = self.output_modalities.or(other.output_modalities);
         self.per_image_micros = self.per_image_micros.or(other.per_image_micros);
