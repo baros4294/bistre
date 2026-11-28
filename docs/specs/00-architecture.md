@@ -22,9 +22,9 @@ Bistre enforces strict one-way hexagonal dependencies (`ADR-0001`, `ADR-0003`):
 
 ## 4. Phased Rollout Waves (Day-1 Abstractions)
 All AIO, performance, i18n, and two-track OTA abstractions are locked from Day 1 while features ship vertically in three waves:
-- Phase 1 (Core Desktop & Android Client, self-updatable from Day 1): Core workspace (`bistre_app`, `bistre-core`, `bistre-storage`, `bistre-crypto`, `bistre-daemon`, `bistre-updater`), Big 3 + OpenAI-compatible wire dialects, 5-class self-healing, synthesized AIO registry + task slots, in-process Rust tools + MCP (`2026-07-28` + legacy fallback), worktree sub-agents, Lorebooks & `SKILL.md` loader, Dual Trust + Wallet Shield, and QR-paired mTLS Remote Bridge.
-- Wave 2 (Voice & Image AIO): Speech-to-Text (`stt_transcribe`), streaming Text-to-Speech (`tts_speech`), and schema-driven OpenAPI async image generation/editing (`image_generate_edit`) with WAL-before-POST idempotency.
-- Wave 3 (Video & Fireside Full-Duplex): Async video generation/editing/dubbing (`video_generate_edit`) and Fireside full-duplex voice (`voice_full_duplex`, Android BLE Audio + Oboe + AEC3 + Silero VAD).
+- Phase 1 (Core Desktop & Android Client, self-updatable from Day 1): Core workspace (`bistre_app`, `bistre-core`, `bistre-storage`, `bistre-crypto`, `bistre-daemon`, `bistre-updater`), Big 3 + OpenAI-compatible wire dialects, 5-class self-healing, synthesized AIO registry + Default models, in-process Rust tools + MCP (`2026-07-28` + legacy fallback), worktree sub-agents, Lorebooks & `SKILL.md` loader, Dual Trust + Wallet Shield, and QR-paired mTLS Remote Bridge.
+- Wave 2 (Voice & Image AIO): Speech-to-Text, streaming Text-to-Speech, and schema-driven OpenAPI async image generation/editing with WAL-before-POST idempotency.
+- Wave 3 (Video & Fireside Full-Duplex): Async video generation/editing/dubbing and Fireside full-duplex voice (Android BLE Audio + Oboe + AEC3 + Silero VAD).
 
 ## 5. Source Module Layout (≤ 1,000 Lines per File)
 `just guard` rejects any non-generated code file (`.rs`, `.dart`, `.kt`, `.kts`, `.cpp`, `.cc`, `.h`, `.sh`, `.ps1`, `.py`, `.yml`, `.yaml`, `.toml`, `.cmake`, `.iss`, `.gradle`) above 1,000 lines with no allowlist; generated FRB output (`frb_generated.*`, `apps/bistre_app/lib/bridge/api.dart`, `apps/bistre_app/lib/bridge/api/`) and `*.g.dart` are exempt. Large modules split by responsibility:
