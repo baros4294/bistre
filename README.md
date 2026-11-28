@@ -49,7 +49,6 @@ crates/bistre-storage  Single-writer SQLite WAL actor, Expand-Contract migration
 crates/bistre-crypto   Offline Ed25519 signature verification & OS secret vault traits
 crates/bistre-protocol Shared domain types, MoneyMicros, and typed DiagnosticKey codes
 crates/bistre-daemon   Active-scoped desktop daemon (IPC, housekeeping, OS sleep guard)
-crates/bistre-updater  Signed side-by-side updater with crash-loop rollback
 ```
 
 - Architecture & live implementation status: [`docs/specs/00-architecture.md`](docs/specs/00-architecture.md)

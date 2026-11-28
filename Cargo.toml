@@ -7,7 +7,6 @@ members = [
   "crates/bistre-core",
   "crates/bistre-ffi",
   "crates/bistre-daemon",
-  "crates/bistre-updater",
 ]
 
 [workspace.package]

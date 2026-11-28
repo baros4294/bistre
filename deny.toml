@@ -44,7 +44,7 @@ deny = [
   { crate = "rusqlite", wrappers = ["bistre-storage"], reason = "Only bistre-storage may execute SQLite queries directly." },
   { crate = "libsqlite3-sys", wrappers = ["rusqlite"], reason = "SQLite FFI must remain isolated inside rusqlite / bistre-storage." },
   { crate = "minisign-verify", wrappers = ["bistre-crypto"], reason = "All Minisign verification must route through bistre-crypto." },
-  { crate = "reqwest", wrappers = ["bistre-core", "bistre-daemon"], reason = "HTTP clients are forbidden in protocol, crypto, storage, FFI, and updater crates." },
+  { crate = "reqwest", wrappers = ["bistre-core", "bistre-daemon"], reason = "HTTP clients are forbidden in protocol, crypto, storage, and FFI crates." },
   { crate = "tokio-tungstenite", wrappers = ["bistre-core", "bistre-daemon"], reason = "WebSocket transport belongs strictly in bistre-core / bistre-daemon." },
   # Forbid GUI toolkits and tray crates outside the desktop daemon boundary.
   { crate = "ksni", wrappers = ["bistre-daemon"], reason = "System tray integration is isolated strictly to bistre-daemon." },

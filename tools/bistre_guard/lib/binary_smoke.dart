@@ -34,21 +34,13 @@ List<SmokeFailure> checkDaemonHealth(String healthJson) {
   ];
 }
 
-/// Checks that the updater without arguments exits with the usage code `2`.
-List<SmokeFailure> checkUpdaterUsageExit(int exitCode) => <SmokeFailure>[
-  if (exitCode != 2)
-    SmokeFailure('bistre-updater usage exit code is $exitCode, expected 2'),
-];
-
-/// Builds the daemon and updater (debug) and runs the same smoke checks as CI.
+/// Builds the daemon (debug) and runs the same smoke check as CI.
 Future<List<SmokeFailure>> runBinarySmoke(Directory repoRoot) async {
   final build = await Process.run('cargo', const <String>[
     'build',
     '--locked',
     '-p',
     'bistre-daemon',
-    '-p',
-    'bistre-updater',
   ], workingDirectory: repoRoot.path);
   if (build.exitCode != 0) {
     return <SmokeFailure>[
@@ -71,14 +63,7 @@ Future<List<SmokeFailure>> runBinarySmoke(Directory repoRoot) async {
         ),
       ];
     }
-    final updater = await Process.run(
-      '$bin/bistre-updater$ext',
-      const <String>[],
-    );
-    return <SmokeFailure>[
-      ...checkDaemonHealth('${health.stdout}'),
-      ...checkUpdaterUsageExit(updater.exitCode),
-    ];
+    return checkDaemonHealth('${health.stdout}');
   } finally {
     await dataDir.delete(recursive: true);
   }

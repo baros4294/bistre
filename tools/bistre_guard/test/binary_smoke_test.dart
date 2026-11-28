@@ -20,10 +20,4 @@ void main() {
     expect(checkDaemonHealth('not json'), hasLength(1));
     expect(checkDaemonHealth('[1]'), hasLength(1));
   });
-
-  test('updater must exit with the usage code 2', () {
-    expect(checkUpdaterUsageExit(2), isEmpty);
-    expect(checkUpdaterUsageExit(0), hasLength(1));
-    expect(checkUpdaterUsageExit(1), hasLength(1));
-  });
 }
