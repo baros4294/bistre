@@ -13,13 +13,6 @@ Scope (owner): the next release completes everything `docs/` describes, not only
 - [ ] Auto-tag: a workflow tags `v<version>` when a merge to `main` raises the version, then starts the release
 - [ ] `release.yml` checks that CI passed on the tagged commit (the push to `main`) instead of running the CI gates again, then builds, packages, and signs from that commit; Spec 10 and CONTRIBUTING
 
-### Gaps `docs/` records (build each with a test; change the doc line in the same commit)
-- [ ] G4 In-app audio and video playback beyond WAV (ADR-0019 Not Built, Spec 00 media row)
-- [ ] G10 Android full-duplex voice: `microphone` service type, Oboe, AEC, VAD, BLE Audio routing (Spec 05, ADR-0012)
-- [ ] G11 Remote Bridge over TLS 1.3 mTLS with QR pairing (Spec 07, Spec 00 Planned)
-- [ ] G12 Video dubbing (Spec 00 roadmap)
-- [ ] G13 Byte-for-byte reproducible release check (Spec 10)
-
 ## Decisions (owner)
 
 - Approvals: "Approve for this chat" covers the exact command for the whole chat (tool-wide grants only for Tier-0 reads); an approval waits with no time limit, releases keep-awake, and shows a badge.
@@ -37,6 +30,8 @@ Scope (owner): the next release completes everything `docs/` describes, not only
 - [b] W0.3b C10 vendored Noto Sans Arabic subset (needs owner OK to download the font)
 
 ### Needs a live run, a device, or CI
+- [u] In-app playback on Android (`MediaPlayer`, `VideoActivity.kt`) and Linux (GStreamer `playbin`): compiles in CI, runs on a device or host
+- [u] The daemon's second-checkout rebuild matches in the v1.0.0 release run
 - [u] W1.6 daemon pipe ACL: the refusal path (pipe served by a second Windows account) needs a second account
 - [u] W3.A 1b Ctrl+V passes in the test harness; needs a live Windows trace
 - [u] W3.S scroll stutter not yet measured (needs a Windows profile run)

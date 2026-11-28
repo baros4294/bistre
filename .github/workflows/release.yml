@@ -99,6 +99,24 @@ jobs:
           # rustflags, so this replaces nothing (Android keeps its own in the build hook).
           RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=/bistre
         run: cargo build --locked --release -p bistre-daemon
+      # A rebuilder starts from their own checkout: the daemon built again from a second
+      # worktree at another path must match the shipped one byte for byte.
+      - name: Rebuild the daemon from a second checkout and compare bytes (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          REBUILD_DIR: ${{ runner.temp }}/bistre-rebuild
+        run: |
+          set -euo pipefail
+          git worktree add --detach "$REBUILD_DIR" HEAD
+          (cd "$REBUILD_DIR" && RUSTFLAGS="--remap-path-prefix=${REBUILD_DIR}=/bistre"             cargo build --locked --release -p bistre-daemon)
+          shipped="$(sha256sum target/release/bistre-daemon | cut -d' ' -f1)"
+          rebuilt="$(sha256sum "$REBUILD_DIR/target/release/bistre-daemon" | cut -d' ' -f1)"
+          if [ "$shipped" != "$rebuilt" ]; then
+            echo "ERROR: the daemon is not reproducible (${shipped} vs ${rebuilt})"
+            exit 1
+          fi
+          git worktree remove --force "$REBUILD_DIR"
       - name: Build Flutter release bundle
         working-directory: apps/bistre_app
         shell: bash
