@@ -12,6 +12,7 @@ import '../../design/ink_primitives.dart';
 import '../../design/press_feedback.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
+import '../../platform/desktop_host.dart';
 import '../shell/folio_controller.dart';
 import 'composer_asides.dart';
 import 'composer_folder_button.dart';
@@ -392,8 +393,10 @@ class _FolioComposerState extends State<FolioComposer> {
           semanticsLabel: l10n.t(L10nKey.composerVoiceDictate),
           onPressed: () => unawaited(_dictate()),
         ),
-        const SizedBox(width: 4),
-        liveButton(compact),
+        if (BistreDesktopHost.canCaptureMic) ...[
+          const SizedBox(width: 4),
+          liveButton(compact),
+        ],
         const SizedBox(width: 6),
         // A quiet Send control: the message, not the button, is
         // the focal point.
@@ -936,7 +939,8 @@ class _FolioComposerState extends State<FolioComposer> {
                                   // the row wraps at large text.
                                   children: [
                                     ...leadingFor(false),
-                                    liveButton(false),
+                                    if (BistreDesktopHost.canCaptureMic)
+                                      liveButton(false),
                                     if (ctrl.isStreaming)
                                       EngravedButton(
                                         label: l10n.t(

@@ -228,6 +228,7 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
     BistreDesktopHost.attachSystemThemeListener(_syncSystemBrightness);
     BistreDesktopHost.attachWindowBoundsListener(_onWindowBoundsChanged);
     BistreDesktopHost.attachFilesDroppedListener(_onFilesDropped);
+    BistreDesktopHost.attachMediaPlaybackFailedListener(_onMediaPlaybackFailed);
     widget.folioController.addListener(_syncWindowTitle);
     _syncWindowTitle();
   }
@@ -238,9 +239,13 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
     BistreDesktopHost.detachSystemThemeListener(_syncSystemBrightness);
     BistreDesktopHost.detachWindowBoundsListener(_onWindowBoundsChanged);
     BistreDesktopHost.detachFilesDroppedListener(_onFilesDropped);
+    BistreDesktopHost.detachMediaPlaybackFailedListener(_onMediaPlaybackFailed);
     widget.folioController.removeListener(_syncWindowTitle);
     super.dispose();
   }
+
+  void _onMediaPlaybackFailed() =>
+      widget.folioController.onMediaPlaybackFailed();
 
   void _onFilesDropped(List<String> paths) {
     for (final path in paths) {

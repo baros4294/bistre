@@ -88,6 +88,7 @@ class BistreDesktopHost {
   static void Function(String pcmBase64)? _onMicPcmChunk;
   static void Function(List<String> paths)? _onFilesDropped;
   static VoidCallback? _onQuickEntry;
+  static VoidCallback? _onMediaPlaybackFailed;
   static bool _channelHandlerAttached = false;
 
   /// True while the saved quick entry shortcut is on but Windows refused it (another app
@@ -106,6 +107,8 @@ class BistreDesktopHost {
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'onSystemThemeChanged') {
         _onSystemThemeChanged?.call();
+      } else if (call.method == 'onMediaPlaybackFailed') {
+        _onMediaPlaybackFailed?.call();
       } else if (call.method == 'onQuickEntry') {
         _onQuickEntry?.call();
       } else if (call.method == 'onFilesDropped') {
@@ -148,6 +151,42 @@ class BistreDesktopHost {
         }
       }
     });
+  }
+
+  /// A file [playMediaFile] started could not be decoded.
+  static void attachMediaPlaybackFailedListener(VoidCallback callback) {
+    _onMediaPlaybackFailed = callback;
+    _ensureChannelHandler();
+  }
+
+  /// Removes [callback] if it is the registered playback-failure listener.
+  static void detachMediaPlaybackFailedListener(VoidCallback callback) {
+    if (_onMediaPlaybackFailed == callback) _onMediaPlaybackFailed = null;
+  }
+
+  /// Plays a local sound or video file in Bistre's player: Media Foundation on Windows,
+  /// GStreamer on Linux (when installed), `MediaPlayer` and a video screen on Android.
+  /// `false` when the player cannot start it.
+  static Future<bool> playMediaFile({
+    required String path,
+    required String title,
+    required bool video,
+  }) async {
+    if (!(Platform.isWindows || Platform.isAndroid || Platform.isLinux)) {
+      return false;
+    }
+    try {
+      return await _channel.invokeMethod<bool>(
+            'playMediaFile',
+            <String, Object?>{'path': path, 'title': title, 'video': video},
+          ) ??
+          false;
+    } on PlatformException catch (e) {
+      debugPrint('[bistre] non-fatal play_media: $e');
+    } on MissingPluginException catch (e) {
+      debugPrint('[bistre] non-fatal play_media: $e');
+    }
+    return false;
   }
 
   /// Files dragged onto the window (Windows, Linux) or the app (Android); the host keeps at
@@ -810,9 +849,9 @@ class BistreDesktopHost {
     }
   }
 
-  /// Stops any active WAV playback or OS speech synthesis.
+  /// Stops any playing sound or video, and OS speech synthesis.
   static Future<void> stopAudioPlayback() async {
-    if (Platform.isWindows || Platform.isAndroid) {
+    if (Platform.isWindows || Platform.isAndroid || Platform.isLinux) {
       try {
         await _channel.invokeMethod<bool>('stopAudioPlayback');
       } on PlatformException {
@@ -833,8 +872,11 @@ class BistreDesktopHost {
     _onMicPcmChunk = null;
   }
 
+  /// Live Voice needs the host's microphone stream, which only the Windows runner has.
+  static bool get canCaptureMic => Platform.isWindows;
+
   static Future<bool> startMicCapture() async {
-    if (!Platform.isWindows) return false;
+    if (!canCaptureMic) return false;
     try {
       return await _channel.invokeMethod<bool>('startMicCapture') ?? false;
     } on PlatformException {

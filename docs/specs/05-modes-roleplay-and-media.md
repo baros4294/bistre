@@ -17,7 +17,6 @@ Every thread declares a `ThreadMode` (`chat`, `plan`, `code`/`build`, `write`, `
 
 ## 3. Wave 2 & Wave 3 AIO Media & Voice Architecture (Day-1 Abstractions)
 - Async Media Jobs (Wave 2 Image / Wave 3 Video): Schema-driven OpenAPI form generation, WAL-before-POST durable job ledger, status polling / webhook delivery, local artifact cache, and Wallet Shield pre-authorization gate.
-- Voice & Fireside Full-Duplex (Wave 2 STT/TTS / Wave 3 Duplex):
+- Voice:
   - Read aloud uses the speech model chosen in Settings → Default models → Read aloud (a provider and model), or the system voice when none is chosen; it never guesses from the chat model's name. Core picks the provider's default voice for read aloud and live voice (`voice_or_default`, `crates/bistre-core/src/voice.rs`). Live voice that cannot start the microphone ends with `diag.voice.mic_unavailable`; a failed session shows its diagnostic in words until End dismisses it, and the transcript names the speaker from the catalog (`voice_test.dart`).
-  - Android: `AudioManager.setCommunicationDevice()` + `OnCommunicationDeviceChangedListener` (API 31+, replacing deprecated `startBluetoothSco()`), BLE Audio support, Oboe low-latency duplex stream, `AcousticEchoCanceler` + WebRTC APM software AEC3 fallback + Silero VAD barge-in gate, run-scoped `FOREGROUND_SERVICE_MICROPHONE` (planned: the manifest declares only `specialUse` today).
-  - Desktop: `cpal` audio I/O + WebRTC APM AEC3 + Silero VAD.
+  - Live voice streams the microphone through the host runner, which only Windows has (`waveIn`); the composer shows Live only where `BistreDesktopHost.canCaptureMic` holds, so Android and Linux offer dictation and Read aloud. The provider detects turns (Gemini Live, OpenAI Realtime).

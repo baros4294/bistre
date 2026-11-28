@@ -15,6 +15,7 @@
 #include "host_dialogs.h"
 #include "host_drop.h"
 #include "host_hotkey.h"
+#include "host_media.h"
 #include "host_speech.h"
 #include "resource.h"
 #include "utils.h"
@@ -127,6 +128,10 @@ bool FlutterWindow::OnCreate() {
   }
   RegisterPlugins(flutter_controller_->engine());
   RegisterDesktopHostChannel();
+  // A file that started but cannot be decoded tells the app, which opens it elsewhere.
+  media_ = std::make_unique<HostMedia>([this]() {
+    if (host_channel_) host_channel_->InvokeMethod("onMediaPlaybackFailed", nullptr);
+  });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
   // Files dragged onto the window reach the composer as attachments.
   const HWND view = flutter_controller_->view()->GetNativeWindow();
@@ -169,6 +174,7 @@ void FlutterWindow::OnDestroy() {
     CloseHandle(dictation_cancel_);
     dictation_cancel_ = nullptr;
   }
+  media_.reset();
   SetQuickEntryHotkey(GetHandle(), "");
   EnsureTrayIcon(false);
   if (file_drop_hwnd_ != nullptr) {
@@ -723,7 +729,17 @@ void FlutterWindow::HandleDesktopHostCall(
     return;
   }
 
+  if (method == "playMediaFile" && args != nullptr) {
+    const bool started =
+        media_ != nullptr &&
+        media_->Play(GetHandle(), Utf8ToWide(GetStringArg(*args, "path")),
+                     Utf8ToWide(GetStringArg(*args, "title")), GetBoolArg(*args, "video", false));
+    result->Success(flutter::EncodableValue(started));
+    return;
+  }
+
   if (method == "stopAudioPlayback") {
+    if (media_ != nullptr) media_->Stop();
     StopPlayback();
     StopSpeaking();
     result->Success(flutter::EncodableValue(true));

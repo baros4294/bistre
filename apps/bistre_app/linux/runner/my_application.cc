@@ -3,6 +3,7 @@
 #include <flutter_linux/flutter_linux.h>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "host_media.h"
 
 struct _MyApplication {
   GtkApplication parent_instance;
@@ -102,6 +103,13 @@ static void host_method_cb(FlMethodChannel* channel, FlMethodCall* call, gpointe
   } else if (has_map && g_strcmp0(method, "pickLocalFile") == 0) {
     g_autoptr(FlValue) chosen = choose_file(window, args, GTK_FILE_CHOOSER_ACTION_OPEN);
     response = FL_METHOD_RESPONSE(fl_method_success_response_new(chosen));
+  } else if (has_map && g_strcmp0(method, "playMediaFile") == 0) {
+    g_autoptr(FlValue) started = fl_value_new_bool(host_media_play(string_arg(args, "path")));
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(started));
+  } else if (g_strcmp0(method, "stopAudioPlayback") == 0) {
+    host_media_stop();
+    g_autoptr(FlValue) stopped = fl_value_new_bool(TRUE);
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(stopped));
   } else if (has_map && g_strcmp0(method, "copyPicture") == 0) {
     g_autoptr(FlValue) copied = fl_value_new_bool(copy_picture(args));
     response = FL_METHOD_RESPONSE(fl_method_success_response_new(copied));
@@ -139,6 +147,12 @@ static void drag_data_received_cb(GtkWidget* widget, GdkDragContext* context, gi
 }
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
+
+// A file that started but cannot be decoded: the app opens it in its default app.
+static void media_failed_cb(gpointer user_data) {
+  fl_method_channel_invoke_method(FL_METHOD_CHANNEL(user_data), "onMediaPlaybackFailed",
+                                  nullptr, nullptr, nullptr, nullptr);
+}
 
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView* view) {
@@ -200,6 +214,7 @@ static void my_application_activate(GApplication* application) {
                    self->host_channel);
   fl_method_channel_set_method_call_handler(self->host_channel, host_method_cb, window,
                                             nullptr);
+  host_media_init(media_failed_cb, self->host_channel);
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }
@@ -238,6 +253,8 @@ static void my_application_shutdown(GApplication* application) {
 // Implements GObject::dispose.
 static void my_application_dispose(GObject* object) {
   MyApplication* self = MY_APPLICATION(object);
+  host_media_stop();
+  host_media_init(nullptr, nullptr);
   g_clear_pointer(&self->dart_entrypoint_arguments, g_strfreev);
   g_clear_object(&self->host_channel);
   G_OBJECT_CLASS(my_application_parent_class)->dispose(object);

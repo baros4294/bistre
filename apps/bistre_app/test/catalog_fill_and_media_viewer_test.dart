@@ -215,17 +215,62 @@ void main() {
       isFalse,
       reason: 'a script is never handed to the system',
     );
-    expect(
-      ctrl.canPlayOf(file('voice.wav', 'audio/wav')),
-      Platform.isWindows || Platform.isAndroid,
-    );
-    expect(ctrl.canPlayOf(file('song.mp3', 'audio/mpeg')), isFalse);
+    final player = Platform.isWindows || Platform.isAndroid || Platform.isLinux;
+    expect(ctrl.canPlayOf(file('voice.wav', 'audio/wav')), player);
+    expect(ctrl.canPlayOf(file('song.mp3', 'audio/mpeg')), player);
+    expect(ctrl.canPlayOf(file('clip.mp4', 'video/mp4')), player);
+    expect(ctrl.canPlayOf(file('p.png', 'image/png')), isFalse);
     expect(ctrl.canSaveCopyOf(file('a.txt', 'text/plain')), desktop);
     expect(isViewerText('application/json'), isTrue);
     expect(isViewerText('application/vnd.api+json'), isTrue);
     expect(isViewerText('application/pdf'), isFalse);
     await tester.pump(const Duration(seconds: 9));
   });
+
+  // Linux opens files through core, not the host channel this test records.
+  testWidgets(
+    'a sound the player cannot start or decode opens in its default app',
+    (tester) async {
+      final shell = await ShellHarness.pump(tester);
+      final dir = Directory.systemTemp.createTempSync('bistre_play_');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final path = '${dir.path}${Platform.pathSeparator}song.mp3';
+      File(path).writeAsBytesSync(const <int>[0]);
+      final song = ComposerAttachment(
+        id: 'song',
+        name: 'song.mp3',
+        mimeType: 'audio/mpeg',
+        path: path,
+      );
+      final calls = <String>[];
+      var starts = false;
+      const host = MethodChannel('bistre/desktop_host');
+      final messenger = tester.binding.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(host, (call) async {
+        calls.add(call.method);
+        return call.method == 'playMediaFile' ? starts : true;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(host, null));
+
+      await tester.runAsync(() => shell.controller.playOf(song));
+      expect(calls, <String>['playMediaFile', 'openFile']);
+
+      calls.clear();
+      starts = true;
+      await tester.runAsync(() => shell.controller.playOf(song));
+      expect(calls, <String>['playMediaFile']);
+      shell.controller.onMediaPlaybackFailed();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      expect(calls, <String>['playMediaFile', 'openFile']);
+
+      calls.clear();
+      shell.controller.onMediaPlaybackFailed();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      expect(calls, isEmpty, reason: 'one failure opens the file once');
+      await tester.pump(const Duration(seconds: 9));
+    },
+    skip: !Platform.isWindows,
+  );
 }
 
 Widget _viewer(

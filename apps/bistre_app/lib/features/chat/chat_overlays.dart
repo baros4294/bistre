@@ -599,7 +599,7 @@ class _AttachmentViewerModalState extends State<AttachmentViewerModal> {
 
   @override
   void dispose() {
-    // Closing the viewer ends its sound.
+    // Closing the viewer ends its playback, a video window too.
     widget.onStop?.call();
     super.dispose();
   }

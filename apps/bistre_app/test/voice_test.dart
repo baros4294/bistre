@@ -60,6 +60,21 @@ void main() {
     await tester.pump(const Duration(seconds: 9));
   });
 
+  testWidgets('Live Voice is offered only where the host streams the mic', (
+    tester,
+  ) async {
+    final shell = await ShellHarness.pump(tester);
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is EngravedButton &&
+            w.semanticsLabel == shell.t(L10nKey.composerLiveVoicePill),
+      ),
+      Platform.isWindows ? findsWidgets : findsNothing,
+    );
+    await tester.pump(const Duration(seconds: 9));
+  });
+
   testWidgets('live voice ends with a reason in words when the mic fails', (
     tester,
   ) async {
