@@ -29,7 +29,6 @@ Scope (owner): the next release completes everything `docs/` describes, not only
 
 ### Needs a live run, a device, or CI
 - [u] In-app playback on Android (`MediaPlayer`, `VideoActivity.kt`) and Linux (GStreamer `playbin`): compiles in CI, runs on a device or host
-- [u] The daemon's second-checkout rebuild matches in the v1.0.0 release run
 - [u] `release-tag.yml` tags and starts the v1.0.0 release after the merge (a `workflow_run` runs only from `main`)
 - [u] W1.6 daemon pipe ACL: the refusal path (pipe served by a second Windows account) needs a second account
 - [u] W3.A 1b Ctrl+V passes in the test harness; needs a live Windows trace

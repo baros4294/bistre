@@ -170,6 +170,20 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist stage
+          # Package metadata carries the version the shipped daemon reports; a dry run's tag
+          # (`dry-run`) names files only.
+          daemon="target/release/bistre-daemon"
+          if [ "$RUNNER_OS_NAME" != "Linux" ]; then daemon="${daemon}.exe"; fi
+          version="$("$daemon" --health-check --data-dir "$(mktemp -d)" \
+            | sed -n 's/.*"core_version":"\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)".*/\1/p')"
+          if [ -z "$version" ]; then
+            echo "ERROR: the daemon reported no X.Y.Z core_version"
+            exit 1
+          fi
+          if [ "$RELEASE_TAG" != "dry-run" ] && [ "v${version}" != "$RELEASE_TAG" ]; then
+            echo "ERROR: tag ${RELEASE_TAG} does not match the built version ${version}"
+            exit 1
+          fi
           if [ "$RUNNER_OS_NAME" = "Linux" ]; then
             cp -a apps/bistre_app/build/linux/x64/release/bundle/. stage/
             cp target/release/bistre-daemon stage/
@@ -181,7 +195,7 @@ jobs:
               echo "ERROR: the Linux build needs glibc ${newest:-unknown}, above the declared 2.31 floor"
               exit 1
             fi
-            bash packaging/linux/build-packages.sh "$RELEASE_TAG" stage dist
+            bash packaging/linux/build-packages.sh "$RELEASE_TAG" "$version" stage dist
           else
             cp -a apps/bistre_app/build/windows/x64/runner/Release/. stage/
             cp target/release/bistre-daemon.exe stage/
@@ -194,7 +208,6 @@ jobs:
               echo "ERROR: Inno Setup compiler (ISCC.exe) not found on Windows runner"
               exit 1
             fi
-            version="${RELEASE_TAG#v}"
             stage_win="$(cygpath -w "$(pwd)/stage")"
             dist_win="$(cygpath -w "$(pwd)/dist")"
             MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" "$iscc_bin" \
@@ -306,6 +319,8 @@ jobs:
   # unless the APK has exactly one signer whose certificate matches the pinned fingerprint.
   sign-android:
     name: sign-android
+    # The `release` environment admits only `v*.*.*` tags, so a dry run never reaches the key.
+    if: github.ref_type == 'tag'
     needs: [build-android]
     runs-on: ubuntu-24.04
     environment: release
