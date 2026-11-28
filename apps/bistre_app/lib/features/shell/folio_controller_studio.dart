@@ -124,12 +124,19 @@ extension FolioStudioActions on FolioController {
     required String imageFileName,
   }) async {
     try {
-      final copied = await BistreDesktopHost.clipboardAttachments();
-      if (copied.files.isNotEmpty) {
+      // Copied files or a picture are read first; when that read fails (no `wl-paste`
+      // or `xclip` on Linux, a host error), plain text still pastes.
+      ({List<String> files, Uint8List? png})? copied;
+      try {
+        copied = await BistreDesktopHost.clipboardAttachments();
+      } catch (e) {
+        _noteNonFatal('clipboard_attachments', e);
+      }
+      if (copied != null && copied.files.isNotEmpty) {
         copied.files.forEach(attachLocalFile);
         return null;
       }
-      final png = copied.png;
+      final png = copied?.png;
       if (png != null) {
         attachLocalFile(await _writePastedFile('$imageFileName.png', png));
         return null;
