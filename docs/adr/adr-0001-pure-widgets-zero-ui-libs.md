@@ -19,5 +19,5 @@
 - Riverpod / Bloc: Unnecessary dependency surface for a thin presentation shell whose state lives in Rust.
 
 ## Consequences & Verification
-- Requires custom `TextSelectionControls` and `BistreMathSelectable` wrapper for cross-span LaTeX copy (`flutter#160510`).
+- Requires custom `TextSelectionControls` (`BistreSelectionControls`) and a line-joining selection delegate (`LineSelection`); math blocks copy their LaTeX source with their own Copy button instead of through selection (`flutter#160510`).
 - Verified mechanically on every commit via `flutter analyze apps/bistre_app` and `dart test tools/bistre_lints`.
