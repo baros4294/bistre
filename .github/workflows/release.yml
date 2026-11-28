@@ -70,9 +70,25 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: false
+      # The container runs as root, but the runner user owns the checkout and the Flutter SDK,
+      # so git refuses both until they are marked safe (Flutter reads its own version with git).
+      - name: Trust the checkout and the Flutter SDK inside the container
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$FLUTTER_ROOT"
       - name: Pin archive and package timestamps to the tagged commit (SOURCE_DATE_EPOCH)
         shell: bash
-        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          epoch="$(git log -1 --format=%ct)"
+          if ! [[ "$epoch" =~ ^[0-9]+$ ]]; then
+            echo "ERROR: could not read the tagged commit's time"
+            exit 1
+          fi
+          echo "SOURCE_DATE_EPOCH=${epoch}" >> "$GITHUB_ENV"
       - name: Build Rust daemon and updater binaries (locked)
         shell: bash
         env:
