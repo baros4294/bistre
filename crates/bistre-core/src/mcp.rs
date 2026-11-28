@@ -720,10 +720,32 @@ pub async fn call_mcp_tool_rich(
     );
     let called = session.rpc("tools/call", Some(tool_name), &body).await;
     let resp = settle(&mut session, &key, called).await?;
-    Ok(crate::mcp_stdio::parse_mcp_call_result(
-        complete_result(&resp)?,
-        data_dir,
-    ))
+    let result = match crate::mcp_tasks::read_call_answer(&resp)? {
+        crate::mcp_tasks::CallAnswer::Result(result) => result.clone(),
+        crate::mcp_tasks::CallAnswer::Task { task_id, poll } => {
+            let mut rpc = HttpTaskRpc {
+                session: &mut session,
+                next_id: 3,
+            };
+            crate::mcp_tasks::await_task(&mut rpc, &task_id, poll, crate::mcp_tasks::MAX_TASK_WAIT)
+                .await?
+        }
+    };
+    Ok(crate::mcp_stdio::parse_mcp_call_result(&result, data_dir))
+}
+
+/// Task polls on the session the call used.
+struct HttpTaskRpc<'s, 'a> {
+    session: &'s mut McpSession<'a>,
+    next_id: u64,
+}
+
+impl crate::mcp_tasks::TaskRpc for HttpTaskRpc<'_, '_> {
+    async fn call(&mut self, method: &'static str, params: Value) -> BistreResult<Value> {
+        self.next_id += 1;
+        let body = request(self.next_id, method, self.session.params(params));
+        self.session.rpc(method, None, &body).await
+    }
 }
 
 /// Calls a tool on a Streamable HTTP MCP server with `256 KiB` payload capping and `Mcp-Method`/`Mcp-Name` headers.
