@@ -117,6 +117,9 @@ pub fn install_staged_update(
     }
     let installer = payload.with_file_name(installer_name());
     std::fs::rename(&payload, &installer).map_err(|_| io_error("ota_installer_rename"))?;
+    // On Android the app opens the system installer with the APK and Android asks the user
+    // to confirm, so core has nothing to start.
+    #[cfg(not(target_os = "android"))]
     if let Err(err) = hand_over(&installer) {
         // Put it back so a later Install update finds it again.
         return match std::fs::rename(&installer, &payload) {
@@ -160,12 +163,6 @@ fn hand_over(installer: &Path) -> BistreResult<()> {
         .collect();
     crate::process_util::spawn_detached(installer, &args)
         .map_err(|_| io_error("ota_installer_start"))
-}
-
-#[cfg(target_os = "android")]
-fn hand_over(_installer: &Path) -> BistreResult<()> {
-    // The app opens the system installer with the APK; Android asks the user to confirm.
-    Ok(())
 }
 
 /// Installs the Linux update for how Bistre was installed, then starts the new build: the
@@ -371,7 +368,7 @@ mod tests {
         );
         let args = package_command(LinuxX64Deb, pkg, |_| true).ok_or("no command")?;
         assert_eq!(
-            args.last().map(|a| a.as_os_str()),
+            args.last().map(std::ffi::OsString::as_os_str),
             Some(pkg.as_os_str()),
             "the package stays one argument"
         );
