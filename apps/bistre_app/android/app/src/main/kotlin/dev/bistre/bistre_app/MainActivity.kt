@@ -316,10 +316,6 @@ class MainActivity : FlutterActivity() {
         super.onDestroy()
     }
 
-    /**
-     * Files dragged onto Bistre (split screen, desktop mode) are copied into the cache and sent
-     * to Dart as `onFilesDropped`, as Windows does; a text-only drag is left to Flutter.
-     */
     /** Opens an http(s) page in the browser; any other scheme or a link with a login is refused. */
     private fun openWebLink(url: String): Boolean {
         val uri = Uri.parse(url)
@@ -332,6 +328,10 @@ class MainActivity : FlutterActivity() {
             .isSuccess
     }
 
+    /**
+     * Files dragged onto Bistre (split screen, desktop mode) are copied into the cache and sent
+     * to Dart as `onFilesDropped`, as Windows does; a text-only drag is left to Flutter.
+     */
     private fun listenForDrops(hostChannel: MethodChannel) {
         val main = Handler(Looper.getMainLooper())
         window.decorView.setOnDragListener { _, event ->
