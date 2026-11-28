@@ -463,17 +463,6 @@ pub async fn delete_cron_job(job_id: String) -> Result<(), String> {
         .map_err(crate::dto_mapping::ffi_err)
 }
 
-/// Prepares an isolated `git worktree` (or copy-sandbox fallback) for a background subagent.
-#[frb]
-pub async fn prepare_subagent_sandbox_json(workspace_root: String) -> Result<String, String> {
-    let engine = current_engine()?;
-    let sb = engine
-        .prepare_subagent_sandbox(workspace_root)
-        .await
-        .map_err(crate::dto_mapping::ffi_err)?;
-    serde_json::to_string(&sb).map_err(|_| DiagnosticKey::InternalError.as_key().to_owned())
-}
-
 /// One hook from `.bistre/hooks.json`, as shown for review.
 #[derive(Debug, Clone)]
 pub struct FfiWorkspaceHook {

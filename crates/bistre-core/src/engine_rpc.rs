@@ -27,7 +27,7 @@ use super::{
     StoryEntryRecord, StoryProgressionRecord, StorySceneRecord, StorySnapshotRecord,
     StoryThreadStateRecord, SystemPowerEvent, ThreadMode, ThreadPatch, ThreadSummary,
     UpdateCheckResult, UserPersonaRecord, WorkspaceCheckpointRecord, broadcast, hooks, mcp, skills,
-    story, subagents, tools,
+    story, tools,
 };
 use crate::ipc_client::{
     DaemonStream, IPC_REPLY_TIMEOUT, IPC_WORK_REPLY_TIMEOUT, open_daemon_stream,
@@ -323,7 +323,6 @@ macro_rules! with_engine_rpc_table {
             Reply fn upsert_cron_job(job: CronJobRecord) -> CronJobRecord;
             Reply fn delete_cron_job(job_id: String) -> ();
             Work fn start_scheduled_run(job: CronJobRecord) -> String;
-            Work fn prepare_subagent_sandbox(workspace_root: String) -> subagents::SubagentSandbox;
             Reply fn list_character_cards() -> Vec<CharacterCardRecord>;
             Reply fn upsert_character_card(card: CharacterCardRecord) -> CharacterCardRecord;
             Reply fn delete_character_card(card_id: String) -> ();

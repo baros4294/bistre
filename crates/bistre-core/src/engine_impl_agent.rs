@@ -8,7 +8,7 @@ use super::{
     StoryChapterRecord, StoryEntryRecord, StoryProgressionRecord, StorySceneRecord,
     StorySnapshotRecord, StoryThreadStateRecord, SystemPowerEvent, ThreadSummary, ToolRiskTier,
     UserPersonaRecord, WorkspaceCheckpointRecord, agent, broadcast, compaction, cron, hooks, mcp,
-    skills, story, subagents, tools,
+    skills, story, tools,
 };
 use crate::engine_runs::{utc_day_start_unix_ms, utc_now_unix_ms};
 use crate::events::{emit, emit_logged};
@@ -658,16 +658,6 @@ impl InProcessEngine {
 
     pub fn delete_cron_job(&self, job_id: String) -> BoxFuture<'_, BistreResult<()>> {
         Box::pin(async move { self.storage.delete_cron_job(job_id) })
-    }
-
-    pub fn prepare_subagent_sandbox(
-        &self,
-        workspace_root: String,
-    ) -> BoxFuture<'_, BistreResult<subagents::SubagentSandbox>> {
-        Box::pin(async move {
-            let scratch = self.data_dir.join("worktrees");
-            subagents::prepare_worktree_sandbox(Path::new(&workspace_root), &scratch).await
-        })
     }
 
     pub fn list_character_cards(&self) -> BoxFuture<'_, BistreResult<Vec<CharacterCardRecord>>> {
