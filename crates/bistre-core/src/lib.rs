@@ -57,6 +57,7 @@ pub mod net;
 mod off_worker;
 pub mod office_text;
 pub mod ota;
+pub mod ota_install;
 pub mod ota_manifest;
 mod paid_tools;
 pub mod power;
@@ -197,6 +198,8 @@ pub struct InProcessEngine {
     power: Arc<PowerCoordinator>,
     events_tx: broadcast::Sender<EngineEvent>,
     active_runs: Arc<AtomicU32>,
+    /// Set once a desktop installer took over; the daemon then exits as the app leaves.
+    update_handed_over: Arc<AtomicBool>,
     cancellations: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
     /// Per-chat completion signal of the latest run; a new run waits on it.
     run_done: Arc<Mutex<HashMap<String, tokio::sync::watch::Receiver<bool>>>>,
@@ -301,6 +304,14 @@ impl InProcessEngine {
                 windows_keep_awake_on_battery: settings.windows_keep_awake_on_battery,
             });
         }
+        // An update that installed (or was handed over) leaves files that will never run.
+        if let Err(err) = ota_install::clear_finished_updates(&dir, CORE_VERSION) {
+            tracing::warn!(
+                key = err.key.as_key(),
+                detail = err.detail_code.as_deref().unwrap_or(""),
+                "finished update files not cleared"
+            );
+        }
         let web = ssrf::PublicWebTransport::new();
         let pricing = Arc::new(registry::PricingRegistry::with_cache(
             dir.join("pricing_cache.json"),
@@ -340,6 +351,7 @@ impl InProcessEngine {
             power,
             events_tx,
             active_runs: Arc::new(AtomicU32::new(0)),
+            update_handed_over: Arc::new(AtomicBool::new(false)),
             cancellations: Arc::new(Mutex::new(HashMap::new())),
             run_done: Arc::new(Mutex::new(HashMap::new())),
             verified_update: Arc::new(Mutex::new(None)),
@@ -835,6 +847,39 @@ impl InProcessEngine {
             )
             .await
         })
+    }
+
+    /// The staged update Install update would run, if any (Spec 10).
+    pub fn pending_update_version(&self) -> BoxFuture<'_, BistreResult<Option<String>>> {
+        Box::pin(async move {
+            let dir = self.data_dir.clone();
+            off_worker::blocking(move || {
+                Ok(ota_install::pending_staged_update(&dir, CORE_VERSION)?.map(|r| r.version))
+            })
+            .await
+        })
+    }
+
+    /// Hands the staged update to the platform installer (Spec 10 §3).
+    pub fn install_staged_update(&self) -> BoxFuture<'_, BistreResult<ota_install::StagedInstall>> {
+        Box::pin(async move {
+            let dir = self.data_dir.clone();
+            let active = self.active_runs.load(Ordering::Relaxed);
+            let install = off_worker::blocking(move || {
+                ota_install::install_staged_update(&dir, CORE_VERSION, active)
+            })
+            .await?;
+            if install.android_apk_path.is_empty() {
+                self.update_handed_over.store(true, Ordering::SeqCst);
+            }
+            Ok(install)
+        })
+    }
+
+    /// Whether a desktop installer took over this build; its daemon must not outlive the app,
+    /// or the relaunched version would find an outdated daemon holding the data folder.
+    pub fn update_handed_over(&self) -> bool {
+        self.update_handed_over.load(Ordering::SeqCst)
     }
 }
 #[cfg(test)]

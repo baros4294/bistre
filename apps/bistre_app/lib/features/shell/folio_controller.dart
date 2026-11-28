@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show AppExitType;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -370,7 +371,8 @@ class FolioController extends ChangeNotifier {
   EngineUpdateCheck? _updateCheck;
   bool _checkingUpdates = false;
   bool _stagingUpdate = false;
-  String? _stagedUpdatePath;
+  bool _installingUpdate = false;
+  String? _pendingUpdateVersion;
   bool _updateBannerDismissed = false;
   String? _lastOtaDiagnostic;
   String? _lastOtaDetail;
@@ -490,16 +492,10 @@ class FolioController extends ChangeNotifier {
   EngineUpdateCheck? get updateCheck => _updateCheck;
   bool get checkingUpdates => _checkingUpdates;
   bool get stagingUpdate => _stagingUpdate;
-  String? get stagedUpdatePath => _stagedUpdatePath;
-  bool get showUpdateBanner =>
-      (_updateCheck?.updateAvailable ?? false) && !_updateBannerDismissed;
+  bool get installingUpdate => _installingUpdate;
 
-  void dismissUpdateBanner() {
-    if (_updateBannerDismissed) return;
-    _updateBannerDismissed = true;
-    _notify();
-  }
-
+  /// The downloaded, verified version Install update runs; null when none is staged.
+  String? get pendingUpdateVersion => _pendingUpdateVersion;
   List<EngineProviderModel> modelsForProvider(String providerId) =>
       _modelsByProvider[providerId] ?? const <EngineProviderModel>[];
 

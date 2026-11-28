@@ -7,7 +7,7 @@ Bistre enforces strict one-way hexagonal dependencies (`ADR-0001`, `ADR-0003`):
 - Pure Rust Domain Core (`crates/bistre-core`): Owns `EngineClient`, canonical DAG orchestration, providers, self-healing, AIO registry, in-process tools, MCP, lorebooks, trust/wallet shields, and OTA verification planning. Zero Flutter/FFI/GUI knowledge.
 - Core Network & Policy Modules (`ADR-0017`): `providers::dispatch` (single provider path with key rotation, heal ladder, typed retry hints), `sse` (`SseFramer`), `ssrf` (`PublicWebTransport`), `registry` (live pricing), `credentials`, `error_policy`, `approval` (one-use tool permits), `import_policy`, and `process_util` (the only child-process constructor).
 - Storage & Crypto (`crates/bistre-storage`, `crates/bistre-crypto`): SQLite WAL single-writer actor + FTS5; `minisign-verify` offline verification + `SecretVault` trait.
-- Desktop Services (`crates/bistre-daemon`, `crates/bistre-updater`): Resident local background daemon (tray, UDS/Named Pipe IPC, Remote Bridge mTLS server) and side-by-side crash-loop rollback updater.
+- Desktop Services (`crates/bistre-daemon`): Resident local background daemon (tray, UDS/Named Pipe IPC, Remote Bridge mTLS server). Updates install through each platform's own installer (`ota_install.rs`, Spec 10 §3).
 
 ## 2. One Brain, Any Body (`EngineClient` Trait)
 `crates/bistre-core/src/engine_client.rs` defines the async `EngineClient` trait with three interchangeable backends behind one FRB contract:
@@ -22,7 +22,7 @@ Bistre enforces strict one-way hexagonal dependencies (`ADR-0001`, `ADR-0003`):
 
 ## 4. Phased Rollout Waves (Day-1 Abstractions)
 All AIO, performance, i18n, and two-track OTA abstractions are locked from Day 1 while features ship vertically in three waves:
-- Phase 1 (Core Desktop & Android Client, self-updatable from Day 1): Core workspace (`bistre_app`, `bistre-core`, `bistre-storage`, `bistre-crypto`, `bistre-daemon`, `bistre-updater`), Big 3 + OpenAI-compatible wire dialects, 5-class self-healing, synthesized AIO registry + Default models, in-process Rust tools + MCP (`2026-07-28` + legacy fallback), worktree sub-agents, Lorebooks & `SKILL.md` loader, Dual Trust + Wallet Shield, and QR-paired mTLS Remote Bridge.
+- Phase 1 (Core Desktop & Android Client, self-updatable from Day 1): Core workspace (`bistre_app`, `bistre-core`, `bistre-storage`, `bistre-crypto`, `bistre-daemon`), Big 3 + OpenAI-compatible wire dialects, 5-class self-healing, synthesized AIO registry + Default models, in-process Rust tools + MCP (`2026-07-28` + legacy fallback), worktree sub-agents, Lorebooks & `SKILL.md` loader, Dual Trust + Wallet Shield, and QR-paired mTLS Remote Bridge.
 - Wave 2 (Voice & Image AIO): Speech-to-Text, streaming Text-to-Speech, and schema-driven OpenAPI async image generation/editing with WAL-before-POST idempotency.
 - Wave 3 (Video & Fireside Full-Duplex): Async video generation/editing/dubbing and Fireside full-duplex voice (Android BLE Audio + Oboe + AEC3 + Silero VAD).
 
@@ -53,7 +53,7 @@ The specs describe the target. This table records what the code does today; upda
 | `PublicWebTransport` (public-IP pinning, validated redirects) | Implemented | `ssrf.rs` |
 | OTA: streamed SHA-256, mandatory minisign, `VerifiedManifest` | Implemented | official Ed25519 key (`84A60109283936B3`) embedded in `OFFICIAL_RELEASE_PUBKEY_B64`; `MINISIGN_SECRET_KEY`/`MINISIGN_PASSWORD` provisioned in GitHub `release` environment; slim top update banner |
 | Offline BPE tokenizer (`o200k_base` universal) | Implemented | `crates/bistre-core/src/tokenizer.rs` (`tiktoken 5.1.1` + `vocab-o200k_base`, zero hardcoded vendor/model vocabularies, single-threaded, zero network) |
-| Updater crash-loop rollback | Built, not wired | `bistre-updater` has `--apply-staged`, `--mark-healthy`, and `--verify-manifest`, but nothing starts it (no launcher calls it), and `plan_next_boot` is test-only |
+| OTA install: Install update runs the Windows setup silently, replaces the `AppImage`, installs Bistre's `.deb`/`.rpm` through `pkexec`, or opens the Android installer | Implemented | `ota_install.rs`, `ota_manifest.rs`, `updates_storage_settings_view.dart`, `ViewerFiles.kt`, `bistre.iss`; installer runs on a device and `pkexec` are `[UNVERIFIED]` |
 | Model catalog: daily cached refresh of OpenRouter (every output kind) and LiteLLM, provider-scoped prices and limits, modalities, media units, Settings toggle | Implemented | `registry.rs`, `registry_parse.rs`, `providers.rs`, `usage_details_pill.dart` |
 | Media output: pictures and speech in chat replies, image, speech, and video models answering a chat turn, files on the reply, cut-off video jobs fetched by Try again | Partial | `media_wire.rs`, `media_gen.rs`, `media_jobs.rs`; no in-app audio or video player (ADR-0019 "Not Built") |
 | Usage dedupe by `request_id` | Implemented | `wallet.rs`, `bistre-storage`, `engine_runs.rs` (`wallet_ledger.job_id` deduplication) |

@@ -708,6 +708,38 @@ pub async fn reinstall_update(check: FfiUpdateCheckResult) -> Result<String, Str
         .map_err(crate::dto_mapping::ffi_err)
 }
 
+/// The staged update a restart would install, if any.
+#[frb]
+pub async fn pending_update_version() -> Result<Option<String>, String> {
+    current_engine()?
+        .pending_update_version()
+        .await
+        .map_err(crate::dto_mapping::ffi_err)
+}
+
+/// What the app does after core handed an update over.
+#[frb]
+#[derive(Debug, Clone)]
+pub struct FfiStagedInstall {
+    pub version: String,
+    /// Android: the verified APK for the system installer; empty on desktop, where core
+    /// already started the installer and the app quits.
+    pub android_apk_path: String,
+}
+
+/// Checks the staged update's SHA-256 again and hands it to the platform installer.
+#[frb]
+pub async fn install_staged_update() -> Result<FfiStagedInstall, String> {
+    let done = current_engine()?
+        .install_staged_update()
+        .await
+        .map_err(crate::dto_mapping::ffi_err)?;
+    Ok(FfiStagedInstall {
+        version: done.version,
+        android_apk_path: done.android_apk_path,
+    })
+}
+
 fn map_ffi_update_check(check: FfiUpdateCheckResult) -> UpdateCheckResult {
     UpdateCheckResult {
         current_version: check.current_version,

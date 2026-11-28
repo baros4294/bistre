@@ -8,7 +8,7 @@ import 'support/shell_harness.dart';
 
 void main() {
   testWidgets(
-    'a failed update check shows a plain message in Updates, not a raw key or a chat error (A-W 7c, 7d)',
+    'a failed update check shows a plain message in Updates, not a raw key or a chat error',
     (tester) async {
       final gateway = FakeEngineGateway(seedConnectedOpenAi: true)
         ..updateCheckFailure = 'diag.ota.integrity_failed:asset_mismatch';
@@ -51,6 +51,40 @@ void main() {
     expect(toast?.actionKey, L10nKey.settingsOtaOpenUpdates);
     await tester.pump(const Duration(seconds: 7));
   });
+
+  testWidgets(
+    'an update staged earlier offers Install update, which says why it failed',
+    (tester) async {
+      final gateway = FakeEngineGateway(seedConnectedOpenAi: true)
+        ..pendingUpdate = '9.0.0'
+        ..installFailure = 'diag.ota.install_failed:install_cancelled';
+      final shell = await ShellHarness.pump(tester, gateway: gateway);
+      await tester.pumpAndSettle();
+      expect(shell.controller.pendingUpdateVersion, '9.0.0');
+      shell.controller.openSettings(SettingsTab.updates);
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          shell.t(L10nKey.settingsOtaStagedReady, <String, Object?>{
+            'version': '9.0.0',
+          }),
+        ),
+        findsOneWidget,
+      );
+      final install = find.text(shell.t(L10nKey.settingsOtaInstall));
+      await tester.ensureVisible(install);
+      await tester.pumpAndSettle();
+      await tester.tap(install);
+      await tester.pumpAndSettle();
+      expect(gateway.callsTo('installStagedUpdate'), hasLength(1));
+      expect(find.text(shell.t(L10nKey.diagOtaInstallFailed)), findsOneWidget);
+      expect(
+        shell.controller.pendingUpdateVersion,
+        '9.0.0',
+        reason: 'a failed install stays offered',
+      );
+    },
+  );
 
   testWidgets('notice close buttons say Dismiss, not Cancel', (tester) async {
     final shell = await ShellHarness.pump(tester);

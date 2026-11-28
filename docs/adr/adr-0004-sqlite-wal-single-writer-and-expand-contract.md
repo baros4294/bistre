@@ -5,7 +5,7 @@
 
 ## Context & Live-Verified Evidence
 - Production SQLite WAL analyses (Oct–Nov 2026) confirm two dominant embedded failure modes: (a) concurrent write transactions causing `SQLITE_BUSY` errors, and (b) long-lived read transactions starving `PASSIVE` checkpoints so `-wal` grows to gigabytes.
-- During Track-B OTA binary updates, a forward-migrated database combined with crash-loop rollback can brick the app if the previous `N-1` binary cannot open the `N` schema.
+- After a Track-B OTA binary update, a forward-migrated database can brick the app if the user reinstalls the previous `N-1` build and it cannot open the `N` schema.
 
 ## Decision
 1. Bundle SQLite + FTS5 via `rusqlite 0.43.0` (`features = ["bundled", "modern_sqlite"]`), compiling under NDK r30 so Android inherits 16 KB alignment automatically.
@@ -15,7 +15,7 @@
 
 ## Rejected Alternatives
 - System libsqlite3: Inconsistent FTS5 builds and missing 16 KB / modern SQLite features across Linux distros and older Android OEMs.
-- Destructive in-place column drops on upgrade: Breaks OTA crash-loop rollback.
+- Destructive in-place column drops on upgrade: the previous build could no longer open the database.
 
 ## Consequences & Verification
 - Verified in `crates/bistre-storage` unit tests: 1,000+ UTF-8/Vietnamese/Arabic branched DAG nodes, draft restore across DB reopen, FTS5 latency <15ms, and `wal_checkpoint(TRUNCATE)` returning `busy=0`.

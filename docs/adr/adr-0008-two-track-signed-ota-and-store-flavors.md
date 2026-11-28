@@ -12,9 +12,10 @@
 1. Split OTA into two cryptographically verified, zero-telemetry tracks signed with Ed25519 via zero-dependency `minisign-verify 0.3.0` (+ GitHub Sigstore build provenance attestations):
    - Track A (Zero-Restart Data Packs): Non-executable AIO model catalog snapshots, hot-loadable ICU locale packs, and OpenAPI media schemas.
    - Track B (Native Binaries):
-     - Windows: Pure-Rust `bistre-updater` side-by-side layout under `%LocalAppData%\Bistre\versions\<semver>\` with static launcher and 3-boot crash-loop auto-rollback (`MAX_CRASH_BOOTS = 3`).
-     - Linux: Atomic `.AppImage.new` → `rename()` swap; self-update strictly disabled when `FLATPAK_ID`, `SNAP`, or `/usr`/`/opt` package ownership is detected.
-     - Android: Single direct GitHub `arm64-v8a` APK (`REQUEST_INSTALL_PACKAGES` in `src/main/AndroidManifest.xml`, `PackageInstaller` session API, Ed25519 manifest verification, and pinned APK signing-cert SHA-256 check; Play/F-Droid flavors removed).
+     - Install update runs the platform's own installer once the staged payload's SHA-256 checks again (Spec 10 §3); there is no launcher and no automatic rollback, and a broken release ships its fix as the next patch.
+     - Windows: the per-user Inno Setup installer runs silently and reopens Bistre.
+     - Linux: Atomic `.AppImage.new` → `rename()` swap; Bistre's own `.deb`/`.rpm` installs through `pkexec`; self-update disabled for Flatpak, Snap, and other system packages.
+     - Android: Single direct GitHub `arm64-v8a` APK handed to the system installer (`REQUEST_INSTALL_PACKAGES`); Android confirms with the user and refuses an APK signed by another key; Play/F-Droid flavors removed.
 2. Never interrupt active runs (`active_runs > 0` defers swap) and pair with Expand-Contract SQLite migrations (`ADR-0004`).
 
 ## Rejected Alternatives
@@ -22,4 +23,4 @@
 - Play Store & F-Droid store flavors: Unnecessary maintenance burden for a direct GitHub-published application.
 
 ## Consequences & Verification
-- Verified via `bistre-crypto` tampered-signature tests, `bistre-updater` 3-boot rollback & Linux ownership unit tests, `bistre_guard` ensuring no `play`/`fdroid` flavor folders remain, and CI `aapt2`/pure-Dart ELF `PT_LOAD` (`just verify-16kb`)/`zipalign` checks on the direct `arm64-v8a` APK.
+- Verified via `bistre-crypto` tampered-signature tests, `ota_install` and Linux ownership unit tests, `bistre_guard` ensuring no `play`/`fdroid` flavor folders remain, and CI `aapt2`/pure-Dart ELF `PT_LOAD` (`just verify-16kb`)/`zipalign` checks on the direct `arm64-v8a` APK.

@@ -26,8 +26,8 @@ use super::{
     SignedPackManifest, SteeringMessage, StorageFileEntry, StorageStats, StoryChapterRecord,
     StoryEntryRecord, StoryProgressionRecord, StorySceneRecord, StorySnapshotRecord,
     StoryThreadStateRecord, SystemPowerEvent, ThreadMode, ThreadPatch, ThreadSummary,
-    UpdateCheckResult, UserPersonaRecord, WorkspaceCheckpointRecord, broadcast, hooks, mcp, skills,
-    story, tools,
+    UpdateCheckResult, UserPersonaRecord, WorkspaceCheckpointRecord, broadcast, hooks, mcp,
+    ota_install, skills, story, tools,
 };
 use crate::ipc_client::{
     DaemonStream, IPC_REPLY_TIMEOUT, IPC_WORK_REPLY_TIMEOUT, open_daemon_stream,
@@ -213,6 +213,8 @@ macro_rules! with_engine_rpc_table {
             Work fn check_for_updates(feed_url_override: Option<String>) -> UpdateCheckResult;
             Work fn stage_update(check: UpdateCheckResult) -> String;
             Work fn reinstall_update(check: UpdateCheckResult) -> String;
+            Reply fn pending_update_version() -> Option<String>;
+            Work fn install_staged_update() -> ota_install::StagedInstall;
             Reply fn cancel_active_run(thread_id: String) -> bool;
             Reply fn retry_run_now(thread_id: String) -> bool;
             Reply fn list_nodes(thread_id: String) -> Vec<NodeRecord>;

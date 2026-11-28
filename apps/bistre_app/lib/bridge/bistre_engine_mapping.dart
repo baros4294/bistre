@@ -584,6 +584,11 @@ mixin _FrbUtilityAndVoiceMixin {
         ),
       );
 
+  Future<String?> pendingUpdateVersion() => frb.pendingUpdateVersion();
+
+  Future<String> installStagedUpdate() async =>
+      (await frb.installStagedUpdate()).androidApkPath;
+
   Future<bool> respondHostAction({
     required String requestId,
     required bool ok,

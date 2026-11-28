@@ -49,6 +49,8 @@ impl VerifiedManifest {
 }
 
 /// Detects whether the current executable is owned by an external package manager (Spec 10).
+/// Bistre's own `.deb` and `.rpm` (in `/opt/bistre`) update themselves through the system's
+/// password prompt; a Flatpak, a Snap, or another package under `/usr` or `/opt` does not.
 pub fn detect_ownership_mode() -> &'static str {
     if std::env::var_os("FLATPAK_ID").is_some_and(|v| !v.is_empty()) {
         return "flatpak";
@@ -57,8 +59,9 @@ pub fn detect_ownership_mode() -> &'static str {
         return "snap";
     }
     if let Ok(exe) = std::env::current_exe() {
+        let ours = exe.starts_with(crate::ota_manifest::LINUX_PACKAGE_DIR);
         let s = exe.to_string_lossy();
-        if s.starts_with("/usr/") || s.starts_with("/opt/") {
+        if !ours && (s.starts_with("/usr/") || s.starts_with("/opt/")) {
             return "system_package_manager";
         }
     }
@@ -147,7 +150,7 @@ pub fn normalize_ota_feed_url(raw: &str) -> String {
 }
 
 /// Receipt written atomically to `<data_dir>/ota_staging/staged.json` once a payload passes
-/// SHA-256 verification, consumed by `bistre-updater --apply-staged` on the next launch.
+/// SHA-256 verification, consumed by `ota_install::install_staged_update`.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct StagedUpdateReceipt {
     pub version: String,
@@ -408,7 +411,7 @@ fn safe_ota_slot_name(version: &str) -> String {
     }
 }
 
-fn write_staged_receipt(
+pub(crate) fn write_staged_receipt(
     data_dir: &Path,
     version: &str,
     payload_path: &str,

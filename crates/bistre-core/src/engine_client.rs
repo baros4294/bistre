@@ -9,7 +9,7 @@ use super::{
     SteeringMessage, StorageFileEntry, StorageStats, StoryChapterRecord, StoryEntryRecord,
     StoryProgressionRecord, StorySceneRecord, StorySnapshotRecord, StoryThreadStateRecord,
     SystemPowerEvent, ThreadMode, ThreadPatch, ThreadSummary, UpdateCheckResult, UserPersonaRecord,
-    WorkspaceCheckpointRecord, broadcast, hooks, mcp, skills, story, tools,
+    WorkspaceCheckpointRecord, broadcast, hooks, mcp, ota_install, skills, story, tools,
 };
 
 /// Unified engine boundary implemented by:
@@ -335,6 +335,10 @@ pub trait EngineClient: Send + Sync {
     ) -> BoxFuture<'_, BistreResult<UpdateCheckResult>>;
     fn stage_update(&self, check: UpdateCheckResult) -> BoxFuture<'_, BistreResult<String>>;
     fn reinstall_update(&self, check: UpdateCheckResult) -> BoxFuture<'_, BistreResult<String>>;
+    /// The staged update a restart would install, if any.
+    fn pending_update_version(&self) -> BoxFuture<'_, BistreResult<Option<String>>>;
+    /// Hands the staged update to the platform installer; desktop apps quit after it.
+    fn install_staged_update(&self) -> BoxFuture<'_, BistreResult<ota_install::StagedInstall>>;
     fn cancel_active_run(&self, thread_id: String) -> BoxFuture<'_, BistreResult<bool>>;
     /// Ends a backoff wait immediately (`Retry now`). Returns `false` when no run is waiting.
     fn retry_run_now(&self, thread_id: String) -> BoxFuture<'_, BistreResult<bool>>;

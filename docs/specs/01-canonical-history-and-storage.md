@@ -36,7 +36,7 @@ Bistre owns the master conversation graph locally in `<data_dir>/bistre.sqlite`.
 
 ## 4. Expand-Contract Migrations & Disk-Full Resilience
 - Every schema change runs inside `BEGIN IMMEDIATE ... PRAGMA user_version = N; COMMIT;` followed by `PRAGMA foreign_key_check;` and `PRAGMA quick_check;`.
-- All migrations must be additive-only for ≥1 full release cycle (Expand phase) so an `N-1` binary rolling back after an OTA crash-loop can open and read an `N` database cleanly. Pre-migration backups write `<db>.pre-vN.bak` (verified for `v1 -> v2`, `v2 -> v3`, `v3 -> v4`, `v4 -> v5`, `v5 -> v6`, and `v6 -> v7`).
+- All migrations must be additive-only for ≥1 full release cycle (Expand phase) so an `N-1` binary reinstalled after an OTA update can open and read an `N` database cleanly. Pre-migration backups write `<db>.pre-vN.bak` (verified for `v1 -> v2`, `v2 -> v3`, `v3 -> v4`, `v4 -> v5`, `v5 -> v6`, and `v6 -> v7`).
 - `SQLITE_FULL` maps to `DiagnosticKey::StorageDiskFull` (never panics), pausing cache/compaction writes while retaining in-memory unsent drafts.
 
 ## 5. Schema v8 Expand (`harness::SCHEMA_V8_EXPAND_SQL`)

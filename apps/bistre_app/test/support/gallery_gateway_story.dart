@@ -33,6 +33,12 @@ mixin _GalleryRunsAndStory implements BistreEngineGateway {
       '.bistre-dev/updates/bistre-${check.currentVersion}.zip';
 
   @override
+  Future<String?> pendingUpdateVersion() async => null;
+
+  @override
+  Future<String> installStagedUpdate() async => '';
+
+  @override
   Future<bool> respondHostAction({
     required String requestId,
     required bool ok,

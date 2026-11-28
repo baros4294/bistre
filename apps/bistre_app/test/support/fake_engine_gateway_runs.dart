@@ -190,6 +190,23 @@ mixin _FakeRunsAndPower implements BistreEngineGateway {
     return '.bistre-dev/updates/bistre-${check.latestVersion}.zip';
   }
 
+  String? pendingUpdate;
+  String? installFailure;
+
+  @override
+  Future<String?> pendingUpdateVersion() async {
+    await _record('pendingUpdateVersion', const <String, Object?>{});
+    return pendingUpdate;
+  }
+
+  @override
+  Future<String> installStagedUpdate() async {
+    await _record('installStagedUpdate', const <String, Object?>{});
+    final failure = installFailure;
+    if (failure != null) throw Exception(failure);
+    return '';
+  }
+
   @override
   Future<bool> respondHostAction({
     required String requestId,

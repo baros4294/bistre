@@ -257,6 +257,11 @@ fn spawn_idle_and_cron_task(
                         break;
                     }
                 }
+                Wake::Event if engine.update_handed_over() && !apps.any() => {
+                    tracing::info!("update handed over and the app left; shutting down");
+                    shutdown.notify_one();
+                    break;
+                }
                 Wake::Event => {}
             }
         }

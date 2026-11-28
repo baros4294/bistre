@@ -1288,6 +1288,13 @@
       "max_chars": 110,
       "placeholders": {}
     },
+    "diag.ota.install_failed": {
+      "message": "Bản cập nhật chưa được cài. Hãy thử lại, hoặc cài từ trang tải xuống.",
+      "context": "Rust DiagnosticKey::OtaInstallFailed: the system installer did not install the update (password prompt dismissed, or the package tool failed or is missing)",
+      "tone": "diagnostic",
+      "max_chars": 110,
+      "placeholders": {}
+    },
     "diag.export.failed": {
       "message": "Không thể lưu hoặc xuất tệp.",
       "context": "Diagnostic when chat export or DB backup fails",
@@ -1705,11 +1712,16 @@
       "placeholders": {}
     },
     "settings.ota.staged_ready": {
-      "message": "Đã xác minh và chuẩn bị bản cập nhật. Khởi động lại Bistre để áp dụng.",
-      "context": "Confirmation once update artifact is verified and staged",
+      "message": "Đã tải và xác minh phiên bản {version}",
+      "context": "Updates settings row once the update is downloaded and its checksum verified",
       "tone": "calm_editorial",
-      "max_chars": 110,
-      "placeholders": {}
+      "max_chars": 64,
+      "placeholders": {
+        "version": {
+          "type": "string",
+          "example": "0.2.3"
+        }
+      }
     },
     "settings.ota.signature_verified": {
       "message": "Đã xác minh",
@@ -1973,7 +1985,7 @@
       "placeholders": {}
     },
     "toast.update_staged": {
-      "message": "Đã tải và xác minh cập nhật",
+      "message": "Bản cập nhật đã sẵn sàng để cài",
       "context": "Toast after OTA artifact staging",
       "tone": "calm_editorial",
       "max_chars": 52,
@@ -8035,6 +8047,34 @@
       "context": "Notice when the picture in the file viewer could not be copied",
       "tone": "calm_editorial",
       "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.ota.install": {
+      "message": "Cài bản cập nhật",
+      "context": "Button in Updates settings that runs the downloaded, verified update",
+      "tone": "concise_action",
+      "max_chars": 30,
+      "placeholders": {}
+    },
+    "settings.ota.installing": {
+      "message": "Đang cài đặt",
+      "context": "Install update button label while the installer starts",
+      "tone": "concise_action",
+      "max_chars": 30,
+      "placeholders": {}
+    },
+    "settings.ota.install_desktop_hint": {
+      "message": "Bistre sẽ đóng, cài bản cập nhật rồi tự mở lại. Máy tính có thể hỏi bạn cho phép trước.",
+      "context": "Note under the staged update on Windows and Linux: the app closes and the installer reopens it",
+      "tone": "calm_editorial",
+      "max_chars": 140,
+      "placeholders": {}
+    },
+    "settings.ota.install_android_hint": {
+      "message": "Android sẽ hỏi bạn xác nhận việc cài đặt.",
+      "context": "Note under the staged update on Android: the system installer asks to confirm",
+      "tone": "calm_editorial",
+      "max_chars": 90,
       "placeholders": {}
     }
   }

@@ -157,6 +157,7 @@ extension FolioBootActions on FolioController {
       await _loadExtendedKvPrefs();
       unawaited(refreshLibrary());
       await _hydrateCustomFontsFromSettings();
+      unawaited(_loadPendingUpdate());
       if (_settings.otaAutoCheck && !_disposed) {
         unawaited(checkForUpdates(background: true));
       }
