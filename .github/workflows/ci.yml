@@ -98,7 +98,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: taiki-e/install-action@25f51f6b1bf4e18876107cece836f4f77ac17c8c # v2
+      - uses: taiki-e/install-action@25f51f6b1bf4e18876107cece836f4f77ac17c8c # v2.90.7
         with:
           tool: zizmor@1.33.1
       - name: Install pinned actionlint (checksum-verified)
@@ -196,7 +196,7 @@ jobs:
           shared-key: rust-fortress-${{ matrix.os }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-bin: false
-      - uses: taiki-e/install-action@25f51f6b1bf4e18876107cece836f4f77ac17c8c # v2
+      - uses: taiki-e/install-action@25f51f6b1bf4e18876107cece836f4f77ac17c8c # v2.90.7
         with:
           tool: cargo-nextest@0.9.152,cargo-deny@0.22.0
       - name: Rust format check
