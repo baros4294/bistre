@@ -114,7 +114,6 @@ pub(crate) fn map_settings(s: AppSettings) -> FfiAppSettings {
         wallet_daily_ceiling_micros: s.wallet_daily_ceiling_micros.map(MoneyMicros::as_micros),
         wallet_local_first: s.wallet_local_first,
         provider_stateless_default: s.provider_stateless_default,
-        font_scale_bps: s.font_scale_bps,
         font_size_px: s.font_size_px,
         line_height_bps: s.line_height_bps,
         reading_width_px: s.reading_width_px,
@@ -145,6 +144,7 @@ pub(crate) fn map_settings(s: AppSettings) -> FfiAppSettings {
         code_wrap_mode: s.code_wrap_mode,
         pricing_auto_refresh: s.pricing_auto_refresh,
         user_display_name: s.user_display_name,
+        auto_compact_at_percent: s.auto_compact_at_percent,
     }
 }
 
@@ -232,7 +232,7 @@ pub(crate) fn map_node(n: NodeRecord) -> FfiNodeRecord {
         parent_id: n.parent_id,
         role: n.role.as_str().to_owned(),
         content: n.content,
-        // R39: slim metadata; the opaque replay payload stays in core.
+        // Slim metadata; the opaque replay payload stays in core.
         provider_meta_json: bistre_core::replay_policy::ui_node_meta(
             n.provider_meta_json.as_deref(),
         ),
@@ -334,12 +334,12 @@ pub(crate) fn map_event(e: EngineEvent) -> FfiEngineEvent {
         EngineEvent::RunStateChanged { run } => {
             let mut evt = FfiEngineEvent::blank("run_state_changed");
             evt.thread_id = Some(run.thread_id.clone());
-            evt.payload_json = serde_json::to_string(&run).ok();
+            evt.payload_json = logged_payload("run_state_changed", serde_json::to_string(&run));
             evt
         }
         EngineEvent::RunStepUpdated { step } => {
             let mut evt = FfiEngineEvent::blank("run_step_updated");
-            evt.payload_json = serde_json::to_string(&step).ok();
+            evt.payload_json = logged_payload("run_step_updated", serde_json::to_string(&step));
             evt
         }
         EngineEvent::ToolApprovalRequested {
@@ -407,7 +407,8 @@ pub(crate) fn map_event(e: EngineEvent) -> FfiEngineEvent {
         }
         EngineEvent::PowerStatusChanged { status } => {
             let mut evt = FfiEngineEvent::blank("power_status_changed");
-            evt.payload_json = serde_json::to_string(&status).ok();
+            evt.payload_json =
+                logged_payload("power_status_changed", serde_json::to_string(&status));
             evt
         }
         EngineEvent::NodeCommitted { node } => {
@@ -459,6 +460,36 @@ pub(crate) fn map_event(e: EngineEvent) -> FfiEngineEvent {
             "live_voice_audio",
             &serde_json::json!({ "session_id": session_id, "wav_base64": wav_base64 }),
         ),
+        EngineEvent::HostActionRequested {
+            request_id,
+            thread_id,
+            run_id,
+            action_json,
+        } => {
+            let mut evt = json_event(
+                "host_action_requested",
+                &serde_json::json!({
+                    "request_id": request_id,
+                    "thread_id": thread_id,
+                    "run_id": run_id,
+                    "action_json": action_json,
+                }),
+            );
+            evt.thread_id = Some(thread_id);
+            evt
+        }
+    }
+}
+
+/// The event's JSON payload; one that fails to serialize is logged and sent as none, so Dart
+/// still receives the event.
+fn logged_payload(kind: &str, json: serde_json::Result<String>) -> Option<String> {
+    match json {
+        Ok(text) => Some(text),
+        Err(err) => {
+            tracing::warn!(kind, %err, "engine event payload not serialized");
+            None
+        }
     }
 }
 

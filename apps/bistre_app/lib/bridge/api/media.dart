@@ -8,7 +8,20 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+
+/// Settled spend of one chat in micro-USD, every purpose and all time.
+Future<PlatformInt64> getThreadSpendMicros({required String threadId}) =>
+    BistreRustLib.instance.api.crateApiMediaGetThreadSpendMicros(
+      threadId: threadId,
+    );
+
+/// Settled spend since `since_unix_ms`, one entry per purpose with any use, chat first.
+Future<List<FfiPurposeUsage>> getWalletUsageByPurpose({
+  required PlatformInt64 sinceUnixMs,
+}) => BistreRustLib.instance.api.crateApiMediaGetWalletUsageByPurpose(
+  sinceUnixMs: sinceUnixMs,
+);
 
 /// Returns decrypted API keys stored in the OS vault for `provider_id` in ring order.
 Future<List<String>> getProviderApiKeys({required String providerId}) =>
@@ -16,10 +29,12 @@ Future<List<String>> getProviderApiKeys({required String providerId}) =>
       providerId: providerId,
     );
 
-/// Looks up live pricing & context limit metadata for `model_id` from the cached registry.
+/// Live prices and limits of `model_id` as `provider_id` serves it, from the cached catalog.
 Future<FfiModelCatalogInfo?> lookupModelCatalogInfo({
+  required String providerId,
   required String modelId,
 }) => BistreRustLib.instance.api.crateApiMediaLookupModelCatalogInfo(
+  providerId: providerId,
   modelId: modelId,
 );
 
@@ -44,10 +59,6 @@ Future<FfiNodeRecord> steerActiveRunNow({
   threadId: threadId,
   content: content,
 );
-
-/// Exports all chats and message trees as portable JSON.
-Future<String> exportAllThreadsJson() =>
-    BistreRustLib.instance.api.crateApiMediaExportAllThreadsJson();
 
 /// Imports threads from an exported chat JSON file, returning the number of imported threads.
 Future<int> importThreadsJson({required String rawJson}) =>
@@ -130,6 +141,36 @@ Future<void> stopLiveVoiceSession({required String sessionId}) => BistreRustLib
     .api
     .crateApiMediaStopLiveVoiceSession(sessionId: sessionId);
 
+/// Linux folder picker (`zenity`, then `kdialog`), run contained by core; `None` when cancelled
+/// or when no picker is installed.
+Future<String?> linuxPickFolder({required String title}) =>
+    BistreRustLib.instance.api.crateApiMediaLinuxPickFolder(title: title);
+
+/// The files or the picture on the Linux clipboard (`wl-paste` or `xclip`, run contained by
+/// core); none when no clipboard tool is installed.
+Future<FfiClipboardAttachments> linuxClipboardAttachments() =>
+    BistreRustLib.instance.api.crateApiMediaLinuxClipboardAttachments();
+
+/// Linux desktop notification (`notify-send`), run contained by core.
+Future<void> linuxNotify({
+  required String title,
+  required String body,
+  required bool playSound,
+}) => BistreRustLib.instance.api.crateApiMediaLinuxNotify(
+  title: title,
+  body: body,
+  playSound: playSound,
+);
+
+/// Opens an existing local file in its default Linux app (`xdg-open`), run contained by core;
+/// executables, scripts, and network paths are refused.
+Future<void> linuxOpenFile({required String path}) =>
+    BistreRustLib.instance.api.crateApiMediaLinuxOpenFile(path: path);
+
+/// Opens an existing local folder in the Linux file manager (`xdg-open`), run contained by core.
+Future<void> linuxOpenFolder({required String path}) =>
+    BistreRustLib.instance.api.crateApiMediaLinuxOpenFolder(path: path);
+
 /// User-selected file attachment passed from Flutter composer to Rust core.
 class FfiAttachmentInput {
   final String name;
@@ -155,6 +196,25 @@ class FfiAttachmentInput {
           localPath == other.localPath;
 }
 
+/// The files or the picture copied to the Linux clipboard.
+class FfiClipboardAttachments {
+  final List<String> files;
+  final Uint8List? png;
+
+  const FfiClipboardAttachments({required this.files, this.png});
+
+  @override
+  int get hashCode => files.hashCode ^ png.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FfiClipboardAttachments &&
+          runtimeType == other.runtimeType &&
+          files == other.files &&
+          png == other.png;
+}
+
 /// Live catalog metadata returned for a single model (`Fill from catalog`).
 class FfiModelCatalogInfo {
   final int? contextWindow;
@@ -162,7 +222,21 @@ class FfiModelCatalogInfo {
   final PlatformInt64? inputPerMtokMicros;
   final PlatformInt64? outputPerMtokMicros;
   final PlatformInt64? cachedInputPerMtokMicros;
+  final PlatformInt64? cacheWritePerMtokMicros;
+  final PlatformInt64? cacheWrite1HPerMtokMicros;
   final bool? reasoning;
+
+  /// False for a model that only draws, films, or speaks (it has no thinking setting).
+  final bool writesText;
+
+  /// Picture shapes the model offers (`16:9`); empty leaves the shape to the provider.
+  final List<String> aspectRatios;
+
+  /// Output sizes the model offers (`2K`, `720p`).
+  final List<String> resolutions;
+
+  /// Video lengths the model offers, in seconds.
+  final Uint32List durationsS;
 
   const FfiModelCatalogInfo({
     this.contextWindow,
@@ -170,7 +244,13 @@ class FfiModelCatalogInfo {
     this.inputPerMtokMicros,
     this.outputPerMtokMicros,
     this.cachedInputPerMtokMicros,
+    this.cacheWritePerMtokMicros,
+    this.cacheWrite1HPerMtokMicros,
     this.reasoning,
+    required this.writesText,
+    required this.aspectRatios,
+    required this.resolutions,
+    required this.durationsS,
   });
 
   @override
@@ -180,7 +260,13 @@ class FfiModelCatalogInfo {
       inputPerMtokMicros.hashCode ^
       outputPerMtokMicros.hashCode ^
       cachedInputPerMtokMicros.hashCode ^
-      reasoning.hashCode;
+      cacheWritePerMtokMicros.hashCode ^
+      cacheWrite1HPerMtokMicros.hashCode ^
+      reasoning.hashCode ^
+      writesText.hashCode ^
+      aspectRatios.hashCode ^
+      resolutions.hashCode ^
+      durationsS.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -192,7 +278,49 @@ class FfiModelCatalogInfo {
           inputPerMtokMicros == other.inputPerMtokMicros &&
           outputPerMtokMicros == other.outputPerMtokMicros &&
           cachedInputPerMtokMicros == other.cachedInputPerMtokMicros &&
-          reasoning == other.reasoning;
+          cacheWritePerMtokMicros == other.cacheWritePerMtokMicros &&
+          cacheWrite1HPerMtokMicros == other.cacheWrite1HPerMtokMicros &&
+          reasoning == other.reasoning &&
+          writesText == other.writesText &&
+          aspectRatios == other.aspectRatios &&
+          resolutions == other.resolutions &&
+          durationsS == other.durationsS;
+}
+
+/// Settled spend for one purpose (`chat`, `helper`, `title`, `summary`, `translation`, `voice`).
+class FfiPurposeUsage {
+  final String purpose;
+  final BigInt requests;
+  final BigInt inputTokens;
+  final BigInt outputTokens;
+  final PlatformInt64 costMicros;
+
+  const FfiPurposeUsage({
+    required this.purpose,
+    required this.requests,
+    required this.inputTokens,
+    required this.outputTokens,
+    required this.costMicros,
+  });
+
+  @override
+  int get hashCode =>
+      purpose.hashCode ^
+      requests.hashCode ^
+      inputTokens.hashCode ^
+      outputTokens.hashCode ^
+      costMicros.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FfiPurposeUsage &&
+          runtimeType == other.runtimeType &&
+          purpose == other.purpose &&
+          requests == other.requests &&
+          inputTokens == other.inputTokens &&
+          outputTokens == other.outputTokens &&
+          costMicros == other.costMicros;
 }
 
 /// File entry listed inside Bistre's local data directory.

@@ -7,6 +7,8 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `fmt`
+
 /// Lists saved Character Cards (CCv3/V2) as JSON.
 Future<String> listCharacterCardsJson() =>
     BistreRustLib.instance.api.crateApiStoryListCharacterCardsJson();
@@ -136,3 +138,60 @@ Future<String> inspectStoryPromptJson({
   threadId: threadId,
   activeSceneBeats: activeSceneBeats,
 );
+
+/// The replacement for a manuscript excerpt under `mode` (`rewrite`, `expand`, `shorten`,
+/// `polish`), with the scene text `context` around it; nothing is saved.
+Future<String> rewritePassage({
+  required String threadId,
+  required String mode,
+  required String excerpt,
+  required String context,
+}) => BistreRustLib.instance.api.crateApiStoryRewritePassage(
+  threadId: threadId,
+  mode: mode,
+  excerpt: excerpt,
+  context: context,
+);
+
+/// A writing brief for a scene from its title and beats as they stand in the editor.
+Future<String> planScene({
+  required String threadId,
+  required String title,
+  required String beats,
+}) => BistreRustLib.instance.api.crateApiStoryPlanScene(
+  threadId: threadId,
+  title: title,
+  beats: beats,
+);
+
+/// The era summary of a chapter's saved scenes and its contradictions with earlier chapters.
+Future<FfiChapterSummary> summarizeChapter({
+  required String threadId,
+  required String chapterId,
+}) => BistreRustLib.instance.api.crateApiStorySummarizeChapter(
+  threadId: threadId,
+  chapterId: chapterId,
+);
+
+/// The continuity librarian's answer for a chapter: the era summary to save and the
+/// contradictions with earlier chapters (shown, never saved).
+class FfiChapterSummary {
+  final String eraSummary;
+  final List<String> contradictions;
+
+  const FfiChapterSummary({
+    required this.eraSummary,
+    required this.contradictions,
+  });
+
+  @override
+  int get hashCode => eraSummary.hashCode ^ contradictions.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FfiChapterSummary &&
+          runtimeType == other.runtimeType &&
+          eraSummary == other.eraSummary &&
+          contradictions == other.contradictions;
+}

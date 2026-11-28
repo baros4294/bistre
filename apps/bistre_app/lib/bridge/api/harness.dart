@@ -8,7 +8,7 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`
 
 /// Records the user's approval of one exact tool call and returns its one-use permit id.
 Future<String> approveToolCall({
@@ -58,6 +58,19 @@ Future<bool> respondToolApproval({
   decision: decision,
 );
 
+/// Delivers the native host-bridge result for a `HostActionRequested` event (`computer_use`).
+Future<bool> respondHostAction({
+  required String requestId,
+  required bool ok,
+  required String outputText,
+  String? imageBase64,
+}) => BistreRustLib.instance.api.crateApiHarnessRespondHostAction(
+  requestId: requestId,
+  ok: ok,
+  outputText: outputText,
+  imageBase64: imageBase64,
+);
+
 /// Executes a capability-scoped built-in workspace or web tool and returns a JSON `ToolExecutionOutput`.
 /// Non-read-only tools need the `permit_id` returned by `approve_tool_call`.
 Future<String> executeWorkspaceToolJson({
@@ -92,15 +105,29 @@ Future<List<FfiCheckpoint>> listCheckpoints({
   limit: limit,
 );
 
-/// Inserts a reversible `CompactionSummary` DAG node without deleting original history.
+/// Inserts a reversible `CompactionSummary` DAG node without deleting original history;
+/// `instructions` tell the Summary model what to keep.
 Future<FfiNodeRecord> compactThread({
   required String threadId,
   required int keepRecentTurns,
   String? customSummary,
+  String? instructions,
 }) => BistreRustLib.instance.api.crateApiHarnessCompactThread(
   threadId: threadId,
   keepRecentTurns: keepRecentTurns,
   customSummary: customSummary,
+  instructions: instructions,
+);
+
+/// Replaces the text of a compaction summary; the messages it condenses stay saved.
+Future<FfiNodeRecord> rewriteCompactionSummary({
+  required String threadId,
+  required String nodeId,
+  required String content,
+}) => BistreRustLib.instance.api.crateApiHarnessRewriteCompactionSummary(
+  threadId: threadId,
+  nodeId: nodeId,
+  content: content,
 );
 
 /// Reverts a reversible `CompactionSummary` node, restoring 100% of prior verbatim turns.
@@ -131,6 +158,14 @@ Future<String?> getContextStartPin({required String threadId}) => BistreRustLib
 Future<String> discoverMcpServerJson({required String serverConfigJson}) =>
     BistreRustLib.instance.api.crateApiHarnessDiscoverMcpServerJson(
       serverConfigJson: serverConfigJson,
+    );
+
+/// Searches the public MCP Registry; returns the page as JSON (`entries[].server` is a
+/// turned-off server profile, `next_cursor` fetches the next page).
+Future<String> searchMcpRegistryJson({required String query, String? cursor}) =>
+    BistreRustLib.instance.api.crateApiHarnessSearchMcpRegistryJson(
+      query: query,
+      cursor: cursor,
     );
 
 /// Invokes a tool on a configured Streamable HTTP MCP server with 256 KiB output capping.
@@ -234,6 +269,67 @@ Future<List<FfiGroundingSource>> listThreadGrounding({
 }) => BistreRustLib.instance.api.crateApiHarnessListThreadGrounding(
   threadId: threadId,
 );
+
+/// Generates and saves a short title for `thread_id` using Settings > Default models > Chat titles.
+Future<FfiThreadSummary> generateThreadTitle({required String threadId}) =>
+    BistreRustLib.instance.api.crateApiHarnessGenerateThreadTitle(
+      threadId: threadId,
+    );
+
+/// Translates `node_id` into `target_language` (or Settings > Default models > Target language)
+/// and commits the translation as a new sibling version.
+Future<FfiNodeRecord> translateNode({
+  required String threadId,
+  required String nodeId,
+  String? targetLanguage,
+}) => BistreRustLib.instance.api.crateApiHarnessTranslateNode(
+  threadId: threadId,
+  nodeId: nodeId,
+  targetLanguage: targetLanguage,
+);
+
+/// Builds the exact credential-free wire request core would send next for `thread_id`.
+Future<FfiInspectedRequest> inspectNextRequest({
+  required String threadId,
+  required String draft,
+}) => BistreRustLib.instance.api.crateApiHarnessInspectNextRequest(
+  threadId: threadId,
+  draft: draft,
+);
+
+/// Exports a provider profile as a portable `ai-provider:v1:` share code (API key excluded unless
+/// `include_api_key` is explicitly `true`).
+Future<String> exportProviderShareCode({
+  required String providerId,
+  required bool includeApiKey,
+}) => BistreRustLib.instance.api.crateApiHarnessExportProviderShareCode(
+  providerId: providerId,
+  includeApiKey: includeApiKey,
+);
+
+/// Imports an `ai-provider:v1:` share code as a new provider profile with a fresh id.
+Future<FfiProviderProfile> importProviderShareCode({required String code}) =>
+    BistreRustLib.instance.api.crateApiHarnessImportProviderShareCode(
+      code: code,
+    );
+
+/// A page of `thread_id`'s nodes, oldest first: the newest `limit` (at most 500) written before
+/// `before_node_id`, or the newest overall without it.
+Future<List<FfiNodeRecord>> listNodesWindow({
+  required String threadId,
+  String? beforeNodeId,
+  required int limit,
+}) => BistreRustLib.instance.api.crateApiHarnessListNodesWindow(
+  threadId: threadId,
+  beforeNodeId: beforeNodeId,
+  limit: limit,
+);
+
+/// Returns the monotonic history revision for `thread_id`.
+Future<PlatformInt64> threadHistoryRev({required String threadId}) =>
+    BistreRustLib.instance.api.crateApiHarnessThreadHistoryRev(
+      threadId: threadId,
+    );
 
 /// One file checkpoint in a chat's edit history. The pre-image bytes stay in core: rewinding
 /// uses the id, so the list never ships file contents across FFI.
@@ -344,7 +440,7 @@ class FfiCronJob {
           lastStatus == other.lastStatus;
 }
 
-/// One web page a reply used (B2): `http(s)` only, bounded text.
+/// One web page a reply used: `http(s)` only, bounded text.
 class FfiGroundingSource {
   final String nodeId;
   final String url;
@@ -371,6 +467,46 @@ class FfiGroundingSource {
           url == other.url &&
           title == other.title &&
           citedText == other.citedText;
+}
+
+/// Credential-free snapshot of the exact wire request core would send next for a chat.
+class FfiInspectedRequest {
+  final String method;
+  final String url;
+  final String dialect;
+  final String model;
+  final List<(String, String)> headers;
+  final String bodyJson;
+
+  const FfiInspectedRequest({
+    required this.method,
+    required this.url,
+    required this.dialect,
+    required this.model,
+    required this.headers,
+    required this.bodyJson,
+  });
+
+  @override
+  int get hashCode =>
+      method.hashCode ^
+      url.hashCode ^
+      dialect.hashCode ^
+      model.hashCode ^
+      headers.hashCode ^
+      bodyJson.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FfiInspectedRequest &&
+          runtimeType == other.runtimeType &&
+          method == other.method &&
+          url == other.url &&
+          dialect == other.dialect &&
+          model == other.model &&
+          headers == other.headers &&
+          bodyJson == other.bodyJson;
 }
 
 /// Persistent cross-chat memory entry (`MemoryEntryRecord`).
