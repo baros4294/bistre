@@ -246,6 +246,14 @@ impl InProcessEngine {
         })
     }
 
+    pub fn pending_tool_approvals(&self) -> BoxFuture<'_, BistreResult<Vec<EngineEvent>>> {
+        Box::pin(async move {
+            Ok(crate::agent_approvals::pending_approval_requests(
+                &self.pending_approvals,
+            ))
+        })
+    }
+
     pub fn respond_tool_approval(
         &self,
         thread_id: String,

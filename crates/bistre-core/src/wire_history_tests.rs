@@ -345,9 +345,7 @@ fn openrouter_reasoning_details_replay_only_to_openrouter() {
 /// pins it (no `preserve_order`).
 #[test]
 fn a_replayed_tool_call_serializes_the_same_bytes_every_turn() {
-    let call = |args: &str| {
-        json!({ "tool_calls": [{ "call_id": "c1", "name": "read", "arguments_json": args }] })
-    };
+    let call = |args: &str| json!({ "tool_calls": [{ "call_id": "c1", "name": "read", "arguments_json": args }] });
     let result = json!({ "tool_result": { "call_id": "c1", "name": "read" } });
     let turn = |args: &str| {
         vec![

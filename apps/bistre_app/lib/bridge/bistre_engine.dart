@@ -607,6 +607,10 @@ class FrbBistreEngineGateway
   );
 
   @override
+  Future<List<BistreEvent>> pendingToolApprovals() async =>
+      (await frb.pendingToolApprovals()).map(_mapEvent).toList();
+
+  @override
   Future<bool> respondToolApproval({
     required String threadId,
     required String runId,

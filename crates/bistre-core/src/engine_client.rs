@@ -437,6 +437,9 @@ pub trait EngineClient: Send + Sync {
     ) -> BoxFuture<'_, BistreResult<()>>;
     /// The same "Allow once" for the next read-aloud or live-voice request.
     fn allow_unpriced_media_once(&self) -> BoxFuture<'_, BistreResult<()>>;
+    /// The `ToolApprovalRequested` events whose runs still wait for the user, for an app that
+    /// missed them (lagged events, a window opened while a run waited).
+    fn pending_tool_approvals(&self) -> BoxFuture<'_, BistreResult<Vec<EngineEvent>>>;
     /// Delivers the user's decision (`approve_once` / `approve_for_thread` / `deny` / `stop`)
     /// to the run paused at `ToolApprovalRequested` with exactly this thread, run, and call id.
     fn respond_tool_approval(

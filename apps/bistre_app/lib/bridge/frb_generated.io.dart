@@ -248,6 +248,9 @@ abstract class BistreRustLibApiImplPlatform
   );
 
   @protected
+  List<FfiEngineEvent> dco_decode_list_ffi_engine_event(dynamic raw);
+
+  @protected
   List<FfiGroundingSource> dco_decode_list_ffi_grounding_source(dynamic raw);
 
   @protected
@@ -641,6 +644,11 @@ abstract class BistreRustLibApiImplPlatform
 
   @protected
   List<FfiDialectDescriptor> sse_decode_list_ffi_dialect_descriptor(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<FfiEngineEvent> sse_decode_list_ffi_engine_event(
     SseDeserializer deserializer,
   );
 
@@ -1169,6 +1177,12 @@ abstract class BistreRustLibApiImplPlatform
   @protected
   void sse_encode_list_ffi_dialect_descriptor(
     List<FfiDialectDescriptor> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_ffi_engine_event(
+    List<FfiEngineEvent> self,
     SseSerializer serializer,
   );
 

@@ -110,6 +110,33 @@ void main() {
     expect(shell.controller.isThreadStreaming(a), isFalse);
   });
 
+  testWidgets('an approval request lost to lagged events is asked again', (
+    tester,
+  ) async {
+    final (shell, a, _) = await _twoChats(tester);
+    shell.gateway.emit(RunStartedEvent(threadId: a, nodeId: 'a-live'));
+    await _frames(tester);
+    // Core paused the run for approval, but its ToolApprovalRequested was dropped.
+    shell.gateway.pendingApprovals = <BistreEvent>[
+      ToolApprovalRequestedEvent(
+        threadId: a,
+        runId: 'run-a',
+        callId: 'call_0',
+        toolName: 'edit',
+        argumentsJson: '{"path":"note.txt"}',
+        riskTier: 'tier1_reversible_edit',
+      ),
+    ];
+    shell.gateway.seedAgentRun(threadId: a, status: 'waiting_approval');
+    expect(
+      shell.controller.threadRunState(a),
+      isNot(ThreadRunState.awaitingApproval),
+    );
+    shell.gateway.emit(const EventsLaggedEvent());
+    await _frames(tester);
+    expect(shell.controller.threadRunState(a), ThreadRunState.awaitingApproval);
+  });
+
   testWidgets('a new run starts with no tool rows from earlier runs', (
     tester,
   ) async {

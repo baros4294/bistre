@@ -262,6 +262,19 @@ extension FolioRunState on FolioController {
     if (stale.isNotEmpty) _notify();
   }
 
+  /// Shows again every approval core still waits on: one asked while events lagged, or
+  /// while no window was open and the daemon kept the run going.
+  Future<void> _restorePendingApprovals() async {
+    final List<BistreEvent> waiting;
+    try {
+      waiting = await _gateway.pendingToolApprovals();
+    } catch (e) {
+      _noteNonFatal('pending_approvals', e);
+      return;
+    }
+    waiting.forEach(_handleEngineEvent);
+  }
+
   /// The app came back to the foreground.
   Future<void> onAppResumed() async {
     try {
@@ -270,6 +283,7 @@ extension FolioRunState on FolioController {
       _noteNonFatal('app_resumed', e);
     }
     await _reconcileLiveRuns();
+    await _restorePendingApprovals();
   }
 
   /// Moves the live text between the leaf notifier and the background buffers when the open

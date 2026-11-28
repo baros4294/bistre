@@ -18,8 +18,25 @@ use crate::hooks::HookEventKind;
 
 /// Pending live tool-approval waiters. Keyed by thread, run, and call id: the same provider
 /// call id appears in many runs (an empty id becomes `call_0` everywhere).
-pub type PendingApprovalMap =
-    Arc<Mutex<HashMap<ApprovalKey, oneshot::Sender<ToolApprovalDecision>>>>;
+pub type PendingApprovalMap = Arc<Mutex<HashMap<ApprovalKey, PendingApproval>>>;
+
+/// One paused tool call: where the decision goes, and the `ToolApprovalRequested` event that
+/// asked for it, so an app that missed the event (lagged events, a reopened window) can show
+/// it again.
+#[derive(Debug)]
+pub struct PendingApproval {
+    pub(crate) reply: oneshot::Sender<ToolApprovalDecision>,
+    pub(crate) request: EngineEvent,
+}
+
+/// The approval requests still waiting for the user, oldest run first.
+pub fn pending_approval_requests(pending: &PendingApprovalMap) -> Vec<EngineEvent> {
+    let map = lock_or_recover(pending, "pending_approvals");
+    let mut waiting: Vec<(&ApprovalKey, &EngineEvent)> =
+        map.iter().map(|(key, p)| (key, &p.request)).collect();
+    waiting.sort_by(|a, b| (&a.0.run_id, &a.0.call_id).cmp(&(&b.0.run_id, &b.0.call_id)));
+    waiting.into_iter().map(|(_, ev)| ev.clone()).collect()
+}
 /// Chat grants and per-run denials remembered across tool calls.
 pub type ThreadAutoApprovals = Arc<Mutex<ApprovalMemory>>;
 
@@ -265,9 +282,9 @@ pub fn deliver_tool_approval(
     key: &ApprovalKey,
     decision: ToolApprovalDecision,
 ) -> bool {
-    let sender = lock_or_recover(pending, "pending_approvals").remove(key);
-    match sender {
-        Some(tx) => tx.send(decision).is_ok(),
+    let waiter = lock_or_recover(pending, "pending_approvals").remove(key);
+    match waiter {
+        Some(p) => p.reply.send(decision).is_ok(),
         None => false,
     }
 }

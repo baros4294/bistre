@@ -252,8 +252,21 @@ pub(crate) async fn execute_tool_batch(
                 call_id: call.call_id.clone(),
             };
             let (tx, rx) = oneshot::channel();
-            lock_or_recover(&services.pending_approvals, "pending_approvals")
-                .insert(key.clone(), tx);
+            let request = EngineEvent::ToolApprovalRequested {
+                thread_id: thread_id.to_owned(),
+                run_id: run_id.to_owned(),
+                call_id: call.call_id.clone(),
+                tool_name: call.name.clone(),
+                arguments_json: call.arguments_json.clone(),
+                risk_tier: risk,
+            };
+            lock_or_recover(&services.pending_approvals, "pending_approvals").insert(
+                key.clone(),
+                crate::agent_approvals::PendingApproval {
+                    reply: tx,
+                    request: request.clone(),
+                },
+            );
             note_write(
                 "agent_run_waiting_approval",
                 storage.update_agent_run(
@@ -264,19 +277,7 @@ pub(crate) async fn execute_tool_batch(
                     },
                 ),
             );
-            emit_logged(
-                storage,
-                events_tx,
-                Some(thread_id.to_owned()),
-                EngineEvent::ToolApprovalRequested {
-                    thread_id: thread_id.to_owned(),
-                    run_id: run_id.to_owned(),
-                    call_id: call.call_id.clone(),
-                    tool_name: call.name.clone(),
-                    arguments_json: call.arguments_json.clone(),
-                    risk_tier: risk,
-                },
-            );
+            emit_logged(storage, events_tx, Some(thread_id.to_owned()), request);
             let (decision, cancelled_while_waiting) = {
                 let _paused = services.power.pause_for_user();
                 emit(

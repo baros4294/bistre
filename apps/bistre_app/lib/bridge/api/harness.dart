@@ -58,6 +58,11 @@ Future<bool> respondToolApproval({
   decision: decision,
 );
 
+/// The approval requests whose runs still wait for the user, shown again after lagged events
+/// or when a window opens while a background run waits.
+Future<List<FfiEngineEvent>> pendingToolApprovals() =>
+    BistreRustLib.instance.api.crateApiHarnessPendingToolApprovals();
+
 /// Delivers the native host-bridge result for a `HostActionRequested` event (`computer_use`).
 Future<bool> respondHostAction({
   required String requestId,

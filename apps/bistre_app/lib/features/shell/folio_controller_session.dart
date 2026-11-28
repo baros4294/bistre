@@ -163,6 +163,7 @@ extension FolioSessionActions on FolioController {
         final threadId = _activeThread?.id;
         if (threadId != null) unawaited(_refreshAfterRun(threadId));
         unawaited(_reconcileLiveRuns());
+        unawaited(_restorePendingApprovals());
       case UnknownEngineEvent():
         debugPrint('Ignoring unknown engine event kind: ${event.kind}');
     }
