@@ -5,7 +5,12 @@ Rules: re-read this file at session start and after every compaction. It holds o
 
 ## Current
 
-Wave: Planned work (projects, scheduled-run policies, writing tools, quick entry, Show your name / Show files you sent)   Next action: owner review; `just check-all` and `just ui-gallery` pass; uncommitted.
+Wave: next release after v0.2.0   Next action: list every gap `docs/` records and work through them.
+
+Scope (owner): the next release completes everything `docs/` describes, not only the items below. That is every Spec 00 section 6 row that is not Implemented (Partial, Built not wired, Planned), every `Open:` and `[UNVERIFIED]` note in `docs/specs/` and `docs/adr/` (for example ADR-0019 Not Built), and the design gaps in `docs/design/design.md`. Each one becomes a test and code, or an owner decision when it cannot be built (a live device, a paid service); the row or note changes in the same commit.
+
+- [ ] Windows code signing through SignPath Foundation's free open-source program: owner applies; then a signing step in `release.yml`, Spec 10, and the README SmartScreen note
+- [ ] `release.yml` checks that CI passed on the tagged commit (the push to `main`) instead of running the CI gates again, then builds, packages, and signs from that commit; Spec 10 and CONTRIBUTING
 
 ## Decisions (owner)
 
