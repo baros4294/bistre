@@ -58,7 +58,7 @@ class Win32Window {
   // Return a RECT representing the bounds of the current client area.
   RECT GetClientArea();
 
-  // Applies Bistre's active Light/Dark Sepia colors seamlessly to Windows 11 native DWM chrome.
+  // Applies Bistre's active Light/Dark Sepia colors to Windows 11 native DWM chrome.
   void ApplyBistreTheme(bool is_dark,
                         COLORREF caption_bgr,
                         COLORREF text_bgr,
@@ -112,6 +112,13 @@ class Win32Window {
   // Solid brush matching active Sepia Day/Night canvas so HWND never flashes white.
   HBRUSH bg_brush_ = nullptr;
   COLORREF bg_color_ = RGB(0xF6, 0xEF, 0xE2);
+
+  // The app's last frame colours, re-applied when Windows changes its accent colour.
+  bool has_app_theme_ = false;
+  bool app_is_dark_ = false;
+  COLORREF app_caption_ = 0;
+  COLORREF app_text_ = 0;
+  COLORREF app_border_ = 0;
   // Once the window is shown and Flutter owns child_content_, skip GDI background erases
   // so Win32 never overpaints ANGLE's D3D11/OpenGL swapchain.
   bool window_visible_ = false;

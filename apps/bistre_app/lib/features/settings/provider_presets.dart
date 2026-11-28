@@ -4,7 +4,7 @@
 library;
 
 /// Starter provider preset (name, API format id, optional initial model, icon). The server
-/// URL and endpoint come from core's dialect descriptor (P7), never from a copy here.
+/// URL and endpoint come from core's dialect descriptor, never from a copy here.
 class ProviderPreset {
   const ProviderPreset({
     required this.name,

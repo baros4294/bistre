@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../../bridge/bistre_engine.dart';
+import '../../design/bistre_controls.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
@@ -10,19 +11,14 @@ import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
 
-const String _kMinPLabel = 'min_p';
-const String _kTopKLabel = 'top_k';
-const String _kRepPenLabel = 'rep_pen';
-const String _kDryLabel = 'DRY';
-const String _kXtcLabel = 'XTC';
-const String _kBannedLabel = 'banned_phrases (comma-separated)';
-
-/// Clean, compact Roleplay & Writing Studio toolbar shown ONLY when `activeThreadMode == 'write'`:
-/// - `[Chat | Manuscript]` segmented view toggle
-/// - Turn-0 Alternate Greeting `< Opening 1 / N >` switcher when character has greetings
-/// - `Continue` and `Draft my reply` (`Impersonate`) quick actions
-/// - Group Scene character pills + `Highlight dialogue & actions` toggle
-/// - Collapsible `Creative samplers & phrase bans` drawer (`min_p`, `top_k`, `DRY`, `XTC`, banned phrases).
+/// Write-mode toolbar, shown only when `activeThreadMode == 'write'`. One kind of
+/// control per place:
+/// - a `[Chat | Manuscript]` switch;
+/// - `Continue` and `Draft my reply` as buttons (chat view);
+/// - who is in the scene, as plain text;
+/// - one options button opening the dialogue highlight switch and the sampler fields.
+/// The Story Bible and Prompt live in Studio's tabs only. A first-turn `< Opening 1 / N >`
+/// switcher shows when the character has alternate greetings.
 class RoleplayControlsBar extends StatefulWidget {
   const RoleplayControlsBar({super.key, required this.controller});
 
@@ -123,16 +119,19 @@ class _RoleplayControlsBarState extends State<RoleplayControlsBar> {
               runSpacing: 6,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                // Chat vs Manuscript view toggle
-                InkChip(
-                  label: l10n.t(L10nKey.storyViewChat),
-                  selected: !ctrl.manuscriptViewActive,
-                  onSelected: () => ctrl.toggleManuscriptView(false),
-                ),
-                InkChip(
-                  label: l10n.t(L10nKey.storyViewManuscript),
+                BistreSegmentedControl<bool>(
+                  options: <BistreSegmentedOption<bool>>[
+                    BistreSegmentedOption<bool>(
+                      value: false,
+                      label: l10n.t(L10nKey.storyViewChat),
+                    ),
+                    BistreSegmentedOption<bool>(
+                      value: true,
+                      label: l10n.t(L10nKey.storyViewManuscript),
+                    ),
+                  ],
                   selected: ctrl.manuscriptViewActive,
-                  onSelected: () => ctrl.toggleManuscriptView(true),
+                  onSelected: ctrl.toggleManuscriptView,
                 ),
                 if (!ctrl.manuscriptViewActive) ...[
                   EngravedButton(
@@ -151,50 +150,30 @@ class _RoleplayControlsBarState extends State<RoleplayControlsBar> {
                     compact: true,
                     onPressed: ctrl.isStreaming
                         ? null
-                        : () => unawaited(
-                            ctrl.triggerStoryImpersonate(
-                              request: l10n.t(
-                                L10nKey.storyRequestImpersonate,
-                                <String, Object?>{
-                                  'name':
-                                      ctrl.activePersonaName ??
-                                      l10n.t(L10nKey.storyDefaultPersonaName),
-                                },
-                              ),
-                            ),
-                          ),
+                        : () => unawaited(ctrl.draftReplyIntoComposer()),
                   ),
                 ],
-                // Active cast badges (group scene support)
-                for (final c in ctrl.activeThreadCharacters)
-                  WaxSealBadge(label: c.name),
-                InkChip(
-                  label: l10n.t(L10nKey.storyDialogueStyling),
-                  selected: state.dialogueStyling,
-                  onSelected: () => unawaited(
-                    ctrl.saveStoryThreadState(
-                      state.copyWith(dialogueStyling: !state.dialogueStyling),
-                    ),
-                  ),
-                ),
-                InkChip(
-                  label: l10n.t(L10nKey.storySamplersTitle),
-                  selected: _samplersExpanded,
-                  onSelected: () =>
+                BistreIconButton(
+                  icon: BistreUiIcon.sliders,
+                  size: 14,
+                  dimension: 32,
+                  active: _samplersExpanded,
+                  semanticsLabel: l10n.t(L10nKey.storySamplersTitle),
+                  onPressed: () =>
                       setState(() => _samplersExpanded = !_samplersExpanded),
                 ),
-                InkChip(
-                  label: l10n.t(L10nKey.studioTabStory),
-                  selected:
-                      ctrl.studioPaneOpen && ctrl.studioTab == StudioTab.story,
-                  onSelected: () => ctrl.setStudioTab(StudioTab.story),
-                ),
-                InkChip(
-                  label: l10n.t(L10nKey.studioTabPrompt),
-                  selected:
-                      ctrl.studioPaneOpen && ctrl.studioTab == StudioTab.prompt,
-                  onSelected: () => ctrl.setStudioTab(StudioTab.prompt),
-                ),
+                if (ctrl.activeThreadCharacters.isNotEmpty)
+                  InkText(
+                    l10n.t(L10nKey.storyCastLine, <String, Object?>{
+                      'names': ctrl.activeThreadCharacters
+                          .map((c) => l10n.isolate(c.name))
+                          .join(l10n.t(L10nKey.storyCastSeparator)),
+                    }),
+                    role: InkTextRole.captionMeta,
+                    color: theme.inkMuted,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
               ],
             ),
           ),
@@ -272,32 +251,46 @@ class _RoleplayControlsBarState extends State<RoleplayControlsBar> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    BistreSettingRow(
+                      label: l10n.t(L10nKey.storyDialogueStyling),
+                      trailing: BistreSwitch(
+                        value: state.dialogueStyling,
+                        semanticsLabel: l10n.t(L10nKey.storyDialogueStyling),
+                        reduceMotionOverride: ctrl.reduceMotionOverride,
+                        onChanged: (on) => unawaited(
+                          ctrl.saveStoryThreadState(
+                            state.copyWith(dialogueStyling: on),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     Wrap(
                       spacing: 8,
                       runSpacing: 6,
                       children: [
                         _SamplerField(
-                          label: _kMinPLabel,
+                          label: l10n.t(L10nKey.storySamplerMinP),
                           controller: _minPCtrl,
                           focusNode: _minPFocus,
                         ),
                         _SamplerField(
-                          label: _kTopKLabel,
+                          label: l10n.t(L10nKey.storySamplerTopK),
                           controller: _topKCtrl,
                           focusNode: _topKFocus,
                         ),
                         _SamplerField(
-                          label: _kRepPenLabel,
+                          label: l10n.t(L10nKey.storySamplerRepetition),
                           controller: _repCtrl,
                           focusNode: _repFocus,
                         ),
                         _SamplerField(
-                          label: _kDryLabel,
+                          label: l10n.t(L10nKey.storySamplerDry),
                           controller: _dryCtrl,
                           focusNode: _dryFocus,
                         ),
                         _SamplerField(
-                          label: _kXtcLabel,
+                          label: l10n.t(L10nKey.storySamplerXtc),
                           controller: _xtcCtrl,
                           focusNode: _xtcFocus,
                         ),
@@ -310,7 +303,7 @@ class _RoleplayControlsBarState extends State<RoleplayControlsBar> {
                           child: QuillInput(
                             controller: _bannedCtrl,
                             focusNode: _bannedFocus,
-                            placeholder: _kBannedLabel,
+                            placeholder: l10n.t(L10nKey.storySamplerBanned),
                             maxLines: 1,
                             submitOnEnter: false,
                             onSubmitted: () {},
@@ -377,8 +370,9 @@ class _SamplerField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
+    final l10n = BistreLocalizations.of(context);
     return SizedBox(
-      width: 96,
+      width: 120,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -388,7 +382,7 @@ class _SamplerField extends StatelessWidget {
           QuillInput(
             controller: controller,
             focusNode: focusNode,
-            placeholder: label,
+            placeholder: l10n.t(L10nKey.settingsAssistantsParamsDefault),
             maxLines: 1,
             submitOnEnter: false,
             onSubmitted: () {},

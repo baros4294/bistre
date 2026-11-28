@@ -64,9 +64,7 @@ void main() {
     },
   );
 
-  testWidgets('headers and body fields live only in Advanced (A-W 5c)', (
-    tester,
-  ) async {
+  testWidgets('headers and body fields live only in Advanced', (tester) async {
     final (_, l10n) = await _pump(tester);
     expect(find.text(l10n.t(L10nKey.providerCustomHeaders)), findsNothing);
     expect(find.text(l10n.t(L10nKey.providerCustomBody)), findsNothing);

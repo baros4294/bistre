@@ -15,6 +15,7 @@ class AppAppearance {
     required this.reducedEffects,
     this.reduceMotion = false,
     this.syntaxThemeId = '',
+    this.textSizePercent = 100,
   });
 
   final bool isDark;
@@ -29,6 +30,9 @@ class AppAppearance {
   final bool reduceMotion;
   final String syntaxThemeId;
 
+  /// Settings > Appearance > App text size, applied on top of the system text size.
+  final int textSizePercent;
+
   @override
   bool operator ==(Object other) =>
       other is AppAppearance &&
@@ -39,7 +43,8 @@ class AppAppearance {
       other.typography == typography &&
       other.reducedEffects == reducedEffects &&
       other.reduceMotion == reduceMotion &&
-      other.syntaxThemeId == syntaxThemeId;
+      other.syntaxThemeId == syntaxThemeId &&
+      other.textSizePercent == textSizePercent;
 
   @override
   int get hashCode => Object.hash(
@@ -51,5 +56,6 @@ class AppAppearance {
     reducedEffects,
     reduceMotion,
     syntaxThemeId,
+    textSizePercent,
   );
 }

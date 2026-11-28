@@ -9,7 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/gallery_harness.dart';
 
-/// Split diff toggle and quiet unavailable-cost popup (Spec 08 §3, `docs/design/DESIGN.md` §8).
+/// Split diff toggle and quiet unavailable-cost popup (Spec 08 §3, `docs/design/design.md` §8).
 void main() {
   const diff =
       '--- a/lib.rs\n+++ b/lib.rs\n@@ -1,3 +1,3 @@\n fn keep() {}\n-let old = 1;\n+let new = 2;\n+let extra = 3;\n tail();';

@@ -12,7 +12,7 @@ import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
-import '../chat/reasoning_block.dart';
+import '../chat/thinking_control.dart';
 import '../settings/model_picker_field.dart';
 import '../shell/folio_controller.dart';
 
@@ -34,7 +34,10 @@ class _ChatInspectorDrawerState extends State<ChatInspectorDrawer> {
   final FocusNode _modelOverrideFocus = FocusNode();
   String? _syncedThreadId;
 
-  /// Edits typed per chat whose save is not confirmed yet (U36). Switching chats never
+  /// Clear messages was pressed once in this chat; the next press clears.
+  bool _confirmClear = false;
+
+  /// Edits typed per chat whose save is not confirmed yet. Switching chats never
   /// replaces them with an older stored value; an entry goes once the chat stores it.
   final Map<String, String> _unsavedPrompt = <String, String>{};
   final Map<String, String> _unsavedModel = <String, String>{};
@@ -66,6 +69,7 @@ class _ChatInspectorDrawerState extends State<ChatInspectorDrawer> {
     if (_unsavedModel[t.id]?.trim() == storedModel) _unsavedModel.remove(t.id);
     if (t.id == _syncedThreadId) return;
     _syncedThreadId = t.id;
+    _confirmClear = false;
     _promptCtrl.text = _unsavedPrompt[t.id] ?? storedPrompt;
     _modelOverrideCtrl.text = _unsavedModel[t.id] ?? storedModel;
   }
@@ -169,6 +173,23 @@ class _ChatInspectorDrawerState extends State<ChatInspectorDrawer> {
                         const SizedBox(height: 14),
                         const FolioDivider(),
                         const SizedBox(height: 14),
+                        if (thread != null && ctrl.projects.isNotEmpty) ...[
+                          InkText(
+                            l10n.t(L10nKey.chatInspectorProject),
+                            role: InkTextRole.captionMeta,
+                            color: theme.inkMuted,
+                          ),
+                          const SizedBox(height: 6),
+                          _ProjectChoiceList(
+                            projects: ctrl.projects,
+                            selectedId: ctrl.projectOf(thread)?.id,
+                            noneLabel: l10n.t(L10nKey.chatInspectorNoProject),
+                            onSelect: (id) => unawaited(
+                              ctrl.moveThreadToProject(thread.id, id),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                         // Provider override
                         InkText(
                           l10n.t(L10nKey.settingsAssistantsDefaultProvider),
@@ -290,6 +311,10 @@ class _ChatInspectorDrawerState extends State<ChatInspectorDrawer> {
                           semanticsLabel: l10n.t(
                             L10nKey.settingsAssistantsTemperature,
                           ),
+                          unset: tempMilli == null,
+                          valueLabel: tempMilli == null
+                              ? l10n.t(L10nKey.settingsAssistantsParamsDefault)
+                              : null,
                           onChanged: (v) => unawaited(
                             ctrl.updateActiveThreadOverrides(
                               temperatureMilli: (v * 1000).round(),
@@ -327,6 +352,10 @@ class _ChatInspectorDrawerState extends State<ChatInspectorDrawer> {
                           semanticsLabel: l10n.t(
                             L10nKey.settingsAssistantsMaxTokens,
                           ),
+                          unset: maxTok == null,
+                          valueLabel: maxTok == null
+                              ? l10n.t(L10nKey.settingsAssistantsParamsDefault)
+                              : null,
                           onChanged: (v) => unawaited(
                             ctrl.updateActiveThreadOverrides(
                               maxOutputTokens: v.round(),
@@ -364,6 +393,10 @@ class _ChatInspectorDrawerState extends State<ChatInspectorDrawer> {
                           semanticsLabel: l10n.t(
                             L10nKey.settingsAssistantsTopP,
                           ),
+                          unset: topPMilli == null,
+                          valueLabel: topPMilli == null
+                              ? l10n.t(L10nKey.settingsAssistantsParamsDefault)
+                              : null,
                           onChanged: (v) => unawaited(
                             ctrl.updateActiveThreadOverrides(
                               topPMilli: (v * 1000).round(),
@@ -391,14 +424,31 @@ class _ChatInspectorDrawerState extends State<ChatInspectorDrawer> {
                         const SizedBox(height: 14),
 
                         // Reasoning effort & reversible context compaction
-                        InkText(
-                          l10n.t(L10nKey.chatReasoningEffort),
-                          role: InkTextRole.captionMeta,
-                          color: theme.inkMuted,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: InkText(
+                                l10n.t(L10nKey.chatReasoningEffort),
+                                role: InkTextRole.captionMeta,
+                                color: theme.inkMuted,
+                              ),
+                            ),
+                            if (isThinkingLevel(ctrl.settings.reasoningEffort))
+                              InkText(
+                                l10n.t(
+                                  thinkingLabelKey(
+                                    ctrl.settings.reasoningEffort,
+                                  ),
+                                ),
+                                role: InkTextRole.captionMeta,
+                                color: theme.accentBrass,
+                              ),
+                          ],
                         ),
                         const SizedBox(height: 8),
-                        ReasoningEffortSelector(
+                        ThinkingEffortPicker(
                           value: ctrl.settings.reasoningEffort,
+                          reduceMotionOverride: ctrl.reduceMotionOverride,
                           onChanged: (effort) =>
                               unawaited(ctrl.setReasoningEffort(effort)),
                         ),
@@ -415,6 +465,50 @@ class _ChatInspectorDrawerState extends State<ChatInspectorDrawer> {
                               !ctrl.isStreaming &&
                                   ctrl.visibleBranchNodes.length > 4
                               ? () => unawaited(ctrl.compactActiveThread())
+                              : null,
+                        ),
+                        const SizedBox(height: 8),
+                        EngravedButton(
+                          label: l10n.t(L10nKey.chatInspectorSummarizeNewChat),
+                          compact: true,
+                          leading: BistreIcon(
+                            BistreUiIcon.newChat,
+                            size: 13,
+                            color: theme.inkSecondary,
+                          ),
+                          onPressed:
+                              !ctrl.isStreaming &&
+                                  ctrl.visibleBranchNodes.isNotEmpty
+                              ? () => unawaited(ctrl.summarizeIntoNewChat())
+                              : null,
+                        ),
+                        const SizedBox(height: 8),
+                        // Clearing cannot be undone: the first press asks, the second clears.
+                        EngravedButton(
+                          label: l10n.t(
+                            _confirmClear
+                                ? L10nKey.chatInspectorClearConfirm
+                                : L10nKey.chatInspectorClearMessages,
+                          ),
+                          compact: true,
+                          leading: BistreIcon(
+                            BistreUiIcon.trash,
+                            size: 13,
+                            color: _confirmClear
+                                ? theme.statusErr
+                                : theme.inkSecondary,
+                          ),
+                          onPressed:
+                              !ctrl.isStreaming &&
+                                  ctrl.visibleBranchNodes.isNotEmpty
+                              ? () {
+                                  if (!_confirmClear) {
+                                    setState(() => _confirmClear = true);
+                                    return;
+                                  }
+                                  setState(() => _confirmClear = false);
+                                  unawaited(ctrl.clearActiveMessages());
+                                }
                               : null,
                         ),
 
@@ -567,6 +661,54 @@ class _ProviderOverrideList extends StatelessWidget {
                 providerName: p.name,
                 size: 14,
               ),
+              onTap: () => onSelect(p.id),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Which project the chat belongs to; choosing one moves the chat there.
+class _ProjectChoiceList extends StatelessWidget {
+  const _ProjectChoiceList({
+    required this.projects,
+    required this.selectedId,
+    required this.noneLabel,
+    required this.onSelect,
+  });
+
+  final List<EngineProject> projects;
+  final String? selectedId;
+  final String noneLabel;
+  final ValueChanged<String?> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = BistreTheme.of(context);
+    Widget mark(BistreUiIcon icon, bool selected) => BistreIcon(
+      icon,
+      size: 14,
+      color: selected ? theme.accentBrass : theme.inkMuted,
+    );
+    return FolioSurface(
+      tone: FolioTone.elevated,
+      padding: const EdgeInsetsDirectional.all(4),
+      borderRadius: 10,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _OverrideTile(
+            label: noneLabel,
+            selected: selectedId == null,
+            leading: mark(BistreUiIcon.chat, selectedId == null),
+            onTap: () => onSelect(null),
+          ),
+          for (final p in projects)
+            _OverrideTile(
+              label: p.name,
+              selected: selectedId == p.id,
+              leading: mark(BistreUiIcon.folder, selectedId == p.id),
               onTap: () => onSelect(p.id),
             ),
         ],

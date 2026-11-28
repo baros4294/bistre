@@ -35,7 +35,7 @@ void main() {
       'Enter while the next chat is loading never sends into it ($layout)',
       (tester) async {
         final (shell, a, b) = await _twoChats(tester, layout);
-        shell.gateway.gate('listNodes');
+        shell.gateway.gate('listNodesWindow');
         final switching = shell.controller.selectThread(b.id);
         await tester.pump();
 
@@ -43,7 +43,7 @@ void main() {
         await tester.sendKeyEvent(LogicalKeyboardKey.enter);
         await tester.pump();
 
-        shell.gateway.release('listNodes');
+        shell.gateway.release('listNodesWindow');
         await switching;
         await tester.pumpAndSettle();
 

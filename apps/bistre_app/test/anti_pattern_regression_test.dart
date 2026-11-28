@@ -4,7 +4,6 @@ import 'package:bistre_app/bridge/bistre_engine.dart';
 import 'package:bistre_app/design/bistre_controls.dart';
 import 'package:bistre_app/design/bistre_icons.dart';
 import 'package:bistre_app/design/bistre_theme.dart';
-import 'package:bistre_app/design/context_menu.dart';
 import 'package:bistre_app/design/disclosure_reveal.dart';
 import 'package:bistre_app/design/ink_primitives.dart';
 import 'package:bistre_app/design/press_feedback.dart';
@@ -30,24 +29,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/gallery_harness.dart';
 
-/// Regression tests for the v2 anti-pattern audit (`docs/design/DESIGN.md` §8). Each one fails
+/// Regression tests for the v2 anti-pattern audit (`docs/design/design.md` §8). Each one fails
 /// on the pre-fix code: a centered constrained `ListView`, root-notifying stream deltas,
 /// parent-rebuilding hover state, and always-horizontal code fences.
 void main() {
-  Future<(FolioController, GalleryGateway, BistreLocalizationController)>
-  boot() async {
-    final l10n = loadDiskCatalogs();
-    final gw = GalleryGateway(connected: true);
-    final ctrl = FolioController(
-      gateway: gw,
-      defaultThreadTitle: l10n.t(L10nKey.shellThreadDefaultTitle),
-      onLocaleSynced: l10n.setLocale,
-      isDevEnvironment: true,
-    );
-    await ctrl.bootstrap('memory');
-    return (ctrl, gw, l10n);
-  }
-
   testWidgets('wheel scrolls the chat from the empty desktop page margin', (
     WidgetTester tester,
   ) async {
@@ -55,7 +40,7 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final (ctrl, gw, l10n) = await boot();
+    final (ctrl, gw, l10n) = await bootGalleryController();
     await tester.pumpWidget(
       BistreApp(l10nController: l10n, folioController: ctrl),
     );
@@ -86,7 +71,7 @@ void main() {
   testWidgets('streaming deltas never notify the shell or sidebar', (
     WidgetTester tester,
   ) async {
-    final (ctrl, gw, l10n) = await boot();
+    final (ctrl, gw, l10n) = await bootGalleryController();
     await tester.pumpWidget(
       BistreApp(l10nController: l10n, folioController: ctrl),
     );
@@ -245,12 +230,24 @@ void main() {
     ], joinSummaries: (p) => p.join(' · '));
     expect(folded.map((x) => x.id), <String>['1', '4', '5', '6']);
     expect(folded.first.summary, 'read 1 · grep 2 · glob 3');
+
+    // Thinking between two reads folds with them; thinking before the edit stays with it.
+    final across = foldReadOnlySteps(<ToolActivityEntry>[
+      e('t0', kThinkingRow),
+      e('1', 'read'),
+      e('t1', kThinkingRow),
+      e('2', 'grep'),
+      e('t2', kThinkingRow),
+      e('3', 'edit'),
+    ], joinSummaries: (p) => p.join(' · '));
+    expect(across.map((x) => x.id), <String>['t0', '1', 't2', '3']);
+    expect(across[1].summary, 'read 1 · grep 2');
   });
 
   test(
     'meta joins isolate each fragment so mixed-direction text keeps its order',
     () async {
-      final (ctrl, gw, l10n) = await boot();
+      final (ctrl, gw, l10n) = await bootGalleryController();
       expect(
         l10n.joinMeta(<String>['Inter', '', '15px']),
         '\u2068Inter\u2069 · \u206815px\u2069',
@@ -263,7 +260,7 @@ void main() {
   testWidgets('deleting a chat is undoable for 8 seconds', (
     WidgetTester tester,
   ) async {
-    final (ctrl, gw, l10n) = await boot();
+    final (ctrl, gw, l10n) = await bootGalleryController();
     await tester.pumpWidget(
       BistreApp(l10nController: l10n, folioController: ctrl),
     );
@@ -289,7 +286,7 @@ void main() {
   test(
     'toasts and ordinary notifications do not change the root appearance',
     () async {
-      final (ctrl, gw, _) = await boot();
+      final (ctrl, gw, _) = await bootGalleryController();
       var rootRebuildSignals = 0;
       ctrl.appearance.addListener(() => rootRebuildSignals++);
       ctrl.showToast(L10nKey.toastDeleted);
@@ -304,7 +301,7 @@ void main() {
   test(
     'a fast thread switch never shows the previous chat\'s messages',
     () async {
-      final (ctrl, gw, _) = await boot();
+      final (ctrl, gw, _) = await bootGalleryController();
       final threads = ctrl.threads;
       expect(threads.length, greaterThanOrEqualTo(2));
       final slow = threads[0].id;
@@ -323,7 +320,7 @@ void main() {
   test(
     'chats deleted inside the Undo window are committed when the app closes',
     () async {
-      final (ctrl, gw, _) = await boot();
+      final (ctrl, gw, _) = await bootGalleryController();
       final victim = ctrl.threads.first.id;
       await ctrl.deleteThread(victim);
       expect(
@@ -390,7 +387,7 @@ void main() {
   );
 
   test('opened chats become tabs; closing the current tab switches to its neighbour', () async {
-    final (ctrl, gw, _) = await boot();
+    final (ctrl, gw, _) = await bootGalleryController();
     final first = ctrl.activeThread!.id;
     final second = ctrl.threads.firstWhere((t) => t.id != first).id;
     await ctrl.selectThread(second);
@@ -409,7 +406,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      final (ctrl, gw, l10n) = await boot();
+      final (ctrl, gw, l10n) = await bootGalleryController();
       await tester.pumpWidget(
         BistreApp(l10nController: l10n, folioController: ctrl),
       );
@@ -461,7 +458,7 @@ void main() {
   test(
     'the conversation gauge shows core\'s estimate for the visible branch',
     () async {
-      final (ctrl, gw, _) = await boot();
+      final (ctrl, gw, _) = await bootGalleryController();
       await pumpEventQueue();
       final thread = ctrl.activeThread!.id;
       final leaf = ctrl.visibleBranchNodes.last.id;
@@ -489,7 +486,7 @@ void main() {
     expect(contentDirection('How should we keep WAL fast?'), TextDirection.ltr);
     expect(contentDirection('**Tiếng Việt** trước'), TextDirection.ltr);
     expect(contentDirection('## مرحبا بالعالم'), TextDirection.rtl);
-    expect(contentDirection('42 — שלום'), TextDirection.rtl);
+    expect(contentDirection('42: שלום'), TextDirection.rtl);
     expect(contentDirection('123 ... !'), isNull);
   });
 
@@ -523,7 +520,7 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final (ctrl, gw, l10n) = await boot();
+    final (ctrl, gw, l10n) = await bootGalleryController();
     await tester.pumpWidget(
       BistreApp(l10nController: l10n, folioController: ctrl),
     );
@@ -564,7 +561,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      final (ctrl, gw, l10n) = await boot();
+      final (ctrl, gw, l10n) = await bootGalleryController();
       await tester.pumpWidget(
         BistreApp(l10nController: l10n, folioController: ctrl),
       );
@@ -580,7 +577,8 @@ void main() {
       await tester.pumpAndSettle();
       final slider = find.byType(BistreSlider);
       expect(slider, findsOneWidget);
-      tester.widget<BistreSlider>(slider).onChanged(5); // Extra
+      // The slider holds the levels Off..Max (Auto is a choice beside it): 4 is Extra.
+      tester.widget<BistreSlider>(slider).onChanged(4);
       await tester.pumpAndSettle();
       expect(ctrl.settings.reasoningEffort, 'xhigh');
       expect(find.text(chip(L10nKey.chatEffortExtra)), findsOneWidget);
@@ -759,405 +757,6 @@ void main() {
       await pumpReveal(open: false, reduce: true);
       await tester.pump();
       expect(find.byKey(const Key('body')), findsNothing);
-    },
-  );
-
-  testWidgets('chip colours cross-fade when selected', (
-    WidgetTester tester,
-  ) async {
-    final theme = BistreThemeData.resolve(isDark: false);
-    Future<void> pumpChip({required bool selected}) => tester.pumpWidget(
-      Directionality(
-        textDirection: TextDirection.ltr,
-        child: BistreTheme(
-          data: theme,
-          child: Center(
-            child: InkChip(
-              label: 'High',
-              selected: selected,
-              onSelected: () {},
-            ),
-          ),
-        ),
-      ),
-    );
-    Color? fill() {
-      final box = tester.widget<DecoratedBox>(
-        find
-            .descendant(
-              of: find.byType(EaseDecoration),
-              matching: find.byType(DecoratedBox),
-            )
-            .first,
-      );
-      return (box.decoration as BoxDecoration).color;
-    }
-
-    await pumpChip(selected: false);
-    expect(fill(), theme.bgSurface);
-    await pumpChip(selected: true);
-    await tester.pump(const Duration(milliseconds: 60));
-    expect(fill(), isNot(theme.bgSurface));
-    expect(fill(), isNot(theme.bgElevated));
-    await tester.pumpAndSettle();
-    expect(fill(), theme.bgElevated);
-  });
-
-  testWidgets('icon buttons name themselves after a hover rest', (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(
-      Directionality(
-        textDirection: TextDirection.ltr,
-        child: BistreTheme(
-          data: BistreThemeData.resolve(isDark: false),
-          child: Overlay(
-            initialEntries: <OverlayEntry>[
-              OverlayEntry(
-                builder: (_) => Center(
-                  child: BistreIconButton(
-                    icon: BistreUiIcon.search,
-                    semanticsLabel: 'Search chats',
-                    onPressed: () {},
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-    addTearDown(mouse.removePointer);
-    await mouse.addPointer(location: Offset.zero);
-    await mouse.moveTo(tester.getCenter(find.byType(BistreIconButton)));
-    await tester.pump(const Duration(milliseconds: 200));
-    expect(
-      find.text('Search chats'),
-      findsNothing,
-      reason: 'no hint before the rest',
-    );
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pumpAndSettle();
-    expect(find.text('Search chats'), findsOneWidget);
-    await mouse.moveTo(Offset.zero);
-    await tester.pumpAndSettle();
-    expect(find.text('Search chats'), findsNothing);
-  });
-
-  testWidgets('right-clicking a message opens its actions menu', (
-    WidgetTester tester,
-  ) async {
-    tester.view.physicalSize = const Size(1320, 820);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final (ctrl, gw, l10n) = await boot();
-    String? copied;
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'Clipboard.setData') {
-          copied = (call.arguments as Map<Object?, Object?>)['text'] as String?;
-        }
-        return null;
-      },
-    );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      ),
-    );
-    await tester.pumpWidget(
-      BistreApp(l10nController: l10n, folioController: ctrl),
-    );
-    await tester.pumpAndSettle();
-
-    final message = find
-        .descendant(
-          of: find.byType(FolioMessageFeed),
-          matching: find.byType(ContextMenuRegion),
-        )
-        .first;
-    await tester.tap(message, buttons: kSecondaryButton);
-    await tester.pumpAndSettle();
-    final copy = find.text(l10n.t(L10nKey.chatActionCopy));
-    expect(copy, findsOneWidget);
-    expect(find.text(l10n.t(L10nKey.chatActionDelete)), findsWidgets);
-
-    await tester.tap(copy);
-    await tester.pumpAndSettle();
-    expect(copied, isNotNull);
-    expect(copied, isNotEmpty);
-    expect(copy, findsNothing, reason: 'choosing an entry closes the menu');
-
-    // Sidebar chats have their own menu.
-    await tester.tap(
-      find
-          .descendant(
-            of: find.byType(FolioSidebar),
-            matching: find.byType(ContextMenuRegion),
-          )
-          .first,
-      buttons: kSecondaryButton,
-    );
-    await tester.pumpAndSettle();
-    expect(find.text(l10n.t(L10nKey.threadRename)), findsOneWidget);
-    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-    await tester.pumpAndSettle();
-    expect(find.text(l10n.t(L10nKey.threadRename)), findsNothing);
-
-    ctrl.dispose();
-    await gw.shutdown();
-  });
-
-  testWidgets('your name labels your messages', (WidgetTester tester) async {
-    tester.view.physicalSize = const Size(1320, 820);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final (ctrl, gw, l10n) = await boot();
-    await tester.pumpWidget(
-      BistreApp(l10nController: l10n, folioController: ctrl),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      find.textContaining('Ana Lima', findRichText: true, skipOffstage: false),
-      findsNothing,
-    );
-    await ctrl.updateSettings(
-      ctrl.settings.copyWith(userDisplayName: 'Ana Lima'),
-    );
-    await tester.pumpAndSettle();
-    // The chat opens at its newest reply, so the user's turn may sit above the fold.
-    expect(
-      find.textContaining('Ana Lima', findRichText: true, skipOffstage: false),
-      findsWidgets,
-    );
-    ctrl.dispose();
-    await gw.shutdown();
-  });
-
-  testWidgets('the model picker marks where each provider runs', (
-    WidgetTester tester,
-  ) async {
-    tester.view.physicalSize = const Size(1320, 820);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final (ctrl, gw, l10n) = await boot();
-    await tester.pumpWidget(
-      BistreApp(l10nController: l10n, folioController: ctrl),
-    );
-    await tester.pumpAndSettle();
-    final cloud = l10n.t(L10nKey.chatModelCloud);
-    expect(find.text(cloud), findsNothing);
-    await tester.tap(find.textContaining(ctrl.activeProvider!.name).first);
-    await tester.pumpAndSettle();
-    expect(find.text(cloud), findsNWidgets(ctrl.providers.length));
-    ctrl.dispose();
-    await gw.shutdown();
-  });
-
-  testWidgets('settings search names the setting that matched', (
-    WidgetTester tester,
-  ) async {
-    tester.view.physicalSize = const Size(1320, 820);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final (ctrl, gw, l10n) = await boot();
-    await tester.pumpWidget(
-      BistreApp(l10nController: l10n, folioController: ctrl),
-    );
-    await tester.pumpAndSettle();
-    ctrl.openSettings(); // Providers: the matching setting is on another page.
-    await tester.pumpAndSettle();
-    final search = find.ancestor(
-      of: find.text(l10n.t(L10nKey.settingsSearchPlaceholder)),
-      matching: find.byType(QuillInput),
-    );
-    await tester.enterText(
-      find.descendant(of: search, matching: find.byType(EditableText)),
-      'your name',
-    );
-    await tester.pumpAndSettle();
-    // The Appearance page is listed, with the matching setting under it.
-    expect(find.text(l10n.t(L10nKey.settingsProfileName)), findsWidgets);
-    ctrl.dispose();
-    await gw.shutdown();
-  });
-
-  testWidgets('phone settings: card list, one page, back and swipe step back', (
-    WidgetTester tester,
-  ) async {
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final (ctrl, gw, l10n) = await boot();
-    await tester.pumpWidget(
-      BistreApp(l10nController: l10n, folioController: ctrl),
-    );
-    await tester.pumpAndSettle();
-    ctrl.openSettings();
-    await tester.pumpAndSettle();
-
-    // Root: one header (Settings + Chat), search, and every page as a vertical card.
-    final appearance = find.text(l10n.t(L10nKey.settingsTabAppearance));
-    final shortcuts = find.text(l10n.t(L10nKey.settingsTabShortcuts));
-    expect(find.text(l10n.t(L10nKey.settingsChat)), findsOneWidget);
-    expect(
-      find.text(l10n.t(L10nKey.settingsSearchPlaceholder)),
-      findsOneWidget,
-    );
-    expect(find.text(l10n.t(L10nKey.settingsSubShortcuts)), findsOneWidget);
-    await tester.dragUntilVisible(
-      shortcuts,
-      find.byType(SingleChildScrollView).last,
-      const Offset(0, -200),
-    );
-    expect(
-      tester.getTopLeft(shortcuts).dy,
-      greaterThan(tester.getTopLeft(appearance).dy),
-    );
-    expect(
-      tester.getTopLeft(shortcuts).dx,
-      tester.getTopLeft(appearance).dx,
-      reason: 'a vertical list, not a sideways strip',
-    );
-
-    // A page opens alone, with a Settings back button.
-    await tester.tap(appearance);
-    await tester.pumpAndSettle();
-    expect(find.text(l10n.t(L10nKey.settingsProfileName)), findsWidgets);
-    expect(shortcuts, findsNothing);
-
-    // Android back: page -> list -> chat.
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
-    expect(appearance, findsOneWidget);
-    expect(ctrl.settingsOpen, isTrue);
-
-    // Swipe from the start edge also steps back from a page.
-    await tester.tap(appearance);
-    await tester.pumpAndSettle();
-    await tester.dragFrom(const Offset(20, 400), const Offset(200, 0));
-    await tester.pumpAndSettle();
-    expect(appearance, findsOneWidget);
-
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
-    expect(ctrl.settingsOpen, isFalse);
-    ctrl.dispose();
-    await gw.shutdown();
-  });
-
-  testWidgets('Android back closes the innermost layer first', (
-    WidgetTester tester,
-  ) async {
-    tester.view.physicalSize = const Size(1320, 820);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final (ctrl, gw, l10n) = await boot();
-    await tester.pumpWidget(
-      BistreApp(l10nController: l10n, folioController: ctrl),
-    );
-    await tester.pumpAndSettle();
-    ctrl
-      ..toggleInspector()
-      ..toggleCommandPalette();
-    await tester.pumpAndSettle();
-    expect(ctrl.commandPaletteOpen, isTrue);
-    expect(ctrl.inspectorOpen, isTrue);
-
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
-    expect(ctrl.commandPaletteOpen, isFalse, reason: 'palette closes first');
-    expect(ctrl.inspectorOpen, isTrue);
-
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
-    expect(ctrl.inspectorOpen, isFalse);
-    ctrl.dispose();
-    await gw.shutdown();
-  });
-
-  testWidgets(
-    'streaming deltas never repaint sidebar, header, or composer (C1)',
-    (WidgetTester tester) async {
-      tester.view.physicalSize = const Size(1320, 820);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final (ctrl, gw, l10n) = await boot();
-      await tester.pumpWidget(
-        BistreApp(l10nController: l10n, folioController: ctrl),
-      );
-      await tester.pumpAndSettle();
-      ctrl.liveTurn.shouldPace = () => false;
-      final threadId = ctrl.activeThread!.id;
-      gw.emit(RunStartedEvent(threadId: threadId, nodeId: 'c1-live'));
-      await tester.pump();
-      gw.emit(
-        DeltaBatchEvent(
-          threadId: threadId,
-          nodeId: 'c1-live',
-          textDelta: '```rust\nfn probe() {\n',
-        ),
-      );
-      await tester.pump(const Duration(milliseconds: 16));
-      for (var i = 0; i < 30; i++) {
-        gw.emit(
-          DeltaBatchEvent(
-            threadId: threadId,
-            nodeId: 'c1-live',
-            textDelta: '    let v_$i = compute_checkpoint(frames, budget);\n',
-          ),
-        );
-        await tester.pump(const Duration(milliseconds: 16));
-      }
-
-      FlutterTimeline.debugCollectionEnabled = true;
-      debugProfilePaintsEnabled = true;
-      FlutterTimeline.debugReset();
-      for (var i = 0; i < 10; i++) {
-        gw.emit(
-          DeltaBatchEvent(
-            threadId: threadId,
-            nodeId: 'c1-live',
-            textDelta: '    let m_$i = compute_checkpoint(frames, budget);\n',
-          ),
-        );
-        await tester.pump(const Duration(milliseconds: 16));
-      }
-      final blocks = FlutterTimeline.debugCollect().aggregatedBlocks;
-      debugProfilePaintsEnabled = false;
-      FlutterTimeline.debugCollectionEnabled = false;
-
-      final mouseRegionPaints = blocks
-          .where((b) => b.name == 'RenderMouseRegion')
-          .fold<int>(0, (sum, b) => sum + b.count);
-      // Without the RepaintBoundary around FolioMessageFeed and code-card header actions,
-      // streaming painted ~78 RenderMouseRegion/frame (~780 over 10 frames).
-      expect(
-        mouseRegionPaints / 10.0,
-        lessThan(20.0),
-        reason: 'streaming repainted widgets outside the feed (C1 regression)',
-      );
-
-      gw.emit(
-        RunFinishedEvent(
-          threadId: threadId,
-          nodeId: 'c1-live',
-          cancelled: false,
-        ),
-      );
-      await tester.pumpAndSettle();
-      ctrl.dispose();
-      await gw.shutdown();
     },
   );
 }

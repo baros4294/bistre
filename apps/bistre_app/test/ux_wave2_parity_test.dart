@@ -233,10 +233,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(ctrl.activeThread!.id, firstId);
 
-      // Desktop tab strip shows "4 tabs" button opening the modal with filter field.
-      final tabsBtn = find.text(
-        l10n.t(L10nKey.shellTabsCount, <String, Object?>{'count': 4}),
-      );
+      // Desktop tab strip: the overview button, named "4 tabs" in its label, opens the
+      // modal with a filter field; the count is not printed beside the visible tabs.
+      final tabsLabel = l10n.t(L10nKey.shellTabsCount, <String, Object?>{
+        'count': 4,
+      });
+      expect(find.text(tabsLabel), findsNothing);
+      final tabsBtn = find.bySemanticsLabel(tabsLabel);
       expect(tabsBtn, findsOneWidget);
       await tester.tap(tabsBtn);
       await tester.pumpAndSettle();
@@ -770,6 +773,10 @@ void main() {
       }
       await ctrl.setActiveChatSpendLimitMicros(2500000);
       expect(ctrl.activeChatSpendLimitMicros, 2500000);
+      // Opt-in tools show Off until turned on, matching what the engine offers the model.
+      expect(ctrl.toolPermissionFor('agent_delegate'), 'off');
+      expect(ctrl.toolPermissionFor('calc_eval'), 'off');
+      expect(ctrl.toolPermissionFor('shell'), 'ask');
       await ctrl.setToolPermission('shell', 'off');
       expect(ctrl.toolPermissionFor('shell'), 'off');
 
@@ -783,7 +790,8 @@ void main() {
       // Open ComposerToolsControl popover and confirm its controls render.
       await tester.tap(find.byType(ComposerToolsControl));
       await tester.pumpAndSettle();
-      expect(find.text(l10n.t(L10nKey.chatToolsTitle)), findsOneWidget);
+      // The chip's label and the popover heading both say "Tools".
+      expect(find.text(l10n.t(L10nKey.chatToolsTitle)), findsNWidgets(2));
       expect(find.text(l10n.t(L10nKey.chatToolsPrefillLabel)), findsOneWidget);
 
       ctrl.dispose();

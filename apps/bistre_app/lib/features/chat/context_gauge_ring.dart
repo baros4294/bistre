@@ -10,12 +10,13 @@ import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/hover_hint.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/popover_placement.dart';
 import '../../design/press_feedback.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import 'context_breakdown_popover.dart';
 
-/// Compact radial conversation-limit gauge (`docs/design/DESIGN.md` §8) that opens a breakdown
+/// Compact radial conversation-limit gauge (`docs/design/design.md` §8) that opens a breakdown
 /// of what fills the conversation context window.
 ///
 /// [usage] comes from core (`context_breakdown`): what the next request sends, after any
@@ -33,7 +34,12 @@ class ContextGaugeRing extends StatefulWidget {
     this.onShorten,
     this.onOpenPrices,
     this.showLabel = true,
+    this.overLimit = false,
   });
+
+  /// The provider said this chat is over its limit: the ring is full and red whatever the
+  /// local count says, so the ring and the error notice agree.
+  final bool overLimit;
 
   /// Narrow windows and large text show only the ring; the numbers stay in its screen-reader
   /// label and the popover.
@@ -46,7 +52,7 @@ class ContextGaugeRing extends StatefulWidget {
   /// Total recorded session spend for the active chat in micro-USD (`SessionSpend.kt`).
   final int sessionSpendMicros;
 
-  /// Number of files currently attached to the composer (`ContextWindowBreakdownPopover` L1314).
+  /// Number of files currently attached to the composer.
   final int uploadedFilesCount;
   final Future<EngineContextBreakdown> Function()? loadWithDraft;
   final VoidCallback? onShorten;
@@ -109,7 +115,7 @@ class _ContextGaugeRingState extends State<ContextGaugeRing> {
     final l10n = BistreLocalizations.of(context);
     final used = widget.usage.totalSent;
     final limit = widget.usage.limitTokens ?? widget.limitTokens;
-    final fraction = _fraction(used, limit);
+    final fraction = widget.overLimit ? 1.0 : _fraction(used, limit);
     final ringColor = fraction >= 0.9
         ? theme.statusErr
         : fraction >= 0.75
@@ -153,7 +159,7 @@ class _ContextGaugeRingState extends State<ContextGaugeRing> {
                 : l10n.t(L10nKey.chatContextGaugeShort, <String, Object?>{
                     'used': compact(used),
                     'limit': compact(limit),
-                    'percent': (fraction * 100).round(),
+                    'percent': contextPercent(used, limit),
                   }),
             role: InkTextRole.captionMeta,
             color: _hovered ? theme.inkSecondary : theme.inkMuted,
@@ -231,11 +237,22 @@ class _ContextGaugeRingState extends State<ContextGaugeRing> {
           showWhenUnlinked: false,
           targetAnchor: AlignmentDirectional.topEnd.resolve(dir),
           followerAnchor: AlignmentDirectional.bottomEnd.resolve(dir),
-          offset: const Offset(0, -8),
+          // Moved back inside the window on a narrow screen (never off its edge).
+          offset: Offset(
+            PopoverPlacement.popoverShiftFor(
+              this.context,
+              width: PopoverPlacement.popoverWidthFor(context, 360),
+              alignStart: false,
+            ),
+            -8,
+          ),
           child: FolioFadeSlide(
             beginOffset: const Offset(0, 0.06),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 300, maxWidth: 360),
+              constraints: BoxConstraints(
+                minWidth: PopoverPlacement.popoverWidthFor(context, 300),
+                maxWidth: PopoverPlacement.popoverWidthFor(context, 360),
+              ),
               child: FolioSurface(
                 tone: FolioTone.elevated,
                 padding: const EdgeInsetsDirectional.fromSTEB(14, 12, 14, 12),

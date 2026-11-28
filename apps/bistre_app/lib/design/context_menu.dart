@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -43,7 +45,6 @@ class ContextMenuRegion extends StatefulWidget {
 
 class _ContextMenuRegionState extends State<ContextMenuRegion> {
   static const double _menuWidth = 220;
-  static const double _rowHeight = 36;
 
   final FolioOverlayController _menu = FolioOverlayController();
   Offset _at = Offset.zero;
@@ -69,10 +70,6 @@ class _ContextMenuRegionState extends State<ContextMenuRegion> {
 
   Widget _buildMenu(BuildContext context) {
     final theme = BistreTheme.of(context);
-    final view = MediaQuery.sizeOf(context);
-    final height = widget.entries.length * _rowHeight + 12;
-    final left = _at.dx.clamp(8.0, view.width - _menuWidth - 8);
-    final top = _at.dy.clamp(8.0, view.height - height - 8);
     return Stack(
       children: [
         Positioned.fill(
@@ -83,36 +80,36 @@ class _ContextMenuRegionState extends State<ContextMenuRegion> {
             child: const SizedBox.expand(),
           ),
         ),
-        // Window coordinates are physical by nature: the menu opens where the pointer is.
-        Positioned.fromRect(
-          rect: Rect.fromLTWH(
-            left.toDouble(),
-            top.toDouble(),
-            _menuWidth,
-            height,
-          ),
-          child: FolioFadeSlide(
-            beginOffset: const Offset(0, -0.02),
-            child: FocusScope(
-              autofocus: true,
-              child: FolioSurface(
-                tone: FolioTone.elevated,
-                padding: const EdgeInsetsDirectional.all(6),
-                borderRadius: 10,
-                boxShadow: theme.floatingShadow,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (final (i, e) in widget.entries.indexed)
-                      _MenuRow(
-                        entry: e,
-                        autofocus: i == 0,
-                        onChosen: () {
-                          _menu.hideNow();
-                          e.onSelected();
-                        },
-                      ),
-                  ],
+        // Window coordinates are physical by nature: the menu opens where the pointer is,
+        // measured, so rows can grow with the text and it still stays inside the window.
+        CustomSingleChildLayout(
+          delegate: _MenuAt(_at),
+          child: SizedBox(
+            width: _menuWidth,
+            child: FolioFadeSlide(
+              beginOffset: const Offset(0, -0.02),
+              child: FocusScope(
+                autofocus: true,
+                child: FolioSurface(
+                  tone: FolioTone.elevated,
+                  padding: const EdgeInsetsDirectional.all(6),
+                  borderRadius: 10,
+                  boxShadow: theme.floatingShadow,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final (i, e) in widget.entries.indexed)
+                        _MenuRow(
+                          entry: e,
+                          autofocus: i == 0,
+                          onChosen: () {
+                            _menu.hideNow();
+                            e.onSelected();
+                          },
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -121,6 +118,35 @@ class _ContextMenuRegionState extends State<ContextMenuRegion> {
       ],
     );
   }
+}
+
+/// Opens the menu at [at], moved inside the window by its measured size.
+class _MenuAt extends SingleChildLayoutDelegate {
+  const _MenuAt(this.at);
+
+  final Offset at;
+
+  static const double _margin = 8;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      BoxConstraints.loose(constraints.biggest)
+          .deflate(const EdgeInsets.all(_margin));
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) => Offset(
+    at.dx.clamp(
+      _margin,
+      math.max(_margin, size.width - childSize.width - _margin),
+    ),
+    at.dy.clamp(
+      _margin,
+      math.max(_margin, size.height - childSize.height - _margin),
+    ),
+  );
+
+  @override
+  bool shouldRelayout(_MenuAt oldDelegate) => oldDelegate.at != at;
 }
 
 class _MenuRow extends StatefulWidget {
@@ -181,11 +207,12 @@ class _MenuRowState extends State<_MenuRow> {
                     : theme.hoverTint.withValues(alpha: 0),
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: SizedBox(
-                height: 36,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: minTapTarget),
                 child: Padding(
                   padding: const EdgeInsetsDirectional.symmetric(
                     horizontal: 10,
+                    vertical: 4,
                   ),
                   child: Row(
                     children: [

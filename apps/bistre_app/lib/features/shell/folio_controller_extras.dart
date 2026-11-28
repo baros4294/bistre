@@ -1,5 +1,14 @@
 part of 'folio_controller.dart';
 
+/// The `kv_meta` key core reads the history limit from (core `history_limit::KEY`).
+const String kHistoryLimitKvKey = 'settings.history_message_limit';
+
+/// The `kv_meta` key the display preferences live under (core `computer_use.rs` reads it).
+const String kUiPrefsKvKey = 'settings.ui_prefs';
+
+/// The history limits Settings offers, in messages; 0 sends every message.
+const List<int> kHistoryLimits = <int>[0, 10, 20, 50, 100];
+
 /// Persisted Default Models configuration (`kv_meta` key: `settings.default_models`).
 @immutable
 class DefaultModelsConfig {
@@ -9,7 +18,7 @@ class DefaultModelsConfig {
     this.titleFollowGlobal = true,
     this.titleProviderId = '',
     this.titleModelId = '',
-    this.titlePromptTemplate = defaultTitlePrompt,
+    this.titlePromptTemplate = '',
     this.summaryFollowGlobal = true,
     this.summaryProviderId = '',
     this.summaryModelId = '',
@@ -17,10 +26,9 @@ class DefaultModelsConfig {
     this.translationProviderId = '',
     this.translationModelId = '',
     this.translationTargetLanguage = 'English',
+    this.speechProviderId = '',
+    this.speechModelId = '',
   });
-
-  static const String defaultTitlePrompt =
-      'Generate a concise, natural 3 to 6 word title summarizing this conversation. Return ONLY the title text without quotes or trailing punctuation.';
 
   final String globalProviderId;
   final String globalModelId;
@@ -36,6 +44,10 @@ class DefaultModelsConfig {
   final String translationModelId;
   final String translationTargetLanguage;
 
+  /// The provider speech model that reads replies aloud; empty uses the system voice.
+  final String speechProviderId;
+  final String speechModelId;
+
   DefaultModelsConfig copyWith({
     String? globalProviderId,
     String? globalModelId,
@@ -50,6 +62,8 @@ class DefaultModelsConfig {
     String? translationProviderId,
     String? translationModelId,
     String? translationTargetLanguage,
+    String? speechProviderId,
+    String? speechModelId,
   }) => DefaultModelsConfig(
     globalProviderId: globalProviderId ?? this.globalProviderId,
     globalModelId: globalModelId ?? this.globalModelId,
@@ -66,6 +80,8 @@ class DefaultModelsConfig {
     translationModelId: translationModelId ?? this.translationModelId,
     translationTargetLanguage:
         translationTargetLanguage ?? this.translationTargetLanguage,
+    speechProviderId: speechProviderId ?? this.speechProviderId,
+    speechModelId: speechModelId ?? this.speechModelId,
   );
 
   Map<String, Object?> toJson() => <String, Object?>{
@@ -82,6 +98,8 @@ class DefaultModelsConfig {
     'translationProviderId': translationProviderId,
     'translationModelId': translationModelId,
     'translationTargetLanguage': translationTargetLanguage,
+    'speechProviderId': speechProviderId,
+    'speechModelId': speechModelId,
   };
 
   static DefaultModelsConfig fromJson(Map<String, Object?> m) =>
@@ -91,8 +109,7 @@ class DefaultModelsConfig {
         titleFollowGlobal: m['titleFollowGlobal'] as bool? ?? true,
         titleProviderId: m['titleProviderId'] as String? ?? '',
         titleModelId: m['titleModelId'] as String? ?? '',
-        titlePromptTemplate:
-            m['titlePromptTemplate'] as String? ?? defaultTitlePrompt,
+        titlePromptTemplate: m['titlePromptTemplate'] as String? ?? '',
         summaryFollowGlobal: m['summaryFollowGlobal'] as bool? ?? true,
         summaryProviderId: m['summaryProviderId'] as String? ?? '',
         summaryModelId: m['summaryModelId'] as String? ?? '',
@@ -101,6 +118,8 @@ class DefaultModelsConfig {
         translationModelId: m['translationModelId'] as String? ?? '',
         translationTargetLanguage:
             m['translationTargetLanguage'] as String? ?? 'English',
+        speechProviderId: m['speechProviderId'] as String? ?? '',
+        speechModelId: m['speechModelId'] as String? ?? '',
       );
 }
 
@@ -111,13 +130,13 @@ class UiDisplayPrefs {
     this.messageNavVisibility = 'while_scrolling',
     this.showUserAvatar = true,
     this.showUserName = true,
-    this.showUserTimestamp = true,
+    this.showUserTimestamp = false,
     this.showModelIcon = true,
     this.showModelName = true,
     this.showProviderAfterModel = true,
     this.showThinkingCards = true,
     this.showToolCards = true,
-    this.showFilesBelowReplies = true,
+    this.showSentFiles = true,
     this.renderUserMarkdown = true,
     this.renderMathFormulas = true,
     this.autoCollapseCodeBlocks = false,
@@ -132,9 +151,19 @@ class UiDisplayPrefs {
     this.desktopNotifySound = false,
     this.runOnStartup = false,
     this.systemTrayEnabled = false,
-    this.quickEntryShortcut = 'Alt+Space',
+    this.quickEntryShortcut = kDefaultQuickEntryShortcut,
     this.computerUseEnabled = false,
+    this.textSizePercent = 100,
+    this.newChatOnLaunch = false,
+    this.newChatOnAssistantSwitch = false,
+    this.newChatAfterDelete = false,
+    this.followWhileStreaming = true,
+    this.codeTextPercent = 100,
   });
+
+  /// The text sizes Settings > Appearance offers for the whole app, in percent of the
+  /// system text size.
+  static const List<int> textSizes = <int>[90, 100, 115, 130];
 
   final String messageNavVisibility; // always | while_scrolling | hidden
   final bool showUserAvatar;
@@ -145,7 +174,7 @@ class UiDisplayPrefs {
   final bool showProviderAfterModel;
   final bool showThinkingCards;
   final bool showToolCards;
-  final bool showFilesBelowReplies;
+  final bool showSentFiles;
   final bool renderUserMarkdown;
   final bool renderMathFormulas;
   final bool autoCollapseCodeBlocks;
@@ -160,8 +189,29 @@ class UiDisplayPrefs {
   final bool desktopNotifySound;
   final bool runOnStartup;
   final bool systemTrayEnabled;
+
+  /// The system-wide shortcut to a new chat (Windows), saved as `Ctrl+Alt+Shift+B`; `''`
+  /// turns it off.
   final String quickEntryShortcut;
   final bool computerUseEnabled;
+
+  /// Every text in the app at this percent of the system text size.
+  final int textSizePercent;
+
+  /// Bistre opens a new chat at launch instead of the last one (an empty last chat is reused).
+  final bool newChatOnLaunch;
+
+  /// Choosing another assistant in a chat with messages opens a new chat with it.
+  final bool newChatOnAssistantSwitch;
+
+  /// Deleting the open chat opens a new chat instead of the next one.
+  final bool newChatAfterDelete;
+
+  /// The chat scrolls with a reply while it is written (scrolling up still stops it).
+  final bool followWhileStreaming;
+
+  /// Code blocks at this percent of the code size that goes with the text size ([textSizes]).
+  final int codeTextPercent;
 
   UiDisplayPrefs copyWith({
     String? messageNavVisibility,
@@ -173,7 +223,7 @@ class UiDisplayPrefs {
     bool? showProviderAfterModel,
     bool? showThinkingCards,
     bool? showToolCards,
-    bool? showFilesBelowReplies,
+    bool? showSentFiles,
     bool? renderUserMarkdown,
     bool? renderMathFormulas,
     bool? autoCollapseCodeBlocks,
@@ -190,6 +240,12 @@ class UiDisplayPrefs {
     bool? systemTrayEnabled,
     String? quickEntryShortcut,
     bool? computerUseEnabled,
+    int? textSizePercent,
+    bool? newChatOnLaunch,
+    bool? newChatOnAssistantSwitch,
+    bool? newChatAfterDelete,
+    bool? followWhileStreaming,
+    int? codeTextPercent,
   }) => UiDisplayPrefs(
     messageNavVisibility: messageNavVisibility ?? this.messageNavVisibility,
     showUserAvatar: showUserAvatar ?? this.showUserAvatar,
@@ -201,7 +257,7 @@ class UiDisplayPrefs {
         showProviderAfterModel ?? this.showProviderAfterModel,
     showThinkingCards: showThinkingCards ?? this.showThinkingCards,
     showToolCards: showToolCards ?? this.showToolCards,
-    showFilesBelowReplies: showFilesBelowReplies ?? this.showFilesBelowReplies,
+    showSentFiles: showSentFiles ?? this.showSentFiles,
     renderUserMarkdown: renderUserMarkdown ?? this.renderUserMarkdown,
     renderMathFormulas: renderMathFormulas ?? this.renderMathFormulas,
     autoCollapseCodeBlocks:
@@ -222,6 +278,13 @@ class UiDisplayPrefs {
     systemTrayEnabled: systemTrayEnabled ?? this.systemTrayEnabled,
     quickEntryShortcut: quickEntryShortcut ?? this.quickEntryShortcut,
     computerUseEnabled: computerUseEnabled ?? this.computerUseEnabled,
+    textSizePercent: textSizePercent ?? this.textSizePercent,
+    newChatOnLaunch: newChatOnLaunch ?? this.newChatOnLaunch,
+    newChatOnAssistantSwitch:
+        newChatOnAssistantSwitch ?? this.newChatOnAssistantSwitch,
+    newChatAfterDelete: newChatAfterDelete ?? this.newChatAfterDelete,
+    followWhileStreaming: followWhileStreaming ?? this.followWhileStreaming,
+    codeTextPercent: codeTextPercent ?? this.codeTextPercent,
   );
 
   Map<String, Object?> toJson() => <String, Object?>{
@@ -234,7 +297,7 @@ class UiDisplayPrefs {
     'showProviderAfterModel': showProviderAfterModel,
     'showThinkingCards': showThinkingCards,
     'showToolCards': showToolCards,
-    'showFilesBelowReplies': showFilesBelowReplies,
+    'showSentFiles': showSentFiles,
     'renderUserMarkdown': renderUserMarkdown,
     'renderMathFormulas': renderMathFormulas,
     'autoCollapseCodeBlocks': autoCollapseCodeBlocks,
@@ -251,6 +314,12 @@ class UiDisplayPrefs {
     'systemTrayEnabled': systemTrayEnabled,
     'quickEntryShortcut': quickEntryShortcut,
     'computerUseEnabled': computerUseEnabled,
+    'textSizePercent': textSizePercent,
+    'newChatOnLaunch': newChatOnLaunch,
+    'newChatOnAssistantSwitch': newChatOnAssistantSwitch,
+    'newChatAfterDelete': newChatAfterDelete,
+    'followWhileStreaming': followWhileStreaming,
+    'codeTextPercent': codeTextPercent,
   };
 
   static UiDisplayPrefs fromJson(Map<String, Object?> m) => UiDisplayPrefs(
@@ -258,13 +327,13 @@ class UiDisplayPrefs {
         m['messageNavVisibility'] as String? ?? 'while_scrolling',
     showUserAvatar: m['showUserAvatar'] as bool? ?? true,
     showUserName: m['showUserName'] as bool? ?? true,
-    showUserTimestamp: m['showUserTimestamp'] as bool? ?? true,
+    showUserTimestamp: m['showUserTimestamp'] as bool? ?? false,
     showModelIcon: m['showModelIcon'] as bool? ?? true,
     showModelName: m['showModelName'] as bool? ?? true,
     showProviderAfterModel: m['showProviderAfterModel'] as bool? ?? true,
     showThinkingCards: m['showThinkingCards'] as bool? ?? true,
     showToolCards: m['showToolCards'] as bool? ?? true,
-    showFilesBelowReplies: m['showFilesBelowReplies'] as bool? ?? true,
+    showSentFiles: m['showSentFiles'] as bool? ?? true,
     renderUserMarkdown: m['renderUserMarkdown'] as bool? ?? true,
     renderMathFormulas: m['renderMathFormulas'] as bool? ?? true,
     autoCollapseCodeBlocks: m['autoCollapseCodeBlocks'] as bool? ?? false,
@@ -280,8 +349,22 @@ class UiDisplayPrefs {
     desktopNotifySound: m['desktopNotifySound'] as bool? ?? false,
     runOnStartup: m['runOnStartup'] as bool? ?? false,
     systemTrayEnabled: m['systemTrayEnabled'] as bool? ?? false,
-    quickEntryShortcut: m['quickEntryShortcut'] as String? ?? 'Alt+Space',
+    quickEntryShortcut:
+        m['quickEntryShortcut'] as String? ?? kDefaultQuickEntryShortcut,
     computerUseEnabled: m['computerUseEnabled'] as bool? ?? false,
+    // A size no longer offered falls back to the system size.
+    textSizePercent: switch ((m['textSizePercent'] as num?)?.toInt()) {
+      final int v when textSizes.contains(v) => v,
+      _ => 100,
+    },
+    newChatOnLaunch: m['newChatOnLaunch'] as bool? ?? false,
+    newChatOnAssistantSwitch: m['newChatOnAssistantSwitch'] as bool? ?? false,
+    newChatAfterDelete: m['newChatAfterDelete'] as bool? ?? false,
+    followWhileStreaming: m['followWhileStreaming'] as bool? ?? true,
+    codeTextPercent: switch ((m['codeTextPercent'] as num?)?.toInt()) {
+      final int v when textSizes.contains(v) => v,
+      _ => 100,
+    },
   );
 }
 
@@ -341,11 +424,13 @@ class ProviderAdvancedConfig {
     this.endpointPathOverride = '',
     this.authHeaderMode = 'native',
     this.autoFetchModels = true,
-    this.storeServerSide = false,
     this.useStatefulChaining = false,
-    this.useBackgroundPolling = true,
     this.useLegacyFallback = true,
     this.defaultThinkingEffort = 'default',
+    this.anthropicCache1h = false,
+    this.enableServerCompaction = true,
+    this.providerTools = false,
+    this.paidProviderTools = false,
     this.modelOverrides = const <String, ModelConfigOverride>{},
   });
 
@@ -353,34 +438,59 @@ class ProviderAdvancedConfig {
   final String endpointPathOverride;
   final String authHeaderMode;
   final bool autoFetchModels;
-  final bool storeServerSide;
   final bool useStatefulChaining;
-  final bool useBackgroundPolling;
   final bool useLegacyFallback;
   final String defaultThinkingEffort;
+
+  /// Anthropic: keep the prompt cache for an hour instead of five minutes.
+  final bool anthropicCache1h;
+
+  /// Anthropic: let the provider summarize older turns near the conversation limit.
+  final bool enableServerCompaction;
+
+  /// Gemini and Anthropic formats: also send the provider's own link reader and code
+  /// runner (core holds them back while a spending limit applies).
+  final bool providerTools;
+
+  /// Anthropic and OpenAI formats: also send the provider's web search (and OpenAI's code
+  /// interpreter), billed per use; core counts the fee after each reply.
+  final bool paidProviderTools;
   final Map<String, ModelConfigOverride> modelOverrides;
+
+  /// The API format requests use: a Custom provider's chosen one, else its own.
+  String wireFor(String dialect) => switch (dialect) {
+    'custom_openai' => customDialect,
+    'anthropic' => 'anthropic_messages',
+    'google_gemini' => 'gemini_interactions',
+    _ => 'openai_responses',
+  };
 
   ProviderAdvancedConfig copyWith({
     String? customDialect,
     String? endpointPathOverride,
     String? authHeaderMode,
     bool? autoFetchModels,
-    bool? storeServerSide,
     bool? useStatefulChaining,
-    bool? useBackgroundPolling,
     bool? useLegacyFallback,
     String? defaultThinkingEffort,
+    bool? anthropicCache1h,
+    bool? enableServerCompaction,
+    bool? providerTools,
+    bool? paidProviderTools,
     Map<String, ModelConfigOverride>? modelOverrides,
   }) => ProviderAdvancedConfig(
     customDialect: customDialect ?? this.customDialect,
     endpointPathOverride: endpointPathOverride ?? this.endpointPathOverride,
     authHeaderMode: authHeaderMode ?? this.authHeaderMode,
     autoFetchModels: autoFetchModels ?? this.autoFetchModels,
-    storeServerSide: storeServerSide ?? this.storeServerSide,
     useStatefulChaining: useStatefulChaining ?? this.useStatefulChaining,
-    useBackgroundPolling: useBackgroundPolling ?? this.useBackgroundPolling,
     useLegacyFallback: useLegacyFallback ?? this.useLegacyFallback,
     defaultThinkingEffort: defaultThinkingEffort ?? this.defaultThinkingEffort,
+    anthropicCache1h: anthropicCache1h ?? this.anthropicCache1h,
+    enableServerCompaction:
+        enableServerCompaction ?? this.enableServerCompaction,
+    providerTools: providerTools ?? this.providerTools,
+    paidProviderTools: paidProviderTools ?? this.paidProviderTools,
     modelOverrides: modelOverrides ?? this.modelOverrides,
   );
 
@@ -389,11 +499,13 @@ class ProviderAdvancedConfig {
     'endpointPathOverride': endpointPathOverride,
     'authHeaderMode': authHeaderMode,
     'autoFetchModels': autoFetchModels,
-    'storeServerSide': storeServerSide,
     'useStatefulChaining': useStatefulChaining,
-    'useBackgroundPolling': useBackgroundPolling,
     'useLegacyFallback': useLegacyFallback,
     'defaultThinkingEffort': defaultThinkingEffort,
+    'anthropicCache1h': anthropicCache1h,
+    'enableServerCompaction': enableServerCompaction,
+    'providerTools': providerTools,
+    'paidProviderTools': paidProviderTools,
     'modelOverrides': <String, Object?>{
       for (final e in modelOverrides.entries) e.key: e.value.toJson(),
     },
@@ -416,57 +528,32 @@ class ProviderAdvancedConfig {
       endpointPathOverride: m['endpointPathOverride'] as String? ?? '',
       authHeaderMode: m['authHeaderMode'] as String? ?? 'native',
       autoFetchModels: m['autoFetchModels'] as bool? ?? true,
-      storeServerSide: m['storeServerSide'] as bool? ?? false,
       useStatefulChaining: m['useStatefulChaining'] as bool? ?? false,
-      useBackgroundPolling: m['useBackgroundPolling'] as bool? ?? true,
       useLegacyFallback: m['useLegacyFallback'] as bool? ?? true,
       defaultThinkingEffort: m['defaultThinkingEffort'] as String? ?? 'default',
+      anthropicCache1h: m['anthropicCache1h'] as bool? ?? false,
+      enableServerCompaction: m['enableServerCompaction'] as bool? ?? true,
+      providerTools: m['providerTools'] as bool? ?? false,
+      paidProviderTools: m['paidProviderTools'] as bool? ?? false,
       modelOverrides: models,
     );
   }
-}
-
-/// Named workspace project grouping shared folders, instructions, and chats.
-@immutable
-class WorkspaceProject {
-  const WorkspaceProject({
-    required this.id,
-    required this.name,
-    this.folderPath = '',
-    this.instructions = '',
-  });
-
-  final String id;
-  final String name;
-  final String folderPath;
-  final String instructions;
-
-  Map<String, Object?> toJson() => <String, Object?>{
-    'id': id,
-    'name': name,
-    'folderPath': folderPath,
-    'instructions': instructions,
-  };
-
-  static WorkspaceProject fromJson(Map<String, Object?> m) => WorkspaceProject(
-    id: m['id'] as String? ?? '',
-    name: m['name'] as String? ?? '',
-    folderPath: m['folderPath'] as String? ?? '',
-    instructions: m['instructions'] as String? ?? '',
-  );
 }
 
 extension FolioExtrasActions on FolioController {
   /// The workspace's `.bistre/hooks.json` and whether it is approved; `null` when none.
   EngineWorkspaceHooksStatus? get workspaceHooks => _workspaceHooks;
 
-  /// The URLs a provider is called at (P8), for the settings preview.
+  /// Core's built-in title prompt, shown while the title prompt setting is empty.
+  String get builtInTitlePrompt => _gateway.defaultTitlePrompt();
+
+  /// The URLs a provider is called at, for the settings preview.
   EngineResolvedEndpoint resolveProviderEndpoint(
     String dialect,
     String baseUrl,
   ) => _gateway.resolveProviderEndpoint(dialect, baseUrl);
 
-  /// Core's descriptor for an API format id (P7); `null` for an unknown id.
+  /// Core's descriptor for an API format id; `null` for an unknown id.
   EngineDialectDescriptor? dialectDescriptor(String dialect) {
     return _gateway
         .dialectDescriptors()
@@ -474,12 +561,12 @@ extension FolioExtrasActions on FolioController {
         .firstOrNull;
   }
 
-  /// Web sources of the open chat's replies (B2), oldest first.
+  /// Web sources of the open chat's replies, oldest first.
   List<EngineGroundingSource> get threadGrounding => _threadGrounding;
 
   /// The sources one reply used.
   List<EngineGroundingSource> groundingFor(String nodeId) =>
-      _threadGrounding.where((s) => s.nodeId == nodeId).toList(growable: false);
+      _groundingByNode[nodeId] ?? const <EngineGroundingSource>[];
 
   /// Reloads the open chat's sources; a reply for a chat that is no longer open is dropped.
   Future<void> refreshThreadGrounding() async {
@@ -489,13 +576,18 @@ extension FolioExtrasActions on FolioController {
       final sources = await _gateway.listThreadGrounding(threadId);
       if (_disposed || _activeThread?.id != threadId) return;
       _threadGrounding = sources;
+      final byNode = <String, List<EngineGroundingSource>>{};
+      for (final s in sources) {
+        (byNode[s.nodeId] ??= <EngineGroundingSource>[]).add(s);
+      }
+      _groundingByNode = byNode;
       _notify();
     } catch (e) {
       _noteNonFatal('thread_grounding', e);
     }
   }
 
-  /// Reloads the hooks of the current workspace folder (A-S5).
+  /// Reloads the hooks of the current workspace folder.
   Future<void> refreshWorkspaceHooks() async {
     final root = _workspaceRootPath;
     if (root.isEmpty) {
@@ -528,32 +620,75 @@ extension FolioExtrasActions on FolioController {
   }
 
   DefaultModelsConfig get defaultModels => _defaultModels;
+
+  /// The provider and speech model that read replies aloud, or null for the system voice.
+  ({EngineProvider provider, String modelId})? get readAloudModel {
+    final dm = _defaultModels;
+    final model = dm.speechModelId.trim();
+    if (model.isEmpty) return null;
+    final provider = providers
+        .where((p) => p.id == dm.speechProviderId)
+        .firstOrNull;
+    return provider == null ? null : (provider: provider, modelId: model);
+  }
+
   UiDisplayPrefs get uiPrefs => _uiPrefs;
+
+  /// The latest messages a request sends, 0 for every message.
+  int get historyMessageLimit => _historyMessageLimit;
+
+  Future<void> setHistoryMessageLimit(int limit) async {
+    if (!kHistoryLimits.contains(limit)) return;
+    _historyMessageLimit = limit;
+    _notify();
+    try {
+      await _gateway.setKvMeta(kHistoryLimitKvKey, '$limit');
+    } catch (e) {
+      _noteNonFatal('history_limit_save', e);
+    }
+  }
+
   String get messageNavVisibility => _uiPrefs.messageNavVisibility;
   List<String> get workspaceFolders => _workspaceFolders;
   String get activeGitBranch => _activeGitBranch;
-  List<WorkspaceProject> get projects => _projects;
-  String? get activeProjectId => _activeProjectId;
   bool get splitViewOpen => _splitViewOpen;
   String? get splitSecondaryThreadId => _splitSecondaryThreadId;
 
   Future<void> _loadExtendedKvPrefs() async {
     try {
-      final rawDm = await _gateway.getKvMeta('settings.default_models');
+      // `settings.ui_prefs` is already loaded at boot, before the first chat opens.
+      final (rawDm, rawLimit, rawMedia, rawFolders, _) = await (
+        _gateway.getKvMeta('settings.default_models'),
+        _gateway.getKvMeta(kHistoryLimitKvKey),
+        _gateway.getKvMeta(MediaOptions.kvKey),
+        _gateway.getKvMeta('agent.workspace_folders'),
+        _loadProjects(),
+      ).wait;
       if (rawDm != null && rawDm.trim().isNotEmpty) {
         final decoded = jsonDecode(rawDm);
         if (decoded is Map<String, Object?>) {
           _defaultModels = DefaultModelsConfig.fromJson(decoded);
         }
       }
-      final rawUi = await _gateway.getKvMeta('settings.ui_prefs');
-      if (rawUi != null && rawUi.trim().isNotEmpty) {
-        final decoded = jsonDecode(rawUi);
+      final limit = int.tryParse(rawLimit ?? '') ?? 0;
+      _historyMessageLimit = kHistoryLimits.contains(limit) ? limit : 0;
+      // The tray and run-at-startup are re-applied each launch: the host forgets the tray,
+      // and an update may have moved the app.
+      if (_uiPrefs.systemTrayEnabled) {
+        unawaited(BistreDesktopHost.setTrayEnabled(true));
+      }
+      if (_uiPrefs.runOnStartup) {
+        unawaited(BistreDesktopHost.setAutoStart(true));
+      }
+      unawaited(
+        BistreDesktopHost.setQuickEntryHotkey(_uiPrefs.quickEntryShortcut),
+      );
+      if (rawMedia != null && rawMedia.trim().isNotEmpty) {
+        final decoded = jsonDecode(rawMedia);
         if (decoded is Map<String, Object?>) {
-          _uiPrefs = UiDisplayPrefs.fromJson(decoded);
+          _mediaOptions = MediaOptions.fromJson(decoded);
         }
       }
-      final rawFolders = await _gateway.getKvMeta('agent.workspace_folders');
       if (rawFolders != null && rawFolders.trim().isNotEmpty) {
         final decoded = jsonDecode(rawFolders);
         if (decoded is List<Object?>) {
@@ -566,20 +701,20 @@ extension FolioExtrasActions on FolioController {
       } else if (_workspaceRootPath.isNotEmpty) {
         _workspaceFolders = <String>[_workspaceRootPath];
       }
-      final rawProjects = await _gateway.getKvMeta('projects.list');
-      if (rawProjects != null && rawProjects.trim().isNotEmpty) {
-        final decoded = jsonDecode(rawProjects);
-        if (decoded is List<Object?>) {
-          _projects = decoded
-              .whereType<Map<String, Object?>>()
-              .map(WorkspaceProject.fromJson)
-              .where((p) => p.id.isNotEmpty && p.name.isNotEmpty)
-              .toList();
-        }
-      }
       unawaited(_refreshGitBranch());
     } catch (e) {
       _noteNonFatal('load_extended_prefs', e);
+    }
+  }
+
+  /// Saves the composer's format choice; core sends each value only to a model that lists it.
+  Future<void> setMediaOptions(MediaOptions next) async {
+    _mediaOptions = next;
+    _notify();
+    try {
+      await _gateway.setKvMeta(MediaOptions.kvKey, jsonEncode(next.toJson()));
+    } catch (e) {
+      _noteNonFatal('media_options_save', e);
     }
   }
 
@@ -601,7 +736,7 @@ extension FolioExtrasActions on FolioController {
     _uiPrefs = next;
     _notify();
     try {
-      await _gateway.setKvMeta('settings.ui_prefs', jsonEncode(next.toJson()));
+      await _gateway.setKvMeta(kUiPrefsKvKey, jsonEncode(next.toJson()));
       if (!quiet) showToast(L10nKey.toastSettingsSaved);
     } catch (e) {
       _noteNonFatal('save_ui_prefs', e);
@@ -632,10 +767,6 @@ extension FolioExtrasActions on FolioController {
         'provider.adv:$providerId',
         jsonEncode(cfg.toJson()),
       );
-      await saveProviderConfig(
-        providerId: providerId,
-        useServerStateCache: cfg.storeServerSide,
-      );
     } catch (e) {
       _noteNonFatal('save_provider_adv', e);
     }
@@ -655,7 +786,7 @@ extension FolioExtrasActions on FolioController {
         tone: ToastTone.ok,
       );
     } else {
-      // P8: name the URL that was tried; the typed reason shows with the provider.
+      // Name the URL that was tried; the typed reason shows with the provider.
       final p = providers.where((x) => x.id == providerId).firstOrNull;
       final url = p == null
           ? ''
@@ -703,7 +834,8 @@ extension FolioExtrasActions on FolioController {
   }
 
   Future<void> _refreshGitBranch() async {
-    final root = _workspaceRootPath.trim();
+    final root = workspaceRootPath.trim();
+    _branchRoot = root;
     if (root.isEmpty || !BistreDesktopHost.isSafeLocalFolder(root)) {
       if (_activeGitBranch.isNotEmpty) {
         _activeGitBranch = '';
@@ -785,42 +917,6 @@ extension FolioExtrasActions on FolioController {
       _noteNonFatal('mcp_import', e);
       return 0;
     }
-  }
-
-  /// Creates or updates a Workspace Project grouping shared folders & instructions.
-  Future<void> saveProject(WorkspaceProject project) async {
-    final next = <WorkspaceProject>[
-      for (final p in _projects)
-        if (p.id != project.id) p,
-      project,
-    ];
-    _projects = next;
-    _notify();
-    await _gateway.setKvMeta(
-      'projects.list',
-      jsonEncode(next.map((p) => p.toJson()).toList()),
-    );
-    showToast(L10nKey.toastSettingsSaved);
-  }
-
-  Future<void> deleteProject(String projectId) async {
-    _projects = _projects.where((p) => p.id != projectId).toList();
-    if (_activeProjectId == projectId) _activeProjectId = null;
-    _notify();
-    await _gateway.setKvMeta(
-      'projects.list',
-      jsonEncode(_projects.map((p) => p.toJson()).toList()),
-    );
-    showToast(L10nKey.toastDeleted);
-  }
-
-  void selectProject(String? projectId) {
-    _activeProjectId = projectId;
-    final proj = _projects.where((p) => p.id == projectId).firstOrNull;
-    if (proj != null && proj.folderPath.isNotEmpty) {
-      unawaited(addWorkspaceFolder(proj.folderPath));
-    }
-    _notify();
   }
 
   Future<List<EngineNode>> loadThreadPreviewNodes(String threadId) async {

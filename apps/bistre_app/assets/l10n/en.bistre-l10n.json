@@ -128,7 +128,7 @@
       "placeholders": {}
     },
     "diag.storage.disk_full": {
-      "message": "Disk full — your draft is kept safely in memory.",
+      "message": "Disk full. Your draft is kept safely in memory.",
       "context": "Rust DiagnosticKey::StorageDiskFull message",
       "tone": "diagnostic",
       "max_chars": 96,
@@ -219,7 +219,7 @@
       "placeholders": {}
     },
     "diag.provider.auth_failed": {
-      "message": "API key was rejected. Check your key in Settings.",
+      "message": "The API key was rejected.",
       "context": "Rust DiagnosticKey::ProviderAuthFailed message",
       "tone": "diagnostic",
       "max_chars": 96,
@@ -266,6 +266,37 @@
       "tone": "concise_action",
       "max_chars": 28,
       "placeholders": {}
+    },
+    "sidebar.project.new_chat": {
+      "message": "New chat in this project",
+      "context": "Settings > Projects: button starting a chat in the project shown",
+      "tone": "concise_action",
+      "max_chars": 30,
+      "placeholders": {}
+    },
+    "sidebar.project.new_chat_in": {
+      "message": "New chat in {name}",
+      "context": "Sidebar: label of the plus button on a project's row",
+      "tone": "concise_action",
+      "max_chars": 22,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "Novel"
+        }
+      }
+    },
+    "sidebar.project.settings": {
+      "message": "Settings for {name}",
+      "context": "Sidebar: label of the settings button on a project's row",
+      "tone": "concise_action",
+      "max_chars": 23,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "Novel"
+        }
+      }
     },
     "sidebar.toggle": {
       "message": "Toggle sidebar",
@@ -391,6 +422,13 @@
       "context": "Copy full message text",
       "tone": "concise_action",
       "max_chars": 18,
+      "placeholders": {}
+    },
+    "chat.show_earlier_messages": {
+      "message": "Show earlier messages",
+      "context": "Button at the top of a long chat that loads the older messages above the ones shown",
+      "tone": "concise_action",
+      "max_chars": 32,
       "placeholders": {}
     },
     "chat.action.copied": {
@@ -776,6 +814,13 @@
       "max_chars": 24,
       "placeholders": {}
     },
+    "settings.tab.projects": {
+      "message": "Projects",
+      "context": "Settings tab label; also the sidebar caption above the project groups",
+      "tone": "concise_action",
+      "max_chars": 12,
+      "placeholders": {}
+    },
     "settings.tab.trust": {
       "message": "Safety & Budget",
       "context": "Settings tab label for permissions and spend limits",
@@ -811,18 +856,44 @@
       "max_chars": 28,
       "placeholders": {}
     },
-    "settings.appearance.scale": {
-      "message": "Text size",
-      "context": "Setting row label for font scaling",
-      "tone": "calm_editorial",
-      "max_chars": 28,
-      "placeholders": {}
-    },
     "settings.appearance.motion": {
       "message": "Animations",
       "context": "Setting row label for smooth vs reduced motion",
       "tone": "calm_editorial",
       "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.appearance.text_size": {
+      "message": "App text size",
+      "context": "Settings > Appearance: row choosing how big all text in the app is, relative to the device's own text size (the reading font size is a separate row)",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.appearance.text_size_value": {
+      "message": "{percent}%",
+      "context": "Settings > Appearance > App text size: one choice, {percent} of the device's text size",
+      "tone": "concise_action",
+      "max_chars": 12,
+      "placeholders": {
+        "percent": {
+          "type": "int",
+          "example": "115"
+        }
+      }
+    },
+    "settings.appearance.enter_sends": {
+      "message": "Enter sends the message",
+      "context": "Settings > Appearance: switch; on, pressing Enter in the message box sends the message",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.appearance.enter_sends_off": {
+      "message": "Enter adds a line; Ctrl+Enter sends.",
+      "context": "Settings > Appearance, shown under the Enter-sends switch while it is off: how to send instead",
+      "tone": "calm_editorial",
+      "max_chars": 64,
       "placeholders": {}
     },
     "settings.appearance.motion_smooth": {
@@ -837,13 +908,6 @@
       "context": "Option minimizing motion",
       "tone": "concise_action",
       "max_chars": 24,
-      "placeholders": {}
-    },
-    "settings.appearance.send_enter": {
-      "message": "Press Enter to send",
-      "context": "Toggle whether Enter sends a message",
-      "tone": "calm_editorial",
-      "max_chars": 36,
       "placeholders": {}
     },
     "settings.appearance.on": {
@@ -867,13 +931,6 @@
       "max_chars": 36,
       "placeholders": {}
     },
-    "settings.language.note": {
-      "message": "Changes immediately without restarting and flips layout direction automatically for right-to-left languages.",
-      "context": "Explanatory note in Language settings tab",
-      "tone": "calm_editorial",
-      "max_chars": 160,
-      "placeholders": {}
-    },
     "settings.assistants.create_title": {
       "message": "Create custom assistant",
       "context": "Form heading inside Assistants settings tab",
@@ -882,21 +939,21 @@
       "placeholders": {}
     },
     "settings.assistants.name_placeholder": {
-      "message": "Name",
+      "message": "For example: Research helper",
       "context": "Input placeholder for new assistant name",
       "tone": "calm_editorial",
       "max_chars": 48,
       "placeholders": {}
     },
     "settings.assistants.subtitle_placeholder": {
-      "message": "Short description",
+      "message": "For example: Finds and sums up sources",
       "context": "Input placeholder for new assistant description",
       "tone": "calm_editorial",
-      "max_chars": 40,
+      "max_chars": 48,
       "placeholders": {}
     },
     "settings.assistants.prompt_placeholder": {
-      "message": "Custom instructions for this assistant...",
+      "message": "For example: answer briefly and cite sources.",
       "context": "Input placeholder for assistant system prompt",
       "tone": "calm_editorial",
       "max_chars": 64,
@@ -945,10 +1002,17 @@
       "placeholders": {}
     },
     "settings.trust.stateless": {
-      "message": "Private requests (do not store on provider servers)",
-      "context": "Toggle setting store: false by default",
+      "message": "Private requests",
+      "context": "Settings > Safety & Budget: switch; on, no provider is asked to keep chats on its servers",
       "tone": "calm_editorial",
-      "max_chars": 64,
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.trust.stateless_hint": {
+      "message": "Providers don't keep your chats on their servers. Turn off to allow it for a provider in its Advanced settings.",
+      "context": "Settings > Safety & Budget, under Private requests: what it does and how to allow storage for one provider",
+      "tone": "calm_editorial",
+      "max_chars": 120,
       "placeholders": {}
     },
     "settings.engine.telemetry": {
@@ -1154,13 +1218,6 @@
       "max_chars": 24,
       "placeholders": {}
     },
-    "provider.field.server_cache": {
-      "message": "Server response cache",
-      "context": "Optional toggle enabling provider-side conversation state caching",
-      "tone": "calm_editorial",
-      "max_chars": 36,
-      "placeholders": {}
-    },
     "settings.assistants.edit_title": {
       "message": "Edit assistant",
       "context": "Heading when editing an existing assistant",
@@ -1181,22 +1238,6 @@
       "tone": "concise_action",
       "max_chars": 24,
       "placeholders": {}
-    },
-    "settings.trust.spend_today": {
-      "message": "Spent today: {spent} / {limit}",
-      "context": "Live daily spend meter in Safety & Budget",
-      "tone": "calm_editorial",
-      "max_chars": 48,
-      "placeholders": {
-        "spent": {
-          "type": "string",
-          "example": "$0.00"
-        },
-        "limit": {
-          "type": "string",
-          "example": "$5.00"
-        }
-      }
     },
     "toast.assistant_updated": {
       "message": "Assistant updated",
@@ -1345,42 +1386,6 @@
       "max_chars": 24,
       "placeholders": {}
     },
-    "settings.appearance.font_size_px": {
-      "message": "Font size ({px} px)",
-      "context": "Continuous font size control label in logical pixels",
-      "tone": "calm_editorial",
-      "max_chars": 48,
-      "placeholders": {
-        "px": {
-          "type": "int",
-          "example": "15"
-        }
-      }
-    },
-    "settings.appearance.line_height": {
-      "message": "Line spacing ({value})",
-      "context": "Line spacing multiplier control label",
-      "tone": "calm_editorial",
-      "max_chars": 48,
-      "placeholders": {
-        "value": {
-          "type": "string",
-          "example": "1.60"
-        }
-      }
-    },
-    "settings.appearance.reading_width": {
-      "message": "Reading width ({px} px)",
-      "context": "Max reading column width slider label",
-      "tone": "calm_editorial",
-      "max_chars": 52,
-      "placeholders": {
-        "px": {
-          "type": "int",
-          "example": "760"
-        }
-      }
-    },
     "settings.appearance.preview_title": {
       "message": "Live preview",
       "context": "Header above live typography preview card",
@@ -1389,7 +1394,7 @@
       "placeholders": {}
     },
     "settings.appearance.preview_body": {
-      "message": "Clear typography makes long reading and coding sessions effortless.",
+      "message": "Clear type keeps long reading and coding sessions easy on the eyes.",
       "context": "Sample paragraph rendered inside live typography preview",
       "tone": "calm_editorial",
       "max_chars": 120,
@@ -1438,14 +1443,14 @@
       "placeholders": {}
     },
     "provider.icon_label": {
-      "message": "Provider icon",
+      "message": "Icon",
       "context": "Label above color lab icon picker for provider",
       "tone": "calm_editorial",
       "max_chars": 40,
       "placeholders": {}
     },
     "provider.icon_custom_upload": {
-      "message": "Choose local image...",
+      "message": "Choose image…",
       "context": "Button picking local PNG/WebP custom provider icon",
       "tone": "concise_action",
       "max_chars": 40,
@@ -1556,13 +1561,6 @@
       "max_chars": 44,
       "placeholders": {}
     },
-    "settings.budget.unlimited_badge": {
-      "message": "No daily spending cap is active.",
-      "context": "Subtitle when unlimited spending is enabled",
-      "tone": "calm_editorial",
-      "max_chars": 80,
-      "placeholders": {}
-    },
     "settings.budget.custom_amount": {
       "message": "Custom daily limit (USD)",
       "context": "Custom USD numeric input label",
@@ -1599,7 +1597,7 @@
       "placeholders": {}
     },
     "settings.ota.section_subtitle": {
-      "message": "Zero-telemetry signed updates verified offline with Ed25519.",
+      "message": "Updates are checked for tampering before they install.",
       "context": "OTA section subtitle explaining cryptographic verification",
       "tone": "calm_editorial",
       "max_chars": 120,
@@ -1679,7 +1677,7 @@
       }
     },
     "settings.ota.download_stage": {
-      "message": "Download & stage",
+      "message": "Download update",
       "context": "Button downloading and verifying OTA payload",
       "tone": "concise_action",
       "max_chars": 40,
@@ -1700,14 +1698,14 @@
       "placeholders": {}
     },
     "settings.ota.signature_verified": {
-      "message": "Ed25519 signature verified",
+      "message": "Verified",
       "context": "Badge indicating offline Ed25519 signature passed",
       "tone": "calm_editorial",
       "max_chars": 48,
       "placeholders": {}
     },
     "settings.ota.active_runs_notice": {
-      "message": "Active chats running — binary swap waits until idle.",
+      "message": "Installs after your chats finish replying.",
       "context": "Deferral notice when active_runs > 0",
       "tone": "diagnostic",
       "max_chars": 100,
@@ -1760,6 +1758,20 @@
       "context": "Title of right-side collapsible chat inspector drawer",
       "tone": "calm_editorial",
       "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.inspector.project": {
+      "message": "Project",
+      "context": "Chat settings drawer: label of the project the chat belongs to",
+      "tone": "concise_action",
+      "max_chars": 11,
+      "placeholders": {}
+    },
+    "chat.inspector.no_project": {
+      "message": "No project",
+      "context": "Chat settings drawer: choice keeping the chat outside every project",
+      "tone": "concise_action",
+      "max_chars": 14,
       "placeholders": {}
     },
     "chat.inspector.override_prompt": {
@@ -1826,7 +1838,7 @@
       "placeholders": {}
     },
     "chat.tokens_meta": {
-      "message": "{input} in · {output} out",
+      "message": "↑{input} ↓{output}",
       "context": "Compact token count readout below assistant response",
       "tone": "diagnostic",
       "max_chars": 48,
@@ -1883,6 +1895,48 @@
       "max_chars": 36,
       "placeholders": {}
     },
+    "shortcuts.quick_entry_title": {
+      "message": "From any app",
+      "context": "Settings > Shortcuts (Windows): heading of the section for the shortcut that works in every app",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "shortcuts.quick_entry": {
+      "message": "New chat from any app",
+      "context": "Settings > Shortcuts (Windows): the system-wide shortcut that opens a new chat",
+      "tone": "concise_action",
+      "max_chars": 26,
+      "placeholders": {}
+    },
+    "shortcuts.quick_entry_hint": {
+      "message": "Brings Bistre to the front on a new chat while you work in another app.",
+      "context": "Settings > Shortcuts (Windows): what the system-wide shortcut does",
+      "tone": "calm_editorial",
+      "max_chars": 88,
+      "placeholders": {}
+    },
+    "shortcuts.off": {
+      "message": "Off",
+      "context": "Settings > Shortcuts: shown in place of keys when the shortcut is turned off",
+      "tone": "concise_action",
+      "max_chars": 8,
+      "placeholders": {}
+    },
+    "shortcuts.turn_off": {
+      "message": "Turn off",
+      "context": "Settings > Shortcuts (Windows): button turning the system-wide shortcut off",
+      "tone": "concise_action",
+      "max_chars": 12,
+      "placeholders": {}
+    },
+    "shortcuts.quick_entry_refused": {
+      "message": "Another app already uses this shortcut. Click the row and press a different one.",
+      "context": "Settings > Shortcuts (Windows): Windows refused the shortcut because another app holds it",
+      "tone": "calm_editorial",
+      "max_chars": 100,
+      "placeholders": {}
+    },
     "toast.exported": {
       "message": "Conversation exported",
       "context": "Toast after exporting chat",
@@ -1932,6 +1986,13 @@
       "max_chars": 140,
       "placeholders": {}
     },
+    "diag.run.interrupted": {
+      "message": "This reply stopped when Bistre closed.",
+      "context": "Notice on a chat whose reply was cut off because the app or its background service closed or crashed; a Try again button follows",
+      "tone": "calm_editorial",
+      "max_chars": 80,
+      "placeholders": {}
+    },
     "diag.run.backoff_waiting": {
       "message": "Provider rate limit reached. Waiting automatically before resuming.",
       "context": "Diagnostic message during long-horizon rate-limit backoff",
@@ -1975,21 +2036,21 @@
       "placeholders": {}
     },
     "studio.power_guard_title": {
-      "message": "Sleep & disruption guard",
+      "message": "Keep awake",
       "context": "Card heading in Studio Runs panel",
       "tone": "calm_editorial",
       "max_chars": 40,
       "placeholders": {}
     },
     "studio.power_active": {
-      "message": "Keeping device awake while active",
+      "message": "Stays awake while a chat replies.",
       "context": "Status line when OS sleep inhibitor is held",
       "tone": "calm_editorial",
       "max_chars": 52,
       "placeholders": {}
     },
     "studio.power_idle": {
-      "message": "Standby · normal OS sleep allowed",
+      "message": "Your device can sleep as usual.",
       "context": "Status line when no runs are active",
       "tone": "calm_editorial",
       "max_chars": 52,
@@ -2077,14 +2138,14 @@
       "placeholders": {}
     },
     "settings.sleep.daemon_active": {
-      "message": "Keep background service alive while running",
+      "message": "Keep replies going after you close the window",
       "context": "Toggle keeping desktop daemon running after window close only during active runs",
       "tone": "calm_editorial",
       "max_chars": 60,
       "placeholders": {}
     },
     "settings.sleep.daemon_active_desc": {
-      "message": "Closing the window will not stop active agents; exits automatically when idle.",
+      "message": "Running replies and scheduled tasks finish in the background, then Bistre stops.",
       "context": "Description for active-scoped daemon toggle",
       "tone": "calm_editorial",
       "max_chars": 110,
@@ -2494,10 +2555,10 @@
       "placeholders": {}
     },
     "studio.files.empty": {
-      "message": "Edited workspace files and diffs will appear here.",
+      "message": "Files you send, files the AI makes, and workspace files it edits show here.",
       "context": "Empty state in Studio Files tab",
       "tone": "calm_editorial",
-      "max_chars": 72,
+      "max_chars": 120,
       "placeholders": {}
     },
     "studio.comment_add": {
@@ -2522,10 +2583,52 @@
       "placeholders": {}
     },
     "provider.share_config": {
-      "message": "Copy share config",
-      "context": "Copies non-secret provider config JSON without API keys",
+      "message": "Copy share code",
+      "context": "Copies a code another device can paste to add this provider; the API key is left out unless the switch beside it is on",
       "tone": "concise_action",
       "max_chars": 32,
+      "placeholders": {}
+    },
+    "provider.share_with_key": {
+      "message": "Include the API key",
+      "context": "Switch beside Copy share code: also puts the provider's API key in the copied code",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "provider.share_with_key_hint": {
+      "message": "Anyone with the code can use the key and spend on it.",
+      "context": "Warning under the Include the API key switch: the cost and privacy risk of sharing a key",
+      "tone": "calm_editorial",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "provider.import_title": {
+      "message": "Add from a share code",
+      "context": "Section title in Add provider: paste a code copied from another device to add that provider",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "provider.import_placeholder": {
+      "message": "ai-provider:v1:…",
+      "context": "Example placeholder of a provider share code (keep the ai-provider:v1: prefix as is)",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "provider.import_action": {
+      "message": "Add",
+      "context": "Button that adds the provider from the pasted share code",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "provider.import_invalid": {
+      "message": "This code can't be read. Copy it again and paste the whole code.",
+      "context": "Inline error under the share code field when core rejects the code; says what to do next",
+      "tone": "calm_editorial",
+      "max_chars": 90,
       "placeholders": {}
     },
     "settings.tab.memory": {
@@ -2571,7 +2674,7 @@
       "placeholders": {}
     },
     "skills.empty": {
-      "message": "Bind a workspace folder containing SKILL.md files to discover local skills.",
+      "message": "Choose a workspace folder with skills to use them here.",
       "context": "Empty state for discovered skills",
       "tone": "calm_editorial",
       "max_chars": 110,
@@ -2599,7 +2702,7 @@
       "placeholders": {}
     },
     "automations.schedule_placeholder": {
-      "message": "Cron (e.g. 0 9 * * *) or every 30m",
+      "message": "When: every 30m, or cron like 0 9 * * *",
       "context": "Placeholder for schedule expression input",
       "tone": "calm_editorial",
       "max_chars": 56,
@@ -2766,9 +2869,63 @@
       "max_chars": 18,
       "placeholders": {}
     },
+    "story.word_count": {
+      "message": "{count, plural, one{1 word} other{{count} words}}",
+      "context": "Manuscript: word count of the scene's prose",
+      "tone": "calm_editorial",
+      "max_chars": 61,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "120"
+        }
+      }
+    },
+    "story.plan_scene": {
+      "message": "Plan scene",
+      "context": "Manuscript: button adding a writing brief for the scene after its beats",
+      "tone": "concise_action",
+      "max_chars": 14,
+      "placeholders": {}
+    },
+    "story.chapter_summary": {
+      "message": "Chapter summary",
+      "context": "Manuscript: label and placeholder of the chapter's summary field",
+      "tone": "concise_action",
+      "max_chars": 19,
+      "placeholders": {}
+    },
+    "story.chapter_summary_hint": {
+      "message": "What happens in this chapter. Later chapters are checked against it.",
+      "context": "Manuscript: what the chapter summary is for",
+      "tone": "calm_editorial",
+      "max_chars": 85,
+      "placeholders": {}
+    },
+    "story.write_summary": {
+      "message": "Write summary",
+      "context": "Manuscript: button writing the chapter summary from its saved scenes",
+      "tone": "concise_action",
+      "max_chars": 17,
+      "placeholders": {}
+    },
+    "story.contradictions_title": {
+      "message": "Does not match earlier chapters:",
+      "context": "Manuscript: heading above what the new chapter summary contradicts in earlier chapters",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "story.rewrite_stale": {
+      "message": "The text changed while this was being written. Try again.",
+      "context": "Toast: a writing tool finished after the text it worked on was changed, so nothing was replaced",
+      "tone": "calm_editorial",
+      "max_chars": 71,
+      "placeholders": {}
+    },
     "story.action_continue": {
       "message": "Continue",
-      "context": "Continues the last assistant passage seamlessly",
+      "context": "Continues the last assistant passage from where it stopped",
       "tone": "concise_action",
       "max_chars": 18,
       "placeholders": {}
@@ -2811,21 +2968,21 @@
       "placeholders": {}
     },
     "story.inspector_title": {
-      "message": "Live Prompt Inspector",
+      "message": "What the model gets",
       "context": "Title of the Prompt & Lorebook Inspector panel",
       "tone": "calm_editorial",
       "max_chars": 36,
       "placeholders": {}
     },
     "story.inspector_cache_boundary": {
-      "message": "Prompt cache boundary",
+      "message": "Reused above, new below",
       "context": "Marker separating static cached prefix from dynamic suffix",
       "tone": "calm_editorial",
       "max_chars": 36,
       "placeholders": {}
     },
     "story.inspector_lore_trace": {
-      "message": "Lorebook trigger log",
+      "message": "Lore",
       "context": "Heading showing which lore entries fired or were skipped",
       "tone": "calm_editorial",
       "max_chars": 36,
@@ -2839,7 +2996,7 @@
       "placeholders": {}
     },
     "diag.provider.rate_limited": {
-      "message": "The provider is busy right now. Trying again shortly.",
+      "message": "The provider is busy right now.",
       "context": "Rust DiagnosticKey::ProviderRateLimited message",
       "tone": "diagnostic",
       "max_chars": 96,
@@ -2860,7 +3017,7 @@
       "placeholders": {}
     },
     "diag.provider.context_overflow": {
-      "message": "This chat is over the conversation limit. Shorten the conversation to continue.",
+      "message": "This chat is over the conversation limit.",
       "context": "Rust DiagnosticKey::ProviderContextOverflow message",
       "tone": "diagnostic",
       "max_chars": 96,
@@ -3053,7 +3210,7 @@
       "placeholders": {}
     },
     "app.window_title": {
-      "message": "{title} — Bistre",
+      "message": "{title} - Bistre",
       "context": "Native window caption while a chat is open",
       "tone": "concise_action",
       "max_chars": 96,
@@ -3065,7 +3222,7 @@
       }
     },
     "app.window_title_replying": {
-      "message": "Replying · {title} — Bistre",
+      "message": "Replying · {title} - Bistre",
       "context": "Native window caption while the assistant is replying (live progress)",
       "tone": "concise_action",
       "max_chars": 96,
@@ -3077,7 +3234,7 @@
       }
     },
     "app.window_title_settings": {
-      "message": "Settings — Bistre",
+      "message": "Settings - Bistre",
       "context": "Native window caption while Settings is open",
       "tone": "concise_action",
       "max_chars": 40,
@@ -3202,78 +3359,11 @@
         }
       }
     },
-    "story.request_rewrite": {
-      "message": "Rewrite this with fresher phrasing while keeping the plot beats:\n\n{excerpt}",
-      "context": "Message sent to the writing model asking it to rewrite the selected passage",
-      "tone": "calm_editorial",
-      "max_chars": 400,
-      "placeholders": {
-        "excerpt": {
-          "type": "string",
-          "example": "The lanterns swayed."
-        }
-      }
-    },
-    "story.request_expand": {
-      "message": "Expand this with sensory detail and pacing:\n\n{excerpt}",
-      "context": "Message sent to the writing model asking it to expand the selected passage",
-      "tone": "calm_editorial",
-      "max_chars": 400,
-      "placeholders": {
-        "excerpt": {
-          "type": "string",
-          "example": "The lanterns swayed."
-        }
-      }
-    },
-    "story.request_shorten": {
-      "message": "Tighten and shorten this while keeping its meaning:\n\n{excerpt}",
-      "context": "Message sent to the writing model asking it to shorten the selected passage",
-      "tone": "calm_editorial",
-      "max_chars": 400,
-      "placeholders": {
-        "excerpt": {
-          "type": "string",
-          "example": "The lanterns swayed."
-        }
-      }
-    },
-    "story.request_polish": {
-      "message": "Polish the rhythm, voice, and clarity of this:\n\n{excerpt}",
-      "context": "Message sent to the writing model asking it to polish the selected passage",
-      "tone": "calm_editorial",
-      "max_chars": 400,
-      "placeholders": {
-        "excerpt": {
-          "type": "string",
-          "example": "The lanterns swayed."
-        }
-      }
-    },
     "story.request_continue": {
       "message": "Continue directly from the last sentence without repeating earlier lines.",
       "context": "Message sent to the roleplay model asking it to continue the story",
       "tone": "calm_editorial",
       "max_chars": 200,
-      "placeholders": {}
-    },
-    "story.request_impersonate": {
-      "message": "Draft the next in-character reply from {name}’s point of view that fits the current scene.",
-      "context": "Message sent to the roleplay model asking it to draft the user persona’s next reply",
-      "tone": "calm_editorial",
-      "max_chars": 200,
-      "placeholders": {
-        "name": {
-          "type": "string",
-          "example": "Mara"
-        }
-      }
-    },
-    "story.default_persona_name": {
-      "message": "the user",
-      "context": "Name used for the user in roleplay requests when no persona is chosen",
-      "tone": "calm_editorial",
-      "max_chars": 24,
       "placeholders": {}
     },
     "diag.ota.signing_key_missing": {
@@ -3461,8 +3551,8 @@
           "example": "128k"
         },
         "percent": {
-          "type": "int",
-          "example": "0"
+          "type": "string",
+          "example": "40"
         }
       }
     },
@@ -3493,7 +3583,7 @@
       }
     },
     "chat.context_estimate_hint": {
-      "message": "Counted offline with universal o200k_base BPE tokenizer, after any shortening.",
+      "message": "Counted on this device, after any shortening.",
       "context": "Footnote of the context breakdown popover",
       "tone": "calm_editorial",
       "max_chars": 96,
@@ -3555,6 +3645,42 @@
       "max_chars": 4,
       "placeholders": {}
     },
+    "app.size.bytes": {
+      "message": "{size} B",
+      "context": "A file size under one kilobyte; {size} is the number of bytes",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {
+        "size": {
+          "type": "string",
+          "example": "512"
+        }
+      }
+    },
+    "app.size.kb": {
+      "message": "{size} KB",
+      "context": "A file size in kilobytes; {size} has one decimal (12.4)",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {
+        "size": {
+          "type": "string",
+          "example": "12.4"
+        }
+      }
+    },
+    "app.size.mb": {
+      "message": "{size} MB",
+      "context": "A file size in megabytes; {size} has two decimals (3.25)",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {
+        "size": {
+          "type": "string",
+          "example": "3.25"
+        }
+      }
+    },
     "chat.effort_auto": {
       "message": "Auto",
       "context": "Thinking effort: let the model decide (nothing is sent)",
@@ -3583,7 +3709,7 @@
       "max_chars": 32,
       "placeholders": {
         "level": {
-          "type": "String",
+          "type": "string",
           "example": "Medium"
         }
       }
@@ -3630,13 +3756,6 @@
       "max_chars": 14,
       "placeholders": {}
     },
-    "chat.model_cloud": {
-      "message": "Cloud",
-      "context": "Badge: this provider runs on a remote server",
-      "tone": "concise_action",
-      "max_chars": 14,
-      "placeholders": {}
-    },
     "settings.sub.providers": {
       "message": "{provider} · {count, plural, =0{no providers} one{1 provider} other{{count} providers}}",
       "context": "Phone settings: one-line summary under a page in the page list",
@@ -3658,6 +3777,18 @@
       "context": "Phone settings: one-line summary under a page in the page list",
       "tone": "calm_editorial",
       "max_chars": 64,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "2"
+        }
+      }
+    },
+    "settings.sub.projects": {
+      "message": "{count, plural, =0{Group chats with a folder and instructions} one{1 project} other{{count} projects}}",
+      "context": "Phone settings: one-line summary under the Projects page in the page list",
+      "tone": "calm_editorial",
+      "max_chars": 127,
       "placeholders": {
         "count": {
           "type": "int",
@@ -3800,16 +3931,11 @@
       "placeholders": {}
     },
     "chat.model.all_providers": {
-      "message": "All providers ({count})",
+      "message": "All providers",
       "context": "Filter chip showing models across all providers",
       "tone": "concise_action",
       "max_chars": 36,
-      "placeholders": {
-        "count": {
-          "type": "int",
-          "example": "12"
-        }
-      }
+      "placeholders": {}
     },
     "chat.model.all_families": {
       "message": "All families",
@@ -3817,22 +3943,6 @@
       "tone": "concise_action",
       "max_chars": 24,
       "placeholders": {}
-    },
-    "chat.model.filter_count": {
-      "message": "{name} ({count})",
-      "context": "Provider or model-family filter chip with model count",
-      "tone": "concise_action",
-      "max_chars": 40,
-      "placeholders": {
-        "name": {
-          "type": "string",
-          "example": "OpenAI"
-        },
-        "count": {
-          "type": "int",
-          "example": "8"
-        }
-      }
     },
     "chat.model.no_matches": {
       "message": "No models match \"{query}\"",
@@ -3849,13 +3959,6 @@
     "chat.model.stored": {
       "message": "Stored",
       "context": "Privacy badge when provider stores responses server-side",
-      "tone": "diagnostic",
-      "max_chars": 16,
-      "placeholders": {}
-    },
-    "chat.model.no_store": {
-      "message": "No store",
-      "context": "Privacy badge when provider does not store responses server-side",
       "tone": "diagnostic",
       "max_chars": 16,
       "placeholders": {}
@@ -4004,7 +4107,7 @@
       "placeholders": {}
     },
     "toast.regenerated": {
-      "message": "Regenerating reply — previous version kept",
+      "message": "Regenerating reply, previous version kept",
       "context": "Non-blocking toast shown after clicking Regenerate on an assistant reply",
       "tone": "calm_editorial",
       "max_chars": 64,
@@ -4037,7 +4140,7 @@
       "placeholders": {}
     },
     "chat.tools.title": {
-      "message": "Turn tools & options",
+      "message": "Tools",
       "context": "Heading inside the composer tools popover",
       "tone": "calm_editorial",
       "max_chars": 32,
@@ -4058,7 +4161,7 @@
       "placeholders": {}
     },
     "chat.tools.prefill_label": {
-      "message": "Reply start (prefill)",
+      "message": "Start the reply with",
       "context": "Label for optional assistant reply prefix input in composer tools popover",
       "tone": "calm_editorial",
       "max_chars": 28,
@@ -4069,20 +4172,6 @@
       "context": "Placeholder for optional reply prefill input",
       "tone": "calm_editorial",
       "max_chars": 48,
-      "placeholders": {}
-    },
-    "chat.thinking.custom_label": {
-      "message": "Custom level",
-      "context": "Label for custom thinking effort input inside the Thinking popover",
-      "tone": "calm_editorial",
-      "max_chars": 24,
-      "placeholders": {}
-    },
-    "chat.thinking.custom_placeholder": {
-      "message": "e.g. low, high, max",
-      "context": "Placeholder for custom thinking effort input",
-      "tone": "calm_editorial",
-      "max_chars": 28,
       "placeholders": {}
     },
     "chat.pin_reply": {
@@ -4320,7 +4409,7 @@
       }
     },
     "chat.checklist.summary_timed": {
-      "message": "Worked for {seconds}s — {done}/{total} steps",
+      "message": "Worked for {seconds}s · {done}/{total} steps",
       "context": "Collapsed timed agent step checklist summary",
       "tone": "calm_editorial",
       "max_chars": 56,
@@ -4508,8 +4597,8 @@
       "placeholders": {}
     },
     "composer.slash.compact_desc": {
-      "message": "Shorten the conversation history",
-      "context": "Description for /compact slash command",
+      "message": "Shorten the chat; add words to say what to keep",
+      "context": "Description for /compact slash command; words typed after the command tell the summary what to keep",
       "tone": "calm_editorial",
       "max_chars": 48,
       "placeholders": {}
@@ -4612,6 +4701,69 @@
       "max_chars": 23,
       "placeholders": {}
     },
+    "settings.agent.mcp_registry_open": {
+      "message": "Browse MCP Registry",
+      "context": "Settings > Agent > MCP servers > MCP Registry browser: button that opens a search of the public MCP Registry (a public list of MCP servers)",
+      "tone": "concise_action",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_registry_search": {
+      "message": "Search the MCP Registry",
+      "context": "Settings > Agent > MCP servers > MCP Registry browser: placeholder and screen-reader label of the search box",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_registry_find": {
+      "message": "Search",
+      "context": "Settings > Agent > MCP servers > MCP Registry browser: button that runs the search",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_registry_hint": {
+      "message": "Servers you add start turned off, so you can check them first.",
+      "context": "Settings > Agent > MCP servers > MCP Registry browser: note under the search box: a server added from the list is saved switched off so the user can look at its command or address before turning it on",
+      "tone": "calm_editorial",
+      "max_chars": 90,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_registry_add": {
+      "message": "Add",
+      "context": "Settings > Agent > MCP servers > MCP Registry browser: button on a result that adds that server",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_registry_added": {
+      "message": "Added",
+      "context": "Settings > Agent > MCP servers > MCP Registry browser: the same button once that server is already in the user's list (disabled)",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_registry_more": {
+      "message": "More results",
+      "context": "Settings > Agent > MCP servers > MCP Registry browser: button that loads the next page of results",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_registry_empty": {
+      "message": "No servers found.",
+      "context": "Settings > Agent > MCP servers > MCP Registry browser: shown when a search finds no server Bistre can run",
+      "tone": "calm_editorial",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_registry_failed": {
+      "message": "Couldn't reach the MCP Registry. Check your connection and search again.",
+      "context": "Settings > Agent > MCP servers > MCP Registry browser: shown when the registry could not be reached",
+      "tone": "calm_editorial",
+      "max_chars": 90,
+      "placeholders": {}
+    },
     "settings.agent.no_folders": {
       "message": "No workspace folder selected.",
       "context": "Empty state when no workspace folder is chosen",
@@ -4661,11 +4813,116 @@
       "max_chars": 32,
       "placeholders": {}
     },
+    "settings.default_models.auto_compact": {
+      "message": "Shorten automatically at",
+      "context": "Settings > Default models > Shorten conversation: label of the slider and number box setting how full (percent of the model's context window) a chat may get before it is shortened automatically",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.default_models.auto_compact_value": {
+      "message": "{percent}% full",
+      "context": "Screen-reader value of the auto-shorten slider: the chosen fill level of the context window",
+      "tone": "calm_editorial",
+      "max_chars": 24,
+      "placeholders": {
+        "percent": {
+          "type": "int",
+          "example": "85"
+        }
+      }
+    },
+    "settings.default_models.auto_compact_unit": {
+      "message": "%",
+      "context": "Percent sign shown after the auto-shorten number box",
+      "tone": "concise_action",
+      "max_chars": 4,
+      "placeholders": {}
+    },
+    "settings.default_models.usage_heading": {
+      "message": "Use in the last 30 days",
+      "context": "Heading of the section listing what paid requests were for over the last 30 days (chats, helpers, chat names, shortening, translations, voice)",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.default_models.usage_chat": {
+      "message": "Chats",
+      "context": "Settings > Default models > Use in the last 30 days: row label for the user's own chat replies",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.default_models.usage_helper": {
+      "message": "Helpers",
+      "context": "Settings > Default models > Use in the last 30 days: row label for read-only helper agents a chat started",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.default_models.usage_title": {
+      "message": "Chat names",
+      "context": "Settings > Default models > Use in the last 30 days: row label for naming chats automatically",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.default_models.usage_summary": {
+      "message": "Shortening",
+      "context": "Settings > Default models > Use in the last 30 days: row label for shortening long chats",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.default_models.usage_translation": {
+      "message": "Translations",
+      "context": "Settings > Default models > Use in the last 30 days: row label for translating messages",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.default_models.usage_voice": {
+      "message": "Voice",
+      "context": "Settings > Default models > Use in the last 30 days: row label for read aloud and live voice",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.default_models.usage_value": {
+      "message": "{requests, plural, one{1 request} other{{requests} requests}} · {cost}",
+      "context": "Settings > Default models > Use in the last 30 days: how many requests a row made and what they cost in US dollars",
+      "tone": "diagnostic",
+      "max_chars": 40,
+      "placeholders": {
+        "requests": {
+          "type": "int",
+          "example": "12"
+        },
+        "cost": {
+          "type": "string",
+          "example": "$0.04"
+        }
+      }
+    },
     "settings.default_models.target_lang": {
       "message": "Target language",
       "context": "Target translation language field label",
       "tone": "calm_editorial",
       "max_chars": 27,
+      "placeholders": {}
+    },
+    "settings.default_models.speech_heading": {
+      "message": "Read aloud",
+      "context": "Settings > Default models: heading of the section choosing which speech model reads replies aloud",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.default_models.system_voice": {
+      "message": "System voice",
+      "context": "Settings > Default models > Read aloud: chip choosing the device's own voice instead of a provider speech model",
+      "tone": "concise_action",
+      "max_chars": 24,
       "placeholders": {}
     },
     "settings.default_models.title_heading": {
@@ -4722,6 +4979,20 @@
       "context": "System tray icon toggle",
       "tone": "calm_editorial",
       "max_chars": 36,
+      "placeholders": {}
+    },
+    "tray.open": {
+      "message": "Open Bistre",
+      "context": "Windows system tray icon menu: shows the Bistre window again",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "tray.quit": {
+      "message": "Quit",
+      "context": "Windows system tray icon menu: closes Bistre completely (closing the window only hides it to the tray)",
+      "tone": "concise_action",
+      "max_chars": 24,
       "placeholders": {}
     },
     "settings.model.context_limit": {
@@ -5015,13 +5286,6 @@
       "max_chars": 56,
       "placeholders": {}
     },
-    "settings.provider.bg_poll": {
-      "message": "Background polling for long replies",
-      "context": "Gemini background polling toggle",
-      "tone": "calm_editorial",
-      "max_chars": 47,
-      "placeholders": {}
-    },
     "settings.provider.endpoint_override": {
       "message": "Custom server URL path",
       "context": "Optional custom server URL path label",
@@ -5061,6 +5325,34 @@
       "max_chars": 37,
       "placeholders": {}
     },
+    "settings.provider.cache_hour": {
+      "message": "Keep the prompt cache for an hour",
+      "context": "Anthropic provider Advanced settings: switch; on, the prompt cache lasts one hour instead of five minutes",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.provider.cache_hour_hint": {
+      "message": "Saving to the cache costs more; coming back after a pause costs less.",
+      "context": "Under the one-hour prompt cache switch: the cost trade-off",
+      "tone": "calm_editorial",
+      "max_chars": 90,
+      "placeholders": {}
+    },
+    "settings.provider.server_compaction": {
+      "message": "Let Anthropic shorten long chats",
+      "context": "Anthropic provider Advanced settings: switch; on, Anthropic itself shortens long chats near the conversation limit",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.provider.server_compaction_hint": {
+      "message": "Older turns are summarized on Anthropic's side when a chat nears its limit.",
+      "context": "Under the server-side shortening switch: what happens",
+      "tone": "calm_editorial",
+      "max_chars": 90,
+      "placeholders": {}
+    },
     "settings.provider.store_server": {
       "message": "Allow server-side storage",
       "context": "Provider server-side storage opt-in toggle",
@@ -5073,6 +5365,13 @@
       "context": "Privacy explanation for server-side storage toggle",
       "tone": "calm_editorial",
       "max_chars": 88,
+      "placeholders": {}
+    },
+    "settings.provider.store_server_private": {
+      "message": "Off while Private requests is on in Safety & Budget.",
+      "context": "Provider Advanced settings, under Allow server-side storage while Private requests is on in Safety & Budget (the switch is hidden then)",
+      "tone": "calm_editorial",
+      "max_chars": 80,
       "placeholders": {}
     },
     "settings.provider.test_action": {
@@ -5151,7 +5450,7 @@
       "placeholders": {}
     },
     "settings.world_book.cards_hint": {
-      "message": "Import .png, .json, or .charx cards locally.",
+      "message": "Character cards from .png, .json, or .charx files",
       "context": "Character cards hint",
       "tone": "calm_editorial",
       "max_chars": 64,
@@ -5200,7 +5499,7 @@
       "placeholders": {}
     },
     "settings.world_book.lore_hint": {
-      "message": "Injected automatically when matching keywords appear in chat.",
+      "message": "Added to the chat when one of its keywords comes up.",
       "context": "Lorebook description",
       "tone": "calm_editorial",
       "max_chars": 88,
@@ -5218,7 +5517,7 @@
       }
     },
     "toast.provider.connection_ok": {
-      "message": "Connection OK ({seconds}s — {count} models reachable)",
+      "message": "Connection OK ({seconds}s, {count} models reachable)",
       "context": "Toast message when provider Test succeeds",
       "tone": "calm_editorial",
       "max_chars": 68,
@@ -5255,11 +5554,27 @@
       "placeholders": {}
     },
     "composer.live_voice_listening": {
-      "message": "Live voice active — speak now",
+      "message": "Live voice active, speak now",
       "context": "Status banner shown while live voice session is actively listening",
       "tone": "calm_editorial",
       "max_chars": 56,
       "placeholders": {}
+    },
+    "composer.live_voice_line": {
+      "message": "{speaker}: {text}",
+      "context": "Live voice banner: the latest words heard or spoken; {speaker} is You or the assistant's name, {text} the words",
+      "tone": "calm_editorial",
+      "max_chars": 120,
+      "placeholders": {
+        "speaker": {
+          "type": "string",
+          "example": "You"
+        },
+        "text": {
+          "type": "string",
+          "example": "What's the weather like?"
+        }
+      }
     },
     "composer.live_voice_pill": {
       "message": "Live",
@@ -5470,17 +5785,17 @@
       "placeholders": {}
     },
     "settings.storage.export_current_json": {
-      "message": "Current (.json)",
+      "message": "This chat as a file",
       "context": "Button exporting the current chat as JSON",
       "tone": "concise_action",
-      "max_chars": 24,
+      "max_chars": 25,
       "placeholders": {}
     },
     "settings.storage.export_current_md": {
-      "message": "Current (.md)",
+      "message": "This chat as Markdown",
       "context": "Button exporting the current chat as Markdown",
       "tone": "concise_action",
-      "max_chars": 24,
+      "max_chars": 27,
       "placeholders": {}
     },
     "settings.storage.export_import_hint": {
@@ -5656,13 +5971,6 @@
       "max_chars": 18,
       "placeholders": {}
     },
-    "settings.ota.feed_downloads_hint": {
-      "message": "Opened in a browser, this address downloads manifest.json. That is expected.",
-      "context": "Help under the update feed address: opening that address in a web browser downloads a small file instead of showing a page, which is normal",
-      "tone": "calm_editorial",
-      "max_chars": 140,
-      "placeholders": {}
-    },
     "diag.ota.manifest_unsupported": {
       "message": "This version can't read the new update format. Install the latest version once from the download page.",
       "context": "Rust DiagnosticKey::OtaManifestUnsupported: the update feed uses a format this version cannot read; installing the latest version once from the download page fixes it",
@@ -5700,7 +6008,7 @@
       }
     },
     "chat.context.no_percent": {
-      "message": "—",
+      "message": "-",
       "context": "Percent cell when there is no share to show (window unknown, or a row that is not sent)",
       "tone": "calm_editorial",
       "max_chars": 4,
@@ -5753,11 +6061,18 @@
       "max_chars": 30,
       "placeholders": {}
     },
-    "chat.context.cat.workspace_instructions": {
+    "chat.context.cat.project_instructions": {
       "message": "Project instructions",
-      "context": "Breakdown row: the project folder's instructions file (AGENTS.md or similar) added in Build and Plan",
+      "context": "Breakdown row: the instructions of the chat's project (Settings > Projects)",
       "tone": "calm_editorial",
-      "max_chars": 30,
+      "max_chars": 25,
+      "placeholders": {}
+    },
+    "chat.context.cat.workspace_instructions": {
+      "message": "Workspace instructions",
+      "context": "Breakdown row: the workspace folder's instructions file (AGENTS.md or similar) added in Build and Plan",
+      "tone": "calm_editorial",
+      "max_chars": 27,
       "placeholders": {}
     },
     "chat.context.cat.story": {
@@ -5912,6 +6227,13 @@
       "max_chars": 96,
       "placeholders": {}
     },
+    "diag.voice.mic_unavailable": {
+      "message": "The microphone could not start, so live voice ended.",
+      "context": "Rust DiagnosticKey::VoiceMicUnavailable: live voice could not start the microphone (missing, blocked, or not supported on this device), so the session ended",
+      "tone": "diagnostic",
+      "max_chars": 96,
+      "placeholders": {}
+    },
     "diag.run.step_limit_reached": {
       "message": "The reply stopped after its step limit. Send a message to let it continue.",
       "context": "Rust DiagnosticKey::RunStepLimitReached: an agent run stopped because it used its maximum number of steps while the model still wanted to continue; sending a new message continues",
@@ -5959,6 +6281,1746 @@
       "context": "Rust DiagnosticKey::ToolPathDenied: a file or path outside what the tool or import may use was refused (outside the workspace, or a path that tries to escape a folder)",
       "tone": "diagnostic",
       "max_chars": 96,
+      "placeholders": {}
+    },
+    "chat.tokens_meta_cost": {
+      "message": "↑{input} ↓{output} {cost}",
+      "context": "Reply usage line: arrows for tokens sent and received, then the cost",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {
+        "input": {
+          "type": "int",
+          "example": "412"
+        },
+        "output": {
+          "type": "int",
+          "example": "198"
+        },
+        "cost": {
+          "type": "string",
+          "example": "$0.0031"
+        }
+      }
+    },
+    "chat.tokens_spoken": {
+      "message": "{input} tokens sent, {output} received",
+      "context": "Screen reader label of the reply usage line (tokens sent and received)",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {
+        "input": {
+          "type": "int",
+          "example": "412"
+        },
+        "output": {
+          "type": "int",
+          "example": "198"
+        }
+      }
+    },
+    "chat.tokens_spoken_cost": {
+      "message": "{input} tokens sent, {output} received, {cost}",
+      "context": "Screen reader label of the reply usage line with its cost",
+      "tone": "diagnostic",
+      "max_chars": 80,
+      "placeholders": {
+        "input": {
+          "type": "int",
+          "example": "412"
+        },
+        "output": {
+          "type": "int",
+          "example": "198"
+        },
+        "cost": {
+          "type": "string",
+          "example": "$0.0031"
+        }
+      }
+    },
+    "settings.storage.delete_all_chats": {
+      "message": "Delete all chats",
+      "context": "Settings > Storage row that deletes every chat (two clicks)",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "composer.tools_show": {
+      "message": "More options",
+      "context": "Phone composer + button: opens the tray with attach, tools, thinking, and live voice",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "composer.tools_hide": {
+      "message": "Fewer options",
+      "context": "Phone composer button that closes the tray of composer options",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.trust.preset_row_label": {
+      "message": "Applies to every new chat",
+      "context": "Settings > Safety: what the tool permission preset choice applies to",
+      "tone": "calm_editorial",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "studio.run_status.running": {
+      "message": "Running",
+      "context": "Studio > Runs: status seal on a background run card",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "studio.run_status.waiting_approval": {
+      "message": "Needs approval",
+      "context": "Studio > Runs: status seal on a background run card",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "studio.run_status.backoff_wait": {
+      "message": "Waiting to retry",
+      "context": "Studio > Runs: status seal on a background run card",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "studio.run_status.sleep_paused": {
+      "message": "Paused for sleep",
+      "context": "Studio > Runs: status seal on a background run card",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "studio.run_status.indeterminate_halt": {
+      "message": "Unsure if finished",
+      "context": "Studio > Runs: status seal on a background run card",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "studio.run_status.completed": {
+      "message": "Done",
+      "context": "Studio > Runs: status seal on a background run card",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "studio.run_status.failed": {
+      "message": "Failed",
+      "context": "Studio > Runs: status seal on a background run card",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "studio.run_status.cancelled": {
+      "message": "Stopped",
+      "context": "Studio > Runs: status seal on a background run card",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "studio.run_step": {
+      "message": "Step {step}",
+      "context": "Studio > Runs: which step of a background run is current",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {
+        "step": {
+          "type": "int",
+          "example": "4"
+        }
+      }
+    },
+    "story.block.system": {
+      "message": "Instructions",
+      "context": "Studio > Prompt: title of one part of what is sent to the model",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "story.block.character": {
+      "message": "Character: {name}",
+      "context": "Studio > Prompt: title of one part of what is sent to the model",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "Lyra"
+        }
+      }
+    },
+    "story.block.persona": {
+      "message": "You: {name}",
+      "context": "Studio > Prompt: title of one part of what is sent to the model",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "Ana"
+        }
+      }
+    },
+    "story.block.memory": {
+      "message": "Story memory",
+      "context": "Studio > Prompt: title of one part of what is sent to the model",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "story.block.eras": {
+      "message": "Story so far",
+      "context": "Studio > Prompt: title of one part of what is sent to the model",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "story.block.lore": {
+      "message": "Lore: {name}",
+      "context": "Studio > Prompt: title of one part of what is sent to the model",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "Sunken Library"
+        }
+      }
+    },
+    "story.block.author_note": {
+      "message": "Story notes",
+      "context": "Studio > Prompt: title of one part of what is sent to the model",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "story.block.scene_beats": {
+      "message": "Scene plan",
+      "context": "Studio > Prompt: title of one part of what is sent to the model",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "story.lore_reason.constant": {
+      "message": "Always added",
+      "context": "Studio > Prompt: why a lore entry was added",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "story.lore_reason.sticky": {
+      "message": "Kept from earlier",
+      "context": "Studio > Prompt: why a lore entry was added",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "story.lore_reason.keyword": {
+      "message": "A keyword came up",
+      "context": "Studio > Prompt: why a lore entry was added",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "story.lore_reason.recursive": {
+      "message": "Named by another entry",
+      "context": "Studio > Prompt: why a lore entry was added",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "story.lore_reason.budget": {
+      "message": "Over the lore limit",
+      "context": "Studio > Prompt: why a lore entry was left out",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "story.lore_reason.not_triggered": {
+      "message": "Not triggered",
+      "context": "Studio > Prompt: why a lore entry was left out",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "story.inspector.meter": {
+      "message": "{total} tokens, {reused} reused",
+      "context": "Studio > Prompt: size of what is sent and how much is reused from the cache",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "total": {
+          "type": "int",
+          "example": "880"
+        },
+        "reused": {
+          "type": "int",
+          "example": "690"
+        }
+      }
+    },
+    "story.inspector.lore_budget": {
+      "message": "{used} of {limit} tokens",
+      "context": "Studio > Prompt: lore tokens used against the lore limit",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "used": {
+          "type": "int",
+          "example": "120"
+        },
+        "limit": {
+          "type": "int",
+          "example": "800"
+        }
+      }
+    },
+    "story.inspector.lore_empty": {
+      "message": "No lore entries yet.",
+      "context": "Studio > Prompt: empty lore list",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "story.sampler.min_p": {
+      "message": "Min P",
+      "context": "Write mode > options: a sampler setting name",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.sampler.top_k": {
+      "message": "Top K",
+      "context": "Write mode > options: a sampler setting name",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.sampler.repetition": {
+      "message": "Repeat penalty",
+      "context": "Write mode > options: a sampler setting name",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.sampler.dry": {
+      "message": "DRY",
+      "context": "Write mode > options: a sampler setting name",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.sampler.xtc": {
+      "message": "XTC",
+      "context": "Write mode > options: a sampler setting name",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "story.sampler.banned": {
+      "message": "Phrases to avoid, separated by commas",
+      "context": "Write mode > options: placeholder of the banned phrases field",
+      "tone": "calm_editorial",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "story.cast_line": {
+      "message": "With {names}",
+      "context": "Write mode toolbar: the characters in this scene",
+      "tone": "calm_editorial",
+      "max_chars": 80,
+      "placeholders": {
+        "names": {
+          "type": "string",
+          "example": "Lyra, Kael"
+        }
+      }
+    },
+    "story.cast_separator": {
+      "message": ", ",
+      "context": "Separator between character names in the cast line",
+      "tone": "concise_action",
+      "max_chars": 4,
+      "placeholders": {}
+    },
+    "settings.agent.tool.read_file": {
+      "message": "Read files",
+      "context": "Settings > Tools > Permissions: what this tool lets the model do",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.agent.tool.edit_file": {
+      "message": "Edit files",
+      "context": "Settings > Tools > Permissions: what this tool lets the model do",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.agent.tool.grep": {
+      "message": "Search inside files",
+      "context": "Settings > Tools > Permissions: what this tool lets the model do",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.agent.tool.glob": {
+      "message": "Find files by name",
+      "context": "Settings > Tools > Permissions: what this tool lets the model do",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.agent.tool.shell": {
+      "message": "Run commands",
+      "context": "Settings > Tools > Permissions: what this tool lets the model do",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.agent.tool.web_fetch": {
+      "message": "Open web pages",
+      "context": "Settings > Tools > Permissions: what this tool lets the model do",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.agent.tool.mcp": {
+      "message": "Connected tools",
+      "context": "Settings > Tools > Permissions: what this tool lets the model do",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.agent.tool.calc_eval": {
+      "message": "Do math",
+      "context": "Settings > Tools > Permissions: what this tool lets the model do",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.agent.tool.dice_roll": {
+      "message": "Roll dice",
+      "context": "Settings > Tools > Permissions: what this tool lets the model do",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.agent.tool.todo_write": {
+      "message": "Keep a task list",
+      "context": "Settings > Tools > Permissions: what this tool lets the model do",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.agent.tool.agent_delegate": {
+      "message": "Ask helpers to read files",
+      "context": "Settings > Tools > Permissions: what this tool lets the model do",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "automations.every_seconds": {
+      "message": "{count, plural, one{Every second} other{Every {count} seconds}}",
+      "context": "Settings > Memory > Scheduled tasks: how often a task runs",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "15"
+        }
+      }
+    },
+    "automations.every_minutes": {
+      "message": "{count, plural, one{Every minute} other{Every {count} minutes}}",
+      "context": "Settings > Memory > Scheduled tasks: how often a task runs",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "15"
+        }
+      }
+    },
+    "automations.every_hours": {
+      "message": "{count, plural, one{Every hour} other{Every {count} hours}}",
+      "context": "Settings > Memory > Scheduled tasks: how often a task runs",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "15"
+        }
+      }
+    },
+    "automations.every_days": {
+      "message": "{count, plural, one{Every day} other{Every {count} days}}",
+      "context": "Settings > Memory > Scheduled tasks: how often a task runs",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "15"
+        }
+      }
+    },
+    "automations.daily_at": {
+      "message": "Every day at {time} UTC",
+      "context": "Settings > Memory > Scheduled tasks: how often a task runs",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {
+        "time": {
+          "type": "string",
+          "example": "09:00"
+        }
+      }
+    },
+    "automations.name_placeholder": {
+      "message": "Task name",
+      "context": "Settings > Memory > Scheduled tasks: placeholder of the task name field",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "automations.last_started": {
+      "message": "Last run started",
+      "context": "Settings > Memory > Scheduled tasks: outcome of the last run",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "automations.last_failed": {
+      "message": "Last run failed",
+      "context": "Settings > Memory > Scheduled tasks: outcome of the last run",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "automations.invalid_schedule": {
+      "message": "Schedule not understood",
+      "context": "Settings > Memory > Scheduled tasks: the schedule could not be read",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.appearance.font_size": {
+      "message": "Font size",
+      "context": "Settings > Appearance: name of a text layout setting (its value shows beside it)",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.appearance.line_spacing": {
+      "message": "Line spacing",
+      "context": "Settings > Appearance: name of a text layout setting (its value shows beside it)",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.appearance.reading_width_label": {
+      "message": "Reading width",
+      "context": "Settings > Appearance: name of a text layout setting (its value shows beside it)",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.appearance.pixels": {
+      "message": "{px} px",
+      "context": "Settings > Appearance: a width in pixels",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {
+        "px": {
+          "type": "int",
+          "example": "760"
+        }
+      }
+    },
+    "provider.section_title": {
+      "message": "Provider",
+      "context": "Settings > Providers > one provider: heading over on/off, icon, name and address",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.assistants.name_label": {
+      "message": "Name",
+      "context": "Settings > Assistants > editor: label of the name field",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.assistants.instructions_label": {
+      "message": "Instructions",
+      "context": "Settings > Assistants > editor: label of the instructions field",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.world_book.copy_card": {
+      "message": "Copy card data",
+      "context": "Settings > World book: copies a character card's data to the clipboard",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "story.laser_scope_selection": {
+      "message": "On the selected text:",
+      "context": "Manuscript: the rewrite buttons after this act on the selected text",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "story.laser_scope_scene": {
+      "message": "On the whole scene:",
+      "context": "Manuscript: the rewrite buttons after this act on the whole scene",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "story.save_unsaved": {
+      "message": "Save, unsaved changes",
+      "context": "Manuscript: screen-reader label of Save while the scene has unsaved changes",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "shortcuts.escape_fixed": {
+      "message": "Always Esc; it can't be changed.",
+      "context": "Settings > Shortcuts: why the close/back shortcut row cannot be recorded",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "shortcuts.needs_modifier": {
+      "message": "Add Ctrl or Alt; that key types text.",
+      "context": "Settings > Shortcuts, while recording: the pressed key alone (or with Shift) would stop typing its character, so it needs Ctrl or Alt",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "shortcuts.kept_for_editing": {
+      "message": "Kept for copy, paste and undo.",
+      "context": "Settings > Shortcuts, while recording: the pressed shortcut is copy, cut, paste, undo, redo or select all and cannot be reassigned",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "shortcuts.taken": {
+      "message": "Already used by {action}.",
+      "context": "Settings > Shortcuts, while recording: another action already uses the pressed shortcut; {action} is that action's name",
+      "tone": "calm_editorial",
+      "max_chars": 56,
+      "placeholders": {
+        "action": {
+          "type": "string",
+          "example": "New chat"
+        }
+      }
+    },
+    "settings.assistants.subtitle_label": {
+      "message": "Description",
+      "context": "Settings > Assistants > editor: label of the short description field",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "thread.regenerate_title": {
+      "message": "Regenerate title",
+      "context": "Menu action on a chat row to ask the title model for a new short chat title.",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.action.translate": {
+      "message": "Translate",
+      "context": "Action on a message to translate it into the configured target language as a new version.",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "toast.translated": {
+      "message": "Translation added as a new version.",
+      "context": "Toast shown after translating a message into a new version.",
+      "tone": "calm_editorial",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "settings.budget.local_first": {
+      "message": "Prefer free local models",
+      "context": "Switch in Safety & Budget to use a local provider for background utility tasks when available.",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.budget.local_first_hint": {
+      "message": "Use a local provider on this device for titles, summaries, and translations when available.",
+      "context": "Explanation under Prefer free local models.",
+      "tone": "calm_editorial",
+      "max_chars": 110,
+      "placeholders": {}
+    },
+    "story.inspector_real_request": {
+      "message": "Next request (no keys)",
+      "context": "Heading for the exact credential-free outbound request section in the Prompt inspector.",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_discover": {
+      "message": "Refresh tools",
+      "context": "Button on an MCP server row to connect and refresh its tool list.",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.ota.auto_check": {
+      "message": "Check for updates on launch",
+      "context": "Switch in Updates settings to automatically check for updates when Bistre starts.",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.ota.reinstall": {
+      "message": "Reinstall this version",
+      "context": "Button in Updates settings when already on the latest version to re-download and stage the current release.",
+      "tone": "concise_action",
+      "max_chars": 30,
+      "placeholders": {}
+    },
+    "settings.prefs.show_timestamps": {
+      "message": "Show message times",
+      "context": "Switch in Appearance display settings to show the time next to each message.",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "settings.prefs.show_user_name": {
+      "message": "Show your name",
+      "context": "Appearance toggle: show your name above your messages",
+      "tone": "calm_editorial",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.prefs.show_sent_files": {
+      "message": "Show files you sent",
+      "context": "Appearance toggle: show the files you attached under your messages",
+      "tone": "calm_editorial",
+      "max_chars": 23,
+      "placeholders": {}
+    },
+    "settings.agent.phone_use": {
+      "message": "Phone use",
+      "context": "Switch in Agent settings on Android allowing the model to inspect and interact with the phone screen via Accessibility.",
+      "tone": "calm_editorial",
+      "max_chars": 28,
+      "placeholders": {}
+    },
+    "settings.agent.phone_use_hint": {
+      "message": "Requires Android Accessibility permission; every tap or key asks first.",
+      "context": "Helper text under Phone use switch on Android.",
+      "tone": "calm_editorial",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "shell.crash.banner": {
+      "message": "Bistre closed unexpectedly last time. Secrets were removed from the local report.",
+      "context": "Banner shown on next launch when a local redacted crash report exists",
+      "tone": "calm_editorial",
+      "max_chars": 96,
+      "placeholders": {}
+    },
+    "shell.crash.copy": {
+      "message": "Copy report",
+      "context": "Button in the crash banner that copies the local redacted crash report",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.media_chip": {
+      "message": "Format: {value}",
+      "context": "Composer chip showing the picture or video format; opens the choices",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {
+        "value": {
+          "type": "string",
+          "example": "16:9 · 2K"
+        }
+      }
+    },
+    "chat.media_title": {
+      "message": "Format",
+      "context": "Heading of the picture and video format popover",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.media_shape": {
+      "message": "Shape",
+      "context": "Group label for the picture shape (aspect ratio) choices",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.media_size": {
+      "message": "Size",
+      "context": "Group label for the output size (resolution) choices",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.media_length": {
+      "message": "Length",
+      "context": "Group label for the video length choices",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.media_default": {
+      "message": "Default",
+      "context": "Choice that leaves this format setting to the provider",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "chat.media_seconds": {
+      "message": "{seconds} s",
+      "context": "A video length choice in seconds",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {
+        "seconds": {
+          "type": "string",
+          "example": "8"
+        }
+      }
+    },
+    "chat.media_hint": {
+      "message": "Only the choices this model lists. Default lets the provider decide.",
+      "context": "Hint under the format choices",
+      "tone": "calm_editorial",
+      "max_chars": 90,
+      "placeholders": {}
+    },
+    "viewer.play": {
+      "message": "Play",
+      "context": "Plays a sound file shown in the file viewer",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "viewer.save_copy": {
+      "message": "Save a copy",
+      "context": "Saves a copy of the file shown in the file viewer",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "viewer.open_app": {
+      "message": "Open in default app",
+      "context": "Opens the file shown in the file viewer in its default app",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "viewer.text_cut": {
+      "message": "Showing the first {size}",
+      "context": "Note under a long text file in the file viewer",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {
+        "size": {
+          "type": "string",
+          "example": "256 KB"
+        }
+      }
+    },
+    "viewer.no_preview": {
+      "message": "This file can’t be shown here.",
+      "context": "The file viewer cannot show this kind of file",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "viewer.open_failed": {
+      "message": "No app opened this file.",
+      "context": "Notice when the default app could not open the file",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {}
+    },
+    "viewer.saved": {
+      "message": "Copy saved",
+      "context": "Notice after a copy of a file was saved",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.provider.own_tools": {
+      "message": "Use {name}'s own tools",
+      "context": "Switch: send the provider's own link reader and code runner",
+      "tone": "concise_action",
+      "max_chars": 48,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "Google Gemini"
+        }
+      }
+    },
+    "settings.provider.own_tools_hint": {
+      "message": "The model can read links and run Python on {name}'s servers, billed as tokens. Bistre's own link reader and web search work either way.",
+      "context": "Hint under the provider's own tools switch",
+      "tone": "calm_editorial",
+      "max_chars": 200,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "Google Gemini"
+        }
+      }
+    },
+    "settings.provider.own_tools_capped": {
+      "message": "Not sent while a spending limit is set: pages {name} reads can't be priced before the request. Bistre's own link reader and web search still work.",
+      "context": "Hint under the provider's own tools switch while a daily spending limit is set",
+      "tone": "calm_editorial",
+      "max_chars": 200,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "Google Gemini"
+        }
+      }
+    },
+    "chat.action.copy_plain": {
+      "message": "Copy as plain text",
+      "context": "Message action: copy the message without Markdown marks",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.action.branch_new_chat": {
+      "message": "Branch into a new chat",
+      "context": "Message action: copy the conversation up to this message into a new chat",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "chat.action.show_more": {
+      "message": "Show more",
+      "context": "Button under a long collapsed message that shows all of it",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "chat.action.show_less": {
+      "message": "Show less",
+      "context": "Button under an expanded long message that collapses it again",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "composer.slash.rewind_desc": {
+      "message": "Remove your last message and its reply",
+      "context": "Description for /rewind slash command: removes the last message you sent and everything after it",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "chat.inspector.clear_messages": {
+      "message": "Clear messages",
+      "context": "Chat details button: delete every message of this chat and keep the chat",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.inspector.clear_confirm": {
+      "message": "Press again to clear",
+      "context": "The Clear messages button after one press: a second press deletes every message",
+      "tone": "concise_action",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "toast.branched": {
+      "message": "Continued in a new chat",
+      "context": "Toast after the conversation was copied into a new chat, which is now open",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "toast.messages_cleared": {
+      "message": "Messages cleared",
+      "context": "Toast after every message of the chat was deleted",
+      "tone": "calm_editorial",
+      "max_chars": 36,
+      "placeholders": {}
+    },
+    "composer.pasted_text_name": {
+      "message": "Pasted text",
+      "context": "File name (without extension) given to long pasted text attached as a file",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "composer.pasted_image_name": {
+      "message": "Pasted picture",
+      "context": "File name (without extension) given to a pasted picture attached as a file",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.action.save_version": {
+      "message": "Save as new version",
+      "context": "Button under an edited reply: save the text as a new version beside the old one",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.action.edit_reply": {
+      "message": "Edit reply",
+      "context": "Message action: edit the reply text, saved as a new version",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.action.exclude_context": {
+      "message": "Leave out of context",
+      "context": "Message action: the message stays in the chat but is not sent to the model",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.action.include_context": {
+      "message": "Bring back into context",
+      "context": "Message action: send a left-out message to the model again",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.action.regenerate_confirm": {
+      "message": "Press again to regenerate",
+      "context": "Regenerate button after the first press when confirming is on",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "chat.excluded_note": {
+      "message": "Left out of the chat’s context",
+      "context": "Note above a dimmed message the model no longer receives",
+      "tone": "calm_editorial",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "chat.goal_check_note": {
+      "message": "Bistre asked the model to check its work against the goal",
+      "context": "Quiet line where Bistre sent the model back to check its work against the chat goal",
+      "tone": "calm_editorial",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "chat.turn.raw_request": {
+      "message": "Raw request",
+      "context": "Turn details: the request body exactly as sent to the provider",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.turn.raw_response": {
+      "message": "Raw response",
+      "context": "Turn details: the response stream exactly as the provider sent it",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "chat.turn.raw_gone": {
+      "message": "Bistre keeps the raw request and response of recent replies only until it closes.",
+      "context": "Turn details note when the raw request of this reply is no longer kept in memory",
+      "tone": "calm_editorial",
+      "max_chars": 120,
+      "placeholders": {}
+    },
+    "chat.turn.raw_truncated": {
+      "message": "Only the first part is kept.",
+      "context": "Turn details note: a long raw request or response was cut",
+      "tone": "calm_editorial",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "chat.inspector.summarize_new_chat": {
+      "message": "Summarize into a new chat",
+      "context": "Chat details button: summarize this chat and continue in a new chat that starts from the summary",
+      "tone": "concise_action",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "composer.goal.open": {
+      "message": "Goal: {goal}",
+      "context": "Strip above the composer naming the chat goal the model works toward",
+      "tone": "calm_editorial",
+      "max_chars": 200,
+      "placeholders": {
+        "goal": {
+          "type": "string",
+          "example": "Port the parser tests"
+        }
+      }
+    },
+    "composer.goal.done": {
+      "message": "Goal done: {goal}",
+      "context": "Strip above the composer after the model marked the goal complete",
+      "tone": "calm_editorial",
+      "max_chars": 200,
+      "placeholders": {
+        "goal": {
+          "type": "string",
+          "example": "Port the parser tests"
+        }
+      }
+    },
+    "composer.goal.clear": {
+      "message": "Clear goal",
+      "context": "Button that removes the chat goal",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "composer.side.title": {
+      "message": "Side question",
+      "context": "Title of the card answering a question asked beside the chat, not saved to it",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "composer.side.answering": {
+      "message": "Answering",
+      "context": "Side question card while the model answers",
+      "tone": "calm_editorial",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "composer.slash.goal_desc": {
+      "message": "Set the chat’s goal; /goal alone clears it",
+      "context": "Slash command menu: /goal sets the chat goal; typed alone it clears the goal",
+      "tone": "calm_editorial",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "composer.slash.btw_desc": {
+      "message": "Ask a side question that stays out of the chat",
+      "context": "Slash command menu: /btw asks a question about the chat that is not added to it",
+      "tone": "calm_editorial",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "composer.slash.continue_desc": {
+      "message": "Continue the last reply",
+      "context": "Slash command menu: /continue asks the model to go on from its last reply",
+      "tone": "calm_editorial",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "composer.slash.summarize_desc": {
+      "message": "Summarize this chat into a new one",
+      "context": "Slash command menu: /summarize continues in a new chat that starts from a summary",
+      "tone": "calm_editorial",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "toast.left_out": {
+      "message": "Left out of the context",
+      "context": "Toast after a message was left out of the context",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "toast.brought_back": {
+      "message": "Back in the context",
+      "context": "Toast after a left-out message was brought back into the context",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "toast.version_saved": {
+      "message": "New version saved",
+      "context": "Toast after an edited reply was saved as a new version",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "toast.summarizing": {
+      "message": "Summarizing the chat",
+      "context": "Toast while the chat is summarized into a new chat",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "toast.resumed_from_summary": {
+      "message": "New chat started from the summary",
+      "context": "Toast when the new chat that starts from the summary opens",
+      "tone": "calm_editorial",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "toast.goal_set": {
+      "message": "Goal set",
+      "context": "Toast after /goal set the chat goal",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "toast.goal_cleared": {
+      "message": "Goal cleared",
+      "context": "Toast after the chat goal was removed",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.prefs.show_model_icon": {
+      "message": "Show the model icon",
+      "context": "Appearance toggle: the model icon beside each reply",
+      "tone": "concise_action",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.prefs.confirm_regenerate": {
+      "message": "Confirm before regenerating",
+      "context": "Behavior toggle: Regenerate needs a second press",
+      "tone": "concise_action",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.prefs.collapse_long": {
+      "message": "Collapse long replies",
+      "context": "Behavior toggle: long replies open with Show more, like long messages you send",
+      "tone": "concise_action",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.prefs.follow_replies": {
+      "message": "Follow replies while they are written",
+      "context": "Behavior toggle: the chat scrolls along while a reply is written",
+      "tone": "concise_action",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "settings.prefs.new_chat_on_launch": {
+      "message": "Open a new chat at launch",
+      "context": "Behavior toggle: Bistre opens a new chat at launch instead of the last one",
+      "tone": "concise_action",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.appearance.code_size": {
+      "message": "Code text size",
+      "context": "Appearance row: size of code blocks, apart from the text size",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.history_limit": {
+      "message": "Messages sent as history",
+      "context": "Setting: how many of the latest messages each request sends",
+      "tone": "concise_action",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.history_limit_hint": {
+      "message": "Older messages stay in the chat but are not sent.",
+      "context": "Description under the history limit setting",
+      "tone": "calm_editorial",
+      "max_chars": 100,
+      "placeholders": {}
+    },
+    "settings.history_limit_all": {
+      "message": "All",
+      "context": "History limit option: send every message",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.history_limit_count": {
+      "message": "{count}",
+      "context": "History limit option: a number of the latest messages",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {
+        "count": {
+          "type": "int",
+          "example": "20"
+        }
+      }
+    },
+    "settings.assistants.duplicate": {
+      "message": "Duplicate",
+      "context": "Assistant editor button: make a copy of this assistant",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.assistants.copy_name": {
+      "message": "{name} (copy)",
+      "context": "Name given to a duplicated assistant",
+      "tone": "calm_editorial",
+      "max_chars": 64,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "Writer"
+        }
+      }
+    },
+    "toast.skill_installed": {
+      "message": "Skill installed",
+      "context": "Toast after a skill was installed",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "toast.skill_saved": {
+      "message": "Saved as a skill",
+      "context": "Toast after a reply was saved as one of Bistre’s skills",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "toast.preset_saved": {
+      "message": "Prompt saved",
+      "context": "Toast after the instructions were saved as a prompt preset",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "studio.files.all": {
+      "message": "All",
+      "context": "Files tab filter: every file of the chat",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "studio.files.sent": {
+      "message": "Sent",
+      "context": "Files tab filter and file label: files you sent in the chat",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "studio.files.made": {
+      "message": "Made by AI",
+      "context": "Files tab filter and file label: files a reply or a tool made",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "studio.files.edited": {
+      "message": "Edited",
+      "context": "Files tab filter: workspace files the agent edited",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "studio.files.none_of_kind": {
+      "message": "No files of this kind in this chat.",
+      "context": "Files tab note when the chosen filter has no files",
+      "tone": "calm_editorial",
+      "max_chars": 72,
+      "placeholders": {}
+    },
+    "studio.files.open": {
+      "message": "Open {name}",
+      "context": "Button that opens a file of the chat in the preview",
+      "tone": "concise_action",
+      "max_chars": 60,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "Trip plan"
+        }
+      }
+    },
+    "studio.files.show_in_chat": {
+      "message": "Show in chat",
+      "context": "Button that scrolls the chat to the message a file came with",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "skills.app_title": {
+      "message": "Bistre’s skills",
+      "context": "Settings card title: the skills Bistre itself keeps, for every chat",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "skills.app_hint": {
+      "message": "Offered in every chat with tools on.",
+      "context": "Description under Bistre’s skills",
+      "tone": "calm_editorial",
+      "max_chars": 100,
+      "placeholders": {}
+    },
+    "skills.link_placeholder": {
+      "message": "GitHub link to a skill",
+      "context": "Placeholder of the field for a GitHub link to a skill",
+      "tone": "calm_editorial",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "skills.install_link": {
+      "message": "Install",
+      "context": "Button that installs the skill the GitHub link points at",
+      "tone": "concise_action",
+      "max_chars": 20,
+      "placeholders": {}
+    },
+    "skills.install_folder": {
+      "message": "Install from folder",
+      "context": "Button that installs a skill from a folder holding SKILL.md",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "skills.install_file": {
+      "message": "Install from file",
+      "context": "Button that installs a skill from a zip or a SKILL.md file",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "skills.app_empty": {
+      "message": "No skills installed yet.",
+      "context": "Note when Bistre has no skills installed",
+      "tone": "calm_editorial",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "skills.remove": {
+      "message": "Remove {name}",
+      "context": "Button that removes an installed skill",
+      "tone": "concise_action",
+      "max_chars": 60,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "Trip plan"
+        }
+      }
+    },
+    "chat.action.save_skill": {
+      "message": "Save as skill",
+      "context": "Message action: save the reply as one of Bistre’s skills",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "composer.slash.draft_desc": {
+      "message": "Draft your next message; add a note to shape it",
+      "context": "Slash command menu: /draft writes your next message into the field; words after it shape the draft",
+      "tone": "calm_editorial",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "composer.slash.guide_desc": {
+      "message": "Regenerate the last reply the way you describe",
+      "context": "Slash command menu: /guide regenerates the last reply in the direction typed after it",
+      "tone": "calm_editorial",
+      "max_chars": 80,
+      "placeholders": {}
+    },
+    "settings.prefs.new_chat_on_assistant": {
+      "message": "Open a new chat when choosing another assistant",
+      "context": "Behavior toggle: choosing another assistant in a chat with messages opens a new chat",
+      "tone": "concise_action",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "settings.prefs.new_chat_after_delete": {
+      "message": "Open a new chat after deleting a chat",
+      "context": "Behavior toggle: deleting the open chat opens a new chat instead of the next one",
+      "tone": "concise_action",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "settings.storage.erase_all": {
+      "message": "Erase everything on this device",
+      "context": "Storage setting: erase everything Bistre keeps on this device",
+      "tone": "concise_action",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.storage.erase_hint": {
+      "message": "Chats, files, settings, and keys. Bistre erases them when it next starts.",
+      "context": "Description of the erase setting",
+      "tone": "calm_editorial",
+      "max_chars": 120,
+      "placeholders": {}
+    },
+    "settings.storage.erase_pending": {
+      "message": "Bistre erases everything when it next starts. Close and open Bistre to finish.",
+      "context": "Description while an erase waits for the next start",
+      "tone": "calm_editorial",
+      "max_chars": 120,
+      "placeholders": {}
+    },
+    "settings.storage.erase_cancel": {
+      "message": "Keep my data",
+      "context": "Button that withdraws a pending erase",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.storage.erase_action": {
+      "message": "Erase everything",
+      "context": "Button that asks to erase everything (a second press confirms)",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.storage.erase_confirm": {
+      "message": "Press again to erase",
+      "context": "The erase button after the first press",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.presets.label": {
+      "message": "Saved prompts",
+      "context": "Assistant editor row: saved system prompts",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.presets.save": {
+      "message": "Save as preset",
+      "context": "Button that saves the instructions as a preset",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.presets.use": {
+      "message": "Use {name}",
+      "context": "Button that puts a saved prompt into the instructions field",
+      "tone": "concise_action",
+      "max_chars": 60,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "Trip plan"
+        }
+      }
+    },
+    "settings.presets.remove": {
+      "message": "Remove {name}",
+      "context": "Button that deletes a saved prompt",
+      "tone": "concise_action",
+      "max_chars": 60,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "Trip plan"
+        }
+      }
+    },
+    "settings.assistants.greeting": {
+      "message": "Opening message",
+      "context": "Assistant editor field: the reply each new chat with the assistant starts with",
+      "tone": "concise_action",
+      "max_chars": 32,
+      "placeholders": {}
+    },
+    "settings.assistants.greeting_hint": {
+      "message": "New chats with this assistant start with this reply.",
+      "context": "Description under the opening message field",
+      "tone": "calm_editorial",
+      "max_chars": 100,
+      "placeholders": {}
+    },
+    "settings.assistants.greeting_placeholder": {
+      "message": "Hello. What are we working on?",
+      "context": "Placeholder of the opening message field",
+      "tone": "calm_editorial",
+      "max_chars": 60,
+      "placeholders": {}
+    },
+    "settings.projects.new": {
+      "message": "New project",
+      "context": "Button and editor title for creating a project",
+      "tone": "concise_action",
+      "max_chars": 15,
+      "placeholders": {}
+    },
+    "settings.projects.edit_title": {
+      "message": "Edit project",
+      "context": "Settings > Projects: editor title for an existing project",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.projects.name_placeholder": {
+      "message": "Project name",
+      "context": "Settings > Projects: placeholder of the name field",
+      "tone": "calm_editorial",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.projects.folder": {
+      "message": "Folder",
+      "context": "Settings > Projects: label of the folder the project's chats work in; also the folder picker title",
+      "tone": "concise_action",
+      "max_chars": 10,
+      "placeholders": {}
+    },
+    "settings.projects.folder_hint": {
+      "message": "Chats in this project read and edit files here. With no folder, they use the folder open in the app.",
+      "context": "Settings > Projects: what the folder does",
+      "tone": "calm_editorial",
+      "max_chars": 125,
+      "placeholders": {}
+    },
+    "settings.projects.choose_folder": {
+      "message": "Choose folder",
+      "context": "Settings > Projects: button opening the folder picker",
+      "tone": "concise_action",
+      "max_chars": 17,
+      "placeholders": {}
+    },
+    "settings.projects.clear_folder": {
+      "message": "Remove folder",
+      "context": "Settings > Projects: button removing the project's folder",
+      "tone": "concise_action",
+      "max_chars": 17,
+      "placeholders": {}
+    },
+    "settings.projects.instructions": {
+      "message": "Instructions",
+      "context": "Settings > Projects: label of the project's instructions",
+      "tone": "concise_action",
+      "max_chars": 16,
+      "placeholders": {}
+    },
+    "settings.projects.instructions_hint": {
+      "message": "Every reply in this project reads them.",
+      "context": "Settings > Projects: what the instructions do",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.projects.instructions_placeholder": {
+      "message": "For example: answer in British English.",
+      "context": "Settings > Projects: placeholder of the instructions field",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.projects.create": {
+      "message": "Create project",
+      "context": "Settings > Projects: primary button saving a new project",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.projects.delete": {
+      "message": "Delete project",
+      "context": "Settings > Projects: button deleting the project; a second press confirms",
+      "tone": "concise_action",
+      "max_chars": 18,
+      "placeholders": {}
+    },
+    "settings.projects.delete_confirm": {
+      "message": "Delete? Its chats stay",
+      "context": "Settings > Projects: the delete button after one press; the chats are kept outside any project",
+      "tone": "concise_action",
+      "max_chars": 27,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_token": {
+      "message": "Token",
+      "context": "Label of an MCP server’s access token field",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_token_saved": {
+      "message": "Token saved",
+      "context": "Note under an MCP server when a token is saved",
+      "tone": "calm_editorial",
+      "max_chars": 40,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_token_add": {
+      "message": "Add token",
+      "context": "Button that opens the token field of an MCP server",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_token_change": {
+      "message": "Change token",
+      "context": "Button that opens the token field of an MCP server that has one",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_token_hint": {
+      "message": "Sent to this server as a Bearer token, only over HTTPS or to this computer. Kept in this device’s vault.",
+      "context": "Description of the MCP server token field",
+      "tone": "calm_editorial",
+      "max_chars": 120,
+      "placeholders": {}
+    },
+    "settings.agent.mcp_token_placeholder": {
+      "message": "Paste the server’s token",
+      "context": "Placeholder of the MCP server token field",
+      "tone": "calm_editorial",
+      "max_chars": 48,
+      "placeholders": {}
+    },
+    "settings.provider.paid_tools": {
+      "message": "Use {name}’s paid web search",
+      "context": "Advanced switch: also send the provider’s web search (and OpenAI’s code runner), billed per use",
+      "tone": "concise_action",
+      "max_chars": 60,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "OpenAI"
+        }
+      }
+    },
+    "settings.provider.paid_tools_hint": {
+      "message": "{name} charges for each search, and OpenAI also for each code run. Bistre adds the fee after each reply, so a reply can go over your spending limit. Bistre’s own web search is free.",
+      "context": "Description under the paid provider tools switch",
+      "tone": "calm_editorial",
+      "max_chars": 240,
+      "placeholders": {
+        "name": {
+          "type": "string",
+          "example": "OpenAI"
+        }
+      }
+    },
+    "viewer.copy_picture": {
+      "message": "Copy picture",
+      "context": "Copies the picture shown in the file viewer to the clipboard",
+      "tone": "concise_action",
+      "max_chars": 24,
+      "placeholders": {}
+    },
+    "viewer.copy_failed": {
+      "message": "The picture couldn’t be copied.",
+      "context": "Notice when the picture in the file viewer could not be copied",
+      "tone": "calm_editorial",
+      "max_chars": 64,
       "placeholders": {}
     }
   }

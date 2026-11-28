@@ -33,8 +33,40 @@ extension FolioCatalogActions on FolioController {
       _notify();
       return created;
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
+      _fail(e);
+      return null;
+    }
+  }
+
+  /// Copies [provider]'s share code; core leaves the key out unless [includeApiKey].
+  Future<void> copyProviderShareCode(
+    EngineProvider provider, {
+    bool includeApiKey = false,
+  }) async {
+    try {
+      await copyText(
+        await _gateway.exportProviderShareCode(
+          providerId: provider.id,
+          includeApiKey: includeApiKey,
+        ),
+      );
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
+  /// Adds a provider from a share code; `null` when core cannot read the code.
+  Future<EngineProvider?> importProviderShareCode(String code) async {
+    if (code.trim().isEmpty) return null;
+    try {
+      final created = await _gateway.importProviderShareCode(code.trim());
+      _providers = await _gateway.listProviders();
+      _lastDiagnosticKey = null;
+      showToast(L10nKey.toastProviderAdded);
       _notify();
+      return created;
+    } catch (e) {
+      _fail(e);
       return null;
     }
   }
@@ -67,8 +99,7 @@ extension FolioCatalogActions on FolioController {
       _notify();
       return true;
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
       return false;
     }
   }
@@ -81,8 +112,7 @@ extension FolioCatalogActions on FolioController {
       showToast(L10nKey.toastKeyRemoved);
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -125,14 +155,13 @@ extension FolioCatalogActions on FolioController {
       _notify();
       return true;
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
       return false;
     }
   }
 
   /// [forOpenChat]: picked in the chat's model picker, so it becomes that chat's own model
-  /// (owner decision 2026-11-26: Settings > Default models is the default for other chats).
+  /// (Settings > Default models is the default for other chats).
   Future<void> setActiveProviderAndModel(
     String providerId,
     String modelId, {
@@ -179,8 +208,7 @@ extension FolioCatalogActions on FolioController {
       showToast(L10nKey.toastSettingsSaved);
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -193,8 +221,7 @@ extension FolioCatalogActions on FolioController {
       showToast(L10nKey.toastProviderDeleted);
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -210,19 +237,23 @@ extension FolioCatalogActions on FolioController {
       return list.length;
     } catch (e) {
       _loadingModelsProviderId = null;
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
       return null;
     }
   }
 
   // --- OTA Updates & Storage Management ---
 
-  Future<void> checkForUpdates({String? feedUrlOverride}) async {
+  Future<void> checkForUpdates({
+    String? feedUrlOverride,
+    bool background = false,
+  }) async {
     if (_checkingUpdates) return;
     _checkingUpdates = true;
-    _lastOtaDiagnostic = null;
-    _lastOtaDetail = null;
+    if (!background) {
+      _lastOtaDiagnostic = null;
+      _lastOtaDetail = null;
+    }
     _notify();
     try {
       _updateCheck = await _gateway.checkForUpdates(
@@ -232,13 +263,19 @@ extension FolioCatalogActions on FolioController {
       _notify();
     } catch (e) {
       _checkingUpdates = false;
-      _lastOtaDiagnostic = FolioController.extractDiagnosticKey(e);
-      _lastOtaDetail = FolioController.extractDiagnosticDetail(e);
+      if (!background) {
+        _lastOtaDiagnostic = FolioController.extractDiagnosticKey(e);
+        _lastOtaDetail = FolioController.extractDiagnosticDetail(e);
+      }
       _notify();
     }
   }
 
-  Future<void> stageAvailableUpdate() async {
+  Future<void> stageAvailableUpdate() => _stageUpdateImpl(reinstall: false);
+
+  Future<void> reinstallCurrentVersion() => _stageUpdateImpl(reinstall: true);
+
+  Future<void> _stageUpdateImpl({required bool reinstall}) async {
     final check = _updateCheck;
     if (check == null || _stagingUpdate) return;
     _stagingUpdate = true;
@@ -246,12 +283,14 @@ extension FolioCatalogActions on FolioController {
     _lastOtaDetail = null;
     _notify();
     try {
-      _stagedUpdatePath = await _gateway.stageUpdate(check);
+      _stagedUpdatePath = reinstall
+          ? await _gateway.reinstallUpdate(check)
+          : await _gateway.stageUpdate(check);
       _stagingUpdate = false;
       showToast(L10nKey.toastUpdateStaged);
       _notify();
     } catch (e) {
-      // A-W 7d: the reason goes to Updates; the banner's download gets a way there.
+      // The reason goes to Updates; the banner's download gets a way there.
       _stagingUpdate = false;
       _lastOtaDiagnostic = FolioController.extractDiagnosticKey(e);
       _lastOtaDetail = FolioController.extractDiagnosticDetail(e);
@@ -266,6 +305,97 @@ extension FolioCatalogActions on FolioController {
     }
   }
 
+  /// Whether [attachment] is audio or video on a desktop, which the file manager opens.
+  /// Desktop only: the system file manager shows where a stored file lives.
+  bool canOpenFolderOf(ComposerAttachment attachment) =>
+      attachment.path.isNotEmpty && (Platform.isWindows || Platform.isLinux);
+
+  /// Opens the folder holding [attachment] in the system file manager.
+  Future<void> openFolderOf(ComposerAttachment attachment) =>
+      BistreDesktopHost.openFolder(File(attachment.path).parent.path);
+
+  /// Whether [attachment] can go to its default app (never an executable or a script).
+  bool canOpenInAppOf(ComposerAttachment attachment) =>
+      BistreDesktopHost.canOpenFiles &&
+      attachment.path.isNotEmpty &&
+      !BistreDesktopHost.blockedOpenExtensions.contains(
+        _extensionOf(attachment.name),
+      );
+
+  Future<void> openInAppOf(ComposerAttachment attachment) async {
+    if (!await BistreDesktopHost.openFile(attachment.path)) {
+      showToast(L10nKey.viewerOpenFailed, tone: ToastTone.error);
+    }
+  }
+
+  bool canSaveCopyOf(ComposerAttachment attachment) =>
+      BistreDesktopHost.canSaveFiles && attachment.path.isNotEmpty;
+
+  /// A picture Flutter can decode (never SVG) on a platform with a picture clipboard.
+  bool canCopyPictureOf(ComposerAttachment attachment) =>
+      BistreDesktopHost.canCopyPictures &&
+      attachment.path.isNotEmpty &&
+      attachment.mimeType.startsWith('image/') &&
+      attachment.mimeType != 'image/svg+xml';
+
+  Future<void> copyPictureOf(ComposerAttachment attachment) async {
+    var copied = false;
+    try {
+      copied = await BistreDesktopHost.copyPicture(attachment.path);
+    } on Exception catch (e) {
+      // A file that is unreadable or not a picture Flutter decodes.
+      _noteNonFatal('copy_picture', e);
+    }
+    if (copied) {
+      showToast(L10nKey.toastCopied, tone: ToastTone.ok);
+    } else {
+      showToast(L10nKey.viewerCopyFailed, tone: ToastTone.error);
+    }
+  }
+
+  Future<void> saveCopyOf(ComposerAttachment attachment, String title) async {
+    final ext = _extensionOf(attachment.name);
+    final dest = await BistreDesktopHost.saveLocalFile(
+      title: title,
+      defaultName: attachment.name,
+      filterLabel: ext.isEmpty ? attachment.name : ext.toUpperCase(),
+      filterSpec: ext.isEmpty ? '*.*' : '*.$ext',
+    );
+    if (dest == null || dest.isEmpty) return;
+    try {
+      await File(attachment.path).copy(dest);
+      showToast(L10nKey.viewerSaved, tone: ToastTone.ok);
+    } on FileSystemException catch (e) {
+      _noteNonFatal('save_copy', e);
+      showToast(L10nKey.diagStorageIoError, tone: ToastTone.error);
+    }
+  }
+
+  /// WAV plays in the app where the host can play it (Windows, Android).
+  bool canPlayOf(ComposerAttachment attachment) =>
+      (Platform.isWindows || Platform.isAndroid) &&
+      attachment.path.isNotEmpty &&
+      (attachment.mimeType == 'audio/wav' ||
+          attachment.mimeType == 'audio/x-wav' ||
+          _extensionOf(attachment.name) == 'wav');
+
+  /// Plays at most [kMaxPlayedWavBytes]; a longer file opens in its default app instead.
+  Future<void> playOf(ComposerAttachment attachment) async {
+    try {
+      final file = File(attachment.path);
+      if (await file.length() > kMaxPlayedWavBytes) {
+        await openInAppOf(attachment);
+        return;
+      }
+      await BistreDesktopHost.playWavBytes(await file.readAsBytes());
+    } on FileSystemException catch (e) {
+      _noteNonFatal('play_wav', e);
+      showToast(L10nKey.viewerOpenFailed, tone: ToastTone.error);
+    }
+  }
+
+  Future<void> stopPlayback() => BistreDesktopHost.stopAudioPlayback();
+
   Future<void> openDataFolder() async {
     final dir = _storageStats?.dataDir ?? '';
     if (dir.isNotEmpty) {
@@ -279,13 +409,12 @@ extension FolioCatalogActions on FolioController {
       showToast(L10nKey.toastBackupSaved);
       return true;
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
       return false;
     }
   }
 
-  /// Saves one code block to a file (native save dialog on Windows; elsewhere it is copied).
+  /// Saves one code block to a file (native save dialog on desktop; on Android it is copied).
   Future<void> saveCodeBlock(
     String code,
     String language, {
@@ -293,7 +422,7 @@ extension FolioCatalogActions on FolioController {
   }) async {
     final lang = language.trim().toLowerCase();
     final ext = RegExp(r'^[a-z0-9]{1,8}$').hasMatch(lang) ? lang : 'txt';
-    if (!Platform.isWindows) {
+    if (!BistreDesktopHost.canSaveFiles) {
       await copyText(code);
       return;
     }
@@ -322,8 +451,7 @@ extension FolioCatalogActions on FolioController {
       );
       return content;
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
       return null;
     }
   }
@@ -369,6 +497,14 @@ extension FolioCatalogActions on FolioController {
     _activeAssistantId = assistantId;
     final assistant = _assistants.where((a) => a.id == assistantId).firstOrNull;
     final active = _activeThread;
+    if (_uiPrefs.newChatOnAssistantSwitch &&
+        assistant != null &&
+        active != null &&
+        active.assistantId != assistantId &&
+        visibleBranchNodes.isNotEmpty) {
+      await createNewFolio(assistantId: assistantId);
+      return;
+    }
     if (active != null && assistant != null) {
       try {
         final updated = await _gateway.updateThread(
@@ -425,8 +561,7 @@ extension FolioCatalogActions on FolioController {
       showToast(L10nKey.toastAssistantCreated);
       return true;
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
       return false;
     }
   }
@@ -468,10 +603,26 @@ extension FolioCatalogActions on FolioController {
       _notify();
       return true;
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
       return false;
     }
+  }
+
+  /// Copies the assistant [assistantId] under [name] with its prompt and defaults.
+  Future<bool> duplicateAssistant(String assistantId, String name) async {
+    final source = _assistants.where((a) => a.id == assistantId).firstOrNull;
+    if (source == null) return false;
+    return createCustomAssistant(
+      name: name,
+      roleSubtitle: source.roleSubtitle,
+      systemPrompt: source.systemPrompt,
+      iconSlug: source.iconSlug,
+      defaultProviderId: source.defaultProviderId,
+      defaultModelId: source.defaultModelId,
+      temperatureMilli: source.temperatureMilli,
+      maxOutputTokens: source.maxOutputTokens,
+      topPMilli: source.topPMilli,
+    );
   }
 
   Future<bool> deleteAssistant(String assistantId) async {
@@ -493,13 +644,12 @@ extension FolioCatalogActions on FolioController {
       _notify();
       return true;
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
       return false;
     }
   }
 
-  /// Deletes a chat after an 8 s Undo window (`docs/design/DESIGN.md` §1.1: Undo instead of asking).
+  /// Deletes a chat after an 8 s Undo window (`docs/design/design.md` §1.1: Undo instead of asking).
   Future<void> deleteThread(String threadId) async {
     _pendingThreadDeletes.remove(threadId)?.cancel();
     // Register pending delete and close its tab BEFORE awaiting `createNewFolio()` so
@@ -508,14 +658,14 @@ extension FolioCatalogActions on FolioController {
       const Duration(seconds: 8),
       () => unawaited(_commitThreadDelete(threadId)),
     );
-    // U5: a deleted chat stops spending now, not when the Undo window ends; Undo restores the
+    // A deleted chat stops spending now, not when the Undo window ends; Undo restores the
     // chat and its messages, not the stopped reply.
     unawaited(_cancelRunOf(threadId));
     _openTabIds.remove(threadId);
     final remaining = _threads.where((t) => t.id != threadId).toList();
     _threads = remaining;
     if (_activeThread?.id == threadId) {
-      if (remaining.isNotEmpty) {
+      if (remaining.isNotEmpty && !_uiPrefs.newChatAfterDelete) {
         await _activateThread(remaining.first);
       } else {
         // Deleting the last chat must not leave it on screen.
@@ -623,8 +773,16 @@ extension FolioCatalogActions on FolioController {
       _storageStats = await _gateway.getStorageStats();
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 }
+
+/// Lowercase extension of a file name, without the dot ('' when there is none).
+String _extensionOf(String name) {
+  final dot = name.lastIndexOf('.');
+  return dot > 0 ? name.substring(dot + 1).toLowerCase() : '';
+}
+
+/// Largest WAV the app reads into memory to play (64 MiB, the generated-media bound).
+const int kMaxPlayedWavBytes = 64 * 1024 * 1024;

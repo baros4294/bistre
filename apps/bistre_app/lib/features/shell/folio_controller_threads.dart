@@ -6,7 +6,7 @@ extension FolioThreadActions on FolioController {
 
   /// Saves [text] as the open chat's draft after a short pause in typing. The composer calls
   /// this for every change to its text, including its own clears after a send or a command
-  /// (U35), so a stored draft never outlives the text it came from.
+  /// , so a stored draft never outlives the text it came from.
   void scheduleDraftSave(String text) {
     final tid = _activeThread?.id;
     if (tid == null) return;
@@ -19,7 +19,7 @@ extension FolioThreadActions on FolioController {
     );
   }
 
-  /// Saves the draft still waiting in the debounce now (P27: the app is paused, closing, or
+  /// Saves the draft still waiting in the debounce now (the app is paused, closing, or
   /// the composer goes away), so the last keystrokes are never lost.
   Future<void> flushPendingDraft() async {
     _draftDebounce?.cancel();
@@ -35,8 +35,7 @@ extension FolioThreadActions on FolioController {
       if (_disposed) return;
       draftSavedState.value = text.isNotEmpty;
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -44,7 +43,7 @@ extension FolioThreadActions on FolioController {
     final body = rawText.trim();
     final active = _activeThread;
     if ((body.isEmpty && _attachments.isEmpty) || active == null) return false;
-    // U1: never send while another chat is loading; the text stays in the composer.
+    // Never send while another chat is loading; the text stays in the composer.
     if (isSwitchingThread) return false;
     final generation = _threadGeneration;
     if (isStreaming) {
@@ -88,11 +87,10 @@ extension FolioThreadActions on FolioController {
               userContent: fullPrompt,
             );
 
-      if (visible.isEmpty && active.title == _defaultThreadTitle) {
+      if (visible.isEmpty && isDefaultThreadTitle(active.title)) {
+        _autoTitledThreads.add(active.id);
         final derived = body.replaceAll(RegExp(r'\s+'), ' ');
-        final shortTitle = derived.length > 44
-            ? '${derived.substring(0, 44)}...'
-            : derived;
+        final shortTitle = clipText(derived, 44);
         final renamed = await _gateway.updateThread(
           threadId: active.id,
           title: shortTitle,
@@ -100,7 +98,7 @@ extension FolioThreadActions on FolioController {
         if (_isStillOn(active.id, generation)) _activeThread = renamed;
       }
 
-      // U2: the user may have switched chats while this send was in flight.
+      // The user may have switched chats while this send was in flight.
       if (_isStillOn(active.id, generation)) {
         if (!_nodes.any((n) => n.id == committed.id)) {
           _nodes = <EngineNode>[..._nodes, committed];
@@ -114,8 +112,7 @@ extension FolioThreadActions on FolioController {
       _notify();
       return true;
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
       return false;
     }
   }
@@ -131,10 +128,8 @@ extension FolioThreadActions on FolioController {
         nodeId: nodeId,
         newContent: clean,
       );
-      final reloaded = await _gateway.listNodes(active.id);
-      // U2: write only into the chat that is still open.
-      if (_activeThread?.id == active.id) _nodes = reloaded;
-      final parentKey = committed.parentId ?? '__root__';
+      await _reloadActiveNodes(active.id);
+      final parentKey = _parentKeyOf(committed);
       final siblings = _childrenByParent[parentKey];
       if (siblings != null && siblings.isNotEmpty) {
         _selectedChildIndex[parentKey] = siblings.length - 1;
@@ -142,9 +137,115 @@ extension FolioThreadActions on FolioController {
       _notify();
       return true;
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
       return false;
+    }
+  }
+
+  /// Asks core's Title model (Settings > Default models) for a short title for [threadId].
+  Future<void> regenerateThreadTitle(
+    String threadId, {
+    bool quiet = false,
+  }) async {
+    try {
+      final updated = await _gateway.generateThreadTitle(threadId);
+      if (_disposed) return;
+      _threads = _withoutPendingDeletes(await _gateway.listThreads());
+      if (_activeThread?.id == updated.id) _activeThread = updated;
+      _walletSpendMicros = await _gateway.getWalletSpendMicros();
+      _walletDailySpendMicros = await _gateway.getWalletDailySpendMicros();
+      _notify();
+    } catch (e) {
+      if (!quiet) {
+        _fail(e);
+      } else {
+        _noteNonFatal('auto_title', e);
+      }
+    }
+  }
+
+  /// Translates [node] using Settings > Default models > Translation and selects the new sibling.
+  Future<void> translateMessage(
+    EngineNode node, {
+    String? targetLanguage,
+  }) async {
+    final active = _activeThread;
+    if (active == null) return;
+    try {
+      _lastDiagnosticKey = null;
+      final created = await _gateway.translateNode(
+        threadId: active.id,
+        nodeId: node.id,
+        targetLanguage: targetLanguage,
+      );
+      if (_disposed) return;
+      await _reloadActiveNodes(active.id);
+      if (_activeThread?.id == active.id) {
+        final parentKey = _parentKeyOf(created);
+        final siblings = _childrenByParent[parentKey];
+        if (siblings != null) {
+          final idx = siblings.indexWhere((s) => s.id == created.id);
+          if (idx >= 0) _selectedChildIndex[parentKey] = idx;
+        }
+      }
+      _walletSpendMicros = await _gateway.getWalletSpendMicros();
+      _walletDailySpendMicros = await _gateway.getWalletDailySpendMicros();
+      showToast(L10nKey.toastTranslated);
+      _notify();
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
+  /// Copies the conversation up to [nodeId] into a new chat and opens it.
+  Future<void> branchIntoNewChat(String nodeId) async {
+    final active = _activeThread;
+    if (active == null) return;
+    try {
+      final fork = await _gateway.forkThread(
+        threadId: active.id,
+        nodeId: nodeId,
+      );
+      _threads = _withoutPendingDeletes(await _gateway.listThreads());
+      await _activateThread(fork);
+      showToast(L10nKey.toastBranched);
+      _notify();
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
+  /// `/rewind`: removes the last message the user sent with everything after it.
+  Future<void> rewindLastTurn() async {
+    final active = _activeThread;
+    final lastUser = visibleBranchNodes.reversed
+        .where((n) => n.role == 'user')
+        .firstOrNull;
+    if (active == null || lastUser == null) return;
+    try {
+      await _gateway.deleteFromNode(threadId: active.id, nodeId: lastUser.id);
+      await _reloadActiveNodes(active.id);
+      _selectedChildIndex.clear();
+      showToast(L10nKey.toastNodeDeleted);
+      _notify();
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
+  /// Deletes every message of the open chat and keeps the chat.
+  Future<void> clearActiveMessages() async {
+    final active = _activeThread;
+    if (active == null) return;
+    try {
+      await _gateway.clearThreadMessages(active.id);
+      await _reloadActiveNodes(active.id);
+      _selectedChildIndex.clear();
+      _storageStats = await _gateway.getStorageStats();
+      showToast(L10nKey.toastMessagesCleared);
+      _notify();
+    } catch (e) {
+      _fail(e);
     }
   }
 
@@ -153,27 +254,37 @@ extension FolioThreadActions on FolioController {
     if (active == null) return;
     try {
       await _gateway.deleteNode(threadId: active.id, nodeId: nodeId);
-      final reloaded = await _gateway.listNodes(active.id);
-      // U2: write only into the chat that is still open.
-      if (_activeThread?.id == active.id) _nodes = reloaded;
+      await _reloadActiveNodes(active.id);
       _selectedChildIndex.clear();
       _storageStats = await _gateway.getStorageStats();
       showToast(L10nKey.toastNodeDeleted);
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
-  Future<void> regenerateFromAssistantNode(EngineNode assistantNode) async {
+  /// Regenerates [assistantNode]; a non-empty [guidance] is the direction the new reply
+  /// follows (`/guide`).
+  Future<void> regenerateFromAssistantNode(
+    EngineNode assistantNode, {
+    String guidance = '',
+  }) async {
     final tid = _activeThread?.id;
     final parentUserId = assistantNode.parentId;
     if (tid == null || parentUserId == null) return;
     final previousNodeId = assistantNode.id;
     try {
       _lastDiagnosticKey = null;
-      await _gateway.regenerateReply(threadId: tid, userNodeId: parentUserId);
+      if (guidance.isEmpty) {
+        await _gateway.regenerateReply(threadId: tid, userNodeId: parentUserId);
+      } else {
+        await _gateway.regenerateReplyGuided(
+          threadId: tid,
+          userNodeId: parentUserId,
+          guidance: guidance,
+        );
+      }
       if (_disposed) return;
       showToast(
         L10nKey.toastRegenerated,
@@ -188,8 +299,7 @@ extension FolioThreadActions on FolioController {
         },
       );
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -207,8 +317,7 @@ extension FolioThreadActions on FolioController {
       await _gateway.allowUnpricedOnce(tid);
       await _gateway.regenerateReply(threadId: tid, userNodeId: lastUser.id);
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -218,8 +327,7 @@ extension FolioThreadActions on FolioController {
     try {
       await _gateway.cancelActiveRun(tid);
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -243,14 +351,14 @@ extension FolioThreadActions on FolioController {
       if (seq != _searchSeq || _disposed) return;
       search.update(hits: hits);
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
   // --- Agent Workspace, MCP, Compaction, Pin, and Tool Controls ---
 
-  String get workspaceRootPath => _workspaceRootPath;
+  /// The app's open folder (Settings); a chat works in [workspaceRootPath].
+  String get appWorkspaceRootPath => _workspaceRootPath;
 
   String get webSearchEndpoint => _webSearchEndpoint;
 
@@ -258,7 +366,7 @@ extension FolioThreadActions on FolioController {
 
   String? get pinnedContextNodeId => _pinnedContextNodeId;
 
-  /// The open chat's tool rows (U4, U9): never another chat's.
+  /// The open chat's tool rows: never another chat's.
   List<ToolActivityEntry> get toolActivities =>
       _toolActivitiesByThread[_activeThread?.id] ?? const <ToolActivityEntry>[];
 
@@ -320,6 +428,12 @@ extension FolioThreadActions on FolioController {
         }
       }
       _pinnedNodeIds = pins;
+      // A pin older than the loaded page still shows in the pinned list.
+      unawaited(
+        _loadEarlierUntil(
+          () => pins.every((id) => _nodes.any((n) => n.id == id)),
+        ),
+      );
       _replyPrefill = rawPrefill ?? '';
       _activeChatSpendLimitMicros =
           rawLimit != null && rawLimit.trim().isNotEmpty
@@ -407,9 +521,12 @@ extension FolioThreadActions on FolioController {
 
   String toolPermissionFor(String toolId) =>
       _toolPermissions[toolId] ??
-      (toolId == 'read_file' || toolId == 'grep' || toolId == 'glob'
-          ? 'allow'
-          : 'ask');
+      switch (toolId) {
+        'read_file' || 'grep' || 'glob' => 'allow',
+        // These tools stay hidden from the model until the user turns them on.
+        'agent_delegate' || 'todo_write' || 'calc_eval' || 'dice_roll' => 'off',
+        _ => 'ask',
+      };
 
   Future<void> setToolPermission(String toolId, String mode) async {
     final next = Map<String, String>.from(_toolPermissions);
@@ -423,17 +540,22 @@ extension FolioThreadActions on FolioController {
     }
   }
 
-  /// P1: opens a file that was sent with a message, from the data directory.
-  void openSentAttachment(EngineNodeAttachment attachment) {
+  /// Where a file sent with a message lives on disk, in the data directory.
+  String sentAttachmentPath(EngineNodeAttachment attachment) {
     final dir = _storageStats?.dataDir ?? _bootDataDir ?? '';
     final sep = Platform.pathSeparator;
     final rel = attachment.blobRelPath.replaceAll('/', sep);
+    return dir.isEmpty ? rel : '$dir$sep$rel';
+  }
+
+  /// Opens a file that was sent with a message, from the data directory.
+  void openSentAttachment(EngineNodeAttachment attachment) {
     openAttachmentPreview(
       ComposerAttachment(
         id: attachment.blobRelPath,
         name: attachment.name,
         mimeType: attachment.mimeType,
-        path: dir.isEmpty ? rel : '$dir$sep$rel',
+        path: sentAttachmentPath(attachment),
         sizeBytes: attachment.sizeBytes,
         isImage: attachment.mimeType.startsWith('image/'),
       ),
@@ -475,20 +597,20 @@ extension FolioThreadActions on FolioController {
     _notify();
   }
 
-  /// The workspace's top-level entries for the `@` menu, as last read (U19).
+  /// The workspace's top-level entries for the `@` menu, as last read.
   List<(String, bool)> get workspaceEntries =>
-      _workspaceEntriesRoot == _workspaceRootPath.trim()
+      _workspaceEntriesRoot == workspaceRootPath.trim()
       ? _workspaceEntries
       : const <(String, bool)>[];
 
   /// How many times the workspace was read for the `@` menu (tests check it stays at one).
   int get workspaceEntryLoads => _workspaceEntryLoads;
 
-  /// Reads the workspace's top-level entries once per root, asynchronously (U19: the old
+  /// Reads the workspace's top-level entries once per root, asynchronously (the old
   /// `listSync` per keystroke froze the window on Windows, where the UI and platform
   /// threads are one).
   Future<void> loadWorkspaceEntries() {
-    final root = _workspaceRootPath.trim();
+    final root = workspaceRootPath.trim();
     if (root.isEmpty || !BistreDesktopHost.isSafeLocalFolder(root)) {
       return Future<void>.value();
     }
@@ -523,13 +645,12 @@ extension FolioThreadActions on FolioController {
     _workspaceEntriesRoot = null;
     _workspaceEntries = const <(String, bool)>[];
     try {
+      // The folder's name on the Tools chip and in Settings is the confirmation.
       await _gateway.setKvMeta('agent.workspace_root', clean);
-      showToast(L10nKey.toastSettingsSaved);
       unawaited(refreshWorkspaceHooks());
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -541,8 +662,7 @@ extension FolioThreadActions on FolioController {
       showToast(L10nKey.toastSettingsSaved);
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -556,8 +676,34 @@ extension FolioThreadActions on FolioController {
       showToast(L10nKey.toastSettingsSaved);
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
+      _fail(e);
+    }
+  }
+
+  Future<void> setMcpServerEnabled(String serverId, bool enabled) async {
+    _mcpServers = _mcpServers
+        .map(
+          (s) => s.id == serverId
+              ? EngineMcpServerConfig(
+                  id: s.id,
+                  name: s.name,
+                  transport: s.transport,
+                  command: s.command,
+                  args: s.args,
+                  url: s.url,
+                  enabled: enabled,
+                )
+              : s,
+        )
+        .toList(growable: false);
+    try {
+      await _gateway.setKvMeta(
+        'agent.mcp_servers',
+        jsonEncode(_mcpServers.map((s) => s.toJson()).toList(growable: false)),
+      );
       _notify();
+    } catch (e) {
+      _fail(e);
     }
   }
 
@@ -573,8 +719,21 @@ extension FolioThreadActions on FolioController {
       showToast(L10nKey.toastDeleted);
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
+    }
+  }
+
+  /// One page of MCP Registry results; `null` when the registry could not be reached
+  /// (logged with its diagnostic key).
+  Future<EngineMcpRegistryPage?> searchMcpRegistry(
+    String query, {
+    String? cursor,
+  }) async {
+    try {
+      return await _gateway.searchMcpRegistry(query, cursor: cursor);
+    } catch (e) {
+      _noteNonFatal('mcp_registry', e);
+      return null;
     }
   }
 
@@ -587,14 +746,17 @@ extension FolioThreadActions on FolioController {
       _notify();
       return report;
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
       return null;
     }
   }
 
+  /// The Thinking chip shows the level, so saving it needs no toast.
   Future<void> setReasoningEffort(String effort) async {
-    await updateSettings(_settings.copyWith(reasoningEffort: effort));
+    await updateSettings(
+      _settings.copyWith(reasoningEffort: effort),
+      quiet: true,
+    );
   }
 
   Future<void> setTermuxBridgeEnabled(bool enabled) async {
@@ -610,7 +772,7 @@ extension FolioThreadActions on FolioController {
         mode: mode,
       );
       _threads = _withoutPendingDeletes(await _gateway.listThreads());
-      // U2: the mode belongs to the chat it was set on; another chat may be open by now.
+      // The mode belongs to the chat it was set on; another chat may be open by now.
       if (_activeThread?.id == updated.id) {
         _activeThread = updated;
         if (mode == 'write') {
@@ -621,8 +783,7 @@ extension FolioThreadActions on FolioController {
       }
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -635,22 +796,44 @@ extension FolioThreadActions on FolioController {
     return _gateway.contextBreakdown(thread, leaf, draft: draft);
   }
 
-  Future<void> compactActiveThread({int keepRecentTurns = 4}) async {
+  /// Condenses the open chat into a summary; [instructions] say what it should keep.
+  Future<void> compactActiveThread({
+    int keepRecentTurns = 4,
+    String? instructions,
+  }) async {
     final active = _activeThread;
     if (active == null) return;
     try {
       await _gateway.compactThread(
         threadId: active.id,
         keepRecentTurns: keepRecentTurns,
+        instructions: instructions,
       );
-      final reloaded = await _gateway.listNodes(active.id);
-      // U2: write only into the chat that is still open.
-      if (_activeThread?.id == active.id) _nodes = reloaded;
+      await _reloadActiveNodes(active.id);
       _lastDiagnosticKey = null;
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
+      _fail(e);
+    }
+  }
+
+  /// Saves the user's own text for a summary of the open chat. Returns whether it saved.
+  Future<bool> rewriteCompactionSummary(String nodeId, String text) async {
+    final active = _activeThread;
+    if (active == null) return false;
+    try {
+      await _gateway.rewriteCompactionSummary(
+        threadId: active.id,
+        nodeId: nodeId,
+        content: text,
+      );
+      await _reloadActiveNodes(active.id);
+      _lastDiagnosticKey = null;
       _notify();
+      return true;
+    } catch (e) {
+      _fail(e);
+      return false;
     }
   }
 
@@ -662,14 +845,11 @@ extension FolioThreadActions on FolioController {
         threadId: active.id,
         compactionNodeId: compactionNodeId,
       );
-      final reloaded = await _gateway.listNodes(active.id);
-      // U2: write only into the chat that is still open.
-      if (_activeThread?.id == active.id) _nodes = reloaded;
+      await _reloadActiveNodes(active.id);
       showToast(L10nKey.toastNodeDeleted);
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -685,25 +865,24 @@ extension FolioThreadActions on FolioController {
       showToast(nextPin != null ? L10nKey.toastPinned : L10nKey.toastUnpinned);
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
   Future<void> rewindCheckpoint(String checkpointId) async {
     final active = _activeThread;
-    if (active == null || _workspaceRootPath.isEmpty) return;
+    final root = workspaceRootPath;
+    if (active == null || root.isEmpty) return;
     try {
       await _gateway.rewindCheckpoint(
-        workspaceRoot: _workspaceRootPath,
+        workspaceRoot: root,
         checkpointId: checkpointId,
       );
       _checkpoints = await _gateway.listCheckpoints(active.id);
       showToast(L10nKey.toolRewoundToast);
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 }

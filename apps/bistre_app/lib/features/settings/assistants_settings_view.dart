@@ -13,8 +13,9 @@ import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
 import 'model_picker_field.dart';
+import 'prompt_presets_row.dart';
 
-/// Clean Assistants Studio — ZERO hardcoded mode pills (`Chat | Code | Write | Translate`).
+/// Clean Assistants Studio: ZERO hardcoded mode pills (`Chat | Code | Write | Translate`).
 /// Supports Name, Description, Optional Icon, System Prompt, Default Provider & Model,
 /// and optional Generation Defaults (Temperature, Max Output Tokens, Top-P).
 class AssistantsSettingsView extends StatefulWidget {
@@ -35,6 +36,8 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
   final TextEditingController _nameCtrl = TextEditingController();
   final TextEditingController _subtitleCtrl = TextEditingController();
   final TextEditingController _promptCtrl = TextEditingController();
+  final TextEditingController _greetingCtrl = TextEditingController();
+  final FocusNode _greetingFocus = FocusNode();
   final TextEditingController _modelCtrl = TextEditingController();
   final TextEditingController _maxTokensCtrl = TextEditingController();
   final FocusNode _nameFocus = FocusNode();
@@ -73,6 +76,8 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
     _nameCtrl.dispose();
     _subtitleCtrl.dispose();
     _promptCtrl.dispose();
+    _greetingCtrl.dispose();
+    _greetingFocus.dispose();
     _modelCtrl.dispose();
     _maxTokensCtrl.dispose();
     _nameFocus.dispose();
@@ -91,6 +96,8 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
     _nameCtrl.text = a.name;
     _subtitleCtrl.text = a.roleSubtitle;
     _promptCtrl.text = a.systemPrompt;
+    _greetingCtrl.clear();
+    unawaited(_loadGreeting(a.id));
     _iconSlug = a.iconSlug;
     _defaultProviderId = a.defaultProviderId;
     _modelCtrl.text = a.defaultModelId;
@@ -107,6 +114,7 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
     _nameCtrl.clear();
     _subtitleCtrl.clear();
     _promptCtrl.clear();
+    _greetingCtrl.clear();
     _iconSlug = '';
     _defaultProviderId = '';
     _modelCtrl.clear();
@@ -116,6 +124,14 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _nameFocus.requestFocus();
     });
+  }
+
+  /// Fills the opening message field when [assistantId] is still the one shown.
+  Future<void> _loadGreeting(String assistantId) async {
+    final text = await widget.controller.assistantGreeting(assistantId);
+    if (mounted && _selectedId == assistantId && _greetingCtrl.text.isEmpty) {
+      _greetingCtrl.text = text;
+    }
   }
 
   Future<void> _save() async {
@@ -142,10 +158,13 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
         topPMilli: _topPMilli,
       );
       if (ok && mounted && ctrl.assistants.isNotEmpty) {
-        setState(() => _loadAssistant(ctrl.assistants.last));
+        final created = ctrl.assistants.last;
+        await ctrl.setAssistantGreeting(created.id, _greetingCtrl.text);
+        if (mounted) setState(() => _loadAssistant(created));
       }
       return;
     }
+    await ctrl.setAssistantGreeting(_selectedId!, _greetingCtrl.text);
 
     await ctrl.updateAssistant(
       assistantId: _selectedId!,
@@ -280,11 +299,11 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
           role: InkTextRole.titleLarge,
         ),
         const SizedBox(height: BistreSpacing.s16),
+        // The page title names this card; no heading repeats it.
         BistreSettingsSection(
-          title: l10n.t(L10nKey.settingsTabAssistants),
           children: [
             BistreSettingRow(
-              label: l10n.t(L10nKey.settingsAssistantsNamePlaceholder),
+              label: l10n.t(L10nKey.settingsAssistantsNameLabel),
               bottom: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -316,7 +335,7 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
               ),
             ),
             BistreSettingRow(
-              label: l10n.t(L10nKey.settingsAssistantsSubtitlePlaceholder),
+              label: l10n.t(L10nKey.settingsAssistantsSubtitleLabel),
               bottom: QuillInput(
                 controller: _subtitleCtrl,
                 focusNode: _subtitleFocus,
@@ -398,7 +417,7 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
                   : null,
             ),
             BistreSettingRow(
-              label: l10n.t(L10nKey.settingsAssistantsPromptPlaceholder),
+              label: l10n.t(L10nKey.settingsAssistantsInstructionsLabel),
               bottom: QuillInput(
                 controller: _promptCtrl,
                 focusNode: _promptFocus,
@@ -406,6 +425,24 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
                   L10nKey.settingsAssistantsPromptPlaceholder,
                 ),
                 maxLines: 6,
+                submitOnEnter: false,
+                onSubmitted: () {},
+              ),
+            ),
+            BistreSettingRow(
+              label: l10n.t(L10nKey.settingsPresetsLabel),
+              bottom: PromptPresetsRow(controller: ctrl, prompt: _promptCtrl),
+            ),
+            BistreSettingRow(
+              label: l10n.t(L10nKey.settingsAssistantsGreeting),
+              description: l10n.t(L10nKey.settingsAssistantsGreetingHint),
+              bottom: QuillInput(
+                controller: _greetingCtrl,
+                focusNode: _greetingFocus,
+                placeholder: l10n.t(
+                  L10nKey.settingsAssistantsGreetingPlaceholder,
+                ),
+                maxLines: 4,
                 submitOnEnter: false,
                 onSubmitted: () {},
               ),
@@ -517,7 +554,9 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
             ),
             Padding(
               padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
-              child: Row(
+              child: Wrap(
+                spacing: BistreSpacing.s8,
+                runSpacing: BistreSpacing.s8,
                 children: [
                   EngravedButton(
                     label: _creating
@@ -526,7 +565,32 @@ class _AssistantsSettingsViewState extends State<AssistantsSettingsView> {
                     primary: true,
                     onPressed: () => unawaited(_save()),
                   ),
-                  const Spacer(),
+                  if (!_creating && _selectedId != null)
+                    EngravedButton(
+                      label: l10n.t(L10nKey.settingsAssistantsDuplicate),
+                      leading: BistreIcon(
+                        BistreUiIcon.copy,
+                        size: 13,
+                        color: theme.inkSecondary,
+                      ),
+                      onPressed: () async {
+                        final source = ctrl.assistants
+                            .where((a) => a.id == _selectedId)
+                            .firstOrNull;
+                        if (source == null) return;
+                        final ok = await ctrl.duplicateAssistant(
+                          source.id,
+                          l10n.t(
+                            L10nKey.settingsAssistantsCopyName,
+                            <String, Object?>{'name': source.name},
+                          ),
+                        );
+                        final copy = ctrl.activeAssistant;
+                        if (ok && mounted && copy != null) {
+                          setState(() => _loadAssistant(copy));
+                        }
+                      },
+                    ),
                   if (!_creating &&
                       _selectedId != null &&
                       ctrl.assistants.length > 1)

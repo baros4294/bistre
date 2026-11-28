@@ -2,7 +2,7 @@ import 'package:bistre_app/features/chat/markdown_folio_view.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('a streaming reply leaves one cached copy, not one per frame (U13)', () {
+  test('a streaming reply leaves one cached copy, not one per frame', () {
     MarkdownFolioView.debugClearParseCache();
     final paragraph = 'A sentence that keeps the reply going. ' * 20;
     var text = '';
@@ -18,7 +18,7 @@ void main() {
   });
 
   test(
-    'the parse cache stays within its size even for many large messages (U13)',
+    'the parse cache stays within its size even for many large messages',
     () {
       MarkdownFolioView.debugClearParseCache();
       for (var i = 0; i < 400; i++) {

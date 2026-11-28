@@ -93,10 +93,9 @@ class _WorldbookCardsSettingsViewState
             // 1. Character & Scenario Cards
             BistreSettingsSection(
               title: l10n.t(L10nKey.settingsWorldBookCardsHeading),
-              subtitle: l10n.t(L10nKey.settingsWorldBookCardsHint),
               children: [
                 BistreSettingRow(
-                  label: l10n.t(L10nKey.settingsWorldBookImportCard),
+                  label: l10n.t(L10nKey.settingsWorldBookCardsHint),
                   trailing: EngravedButton(
                     label: l10n.t(L10nKey.settingsWorldBookImportCard),
                     primary: true,
@@ -133,9 +132,14 @@ class _WorldbookCardsSettingsViewState
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          EngravedButton(
-                            label: l10n.t(L10nKey.chatActionCopy),
-                            compact: true,
+                          // Says what is copied; an icon like Delete beside it.
+                          BistreIconButton(
+                            icon: BistreUiIcon.copy,
+                            size: 14,
+                            dimension: 28,
+                            semanticsLabel: l10n.t(
+                              L10nKey.settingsWorldBookCopyCard,
+                            ),
                             onPressed: () => unawaited(
                               ctrl.exportCharacterCardToClipboard(card.id),
                             ),
@@ -231,7 +235,7 @@ class _WorldbookCardsSettingsViewState
                     BistreSettingRow(
                       label: entry.name,
                       description: entry.keys.isNotEmpty
-                          ? '${entry.keys.join(', ')} — ${entry.content}'
+                          ? '${entry.keys.join(', ')}: ${entry.content}'
                           : entry.content,
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,

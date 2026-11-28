@@ -8,6 +8,7 @@ import '../../design/bistre_icons.dart';
 import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/popover_placement.dart';
 import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
@@ -31,17 +32,22 @@ class _ModelOption {
 /// - Provider filter chips when more than one provider has models.
 /// - Vendor/family filter chips when at least two slash-prefixed families exist.
 /// - Active model pinned first when unfiltered.
-/// - Per-row privacy badges (`On device` / `Cloud`, plus `Stored` / `No store`).
+/// - Per-row badges only for exceptions: `On device`, `Stored`, and the provider's name when
+///   its icon cannot show it.
 class ModelPickerPopover extends StatefulWidget {
   const ModelPickerPopover({
     super.key,
     required this.controller,
     required this.link,
     required this.onDismiss,
+    this.anchorKey,
   });
 
   final FolioController controller;
   final LayerLink link;
+
+  /// The trigger, so the picker stays inside the window (never past its edge).
+  final GlobalKey? anchorKey;
   final VoidCallback onDismiss;
 
   @override
@@ -105,8 +111,15 @@ class _ModelPickerPopoverState extends State<ModelPickerPopover> {
     final ctrl = widget.controller;
     final activeProvId = ctrl.activeProvider?.id ?? '';
     final activeModelId = ctrl.activeModelId;
-    final viewportW = MediaQuery.sizeOf(context).width;
-    final popoverW = (viewportW - 24).clamp(260.0, 460.0);
+    final popoverW = PopoverPlacement.popoverWidthFor(context, 460);
+    final anchor = widget.anchorKey?.currentContext;
+    final shift = anchor == null
+        ? 0.0
+        : PopoverPlacement.popoverShiftFor(
+            anchor,
+            width: popoverW,
+            alignStart: true,
+          );
 
     final allOptions = _buildAllOptions(ctrl);
     final providerCounts = <(String, String, int)>[];
@@ -184,7 +197,7 @@ class _ModelPickerPopoverState extends State<ModelPickerPopover> {
           showWhenUnlinked: false,
           targetAnchor: AlignmentDirectional.bottomStart.resolve(dir),
           followerAnchor: AlignmentDirectional.topStart.resolve(dir),
-          offset: const Offset(0, 8),
+          offset: Offset(shift, 8),
           child: FolioFadeSlide(
             beginOffset: const Offset(0, -0.04),
             reduceMotionOverride: ctrl.reduceMotionOverride,
@@ -199,7 +212,7 @@ class _ModelPickerPopoverState extends State<ModelPickerPopover> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Search input + clear button (`SepiaSearchableModelPicker` L441-L473).
+                      // Search input + clear button.
                       if (allOptions.length > 4 || hasActiveFilter) ...[
                         Row(
                           children: [
@@ -239,32 +252,23 @@ class _ModelPickerPopoverState extends State<ModelPickerPopover> {
                         ),
                         const SizedBox(height: BistreSpacing.s8),
                       ],
-                      // Provider filter chips when >1 provider has models (L476-L502).
+                      // Provider filter chips when >1 provider has models.
                       if (providerCounts.length > 1) ...[
                         Wrap(
                           spacing: 6,
                           runSpacing: 6,
                           children: [
                             InkChip(
-                              label: l10n.t(
-                                L10nKey.chatModelAllProviders,
-                                <String, Object?>{'count': allOptions.length},
-                              ),
+                              label: l10n.t(L10nKey.chatModelAllProviders),
                               selected: _providerFilter.isEmpty,
                               onSelected: () => setState(() {
                                 _providerFilter = '';
                                 _vendorFilter = '';
                               }),
                             ),
-                            for (final (id, name, count) in providerCounts)
+                            for (final (id, name, _) in providerCounts)
                               InkChip(
-                                label: l10n.t(
-                                  L10nKey.chatModelFilterCount,
-                                  <String, Object?>{
-                                    'name': name,
-                                    'count': count,
-                                  },
-                                ),
+                                label: name,
                                 selected: _providerFilter == id,
                                 onSelected: () => setState(() {
                                   _providerFilter = _providerFilter == id
@@ -277,7 +281,7 @@ class _ModelPickerPopoverState extends State<ModelPickerPopover> {
                         ),
                         const SizedBox(height: BistreSpacing.s8),
                       ],
-                      // Model family filter chips when >=2 vendors exist (L505-L527).
+                      // Model family filter chips when >=2 vendors exist.
                       if (vendorCounts.length >= 2) ...[
                         Wrap(
                           spacing: 6,
@@ -291,13 +295,7 @@ class _ModelPickerPopoverState extends State<ModelPickerPopover> {
                             ),
                             for (final entry in vendorCounts.take(8))
                               InkChip(
-                                label: l10n.t(
-                                  L10nKey.chatModelFilterCount,
-                                  <String, Object?>{
-                                    'name': entry.key,
-                                    'count': entry.value,
-                                  },
-                                ),
+                                label: entry.key,
                                 selected:
                                     _vendorFilter.toLowerCase() ==
                                     entry.key.toLowerCase(),
@@ -313,7 +311,7 @@ class _ModelPickerPopoverState extends State<ModelPickerPopover> {
                         ),
                         const SizedBox(height: BistreSpacing.s8),
                       ],
-                      // Bounded scrollable model list (L530-L571).
+                      // Bounded scrollable model list.
                       if (filtered.isEmpty)
                         Padding(
                           padding: const EdgeInsetsDirectional.symmetric(
@@ -406,11 +404,27 @@ class _ModelOptionRowState extends State<_ModelOptionRow> {
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);
     final p = widget.option.provider;
-    final showStorageBadge = providerMayStoreReplies(p);
+    // Rows mark only the exceptions: a provider on this device, one that keeps replies,
+    // and the provider's name when its icon cannot say it.
+    final storesReplies = providerMayStoreReplies(p) && p.useServerStateCache;
+    final iconNamesProvider =
+        p.customIconPath.trim().isNotEmpty ||
+        LabIconCatalog.resolve(
+              iconSlug: p.iconSlug,
+              dialect: p.dialect,
+              providerName: p.name,
+            ) !=
+            null;
+    final showProviderName = widget.showProviderBadge && !iconNamesProvider;
     return Semantics(
       button: true,
       selected: widget.selected,
-      label: widget.option.modelId,
+      label: widget.showProviderBadge
+          ? l10n.t(L10nKey.shellModelOnProvider, <String, Object?>{
+              'model': l10n.isolate(widget.option.modelId),
+              'provider': l10n.isolate(p.name),
+            })
+          : widget.option.modelId,
       child: FocusableActionDetector(
         mouseCursor: SystemMouseCursors.click,
         onShowHoverHighlight: (v) => setState(() => _hovered = v),
@@ -474,39 +488,31 @@ class _ModelOptionRowState extends State<_ModelOptionRow> {
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 3),
-                          Wrap(
-                            spacing: 5,
-                            runSpacing: 4,
-                            children: [
-                              if (widget.showProviderBadge)
-                                _ModelBadge(
-                                  label: p.name,
-                                  color: theme.inkSecondary,
-                                ),
-                              _ModelBadge(
-                                label: l10n.t(
-                                  p.isLocal
-                                      ? L10nKey.chatModelLocal
-                                      : L10nKey.chatModelCloud,
-                                ),
-                                color: p.isLocal
-                                    ? theme.statusOk
-                                    : theme.inkMuted,
+                          if (showProviderName || p.isLocal || storesReplies)
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(top: 3),
+                              child: Wrap(
+                                spacing: 5,
+                                runSpacing: 4,
+                                children: [
+                                  if (showProviderName)
+                                    _ModelBadge(
+                                      label: p.name,
+                                      color: theme.inkSecondary,
+                                    ),
+                                  if (p.isLocal)
+                                    _ModelBadge(
+                                      label: l10n.t(L10nKey.chatModelLocal),
+                                      color: theme.statusOk,
+                                    ),
+                                  if (storesReplies)
+                                    _ModelBadge(
+                                      label: l10n.t(L10nKey.chatModelStored),
+                                      color: theme.statusWarn,
+                                    ),
+                                ],
                               ),
-                              if (showStorageBadge)
-                                _ModelBadge(
-                                  label: l10n.t(
-                                    p.useServerStateCache
-                                        ? L10nKey.chatModelStored
-                                        : L10nKey.chatModelNoStore,
-                                  ),
-                                  color: p.useServerStateCache
-                                      ? theme.statusWarn
-                                      : theme.statusOk,
-                                ),
-                            ],
-                          ),
+                            ),
                         ],
                       ),
                     ),

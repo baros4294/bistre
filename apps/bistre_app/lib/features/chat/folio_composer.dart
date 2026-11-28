@@ -6,18 +6,25 @@ import 'package:flutter/widgets.dart';
 import '../../bridge/bistre_engine.dart';
 import '../../design/bistre_decorations.dart';
 import '../../design/bistre_icons.dart';
-import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
+import '../../design/disclosure_reveal.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/press_feedback.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
-import '../../platform/desktop_host.dart';
 import '../shell/folio_controller.dart';
+import 'composer_asides.dart';
+import 'composer_folder_button.dart';
+import 'composer_notice.dart';
+import 'composer_phone_controls.dart';
 import 'composer_toolbar_layout.dart';
 import 'composer_tools_control.dart';
 import 'composer_trigger_menu.dart';
 import 'context_gauge_ring.dart';
+import 'media_options_control.dart';
 import 'thinking_control.dart';
+
+part 'folio_composer_parts.dart';
 
 /// Unified floating composer sheet respecting user reading width:
 /// - Quoted-reply bar
@@ -39,143 +46,27 @@ class FolioComposer extends StatefulWidget {
 }
 
 class _FolioComposerState extends State<FolioComposer> {
+  /// Phone: the tray of occasional controls under the field is open.
+  bool _trayOpen = false;
+
   final TextEditingController _textController = TextEditingController();
 
   /// The text last handed to the draft save, so selection-only changes save nothing.
   String _lastDraftText = '';
 
-  /// Text that was sent while the IME was still composing; removed once it commits (U17).
+  /// Text that was sent while the IME was still composing; removed once it commits.
   String? _sentWhileComposing;
   int _syncedDraftEpoch = -1;
+  late int _syncedInsertEpoch = widget.controller.draftInsert?.epoch ?? 0;
   bool _focused = false;
   String _triggerPrefix = '';
   String _triggerQuery = '';
   int _triggerSelectedIndex = 0;
 
-  List<ComposerTriggerItem> _buildTriggerItems(
-    BistreLocalizationController l10n,
-    FolioController ctrl,
-  ) {
-    final q = _triggerQuery.toLowerCase();
-    if (_triggerPrefix == '/') {
-      final items = <ComposerTriggerItem>[
-        ComposerTriggerItem(
-          token: '/plan',
-          label: '/plan',
-          description: l10n.t(L10nKey.composerSlashPlanDesc),
-          icon: BistreUiIcon.document,
-        ),
-        ComposerTriggerItem(
-          token: '/build',
-          label: '/build',
-          description: l10n.t(L10nKey.composerSlashBuildDesc),
-          icon: BistreUiIcon.code,
-        ),
-        ComposerTriggerItem(
-          token: '/write',
-          label: '/write',
-          description: l10n.t(L10nKey.composerSlashWriteDesc),
-          icon: BistreUiIcon.edit,
-        ),
-        ComposerTriggerItem(
-          token: '/compact',
-          label: '/compact',
-          description: l10n.t(L10nKey.composerSlashCompactDesc),
-          icon: BistreUiIcon.think,
-        ),
-        ComposerTriggerItem(
-          token: '/tree',
-          label: '/tree',
-          description: l10n.t(L10nKey.composerSlashTreeDesc),
-          icon: BistreUiIcon.branchTree,
-        ),
-        ComposerTriggerItem(
-          token: '/clear',
-          label: '/clear',
-          description: l10n.t(L10nKey.composerSlashClearDesc),
-          icon: BistreUiIcon.newChat,
-        ),
-        for (final skill in ctrl.discoveredSkills)
-          ComposerTriggerItem(
-            token: '/${skill.name}',
-            label: '/${skill.name}',
-            description: skill.description,
-            icon: BistreUiIcon.think,
-            badge: l10n.t(L10nKey.settingsTabMemory),
-          ),
-      ];
-      if (q.isEmpty) return items;
-      return items
-          .where(
-            (i) =>
-                i.label.toLowerCase().contains(q) ||
-                i.description.toLowerCase().contains(q),
-          )
-          .toList();
-    }
-    final items = <ComposerTriggerItem>[
-      ComposerTriggerItem(
-        token: '@mount',
-        label: '@mount',
-        description: l10n.t(L10nKey.composerMentionMountDesc),
-        icon: BistreUiIcon.folder,
-      ),
-      ComposerTriggerItem(
-        token: '@file ',
-        label: '@file',
-        description: l10n.t(L10nKey.composerMentionFileDesc),
-        icon: BistreUiIcon.document,
-      ),
-      ComposerTriggerItem(
-        token: '@diff ',
-        label: '@diff',
-        description: l10n.t(L10nKey.composerMentionDiffDesc),
-        icon: BistreUiIcon.code,
-      ),
-      ComposerTriggerItem(
-        token: '@memory ',
-        label: '@memory',
-        description: l10n.t(L10nKey.composerMentionMemoryDesc),
-        icon: BistreUiIcon.memory,
-      ),
-      ComposerTriggerItem(
-        token: '@thread ',
-        label: '@thread',
-        description: l10n.t(L10nKey.composerMentionThreadDesc),
-        icon: BistreUiIcon.chat,
-      ),
-      ComposerTriggerItem(
-        token: '@mcp ',
-        label: '@mcp',
-        description: l10n.t(L10nKey.composerMentionMcpDesc),
-        icon: BistreUiIcon.server,
-      ),
-    ];
-    final root = ctrl.workspaceRootPath.trim();
-    for (final (name, isDir) in ctrl.workspaceEntries) {
-      items.add(
-        ComposerTriggerItem(
-          token: '@file $name ',
-          label: name,
-          description: root,
-          icon: isDir ? BistreUiIcon.folder : BistreUiIcon.document,
-        ),
-      );
-    }
-    if (q.isEmpty) return items;
-    return items
-        .where(
-          (i) =>
-              i.label.toLowerCase().contains(q) ||
-              i.description.toLowerCase().contains(q),
-        )
-        .toList();
-  }
-
   /// Every change to the text, typed or programmatic (a clear after sending, a slash command,
-  /// an inserted skill), updates the saved draft (U35). A restored draft is not saved back.
+  /// an inserted skill), updates the saved draft. A restored draft is not saved back.
   void _onComposerTextChanged() {
-    // U17: edits skipped during an IME composition run as soon as it ends.
+    // Edits skipped during an IME composition run as soon as it ends.
     if (!_textController.value.composing.isValid) {
       final sent = _sentWhileComposing;
       if (sent != null) {
@@ -206,7 +97,7 @@ class _FolioComposerState extends State<FolioComposer> {
       }
     }
     if (nextTrigger == '@' && _triggerPrefix != '@') {
-      // U19: the workspace is read once, asynchronously, when the menu opens.
+      // The workspace is read once, asynchronously, when the menu opens.
       unawaited(widget.controller.loadWorkspaceEntries());
     }
     if (nextTrigger != _triggerPrefix || nextQuery != _triggerQuery) {
@@ -232,47 +123,11 @@ class _FolioComposerState extends State<FolioComposer> {
         text: replaced,
         selection: TextSelection.collapsed(offset: replaced.length),
       );
-      unawaited(() async {
-        final picked = await BistreDesktopHost.pickLocalFolder(title: token);
-        if (picked != null && picked.isNotEmpty) {
-          await ctrl.setWorkspaceRootPath(picked);
-        }
-      }());
+      unawaited(chooseChatFolder(ctrl, token, add: false));
       return;
     }
     if (token.startsWith('/')) {
-      _textController.clear();
-      switch (token) {
-        case '/plan':
-          unawaited(ctrl.setActiveThreadMode('plan'));
-        case '/build':
-          unawaited(ctrl.setActiveThreadMode('code'));
-        case '/write':
-          unawaited(ctrl.setActiveThreadMode('write'));
-        case '/compact':
-          unawaited(ctrl.compactActiveThread());
-        case '/tree':
-          ctrl.openSessionTree();
-        case '/clear':
-          unawaited(ctrl.createNewFolio());
-        default:
-          final skillName = token.substring(1);
-          final skill = ctrl.discoveredSkills
-              .where((s) => s.name == skillName)
-              .firstOrNull;
-          if (skill != null) {
-            unawaited(() async {
-              final body = await ctrl.loadSkillBody(skill.path);
-              if (!mounted || body.trim().isEmpty) return;
-              final inserted = '$body\n';
-              _textController.value = TextEditingValue(
-                text: inserted,
-                selection: TextSelection.collapsed(offset: inserted.length),
-              );
-            }());
-          }
-      }
-      widget.focusNode.requestFocus();
+      _runSlashCommand(token, ctrl);
       return;
     }
     final current = _textController.text;
@@ -310,11 +165,13 @@ class _FolioComposerState extends State<FolioComposer> {
   }
 
   void _syncDraftIfEpochChanged() {
+    _insertDraftIfNew();
     final epoch = widget.controller.draftEpoch;
     if (epoch == _syncedDraftEpoch) return;
     if (_textController.value.composing.isValid) return;
 
     _syncedDraftEpoch = epoch;
+    _syncedInsertEpoch = widget.controller.draftInsert?.epoch ?? 0;
     final restored = widget.controller.restoredDraft;
     _lastDraftText = restored;
     if (_textController.text != restored) {
@@ -323,6 +180,21 @@ class _FolioComposerState extends State<FolioComposer> {
         selection: TextSelection.collapsed(offset: restored.length),
       );
     }
+  }
+
+  /// Adds a drafted reply after the text already typed (a blank line between), never
+  /// during IME composition; it lands once the composition ends.
+  void _insertDraftIfNew() {
+    final insert = widget.controller.draftInsert;
+    if (insert == null || insert.epoch == _syncedInsertEpoch) return;
+    if (_textController.value.composing.isValid) return;
+    _syncedInsertEpoch = insert.epoch;
+    final typed = _textController.text.trimRight();
+    final next = typed.isEmpty ? insert.text : '$typed\n\n${insert.text}';
+    _textController.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: next.length),
+    );
   }
 
   /// Removes exactly the text that was sent. Anything typed while the message was being sent
@@ -345,11 +217,38 @@ class _FolioComposerState extends State<FolioComposer> {
     }
   }
 
+  /// Speech to text once; the words join the draft (never while an IME composes).
+  Future<void> _dictate() async {
+    final ctrl = widget.controller;
+    final spoken = await ctrl.dictateVoiceOnce();
+    if (spoken == null || !mounted) return;
+    // Never mutate while IME composition is active.
+    if (_textController.value.composing.isValid) {
+      return;
+    }
+    final cur = _textController.text;
+    final next = cur.trim().isEmpty ? spoken : '$cur $spoken';
+    _textController.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: next.length),
+    );
+    _handleTextChanged(next);
+  }
+
+  /// Sends the typed text into the reply in progress right away.
+  Future<void> _steerNow() async {
+    final ctrl = widget.controller;
+    final text = _textController.text.trim();
+    if (text.isEmpty) return;
+    _textController.clear();
+    await ctrl.steerActiveRunNow(text);
+  }
+
   Future<void> _submit() async {
     // The text field takes Enter before the menu's key handler sees it: while the `/` or `@`
     // menu is open, Enter picks the highlighted entry and never sends the typed command.
     if (_triggerPrefix.isNotEmpty) {
-      // U18: never pick while the IME is composing (the Send button can still be tapped).
+      // Never pick while the IME is composing (the Send button can still be tapped).
       if (_textController.value.composing.isValid) return;
       final items = _buildTriggerItems(
         BistreLocalizations.of(context),
@@ -363,6 +262,7 @@ class _FolioComposerState extends State<FolioComposer> {
       }
     }
     final text = _textController.text;
+    if (await _runArgumentCommand(text)) return;
     final ok = await widget.controller.submitPassage(text);
     if (ok && mounted) {
       _clearSentText(text);
@@ -376,25 +276,224 @@ class _FolioComposerState extends State<FolioComposer> {
     final ctrl = widget.controller;
     final quote = ctrl.quotedExcerpt;
     final assistant = ctrl.activeAssistant;
-    final diag = ctrl.lastDiagnosticKey;
-    final readingWidth = theme.typography.readingWidthPx.clamp(600.0, 1120.0);
-    final needsProviderKey =
-        diag == 'diag.provider.not_configured' ||
-        diag == 'diag.provider.pinned_unavailable' ||
-        diag == 'diag.provider.model_required' ||
-        diag == 'diag.provider.auth_failed' ||
-        diag == 'diag.provider.quota_exhausted';
-    final needsShorten = diag == 'diag.provider.context_overflow';
-    final needsSpendingLimit = diag == 'diag.wallet.ceiling_exceeded';
-    final needsPriceAllowance = diag == 'diag.wallet.price_unknown';
-    final needsHookReview = diag == 'diag.hooks.approval_required';
-    final needsContinue = diag == 'diag.provider.reply_truncated';
-    final providerReason = ctrl.lastDiagnosticReason;
-    // Narrow layouts (effective width / text scale < 600 px) split the toolbar into two
-    // rows while streaming or at >= 130% text.
+    final readingWidth = theme.typography.readingWidthPx.clamp(
+      BistreSpacing.readingWidthMin,
+      BistreSpacing.readingWidthMax,
+    );
+    final needsShorten =
+        ctrl.lastDiagnosticKey == 'diag.provider.context_overflow';
     final scale = textScaleOf(context);
-    final twoRowToolbar =
-        MediaQuery.sizeOf(context).width / scale < 600 && ctrl.isStreaming;
+    Widget gaugeFor(bool compact) =>
+        ValueListenableBuilder<EngineContextBreakdown>(
+          valueListenable: ctrl.contextBreakdown,
+          builder: (context, usage, _) => ContextGaugeRing(
+            usage: usage,
+            limitTokens: ctrl.activeContextLimitOrFetch,
+            sessionSpendMicros: ctrl.activeThreadSpendMicros,
+            uploadedFilesCount: ctrl.attachments.length,
+            showLabel: !compact,
+            overLimit: needsShorten,
+            loadWithDraft: () =>
+                ctrl.contextBreakdownWithDraft(_textController.text),
+            onShorten: () => unawaited(ctrl.compactActiveThread()),
+            onOpenPrices: () => ctrl.openSettings(SettingsTab.trust),
+          ),
+        );
+
+    Widget liveButton(bool compact) => EngravedButton(
+      label: compact ? '' : l10n.t(L10nKey.composerLiveVoicePill),
+      semanticsLabel: l10n.t(L10nKey.composerLiveVoicePill),
+      compact: true,
+      primary: ctrl.liveVoiceActive,
+      leading: BistreIcon(
+        BistreUiIcon.audioLines,
+        size: 13,
+        color: ctrl.liveVoiceActive ? theme.onAccentWax : theme.accentBrass,
+      ),
+      onPressed: () => unawaited(ctrl.toggleLiveVoiceSession()),
+    );
+
+    final info = ctrl.activeModelInfo;
+    // The Thinking chip names the chosen level, so it shortens only after Tools and Live.
+    List<Widget> leadingFor(bool compact, [bool shortThinking = false]) =>
+        <Widget>[
+          BistreIconButton(
+            icon: BistreUiIcon.paperclip,
+            size: 15,
+            dimension: 30,
+            semanticsLabel: l10n.t(L10nKey.composerAttachFile),
+            onPressed: () => unawaited(
+              ctrl.pickComposerAttachment(
+                title: l10n.t(L10nKey.composerAttachFile),
+                filterLabel: l10n.t(L10nKey.composerAttachFile),
+              ),
+            ),
+          ),
+          ComposerFolderButton(controller: ctrl),
+          const SizedBox(width: 4),
+          ComposerToolsControl(controller: ctrl, compact: compact),
+          const SizedBox(width: 4),
+          ..._modelControls(ctrl, info, compact: shortThinking),
+          // Only this label rebuilds when a draft save lands.
+          ValueListenableBuilder<bool>(
+            valueListenable: ctrl.draftSavedState,
+            builder: (context, saved, _) => saved
+                ? Padding(
+                    padding: const EdgeInsetsDirectional.only(
+                      start: BistreSpacing.s8,
+                    ),
+                    child: InkText(
+                      l10n.t(L10nKey.shellComposerDraftSaved),
+                      role: InkTextRole.captionMeta,
+                      color: theme.statusOk,
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ];
+
+    List<Widget> trailingFor(bool compact) => <Widget>[
+      if (ctrl.isStreaming) ...[
+        EngravedButton(
+          label: l10n.t(L10nKey.composerSteerNowAction),
+          compact: true,
+          onPressed: () => unawaited(_steerNow()),
+        ),
+        const SizedBox(width: 6),
+        EngravedButton(
+          label: l10n.t(L10nKey.composerQueueAction),
+          primary: true,
+          compact: true,
+          leading: BistreIcon(
+            BistreUiIcon.send,
+            size: 12,
+            color: theme.onAccentWax,
+          ),
+          onPressed: () => unawaited(_submit()),
+        ),
+        const SizedBox(width: 6),
+        EngravedButton(
+          label: l10n.t(L10nKey.chatActionStop),
+          compact: true,
+          leading: BistreIcon(
+            BistreUiIcon.stop,
+            size: 12,
+            color: theme.inkPrimary,
+          ),
+          onPressed: () => unawaited(ctrl.cancelStreaming()),
+        ),
+      ] else ...[
+        BistreIconButton(
+          icon: BistreUiIcon.mic,
+          size: 14,
+          dimension: 30,
+          active: ctrl.dictatingActive,
+          color: ctrl.dictatingActive ? theme.accentWax : theme.inkSecondary,
+          semanticsLabel: l10n.t(L10nKey.composerVoiceDictate),
+          onPressed: () => unawaited(_dictate()),
+        ),
+        const SizedBox(width: 4),
+        liveButton(compact),
+        const SizedBox(width: 6),
+        // A quiet Send control: the message, not the button, is
+        // the focal point.
+        EngravedButton(
+          label: l10n.t(L10nKey.shellComposerSend),
+          compact: true,
+          leading: BistreIcon(
+            BistreUiIcon.send,
+            size: 13,
+            color: theme.inkSecondary,
+          ),
+          onPressed: () => unawaited(_submit()),
+        ),
+      ],
+    ];
+
+    // Phones keep one row: a + that opens a tray of the occasional controls, the conversation
+    // ring, the field, and one send / voice / stop action at the end (DESIGN §1.2).
+    final phone = MediaQuery.sizeOf(context).width < kComposerPhoneWidth;
+
+    final Widget composerField = Focus(
+      onKeyEvent: (_, event) {
+        // Esc in the empty composer (not mid-IME, no menu open) stops
+        // the reply; with text in it Esc does nothing to the reply.
+        if (event is KeyDownEvent &&
+            event.logicalKey == LogicalKeyboardKey.escape &&
+            _triggerPrefix.isEmpty &&
+            ctrl.isStreaming &&
+            _textController.text.isEmpty &&
+            !_textController.value.composing.isValid) {
+          unawaited(ctrl.cancelStreaming());
+          return KeyEventResult.handled;
+        }
+        // Arrows, Tab, and Enter belong to the IME while it composes.
+        if (_triggerPrefix.isEmpty ||
+            event is! KeyDownEvent ||
+            _textController.value.composing.isValid) {
+          return KeyEventResult.ignored;
+        }
+        final items = _buildTriggerItems(l10n, ctrl);
+        if (items.isEmpty) return KeyEventResult.ignored;
+        if (event.logicalKey == LogicalKeyboardKey.escape) {
+          setState(() {
+            _triggerPrefix = '';
+            _triggerQuery = '';
+          });
+          return KeyEventResult.handled;
+        }
+        if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+          setState(
+            () => _triggerSelectedIndex =
+                (_triggerSelectedIndex + 1) % items.length,
+          );
+          return KeyEventResult.handled;
+        }
+        if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+          setState(
+            () => _triggerSelectedIndex =
+                (_triggerSelectedIndex - 1 + items.length) % items.length,
+          );
+          return KeyEventResult.handled;
+        }
+        if (event.logicalKey == LogicalKeyboardKey.tab ||
+            event.logicalKey == LogicalKeyboardKey.enter) {
+          final chosen =
+              items[_triggerSelectedIndex.clamp(0, items.length - 1)];
+          _applyTriggerOption(chosen.token);
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      // Ctrl+V and the touch toolbar's Paste: copied files, a picture, or long text join
+      // the message as files.
+      child: Actions(
+        actions: <Type, Action<Intent>>{
+          PasteTextIntent: CallbackAction<PasteTextIntent>(
+            onInvoke: (_) {
+              unawaited(_paste(l10n));
+              return null;
+            },
+          ),
+        },
+        child: QuillInput(
+          key: const Key('composer_input'),
+          controller: _textController,
+          focusNode: widget.focusNode,
+          placeholder: ctrl.isStreaming
+              ? l10n.t(L10nKey.composerSteerPlaceholder)
+              : assistant != null
+              ? l10n.t(L10nKey.composerPlaceholderAssistant, <String, Object?>{
+                  'name': assistant.name,
+                })
+              : l10n.t(L10nKey.shellComposerPlaceholder),
+          submitOnEnter: ctrl.sendOnEnter,
+          frameless: true,
+          onSubmitted: () => unawaited(_submit()),
+          onChanged: _handleTextChanged,
+        ),
+      ),
+    );
 
     return Center(
       child: ConstrainedBox(
@@ -456,16 +555,33 @@ class _FolioComposerState extends State<FolioComposer> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: InkText(
-                              ctrl.liveVoiceError ??
-                                  (ctrl.liveVoiceTranscript.isNotEmpty
-                                      ? ctrl.liveVoiceTranscript
-                                      : l10n.t(
-                                          ctrl.liveVoiceState == 'connecting'
-                                              ? L10nKey
-                                                    .composerLiveVoiceConnecting
-                                              : L10nKey
-                                                    .composerLiveVoiceListening,
-                                        )),
+                              ctrl.liveVoiceError != null
+                                  ? l10n.tRawKey(ctrl.liveVoiceError!)
+                                  : (ctrl.liveVoiceTranscript.isNotEmpty
+                                        ? l10n.t(
+                                            L10nKey.composerLiveVoiceLine,
+                                            <String, Object?>{
+                                              'speaker':
+                                                  ctrl.liveVoiceTranscriptIsUser
+                                                  ? l10n.t(
+                                                      L10nKey.shellRoleUser,
+                                                    )
+                                                  : l10n.t(
+                                                      L10nKey
+                                                          .shellRoleAssistant,
+                                                    ),
+                                              'text': l10n.isolate(
+                                                ctrl.liveVoiceTranscript,
+                                              ),
+                                            },
+                                          )
+                                        : l10n.t(
+                                            ctrl.liveVoiceState == 'connecting'
+                                                ? L10nKey
+                                                      .composerLiveVoiceConnecting
+                                                : L10nKey
+                                                      .composerLiveVoiceListening,
+                                          )),
                               role: InkTextRole.captionMeta,
                               color: ctrl.liveVoiceError != null
                                   ? theme.statusErr
@@ -485,144 +601,19 @@ class _FolioComposerState extends State<FolioComposer> {
                     ),
                   ),
                 ),
-              if (diag != null)
+              if (ComposerAsides.shows(ctrl))
                 Padding(
                   padding: const EdgeInsetsDirectional.only(
                     bottom: BistreSpacing.s8,
                   ),
-                  child: FolioFadeSlide(
-                    beginOffset: const Offset(0, 0.12),
-                    reduceMotionOverride: ctrl.reduceMotionOverride,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: theme.bgElevated,
-                        borderRadius: BorderRadius.circular(11),
-                        border: Border.all(color: theme.borderHairline),
-                        boxShadow: theme.cardShadow,
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsetsDirectional.fromSTEB(
-                          BistreSpacing.s12,
-                          8,
-                          8,
-                          8,
-                        ),
-                        // Compact inline notice: a status dot, one plain sentence in body ink,
-                        // one fix button, and dismiss; announced to screen readers.
-                        child: Row(
-                          children: [
-                            SizedBox.square(
-                              dimension: 6,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: theme.statusErr,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: BistreSpacing.s8),
-                            Expanded(
-                              child: Semantics(
-                                liveRegion: true,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    InkText(
-                                      l10n.tRawKey(diag),
-                                      role: InkTextRole.bodyCompact,
-                                    ),
-                                    // P4: the provider's own reason, as it said it.
-                                    if (providerReason != null)
-                                      InkText(
-                                        l10n.t(
-                                          L10nKey.chatDiagProviderReason,
-                                          <String, Object?>{
-                                            'reason': providerReason,
-                                          },
-                                        ),
-                                        role: InkTextRole.captionMeta,
-                                        color: theme.inkSecondary,
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            // Fixable errors jump straight to the fix.
-                            if (needsProviderKey) ...[
-                              const SizedBox(width: BistreSpacing.s8),
-                              EngravedButton(
-                                label: l10n.t(L10nKey.settingsTabProviders),
-                                compact: true,
-                                onPressed: ctrl.openSettings,
-                              ),
-                            ],
-                            if (needsShorten) ...[
-                              const SizedBox(width: BistreSpacing.s8),
-                              EngravedButton(
-                                label: l10n.t(L10nKey.chatFixShorten),
-                                compact: true,
-                                onPressed: () {
-                                  ctrl.clearDiagnostic();
-                                  unawaited(ctrl.compactActiveThread());
-                                },
-                              ),
-                            ],
-                            if (needsHookReview) ...[
-                              const SizedBox(width: BistreSpacing.s8),
-                              EngravedButton(
-                                label: l10n.t(L10nKey.chatFixReviewHooks),
-                                compact: true,
-                                onPressed: () =>
-                                    ctrl.openSettings(SettingsTab.agent),
-                              ),
-                            ],
-                            if (needsContinue) ...[
-                              const SizedBox(width: BistreSpacing.s8),
-                              EngravedButton(
-                                label: l10n.t(L10nKey.chatFixContinue),
-                                compact: true,
-                                onPressed: () {
-                                  ctrl.clearDiagnostic();
-                                  unawaited(
-                                    ctrl.submitPassage(
-                                      l10n.t(L10nKey.chatFixContinueMessage),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-                            if (needsPriceAllowance) ...[
-                              const SizedBox(width: BistreSpacing.s8),
-                              EngravedButton(
-                                label: l10n.t(L10nKey.chatFixAllowUnpricedOnce),
-                                compact: true,
-                                onPressed: () =>
-                                    unawaited(ctrl.allowUnpricedOnceAndRetry()),
-                              ),
-                            ],
-                            if (needsSpendingLimit) ...[
-                              const SizedBox(width: BistreSpacing.s8),
-                              EngravedButton(
-                                label: l10n.t(L10nKey.chatFixSpendingLimit),
-                                compact: true,
-                                onPressed: () =>
-                                    ctrl.openSettings(SettingsTab.trust),
-                              ),
-                            ],
-                            const SizedBox(width: 4),
-                            BistreIconButton(
-                              icon: BistreUiIcon.close,
-                              size: 13,
-                              dimension: 26,
-                              semanticsLabel: l10n.t(L10nKey.shellDismiss),
-                              onPressed: ctrl.clearDiagnostic,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                  child: ComposerAsides(controller: ctrl),
+                ),
+              if (ComposerNotice.shows(ctrl))
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(
+                    bottom: BistreSpacing.s8,
                   ),
+                  child: ComposerNotice(controller: ctrl),
                 ),
               DecoratedBox(
                 decoration: BoxDecoration(
@@ -828,9 +819,9 @@ class _FolioComposerState extends State<FolioComposer> {
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      GestureDetector(
-                                        behavior: HitTestBehavior.opaque,
-                                        onTap: () =>
+                                      PressableArea(
+                                        label: att.name,
+                                        onPressed: () =>
                                             ctrl.openAttachmentPreview(att),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
@@ -876,80 +867,52 @@ class _FolioComposerState extends State<FolioComposer> {
                         BistreSpacing.s16,
                         BistreSpacing.s8,
                       ),
-                      child: Focus(
-                        onKeyEvent: (_, event) {
-                          // D3: Esc in the empty composer (not mid-IME, no menu open) stops
-                          // the reply; with text in it Esc does nothing to the reply.
-                          if (event is KeyDownEvent &&
-                              event.logicalKey == LogicalKeyboardKey.escape &&
-                              _triggerPrefix.isEmpty &&
-                              ctrl.isStreaming &&
-                              _textController.text.isEmpty &&
-                              !_textController.value.composing.isValid) {
-                            unawaited(ctrl.cancelStreaming());
-                            return KeyEventResult.handled;
-                          }
-                          // U18: arrows, Tab, and Enter belong to the IME while it composes.
-                          if (_triggerPrefix.isEmpty ||
-                              event is! KeyDownEvent ||
-                              _textController.value.composing.isValid) {
-                            return KeyEventResult.ignored;
-                          }
-                          final items = _buildTriggerItems(l10n, ctrl);
-                          if (items.isEmpty) return KeyEventResult.ignored;
-                          if (event.logicalKey == LogicalKeyboardKey.escape) {
-                            setState(() {
-                              _triggerPrefix = '';
-                              _triggerQuery = '';
-                            });
-                            return KeyEventResult.handled;
-                          }
-                          if (event.logicalKey ==
-                              LogicalKeyboardKey.arrowDown) {
-                            setState(
-                              () => _triggerSelectedIndex =
-                                  (_triggerSelectedIndex + 1) % items.length,
-                            );
-                            return KeyEventResult.handled;
-                          }
-                          if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                            setState(
-                              () => _triggerSelectedIndex =
-                                  (_triggerSelectedIndex - 1 + items.length) %
-                                  items.length,
-                            );
-                            return KeyEventResult.handled;
-                          }
-                          if (event.logicalKey == LogicalKeyboardKey.tab ||
-                              event.logicalKey == LogicalKeyboardKey.enter) {
-                            final chosen =
-                                items[_triggerSelectedIndex.clamp(
-                                  0,
-                                  items.length - 1,
-                                )];
-                            _applyTriggerOption(chosen.token);
-                            return KeyEventResult.handled;
-                          }
-                          return KeyEventResult.ignored;
-                        },
-                        child: QuillInput(
-                          key: const Key('composer_input'),
-                          controller: _textController,
-                          focusNode: widget.focusNode,
-                          placeholder: ctrl.isStreaming
-                              ? l10n.t(L10nKey.composerSteerPlaceholder)
-                              : assistant != null
-                              ? l10n.t(
-                                  L10nKey.composerPlaceholderAssistant,
-                                  <String, Object?>{'name': assistant.name},
-                                )
-                              : l10n.t(L10nKey.shellComposerPlaceholder),
-                          submitOnEnter: ctrl.sendOnEnter,
-                          frameless: true,
-                          onSubmitted: () => unawaited(_submit()),
-                          onChanged: _handleTextChanged,
-                        ),
-                      ),
+                      child: phone
+                          ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                ComposerTrayToggle(
+                                  open: _trayOpen,
+                                  // Marks a Thinking choice other than Auto (stored as
+                                  // `default`; any unknown value also reads as Auto) or a
+                                  // format this model takes.
+                                  marked:
+                                      thinkingLabelKey(
+                                            ctrl.settings.reasoningEffort,
+                                          ) !=
+                                          L10nKey.chatEffortAuto ||
+                                      (info != null &&
+                                          !ctrl.mediaOptions
+                                              .forModel(info)
+                                              .isEmpty),
+                                  onToggle: () =>
+                                      setState(() => _trayOpen = !_trayOpen),
+                                ),
+                                const SizedBox(width: BistreSpacing.s4),
+                                // Centred on the same line as + and the send action.
+                                SizedBox(
+                                  height: 36 * iconScaleOf(context),
+                                  child: Center(child: gaugeFor(true)),
+                                ),
+                                const SizedBox(width: BistreSpacing.s8),
+                                Expanded(child: composerField),
+                                const SizedBox(width: BistreSpacing.s4),
+                                ValueListenableBuilder<TextEditingValue>(
+                                  valueListenable: _textController,
+                                  builder: (context, value, _) =>
+                                      ComposerSendActions(
+                                        streaming: ctrl.isStreaming,
+                                        hasText: value.text.trim().isNotEmpty,
+                                        dictating: ctrl.dictatingActive,
+                                        onSend: () => unawaited(_submit()),
+                                        onStop: () =>
+                                            unawaited(ctrl.cancelStreaming()),
+                                        onDictate: () => unawaited(_dictate()),
+                                      ),
+                                ),
+                              ],
+                            )
+                          : composerField,
                     ),
                     Padding(
                       padding: const EdgeInsetsDirectional.fromSTEB(
@@ -958,409 +921,55 @@ class _FolioComposerState extends State<FolioComposer> {
                         10,
                         10,
                       ),
-                      child: _ComposerToolbar(
-                        twoRows: twoRowToolbar,
-                        measureKey: (
-                          scale,
-                          l10n.activeLocale,
-                          ctrl.isStreaming,
-                        ),
-                        gauge: (compact) =>
-                            ValueListenableBuilder<EngineContextBreakdown>(
-                              valueListenable: ctrl.contextBreakdown,
-                              builder: (context, usage, _) => ContextGaugeRing(
-                                usage: usage,
-                                limitTokens: ctrl.activeContextLimitOrFetch,
-                                sessionSpendMicros:
-                                    ctrl.activeThreadSpendMicros,
-                                uploadedFilesCount: ctrl.attachments.length,
-                                showLabel: !compact,
-                                loadWithDraft: () =>
-                                    ctrl.contextBreakdownWithDraft(
-                                      _textController.text,
-                                    ),
-                                onShorten: () =>
-                                    unawaited(ctrl.compactActiveThread()),
-                                onOpenPrices: () =>
-                                    ctrl.openSettings(SettingsTab.trust),
+                      child: phone
+                          ? DisclosureReveal(
+                              open: _trayOpen,
+                              child: Padding(
+                                padding: const EdgeInsetsDirectional.only(
+                                  top: BistreSpacing.s4,
+                                ),
+                                child: Wrap(
+                                  spacing: BistreSpacing.s4,
+                                  runSpacing: BistreSpacing.s4,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  // The tray has room: every control keeps its name, and
+                                  // the row wraps at large text.
+                                  children: [
+                                    ...leadingFor(false),
+                                    liveButton(false),
+                                    if (ctrl.isStreaming)
+                                      EngravedButton(
+                                        label: l10n.t(
+                                          L10nKey.composerSteerNowAction,
+                                        ),
+                                        compact: true,
+                                        onPressed: () => unawaited(_steerNow()),
+                                      ),
+                                  ],
+                                ),
                               ),
-                            ),
-                        leading: (compact) => <Widget>[
-                          BistreIconButton(
-                            icon: BistreUiIcon.paperclip,
-                            size: 15,
-                            dimension: 30,
-                            semanticsLabel: l10n.t(L10nKey.composerAttachFile),
-                            onPressed: () => unawaited(
-                              ctrl.pickComposerAttachment(
-                                title: l10n.t(L10nKey.composerAttachFile),
-                                filterLabel: l10n.t(L10nKey.composerAttachFile),
+                            )
+                          : _ComposerToolbar(
+                              twoRows: false,
+                              // The model decides which chips show (Thinking, Format).
+                              measureKey: (
+                                scale,
+                                l10n.activeLocale,
+                                ctrl.isStreaming,
+                                info?.writesText,
+                                info?.reasoning,
+                                info?.hasMediaChoices,
                               ),
+                              gauge: gaugeFor,
+                              leading: leadingFor,
+                              trailing: trailingFor,
                             ),
-                          ),
-                          const SizedBox(width: 4),
-                          ComposerToolsControl(
-                            controller: ctrl,
-                            compact: compact,
-                          ),
-                          const SizedBox(width: 4),
-                          ThinkingControl(
-                            compact: compact,
-                            value: ctrl.settings.reasoningEffort,
-                            reduceMotionOverride: ctrl.reduceMotionOverride,
-                            onChanged: (v) =>
-                                unawaited(ctrl.setReasoningEffort(v)),
-                          ),
-                          // Only this label rebuilds when a draft save lands.
-                          ValueListenableBuilder<bool>(
-                            valueListenable: ctrl.draftSavedState,
-                            builder: (context, saved, _) => saved
-                                ? Padding(
-                                    padding: const EdgeInsetsDirectional.only(
-                                      start: BistreSpacing.s8,
-                                    ),
-                                    child: InkText(
-                                      l10n.t(L10nKey.shellComposerDraftSaved),
-                                      role: InkTextRole.captionMeta,
-                                      color: theme.statusOk,
-                                    ),
-                                  )
-                                : const SizedBox.shrink(),
-                          ),
-                        ],
-                        trailing: (compact) => <Widget>[
-                          if (ctrl.isStreaming) ...[
-                            EngravedButton(
-                              label: l10n.t(L10nKey.composerSteerNowAction),
-                              compact: true,
-                              onPressed: () async {
-                                final text = _textController.text.trim();
-                                if (text.isEmpty) return;
-                                _textController.clear();
-                                await ctrl.steerActiveRunNow(text);
-                              },
-                            ),
-                            const SizedBox(width: 6),
-                            EngravedButton(
-                              label: l10n.t(L10nKey.composerQueueAction),
-                              primary: true,
-                              compact: true,
-                              leading: BistreIcon(
-                                BistreUiIcon.send,
-                                size: 12,
-                                color: theme.onAccentWax,
-                              ),
-                              onPressed: () => unawaited(_submit()),
-                            ),
-                            const SizedBox(width: 6),
-                            EngravedButton(
-                              label: l10n.t(L10nKey.chatActionStop),
-                              compact: true,
-                              leading: BistreIcon(
-                                BistreUiIcon.stop,
-                                size: 12,
-                                color: theme.inkPrimary,
-                              ),
-                              onPressed: () =>
-                                  unawaited(ctrl.cancelStreaming()),
-                            ),
-                          ] else ...[
-                            BistreIconButton(
-                              icon: BistreUiIcon.mic,
-                              size: 14,
-                              dimension: 30,
-                              active: ctrl.dictatingActive,
-                              color: ctrl.dictatingActive
-                                  ? theme.accentWax
-                                  : theme.inkSecondary,
-                              semanticsLabel: l10n.t(
-                                L10nKey.composerVoiceDictate,
-                              ),
-                              onPressed: () async {
-                                final spoken = await ctrl.dictateVoiceOnce();
-                                if (spoken == null || !mounted) return;
-                                // Never mutate while IME composition is active.
-                                if (_textController.value.composing.isValid) {
-                                  return;
-                                }
-                                final cur = _textController.text;
-                                final next = cur.trim().isEmpty
-                                    ? spoken
-                                    : '$cur $spoken';
-                                _textController.value = TextEditingValue(
-                                  text: next,
-                                  selection: TextSelection.collapsed(
-                                    offset: next.length,
-                                  ),
-                                );
-                                _handleTextChanged(next);
-                              },
-                            ),
-                            const SizedBox(width: 4),
-                            EngravedButton(
-                              label: compact
-                                  ? ''
-                                  : l10n.t(L10nKey.composerLiveVoicePill),
-                              semanticsLabel: l10n.t(
-                                L10nKey.composerLiveVoicePill,
-                              ),
-                              compact: true,
-                              primary: ctrl.liveVoiceActive,
-                              leading: BistreIcon(
-                                BistreUiIcon.audioLines,
-                                size: 13,
-                                color: ctrl.liveVoiceActive
-                                    ? theme.onAccentWax
-                                    : theme.accentBrass,
-                              ),
-                              onPressed: () =>
-                                  unawaited(ctrl.toggleLiveVoiceSession()),
-                            ),
-                            const SizedBox(width: 6),
-                            // A quiet Send control: the message, not the button, is
-                            // the focal point.
-                            EngravedButton(
-                              label: l10n.t(L10nKey.shellComposerSend),
-                              compact: true,
-                              leading: BistreIcon(
-                                BistreUiIcon.send,
-                                size: 13,
-                                color: theme.inkSecondary,
-                              ),
-                              onPressed: () => unawaited(_submit()),
-                            ),
-                          ],
-                        ],
-                      ),
                     ),
                   ],
                 ),
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Bottom composer controls, measured rather than guessed (any locale, any text size). The
-/// first form that fits in one row wins:
-/// 0. full labels;
-/// 1. the context ring without its numbers (they stay in its hover card);
-/// 2. compact labels (icon-only Tools and Live, short thinking label);
-/// then two rows, or two rows on phones while a reply streams (Stop / Queue / Steer).
-/// Each form's width is measured whenever it is on screen and remembered for the current
-/// text size, locale, and reply state, so widening the window brings the fuller form back.
-class _ComposerToolbar extends StatefulWidget {
-  const _ComposerToolbar({
-    required this.twoRows,
-    required this.measureKey,
-    required this.leading,
-    required this.trailing,
-    required this.gauge,
-  });
-
-  final bool twoRows;
-
-  /// Anything that changes the controls' widths (text size, locale, streaming).
-  final Object measureKey;
-  final List<Widget> Function(bool compact) leading;
-  final List<Widget> Function(bool compact) trailing;
-  final Widget Function(bool compact) gauge;
-
-  @override
-  State<_ComposerToolbar> createState() => _ComposerToolbarState();
-}
-
-class _ComposerToolbarState extends State<_ComposerToolbar> {
-  /// Forms measured so far: full labels, then the ring without numbers.
-  static const int _measuredForms = 2;
-
-  /// Bound on remembered states (text size x locale x replying), cleared when exceeded.
-  static const int _maxKeys = 8;
-
-  /// One-row width each form needs, per [_ComposerToolbar.measureKey].
-  final Map<Object, List<double?>> _needs = <Object, List<double?>>{};
-
-  /// The toolbar's width at the last layout.
-  double _width = double.infinity;
-
-  List<double?> get _need {
-    if (_needs.length >= _maxKeys && !_needs.containsKey(widget.measureKey)) {
-      _needs.clear();
-    }
-    return _needs.putIfAbsent(
-      widget.measureKey,
-      () => List<double?>.filled(_measuredForms, null),
-    );
-  }
-
-  int get _form {
-    final need = _need;
-    for (var form = 0; form < need.length; form++) {
-      final w = need[form];
-      if (w == null || _width >= w) return form;
-    }
-    return need.length;
-  }
-
-  /// After each layout: remember the width this form needs and the toolbar width; rebuild
-  /// only when that changes the form. No `LayoutBuilder`, so streaming never lays the shell
-  /// out again.
-  void _onMeasured(double need, double width) {
-    final form = _form;
-    _width = width;
-    if (form < _measuredForms) _need[form] = need;
-    if (_form == form) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final form = _form;
-    final compact = form >= 2;
-    return ComposerToolbarLayout(
-      forceTwoRows: widget.twoRows,
-      onMeasured: _onMeasured,
-      leading: Wrap(
-        crossAxisAlignment: WrapCrossAlignment.center,
-        runSpacing: BistreSpacing.s4,
-        children: widget.leading(compact),
-      ),
-      gauge: widget.gauge(form >= 1),
-      // Wraps (end-aligned) when even its own row is too narrow: Steer, Queue, and Stop
-      // on a phone.
-      trailing: Wrap(
-        alignment: WrapAlignment.end,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        runSpacing: BistreSpacing.s4,
-        children: widget.trailing(compact),
-      ),
-    );
-  }
-}
-
-/// Backoff notice with countdown, plain reason, and an inline trailing `Retry now`.
-/// The 1 s ticker runs only while a retry is pending (never idle polling).
-class _BackoffNotice extends StatefulWidget {
-  const _BackoffNotice({
-    required this.retryAt,
-    required this.onRetryNow,
-    this.attempt,
-    this.reasonDetail,
-  });
-
-  final DateTime retryAt;
-
-  /// Which automatic try failed (P20).
-  final int? attempt;
-  final VoidCallback onRetryNow;
-  final String? reasonDetail;
-
-  @override
-  State<_BackoffNotice> createState() => _BackoffNoticeState();
-}
-
-class _BackoffNoticeState extends State<_BackoffNotice> {
-  Timer? _ticker;
-
-  @override
-  void initState() {
-    super.initState();
-    _startTicker();
-  }
-
-  /// U37: a new wait (a later try) restarts the countdown; the ticker of a wait that ran
-  /// out has stopped, which froze the next one.
-  @override
-  void didUpdateWidget(_BackoffNotice oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.retryAt != widget.retryAt) _startTicker();
-  }
-
-  /// Seconds left, counted down by the ticker from the wait's length when it started.
-  int _seconds = 0;
-
-  void _startTicker() {
-    _ticker?.cancel();
-    final ms = widget.retryAt.difference(DateTime.now()).inMilliseconds;
-    _seconds = ms <= 0 ? 0 : (ms + 999) ~/ 1000;
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      setState(() => _seconds = _seconds > 0 ? _seconds - 1 : 0);
-      if (_seconds == 0) _ticker?.cancel();
-    });
-  }
-
-  @override
-  void dispose() {
-    _ticker?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    final l10n = BistreLocalizations.of(context);
-    final seconds = _seconds;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: theme.bgElevated,
-        borderRadius: BorderRadius.circular(11),
-        border: Border.all(color: theme.statusWarn.withValues(alpha: 0.5)),
-      ),
-      child: Padding(
-        padding: const EdgeInsetsDirectional.fromSTEB(
-          BistreSpacing.s12,
-          6,
-          6,
-          6,
-        ),
-        child: Row(
-          children: [
-            BistreIcon(BistreUiIcon.refresh, size: 13, color: theme.statusWarn),
-            const SizedBox(width: BistreSpacing.s8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  InkText(
-                    widget.attempt == null
-                        ? l10n.t(L10nKey.chatBackoffNotice, <String, Object?>{
-                            'seconds': seconds,
-                          })
-                        : l10n.t(
-                            L10nKey.chatBackoffNoticeAttempt,
-                            <String, Object?>{
-                              'seconds': seconds,
-                              'attempt': widget.attempt,
-                            },
-                          ),
-                    role: InkTextRole.captionMeta,
-                    color: theme.inkSecondary,
-                  ),
-                  if (widget.reasonDetail != null &&
-                      widget.reasonDetail!.trim().isNotEmpty)
-                    InkText(
-                      l10n.tRawKey(widget.reasonDetail!),
-                      role: InkTextRole.captionMeta,
-                      color: theme.inkMuted,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                ],
-              ),
-            ),
-            EngravedButton(
-              label: l10n.t(L10nKey.chatActionRetryNow),
-              compact: true,
-              onPressed: widget.onRetryNow,
-            ),
-          ],
         ),
       ),
     );

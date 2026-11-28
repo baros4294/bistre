@@ -1,41 +1,36 @@
 #include "flutter_window.h"
 
 #include <shellapi.h>
-#include <shobjidl.h>
 #include <windows.h>
 
 #include <algorithm>
+#include <cstring>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "computer_use.h"
 #include "flutter/generated_plugin_registrant.h"
+#include "host_clipboard.h"
+#include "host_dialogs.h"
+#include "host_drop.h"
+#include "host_hotkey.h"
+#include "host_speech.h"
 #include "resource.h"
+#include "utils.h"
 
 namespace {
 
 constexpr UINT kTrayCallbackMsg = WM_APP + 42;
 constexpr UINT kMicChunkMsg = WM_APP + 43;
+constexpr UINT kSpeechEventMsg = WM_APP + 44;
+constexpr UINT kDictationDoneMsg = WM_APP + 45;
+constexpr UINT kTrayMenuOpen = 1;
+constexpr UINT kTrayMenuQuit = 2;
+
 constexpr UINT kTrayIconId = 1001;
 constexpr size_t kMicChunkBytes = 3200;  // 100 ms @ 16 kHz, 16-bit mono PCM
 
-std::string Base64EncodeBytes(const uint8_t* data, size_t len) {
-  static constexpr char kTable[] =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  std::string out;
-  out.reserve(((len + 2) / 3) * 4);
-  for (size_t i = 0; i < len; i += 3) {
-    const uint32_t b0 = data[i];
-    const uint32_t b1 = (i + 1 < len) ? data[i + 1] : 0;
-    const uint32_t b2 = (i + 2 < len) ? data[i + 2] : 0;
-    const uint32_t triple = (b0 << 16) | (b1 << 8) | b2;
-    out.push_back(kTable[(triple >> 18) & 0x3F]);
-    out.push_back(kTable[(triple >> 12) & 0x3F]);
-    out.push_back((i + 1 < len) ? kTable[(triple >> 6) & 0x3F] : '=');
-    out.push_back((i + 2 < len) ? kTable[triple & 0x3F] : '=');
-  }
-  return out;
-}
 constexpr const wchar_t kAutoStartRegKey[] =
     L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 constexpr const wchar_t kAutoStartValueName[] = L"Bistre";
@@ -64,37 +59,6 @@ bool SetWindowsAutoStart(bool enable) {
   }
   RegCloseKey(hkey);
   return ok;
-}
-
-std::wstring Utf8ToWide(const std::string& utf8) {
-  if (utf8.empty()) {
-    return L"";
-  }
-  int len = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(),
-                                static_cast<int>(utf8.size()), nullptr, 0);
-  if (len <= 0) {
-    return L"";
-  }
-  std::wstring out(static_cast<size_t>(len), L'\0');
-  MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), static_cast<int>(utf8.size()),
-                      out.data(), len);
-  return out;
-}
-
-std::string WideToUtf8(const std::wstring& wide) {
-  if (wide.empty()) {
-    return "";
-  }
-  int len = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(),
-                                static_cast<int>(wide.size()), nullptr, 0,
-                                nullptr, nullptr);
-  if (len <= 0) {
-    return "";
-  }
-  std::string out(static_cast<size_t>(len), '\0');
-  WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()),
-                      out.data(), len, nullptr, nullptr);
-  return out;
 }
 
 COLORREF RgbIntToColorRef(int64_t rgb) {
@@ -143,139 +107,6 @@ bool GetBoolArg(const flutter::EncodableMap& args,
   return fallback;
 }
 
-std::optional<std::string> ShowOpenFileDialog(HWND owner,
-                                              const std::wstring& title,
-                                              const std::wstring& filter_label,
-                                              const std::wstring& filter_spec) {
-  IFileOpenDialog* dialog = nullptr;
-  HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr,
-                                CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog));
-  if (FAILED(hr) || dialog == nullptr) {
-    return std::nullopt;
-  }
-
-  DWORD opts = 0;
-  if (SUCCEEDED(dialog->GetOptions(&opts))) {
-    dialog->SetOptions(opts | FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST);
-  }
-  if (!title.empty()) {
-    dialog->SetTitle(title.c_str());
-  }
-  if (!filter_label.empty() && !filter_spec.empty()) {
-    COMDLG_FILTERSPEC spec[2] = {
-        {filter_label.c_str(), filter_spec.c_str()},
-        {L"All files", L"*.*"},
-    };
-    dialog->SetFileTypes(2, spec);
-    dialog->SetFileTypeIndex(1);
-  }
-
-  std::optional<std::string> selected;
-  if (SUCCEEDED(dialog->Show(owner))) {
-    IShellItem* item = nullptr;
-    if (SUCCEEDED(dialog->GetResult(&item)) && item != nullptr) {
-      PWSTR psz_path = nullptr;
-      if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &psz_path)) &&
-          psz_path != nullptr) {
-        selected = WideToUtf8(psz_path);
-        CoTaskMemFree(psz_path);
-      }
-      item->Release();
-    }
-  }
-  dialog->Release();
-  return selected;
-}
-
-std::optional<std::string> ShowSaveFileDialog(HWND owner,
-                                              const std::wstring& title,
-                                              const std::wstring& default_name,
-                                              const std::wstring& filter_label,
-                                              const std::wstring& filter_spec) {
-  IFileSaveDialog* dialog = nullptr;
-  HRESULT hr = CoCreateInstance(CLSID_FileSaveDialog, nullptr,
-                                CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog));
-  if (FAILED(hr) || dialog == nullptr) {
-    return std::nullopt;
-  }
-
-  DWORD opts = 0;
-  if (SUCCEEDED(dialog->GetOptions(&opts))) {
-    dialog->SetOptions(opts | FOS_OVERWRITEPROMPT | FOS_PATHMUSTEXIST);
-  }
-  if (!title.empty()) {
-    dialog->SetTitle(title.c_str());
-  }
-  if (!default_name.empty()) {
-    dialog->SetFileName(default_name.c_str());
-  }
-  if (!filter_label.empty() && !filter_spec.empty()) {
-    COMDLG_FILTERSPEC spec[2] = {
-        {filter_label.c_str(), filter_spec.c_str()},
-        {L"All files", L"*.*"},
-    };
-    dialog->SetFileTypes(2, spec);
-    dialog->SetFileTypeIndex(1);
-  }
-
-  std::optional<std::string> selected;
-  if (SUCCEEDED(dialog->Show(owner))) {
-    IShellItem* item = nullptr;
-    if (SUCCEEDED(dialog->GetResult(&item)) && item != nullptr) {
-      PWSTR psz_path = nullptr;
-      if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &psz_path)) &&
-          psz_path != nullptr) {
-        selected = WideToUtf8(psz_path);
-        CoTaskMemFree(psz_path);
-      }
-      item->Release();
-    }
-  }
-  dialog->Release();
-  return selected;
-}
-
-std::optional<std::string> ShowPickFolderDialog(HWND owner,
-                                                const std::wstring& title) {
-  IFileOpenDialog* dialog = nullptr;
-  HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr,
-                                CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog));
-  if (FAILED(hr) || dialog == nullptr) {
-    return std::nullopt;
-  }
-
-  DWORD opts = 0;
-  if (SUCCEEDED(dialog->GetOptions(&opts))) {
-    dialog->SetOptions(opts | FOS_PICKFOLDERS | FOS_PATHMUSTEXIST |
-                       FOS_FORCEFILESYSTEM);
-  }
-  if (!title.empty()) {
-    dialog->SetTitle(title.c_str());
-  }
-
-  std::optional<std::string> selected;
-  if (SUCCEEDED(dialog->Show(owner))) {
-    IShellItem* item = nullptr;
-    if (SUCCEEDED(dialog->GetResult(&item)) && item != nullptr) {
-      PWSTR psz_path = nullptr;
-      if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &psz_path)) &&
-          psz_path != nullptr) {
-        std::wstring wpath(psz_path);
-        const bool is_unc =
-            wpath.size() > 1 && (wpath[0] == L'\\' || wpath[0] == L'/') &&
-            (wpath[1] == L'\\' || wpath[1] == L'/');
-        if (!is_unc && !wpath.empty()) {
-          selected = WideToUtf8(wpath);
-        }
-        CoTaskMemFree(psz_path);
-      }
-      item->Release();
-    }
-  }
-  dialog->Release();
-  return selected;
-}
-
 }  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
@@ -297,6 +128,17 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   RegisterDesktopHostChannel();
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
+  // Files dragged onto the window reach the composer as attachments.
+  const HWND view = flutter_controller_->view()->GetNativeWindow();
+  if (RegisterFileDrop(view, [this](std::vector<std::string> paths) {
+        if (!host_channel_) return;
+        flutter::EncodableList list;
+        for (auto& path : paths) list.emplace_back(std::move(path));
+        host_channel_->InvokeMethod(
+            "onFilesDropped", std::make_unique<flutter::EncodableValue>(std::move(list)));
+      })) {
+    file_drop_hwnd_ = view;
+  }
 
   flutter_controller_->engine()->SetNextFrameCallback([this]() {
     has_shown_ = true;
@@ -313,9 +155,26 @@ bool FlutterWindow::OnCreate() {
 
 void FlutterWindow::OnDestroy() {
   StopMicCapture();
-  PlaySoundW(nullptr, nullptr, 0);
-  playing_wav_.clear();
+  StopPlayback();
+  StopSpeaking();
+  if (voice_ != nullptr) {
+    voice_->Release();
+    voice_ = nullptr;
+  }
+  StopDictation();
+  if (dictation_thread_.joinable()) {
+    dictation_thread_.join();
+  }
+  if (dictation_cancel_ != nullptr) {
+    CloseHandle(dictation_cancel_);
+    dictation_cancel_ = nullptr;
+  }
+  SetQuickEntryHotkey(GetHandle(), "");
   EnsureTrayIcon(false);
+  if (file_drop_hwnd_ != nullptr) {
+    RevokeFileDrop(file_drop_hwnd_);
+    file_drop_hwnd_ = nullptr;
+  }
   host_channel_.reset();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
@@ -327,6 +186,9 @@ void FlutterWindow::EnsureTrayIcon(bool enable) {
   HWND hwnd = GetHandle();
   if (hwnd == nullptr) {
     return;
+  }
+  if (enable) {
+    tray_for_balloon_only_ = false;
   }
   if (enable && !tray_icon_added_) {
     NOTIFYICONDATAW nid{};
@@ -374,9 +236,207 @@ void FlutterWindow::ShowTrayBalloon(const std::wstring& title,
   if (play_sound) {
     MessageBeep(MB_OK);
   }
+  // With the tray off, the icon stays only while the balloon shows.
   if (!was_added && !tray_enabled_) {
-    // Keep balloon visible without permanently pinning tray icon unless user enabled tray.
+    tray_for_balloon_only_ = true;
   }
+}
+
+void FlutterWindow::QueueWav(const std::vector<uint8_t>& wav) {
+  // RIFF/WAVE with a PCM "fmt " chunk and a "data" chunk; anything else is ignored.
+  auto u16 = [&](size_t at) { return static_cast<uint16_t>(wav[at] | (wav[at + 1] << 8)); };
+  auto u32 = [&](size_t at) {
+    return static_cast<uint32_t>(wav[at] | (wav[at + 1] << 8) | (wav[at + 2] << 16) |
+                                 (static_cast<uint32_t>(wav[at + 3]) << 24));
+  };
+  if (wav.size() < 12 || memcmp(wav.data(), "RIFF", 4) != 0 ||
+      memcmp(wav.data() + 8, "WAVE", 4) != 0) {
+    return;
+  }
+  WAVEFORMATEX fmt{};
+  size_t data_at = 0;
+  size_t data_len = 0;
+  for (size_t at = 12; at + 8 <= wav.size();) {
+    const uint32_t len = u32(at + 4);
+    const size_t body = at + 8;
+    if (len > wav.size() - body) {
+      break;
+    }
+    if (memcmp(wav.data() + at, "fmt ", 4) == 0 && len >= 16) {
+      fmt.wFormatTag = u16(body);
+      fmt.nChannels = u16(body + 2);
+      fmt.nSamplesPerSec = u32(body + 4);
+      fmt.nAvgBytesPerSec = u32(body + 8);
+      fmt.nBlockAlign = u16(body + 12);
+      fmt.wBitsPerSample = u16(body + 14);
+    } else if (memcmp(wav.data() + at, "data", 4) == 0) {
+      data_at = body;
+      data_len = len;
+    }
+    at = body + len + (len & 1);
+  }
+  if (fmt.wFormatTag != WAVE_FORMAT_PCM || data_len == 0) {
+    return;
+  }
+  if (wave_out_ != nullptr &&
+      (fmt.nChannels != out_format_.nChannels ||
+       fmt.nSamplesPerSec != out_format_.nSamplesPerSec ||
+       fmt.wBitsPerSample != out_format_.wBitsPerSample)) {
+    StopPlayback();
+  }
+  if (wave_out_ == nullptr) {
+    if (waveOutOpen(&wave_out_, WAVE_MAPPER, &fmt, 0, 0, CALLBACK_NULL) !=
+        MMSYSERR_NOERROR) {
+      wave_out_ = nullptr;
+      return;
+    }
+    out_format_ = fmt;
+  }
+  // Free the chunks that finished playing; the queue stays bounded.
+  play_queue_.erase(
+      std::remove_if(play_queue_.begin(), play_queue_.end(),
+                     [this](const std::unique_ptr<PlayChunk>& chunk) {
+                       if ((chunk->hdr.dwFlags & WHDR_DONE) == 0) {
+                         return false;
+                       }
+                       waveOutUnprepareHeader(wave_out_, &chunk->hdr, sizeof(WAVEHDR));
+                       return true;
+                     }),
+      play_queue_.end());
+  constexpr size_t kMaxQueuedChunks = 256;
+  if (play_queue_.size() >= kMaxQueuedChunks) {
+    return;
+  }
+  auto chunk = std::make_unique<PlayChunk>();
+  chunk->pcm.assign(wav.begin() + data_at, wav.begin() + data_at + data_len);
+  chunk->hdr.lpData = reinterpret_cast<LPSTR>(chunk->pcm.data());
+  chunk->hdr.dwBufferLength = static_cast<DWORD>(chunk->pcm.size());
+  if (waveOutPrepareHeader(wave_out_, &chunk->hdr, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
+    return;
+  }
+  if (waveOutWrite(wave_out_, &chunk->hdr, sizeof(WAVEHDR)) != MMSYSERR_NOERROR) {
+    waveOutUnprepareHeader(wave_out_, &chunk->hdr, sizeof(WAVEHDR));
+    return;
+  }
+  play_queue_.push_back(std::move(chunk));
+}
+
+void FlutterWindow::SpeakText(
+    const std::wstring& text,
+    std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+  StopSpeaking();
+  if (voice_ == nullptr) {
+    if (FAILED(CoCreateInstance(CLSID_SpVoice, nullptr, CLSCTX_ALL,
+                                IID_PPV_ARGS(&voice_)))) {
+      voice_ = nullptr;
+      result->Success(flutter::EncodableValue(false));
+      return;
+    }
+    const ULONGLONG interest = SPFEI(SPEI_END_INPUT_STREAM);
+    voice_->SetInterest(interest, interest);
+    voice_->SetNotifyWindowMessage(GetHandle(), kSpeechEventMsg, 0, 0);
+  }
+  if (FAILED(voice_->Speak(text.c_str(),
+                           SPF_ASYNC | SPF_PURGEBEFORESPEAK | SPF_IS_NOT_XML,
+                           nullptr))) {
+    result->Success(flutter::EncodableValue(false));
+    return;
+  }
+  pending_speech_ = std::move(result);
+}
+
+void FlutterWindow::StopSpeaking() {
+  if (voice_ != nullptr) {
+    voice_->Speak(nullptr, SPF_PURGEBEFORESPEAK, nullptr);
+  }
+  if (pending_speech_) {
+    pending_speech_->Success(flutter::EncodableValue(true));
+    pending_speech_.reset();
+  }
+}
+
+void FlutterWindow::ShowTrayMenu() {
+  HWND hwnd = GetHandle();
+  HMENU menu = CreatePopupMenu();
+  if (menu == nullptr) {
+    return;
+  }
+  AppendMenuW(menu, MF_STRING, kTrayMenuOpen, tray_open_label_.c_str());
+  if (!tray_quit_label_.empty()) {
+    AppendMenuW(menu, MF_STRING, kTrayMenuQuit, tray_quit_label_.c_str());
+  }
+  POINT at{};
+  GetCursorPos(&at);
+  // The menu closes when the user clicks elsewhere only if the window is foreground.
+  SetForegroundWindow(hwnd);
+  const UINT chosen = static_cast<UINT>(TrackPopupMenu(
+      menu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON, at.x, at.y, 0, hwnd, nullptr));
+  DestroyMenu(menu);
+  if (chosen == kTrayMenuOpen) {
+    ShowWindow(hwnd, SW_RESTORE);
+    SetForegroundWindow(hwnd);
+  } else if (chosen == kTrayMenuQuit) {
+    quitting_ = true;
+    PostMessageW(hwnd, WM_CLOSE, 0, 0);
+  }
+}
+
+void FlutterWindow::StartDictation(
+    std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+  StopDictation();
+  if (dictation_thread_.joinable()) {
+    dictation_thread_.join();
+  }
+  if (dictation_cancel_ == nullptr) {
+    dictation_cancel_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+  }
+  if (dictation_cancel_ == nullptr) {
+    result->Success();
+    return;
+  }
+  ResetEvent(dictation_cancel_);
+  pending_dictation_ = std::move(result);
+  HWND hwnd = GetHandle();
+  HANDLE cancel = dictation_cancel_;
+  dictation_thread_ = std::thread([hwnd, cancel]() {
+    auto* heard = new std::wstring(DictateOnce(cancel));
+    // The window owns the text once posted; a closed window frees it here.
+    if (!PostMessageW(hwnd, kDictationDoneMsg, 0, reinterpret_cast<LPARAM>(heard))) {
+      delete heard;
+    }
+  });
+}
+
+void FlutterWindow::StopDictation() {
+  if (dictation_cancel_ != nullptr) {
+    SetEvent(dictation_cancel_);
+  }
+}
+
+void FlutterWindow::FinishDictation(std::wstring* text) {
+  std::unique_ptr<std::wstring> heard(text);
+  if (!pending_dictation_) {
+    return;
+  }
+  if (heard && !heard->empty()) {
+    pending_dictation_->Success(flutter::EncodableValue(WideToUtf8(*heard)));
+  } else {
+    pending_dictation_->Success();
+  }
+  pending_dictation_.reset();
+}
+
+void FlutterWindow::StopPlayback() {
+  if (wave_out_ == nullptr) {
+    return;
+  }
+  waveOutReset(wave_out_);
+  for (auto& chunk : play_queue_) {
+    waveOutUnprepareHeader(wave_out_, &chunk->hdr, sizeof(WAVEHDR));
+  }
+  play_queue_.clear();
+  waveOutClose(wave_out_);
+  wave_out_ = nullptr;
 }
 
 void FlutterWindow::RegisterDesktopHostChannel() {
@@ -460,6 +520,40 @@ void FlutterWindow::HandleDesktopHostCall(
                     SW_SHOWNORMAL);
     }
     result->Success(flutter::EncodableValue(true));
+    return;
+  }
+
+  if (method == "clipboardAttachments") {
+    // Copied files win over a picture: Explorer puts both on the clipboard for an image file.
+    flutter::EncodableList files;
+    for (auto& path : ClipboardFilePaths(GetHandle())) files.emplace_back(std::move(path));
+    flutter::EncodableMap out;
+    out[flutter::EncodableValue("png")] = flutter::EncodableValue(
+        files.empty() ? ClipboardImagePngBase64(GetHandle()) : std::string());
+    out[flutter::EncodableValue("files")] = flutter::EncodableValue(std::move(files));
+    result->Success(flutter::EncodableValue(std::move(out)));
+    return;
+  }
+
+  if (method == "copyPicture" && args != nullptr) {
+    result->Success(flutter::EncodableValue(CopyPictureToClipboard(GetHandle(), *args)));
+    return;
+  }
+
+  if (method == "openFile" && args != nullptr) {
+    std::wstring path = Utf8ToWide(GetStringArg(*args, "path"));
+    // An existing local file only, never a folder or a UNC network share; Dart refuses
+    // executables, scripts, and shortcuts before asking (`blockedOpenExtensions`).
+    const bool is_unc = path.size() > 1 && (path[0] == L'\\' || path[0] == L'/') &&
+                        (path[1] == L'\\' || path[1] == L'/');
+    const DWORD attrs =
+        is_unc ? INVALID_FILE_ATTRIBUTES : GetFileAttributesW(path.c_str());
+    const bool opened =
+        !path.empty() && attrs != INVALID_FILE_ATTRIBUTES &&
+        (attrs & FILE_ATTRIBUTE_DIRECTORY) == 0 &&
+        reinterpret_cast<INT_PTR>(ShellExecuteW(GetHandle(), L"open", path.c_str(), nullptr,
+                                                nullptr, SW_SHOWNORMAL)) > 32;
+    result->Success(flutter::EncodableValue(opened));
     return;
   }
 
@@ -564,6 +658,11 @@ void FlutterWindow::HandleDesktopHostCall(
     return;
   }
 
+  if (method == "setQuickEntryHotkey" && args != nullptr) {
+    result->Success(flutter::EncodableValue(
+        SetQuickEntryHotkey(GetHandle(), GetStringArg(*args, "combo"))));
+    return;
+  }
   if (method == "setTrayEnabled" && args != nullptr) {
     tray_enabled_ = GetBoolArg(*args, "enabled", false);
     EnsureTrayIcon(tray_enabled_);
@@ -581,27 +680,50 @@ void FlutterWindow::HandleDesktopHostCall(
     auto it = args->find(flutter::EncodableValue("bytes"));
     if (it != args->end()) {
       if (const auto* bytes = std::get_if<std::vector<uint8_t>>(&it->second)) {
-        PlaySoundW(nullptr, nullptr, 0);
-        playing_wav_ = *bytes;
-        if (!playing_wav_.empty()) {
-          PlaySoundW(reinterpret_cast<LPCWSTR>(playing_wav_.data()), nullptr,
-                     SND_MEMORY | SND_ASYNC | SND_NODEFAULT);
-        }
+        QueueWav(*bytes);
       }
     }
     result->Success(flutter::EncodableValue(true));
     return;
   }
 
+  if (method == "setTrayLabels" && args != nullptr) {
+    tray_open_label_ = Utf8ToWide(GetStringArg(*args, "open"));
+    tray_quit_label_ = Utf8ToWide(GetStringArg(*args, "quit"));
+    result->Success(flutter::EncodableValue(true));
+    return;
+  }
+
+  if (method == "dictateVoiceOnce") {
+    StartDictation(std::move(result));
+    return;
+  }
+
+  if (method == "stopVoiceDictation") {
+    StopDictation();
+    result->Success(flutter::EncodableValue(true));
+    return;
+  }
+
+  if (method == "speakTextAloud" && args != nullptr) {
+    SpeakText(Utf8ToWide(GetStringArg(*args, "text")), std::move(result));
+    return;
+  }
+
   if (method == "stopAudioPlayback") {
-    PlaySoundW(nullptr, nullptr, 0);
-    playing_wav_.clear();
+    StopPlayback();
+    StopSpeaking();
     result->Success(flutter::EncodableValue(true));
     return;
   }
 
   if (method == "startMicCapture") {
     result->Success(flutter::EncodableValue(StartMicCapture()));
+    return;
+  }
+
+  if (method == "computerUse" && args != nullptr) {
+    result->Success(flutter::EncodableValue(ExecuteWindowsComputerUse(*args)));
     return;
   }
 
@@ -712,6 +834,13 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  // With the tray on, closing the window keeps Bistre running in the tray (before the
+  // engine turns the close into an app exit); Quit in the tray menu closes it.
+  if (message == WM_CLOSE && tray_enabled_ && tray_icon_added_ && !quitting_) {
+    EmitWindowBoundsChanged();
+    ShowWindow(hwnd, SW_HIDE);
+    return 0;
+  }
   if (flutter_controller_) {
     std::optional<LRESULT> result =
         flutter_controller_->HandleTopLevelWindowProc(hwnd, message, wparam,
@@ -755,14 +884,48 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     case kMicChunkMsg:
       DrainMicChunks();
       return 0;
+    case kDictationDoneMsg:
+      FinishDictation(reinterpret_cast<std::wstring*>(lparam));
+      return 0;
+    case kSpeechEventMsg:
+      if (voice_ != nullptr) {
+        SPEVENT event{};
+        ULONG fetched = 0;
+        // Only end-of-stream events are asked for; their parameters own no memory.
+        while (SUCCEEDED(voice_->GetEvents(1, &event, &fetched)) && fetched == 1) {
+          if (event.eEventId == SPEI_END_INPUT_STREAM && pending_speech_) {
+            pending_speech_->Success(flutter::EncodableValue(true));
+            pending_speech_.reset();
+          }
+        }
+      }
+      return 0;
     case kTrayCallbackMsg:
-      if (lparam == WM_LBUTTONUP || lparam == WM_LBUTTONDBLCLK ||
+      if ((lparam == NIN_BALLOONTIMEOUT || lparam == NIN_BALLOONHIDE ||
+           lparam == NIN_BALLOONUSERCLICK) &&
+          tray_for_balloon_only_ && !tray_enabled_) {
+        EnsureTrayIcon(false);
+        tray_for_balloon_only_ = false;
+      }
+      if (lparam == WM_RBUTTONUP && tray_enabled_) {
+        ShowTrayMenu();
+        return 0;
+      }
+      if (lparam == NIN_BALLOONUSERCLICK || lparam == WM_LBUTTONUP || lparam == WM_LBUTTONDBLCLK ||
           lparam == WM_RBUTTONUP) {
         ShowWindow(hwnd, SW_RESTORE);
         SetForegroundWindow(hwnd);
         if (flutter_controller_) {
           flutter_controller_->ForceRedraw();
         }
+        return 0;
+      }
+      break;
+    case WM_HOTKEY:
+      if (wparam == kQuickEntryHotkeyId) {
+        ShowWindow(hwnd, SW_RESTORE);
+        SetForegroundWindow(hwnd);
+        if (host_channel_) host_channel_->InvokeMethod("onQuickEntry", nullptr);
         return 0;
       }
       break;

@@ -13,6 +13,7 @@ import 'features/shell/folio_controller.dart';
 import 'features/shell/folio_shell_screen.dart';
 import 'l10n/bistre_localizations.dart';
 import 'l10n/l10n_keys.g.dart';
+import 'platform/crash_recorder.dart';
 import 'platform/desktop_host.dart';
 import 'platform/host_memory.dart';
 
@@ -91,13 +92,41 @@ Future<void> main() async {
   final l10nController = await BistreLocalizationController.loadBundled();
   final (dataDir, isDevEnv) = await resolveBistreDataDir();
 
+  // Local-only redacted crash recorder (zero telemetry; scrubs API keys/bearer tokens).
+  final prevFlutterError = FlutterError.onError;
+  FlutterError.onError = (FlutterErrorDetails details) {
+    CrashRecorder.recordSync(dataDir.path, details.exception, details.stack);
+    prevFlutterError?.call(details);
+  };
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    CrashRecorder.recordSync(dataDir.path, error, stack);
+    return false;
+  };
+
+  final pendingCrashReport = CrashRecorder.readAndClearPending(dataDir.path);
   final gateway = FrbBistreEngineGateway();
   final folioController = FolioController(
     gateway: gateway,
     defaultThreadTitle: l10nController.t(L10nKey.shellThreadDefaultTitle),
     onLocaleSynced: l10nController.setLocale,
     isDevEnvironment: isDevEnv,
+    pendingCrashReport: pendingCrashReport,
   );
+  // New chats are named, and the tray menu reads, in the language showing.
+  void followLanguage() {
+    folioController.defaultThreadTitle = l10nController.t(
+      L10nKey.shellThreadDefaultTitle,
+    );
+    unawaited(
+      BistreDesktopHost.setTrayLabels(
+        open: l10nController.t(L10nKey.trayOpen),
+        quit: l10nController.t(L10nKey.trayQuit),
+      ),
+    );
+  }
+
+  followLanguage();
+  l10nController.addListener(followLanguage);
   final bootstrapDone = folioController.bootstrap(dataDir.path);
 
   // Opt-in perf probe for `just perf` (Spec 11 §5): metrics are appended as `key=value` lines to
@@ -173,7 +202,7 @@ Future<void> main() async {
   );
 }
 
-/// Pure `WidgetsApp` root shell — zero Material or Cupertino UI library dependencies (ADR-0001).
+/// Pure `WidgetsApp` root shell: zero Material or Cupertino UI library dependencies (ADR-0001).
 class BistreApp extends StatefulWidget {
   const BistreApp({
     super.key,
@@ -198,6 +227,7 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
     _syncSystemBrightness();
     BistreDesktopHost.attachSystemThemeListener(_syncSystemBrightness);
     BistreDesktopHost.attachWindowBoundsListener(_onWindowBoundsChanged);
+    BistreDesktopHost.attachFilesDroppedListener(_onFilesDropped);
     widget.folioController.addListener(_syncWindowTitle);
     _syncWindowTitle();
   }
@@ -207,8 +237,15 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     BistreDesktopHost.detachSystemThemeListener(_syncSystemBrightness);
     BistreDesktopHost.detachWindowBoundsListener(_onWindowBoundsChanged);
+    BistreDesktopHost.detachFilesDroppedListener(_onFilesDropped);
     widget.folioController.removeListener(_syncWindowTitle);
     super.dispose();
+  }
+
+  void _onFilesDropped(List<String> paths) {
+    for (final path in paths) {
+      widget.folioController.attachLocalFile(path);
+    }
   }
 
   void _onWindowBoundsChanged(DesktopWindowBounds bounds) {
@@ -229,17 +266,17 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       unawaited(widget.folioController.persistCurrentWindowBounds());
-      // P27: a phone may kill the app once it is in the background.
+      // A phone may kill the app once it is in the background.
       unawaited(widget.folioController.flushPendingDraft());
     }
-    // U7: on desktop `inactive` fires on every focus loss (Alt-Tab), so pending deletes are
+    // On desktop `inactive` fires on every focus loss (Alt-Tab), so pending deletes are
     // committed only when the app is really going away; a phone may be killed once paused.
     final mobile = Platform.isAndroid || Platform.isIOS;
     if (state == AppLifecycleState.detached ||
         (mobile && state == AppLifecycleState.paused)) {
       unawaited(widget.folioController.flushPendingDeletes());
     }
-    // P19: back from the background: core ends streams that died meanwhile, and the
+    // Back from the background: core ends streams that died meanwhile, and the
     // chats' live state is rechecked against core's run list.
     if (state == AppLifecycleState.resumed) {
       unawaited(widget.folioController.onAppResumed());
@@ -251,7 +288,7 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
   }
 
   /// Desktop window close: finish pending work and shut the engine down before exiting, so
-  /// the WAL is checkpointed and running chats record their final state (A-S11).
+  /// the WAL is checkpointed and running chats record their final state.
   @override
   Future<AppExitResponse> didRequestAppExit() async {
     await widget.folioController.shutdownEngine();
@@ -284,7 +321,7 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
     );
   }
 
-  /// `<chat title> — Bistre`, `Settings — Bistre`, or a live `Replying · …` caption.
+  /// `<chat title> - Bistre`, `Settings - Bistre`, or a live `Replying · …` caption.
   String _windowTitle(FolioController ctrl) {
     final l10n = widget.l10nController;
     if (ctrl.settingsOpen) return l10n.t(L10nKey.appWindowTitleSettings);
@@ -360,11 +397,23 @@ class _BistreAppState extends State<BistreApp> with WidgetsBindingObserver {
                   textDirection: widget.l10nController.textDirection,
                   child: child ?? const SizedBox.shrink(),
                 );
-                // The in-app Reduce motion setting applies everywhere, like the OS one.
-                if (!look.reduceMotion) return app;
+                // The in-app Reduce motion and text size apply everywhere, like the OS ones.
+                if (!look.reduceMotion && look.textSizePercent == 100) {
+                  return app;
+                }
+                final media = MediaQuery.of(context);
                 return MediaQuery(
-                  data: MediaQuery.of(context)
-                      .copyWith(disableAnimations: true),
+                  data: media.copyWith(
+                    disableAnimations: look.reduceMotion ? true : null,
+                    textScaler: look.textSizePercent == 100
+                        ? null
+                        : TextScaler.linear(
+                            media.textScaler.scale(100) /
+                                100 *
+                                look.textSizePercent /
+                                100,
+                          ),
+                  ),
                   child: app,
                 );
               },

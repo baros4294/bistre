@@ -70,12 +70,23 @@ extension FolioBootActions on FolioController {
         loadedProviders,
         loadedAssistants,
         loadedThreads,
+        rawUiPrefs,
       ) = await (
         _gateway.loadSettings(),
         _gateway.listProviders(),
         _gateway.listAssistants(),
         _gateway.listThreads(),
+        _gateway.getKvMeta(kUiPrefsKvKey),
       ).wait;
+      // Read before the first chat opens: it decides which chat that is.
+      try {
+        final uiPrefs = rawUiPrefs == null ? null : jsonDecode(rawUiPrefs);
+        if (uiPrefs is Map<String, Object?>) {
+          _uiPrefs = UiDisplayPrefs.fromJson(uiPrefs);
+        }
+      } on FormatException catch (e) {
+        _noteNonFatal('ui_prefs_at_launch', e);
+      }
       _settings = loadedSettings;
       _sidebarOpen = _settings.sidebarOpen;
       _onLocaleSynced?.call(_settings.locale);
@@ -90,7 +101,11 @@ extension FolioBootActions on FolioController {
         unawaited(BistreDesktopHost.restoreWindowBounds(savedBounds));
       }
 
-      if (_threads.isEmpty) {
+      // An empty last chat is reused rather than adding another empty one.
+      final freshAtLaunch =
+          _uiPrefs.newChatOnLaunch &&
+          _threads.firstOrNull?.activeHeadNodeId != null;
+      if (_threads.isEmpty || freshAtLaunch) {
         final created = await _gateway.createThread(
           _defaultThreadTitle,
           'chat',
@@ -99,7 +114,7 @@ extension FolioBootActions on FolioController {
               ? 'default_assistant'
               : _assistants.first.id,
         );
-        _threads = <EngineThread>[created];
+        _threads = <EngineThread>[created, ..._threads];
       }
       await _activateThread(_threads.first);
 
@@ -137,9 +152,14 @@ extension FolioBootActions on FolioController {
       _storageStats = stats;
       _agentRuns = runs;
       _powerStatus = power;
+      await _restoreUnreadDone();
       await _loadAgentWorkspaceConfig();
       await _loadExtendedKvPrefs();
+      unawaited(refreshLibrary());
       await _hydrateCustomFontsFromSettings();
+      if (_settings.otaAutoCheck && !_disposed) {
+        unawaited(checkForUpdates(background: true));
+      }
       if (BistrePowerGuardHost.isAndroid) {
         final androidState = await BistrePowerGuardHost.getAndroidPowerState();
         _powerStatus = await _gateway.setAndroidPowerState(

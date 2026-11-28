@@ -72,39 +72,53 @@ void main() {
     expect(ctrl.selection.textInside(ctrl.text), 'Hello');
   });
 
-  testWidgets('SidebarSlideReveal rapid toggles never snap back', (
-    tester,
-  ) async {
-    var open = true;
-    late StateSetter setHostState;
-    await tester.pumpWidget(
-      _wrap(
-        StatefulBuilder(
-          builder: (context, setState) {
-            setHostState = setState;
-            return Row(
-              children: [
-                SidebarSlideReveal(
+  testWidgets(
+    'a trailing dock never snaps back and the chat beside it lays out once per toggle',
+    (tester) async {
+      var open = true;
+      late StateSetter setHostState;
+      final chatWidths = <double>[];
+      const panel = Key('panel');
+      await tester.pumpWidget(
+        _wrap(
+          SizedBox(
+            width: 800,
+            height: 400,
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                setHostState = setState;
+                return SidebarDock(
                   open: open,
-                  child: const SizedBox(width: 240, height: 400),
-                ),
-              ],
-            );
-          },
+                  trailing: true,
+                  sidebar: const SizedBox(key: panel, width: 240),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      chatWidths.add(constraints.maxWidth);
+                      return const SizedBox.expand();
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(find.byKey(panel)).dx, 560);
 
-    // Rapid close -> reopen mid-flight.
-    setHostState(() => open = false);
-    await tester.pump(const Duration(milliseconds: 40));
-    setHostState(() => open = true);
-    await tester.pumpAndSettle();
-
-    final align = tester.widget<Align>(find.byType(Align).first);
-    expect(align.widthFactor, closeTo(1.0, 0.01));
-  });
+      // Rapid close -> reopen mid-flight.
+      setHostState(() => open = false);
+      await tester.pump(const Duration(milliseconds: 40));
+      setHostState(() => open = true);
+      chatWidths.clear();
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(find.byKey(panel)).dx, 560);
+      expect(chatWidths.toSet(), <double>{560});
+    },
+  );
 
   test(
     'deleteThread on only chat leaves exactly 1 open tab (no stale 2 tabs)',

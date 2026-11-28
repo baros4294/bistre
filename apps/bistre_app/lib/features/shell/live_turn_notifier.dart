@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../chat/plain_preview.dart';
+
 /// Immutable snapshot of the reply currently streaming into one thread.
 @immutable
 class LiveTurn {
@@ -24,7 +26,7 @@ class LiveTurn {
   );
 }
 
-/// Leaf-only streaming state (`docs/design/DESIGN.md` §8).
+/// Leaf-only streaming state (`docs/design/design.md` §8).
 ///
 /// The Rust bridge coalesces deltas every 16 ms; each batch updates ONLY this notifier, which is
 /// read by the single streaming message widget. The shell, header, sidebar, and the rest of the
@@ -162,12 +164,14 @@ class LiveTurnNotifier extends ValueNotifier<LiveTurn?> {
         ? 1 / 60
         : ((timestamp - last).inMicroseconds / 1e6).clamp(0.0, 0.1);
     _lastFrame = timestamp;
-    final (textCount, textCarry) = _paced(_pendingText, _carryText, seconds);
-    final (thinkCount, thinkCarry) = _paced(
+    final (paced, textCarry) = _paced(_pendingText, _carryText, seconds);
+    final (pacedThinking, thinkCarry) = _paced(
       _pendingThinking,
       _carryThinking,
       seconds,
     );
+    final textCount = wholeUnits(_pendingText, paced);
+    final thinkCount = wholeUnits(_pendingThinking, pacedThinking);
     _carryText = textCarry;
     _carryThinking = thinkCarry;
     if (textCount > 0 || thinkCount > 0) {

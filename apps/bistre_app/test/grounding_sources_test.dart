@@ -35,7 +35,7 @@ Future<(ShellHarness, EngineNode)> _chatWithSources(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('Studio lists the web sources replies used (B2)', (tester) async {
+  testWidgets('Studio lists the web sources replies used', (tester) async {
     final (shell, _) = await _chatWithSources(tester);
     shell.controller.toggleStudioPane();
     shell.controller.setStudioTab(StudioTab.sources);
@@ -46,7 +46,7 @@ void main() {
     expect(find.text(shell.t(L10nKey.studioSourcesEmpty)), findsNothing);
   });
 
-  testWidgets('Turn details show the reply\'s sources from the engine (B2)', (
+  testWidgets('Turn details show the reply\'s sources from the engine', (
     tester,
   ) async {
     final (shell, reply) = await _chatWithSources(tester);

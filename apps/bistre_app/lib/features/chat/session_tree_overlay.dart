@@ -9,6 +9,7 @@ import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
+import 'plain_preview.dart';
 
 /// Visual DAG Session Tree / Undo Tree & `Ctrl+Alt+G` Jump-to-Earlier-Prompt overlay.
 /// Displays every turn and sibling fork in the active thread so users can inspect branches
@@ -47,12 +48,6 @@ class _SessionTreeOverlayState extends State<SessionTreeOverlay> {
     _filterCtrl.dispose();
     _filterFocus.dispose();
     super.dispose();
-  }
-
-  static String _summarize(String content) {
-    final single = content.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (single.length <= 108) return single;
-    return '${single.substring(0, 108)}…';
   }
 
   @override
@@ -152,11 +147,17 @@ class _SessionTreeOverlayState extends State<SessionTreeOverlay> {
                                   node: node,
                                   depth: depth,
                                   onActivePath: onActivePath,
-                                  summary: _summarize(node.content),
+                                  summary: plainPreview(node.content),
+                                  // The same names the chat shows.
                                   roleLabel: node.role == 'assistant'
-                                      ? l10n.t(L10nKey.shellRoleAssistant)
+                                      ? ctrl.activeAssistant?.name ??
+                                            l10n.t(L10nKey.shellRoleAssistant)
                                       : node.role == 'compaction_summary'
                                       ? l10n.t(L10nKey.chatCompactedTitle)
+                                      : ctrl.settings.userDisplayName
+                                            .trim()
+                                            .isNotEmpty
+                                      ? ctrl.settings.userDisplayName.trim()
                                       : l10n.t(L10nKey.shellRoleUser),
                                   onSelect: () {
                                     ctrl.focusBranchNode(node.id);

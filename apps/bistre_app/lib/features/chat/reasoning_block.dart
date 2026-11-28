@@ -8,7 +8,6 @@ import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
-import 'thinking_control.dart';
 
 /// Collapsible editorial thinking/reasoning hairline drawer (`Thinking · 3.8s`)
 /// supporting live streaming expansion and 1-click quoting into the composer.
@@ -188,17 +187,19 @@ class _ReasoningBlockState extends State<ReasoningBlock> {
                         ),
                       ),
                       if (widget.onQuoteIntoComposer != null) ...[
-                        const SizedBox(height: 8),
-                        EngravedButton(
-                          label: l10n.t(L10nKey.chatQuoteThinking),
-                          compact: true,
-                          leading: BistreIcon(
-                            BistreUiIcon.reply,
-                            size: 12,
-                            color: theme.inkSecondary,
-                          ),
-                          onPressed: () => widget.onQuoteIntoComposer!(
-                            widget.thinkingText.trim(),
+                        const SizedBox(height: 4),
+                        // An icon like the reply's Reply action; its name is in the
+                        // hover hint and the screen-reader label.
+                        Align(
+                          alignment: AlignmentDirectional.centerEnd,
+                          child: BistreIconButton(
+                            icon: BistreUiIcon.reply,
+                            size: 13,
+                            dimension: 28,
+                            semanticsLabel: l10n.t(L10nKey.chatQuoteThinking),
+                            onPressed: () => widget.onQuoteIntoComposer!(
+                              widget.thinkingText.trim(),
+                            ),
                           ),
                         ),
                       ],
@@ -209,36 +210,6 @@ class _ReasoningBlockState extends State<ReasoningBlock> {
             ),
         ],
       ),
-    );
-  }
-}
-
-/// Thinking effort as chips (Settings and the chat inspector), with the same stops as the
-/// composer slider ([kThinkingStops]).
-class ReasoningEffortSelector extends StatelessWidget {
-  const ReasoningEffortSelector({
-    super.key,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final String value;
-  final ValueChanged<String> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = BistreLocalizations.of(context);
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: [
-        for (final opt in kThinkingStops)
-          InkChip(
-            label: l10n.t(opt.$2),
-            selected: value == opt.$1,
-            onSelected: () => onChanged(opt.$1),
-          ),
-      ],
     );
   }
 }

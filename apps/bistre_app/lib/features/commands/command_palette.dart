@@ -224,7 +224,7 @@ class _CommandPaletteState extends State<CommandPalette> {
         ),
         child: Focus(
           onKeyEvent: (_, event) {
-            // U18: arrows and Enter belong to the IME while it composes.
+            // Arrows and Enter belong to the IME while it composes.
             if (event is! KeyDownEvent ||
                 _queryController.value.composing.isValid) {
               return KeyEventResult.ignored;
@@ -302,8 +302,6 @@ class _CommandPaletteState extends State<CommandPalette> {
                                 }),
                               ),
                             ),
-                            const SizedBox(width: BistreSpacing.s8),
-                            const _PaletteKeycaps(combo: _kEscKey),
                           ],
                         ),
                       ),
@@ -397,27 +395,6 @@ class _CommandPaletteState extends State<CommandPalette> {
                                                         ),
                                                     child: Row(
                                                       children: [
-                                                        if (isSelected)
-                                                          Padding(
-                                                            padding:
-                                                                const EdgeInsetsDirectional.only(
-                                                                  end: 8,
-                                                                ),
-                                                            child: SizedBox(
-                                                              width: 2.5,
-                                                              height: 16,
-                                                              child: DecoratedBox(
-                                                                decoration: BoxDecoration(
-                                                                  color: theme
-                                                                      .accentBrass,
-                                                                  borderRadius:
-                                                                      BorderRadius.circular(
-                                                                        2,
-                                                                      ),
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          ),
                                                         BistreIcon(
                                                           entry.icon,
                                                           size: 14,
@@ -452,7 +429,13 @@ class _CommandPaletteState extends State<CommandPalette> {
                                                           const SizedBox(
                                                             width: 8,
                                                           ),
-                                                          if (entry.isKeyCombo)
+                                                          // No keycaps on a touch screen.
+                                                          if (entry
+                                                                  .isKeyCombo &&
+                                                              isTouchPlatform)
+                                                            const SizedBox.shrink()
+                                                          else if (entry
+                                                              .isKeyCombo)
                                                             _PaletteKeycaps(
                                                               combo: entry
                                                                   .shortcut,
@@ -480,25 +463,27 @@ class _CommandPaletteState extends State<CommandPalette> {
                                 ),
                               ),
                       ),
-                      const FolioDivider(),
-                      ColoredBox(
-                        color: theme.bgSurface,
-                        child: const Padding(
-                          padding: EdgeInsetsDirectional.symmetric(
-                            horizontal: 14,
-                            vertical: 7,
-                          ),
-                          child: Row(
-                            children: [
-                              _PaletteKeycaps(combo: _kArrowsKey),
-                              SizedBox(width: 10),
-                              _PaletteKeycaps(combo: _kEnterKey),
-                              Spacer(),
-                              _PaletteKeycaps(combo: _kEscKey),
-                            ],
+                      if (!isTouchPlatform) ...[
+                        const FolioDivider(),
+                        ColoredBox(
+                          color: theme.bgSurface,
+                          child: const Padding(
+                            padding: EdgeInsetsDirectional.symmetric(
+                              horizontal: 14,
+                              vertical: 7,
+                            ),
+                            child: Row(
+                              children: [
+                                _PaletteKeycaps(combo: _kArrowsKey),
+                                SizedBox(width: 10),
+                                _PaletteKeycaps(combo: _kEnterKey),
+                                Spacer(),
+                                _PaletteKeycaps(combo: _kEscKey),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),

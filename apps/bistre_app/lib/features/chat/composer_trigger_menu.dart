@@ -6,6 +6,7 @@ import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
 import '../../design/press_feedback.dart';
+import '../../design/scroll_edge_fade.dart';
 import '../../design/smooth_scroll.dart';
 
 /// One selectable entry in the vertical `@` mention or `/` slash command menu.
@@ -50,7 +51,6 @@ class ComposerTriggerMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
     if (items.isEmpty) return const SizedBox.shrink();
-    final countText = items.length.toString();
 
     return FolioFadeSlide(
       beginOffset: const Offset(0, 0.05),
@@ -68,44 +68,36 @@ class ComposerTriggerMenu extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsetsDirectional.fromSTEB(14, 8, 14, 6),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: InkText(
-                        title,
-                        role: InkTextRole.captionMeta,
-                        color: theme.accentBrass,
-                      ),
-                    ),
-                    InkText(
-                      countText,
-                      role: InkTextRole.captionMeta,
-                      color: theme.inkMuted,
-                    ),
-                  ],
+                child: InkText(
+                  title,
+                  role: InkTextRole.captionMeta,
+                  color: theme.accentBrass,
                 ),
               ),
               const FolioDivider(),
+              // A row cut at the bottom fades out: the list scrolls.
               Flexible(
-                child: SmoothScrollable(
-                  builder: (_, scroll) => ListView.builder(
-                    controller: scroll,
-                    shrinkWrap: true,
-                    padding: const EdgeInsetsDirectional.symmetric(
-                      horizontal: 6,
-                      vertical: 4,
+                child: ScrollEdgeFade(
+                  child: SmoothScrollable(
+                    builder: (_, scroll) => ListView.builder(
+                      controller: scroll,
+                      shrinkWrap: true,
+                      padding: const EdgeInsetsDirectional.symmetric(
+                        horizontal: 6,
+                        vertical: 4,
+                      ),
+                      itemCount: items.length,
+                      itemBuilder: (context, index) {
+                        final item = items[index];
+                        final selected = index == selectedIndex;
+                        return _TriggerRow(
+                          item: item,
+                          selected: selected,
+                          onHover: () => onHoverIndex(index),
+                          onTap: () => onSelect(item),
+                        );
+                      },
                     ),
-                    itemCount: items.length,
-                    itemBuilder: (context, index) {
-                      final item = items[index];
-                      final selected = index == selectedIndex;
-                      return _TriggerRow(
-                        item: item,
-                        selected: selected,
-                        onHover: () => onHoverIndex(index),
-                        onTap: () => onSelect(item),
-                      );
-                    },
                   ),
                 ),
               ),

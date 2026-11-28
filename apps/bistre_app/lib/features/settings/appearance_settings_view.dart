@@ -10,6 +10,7 @@ import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
 import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
+import '../../design/user_avatar_thumb.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../../platform/desktop_host.dart';
@@ -17,7 +18,9 @@ import '../../platform/font_manager.dart';
 import '../shell/folio_controller.dart';
 import 'appearance_preferences_extra.dart';
 
-/// End-user Appearance & Typography Studio — ZERO forced presets:
+part 'appearance_settings_rows.dart';
+
+/// End-user Appearance & Typography Studio: ZERO forced presets:
 /// - Live Typography & Accent Preview Card
 /// - System | Light | Dark theme + Accent swatches & Custom Hex (#RRGGBB)
 /// - Local OS Font Browser & Native `.ttf`/`.otf` Font Picker (Prose & Code)
@@ -195,28 +198,7 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
                     runSpacing: 6,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      ClipOval(
-                        child: Container(
-                          width: 34,
-                          height: 34,
-                          color: theme.bgSurface,
-                          alignment: Alignment.center,
-                          child:
-                              ctrl.profileAvatarPath.isNotEmpty &&
-                                  File(ctrl.profileAvatarPath).existsSync()
-                              ? Image.file(
-                                  File(ctrl.profileAvatarPath),
-                                  width: 34,
-                                  height: 34,
-                                  fit: BoxFit.cover,
-                                )
-                              : BistreIcon(
-                                  BistreUiIcon.assistant,
-                                  size: 16,
-                                  color: theme.inkMuted,
-                                ),
-                        ),
-                      ),
+                      UserAvatarThumb(path: ctrl.profileAvatarPath, size: 34),
                       EngravedButton(
                         label: l10n.t(L10nKey.settingsProfileAvatarChoose),
                         compact: true,
@@ -245,46 +227,23 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
               children: [
                 BistreSettingRow(
                   label: l10n.t(L10nKey.settingsAppearanceProseFont),
-                  description: s.proseFontFamily.isNotEmpty
-                      ? s.proseFontFamily
-                      : '${l10n.t(L10nKey.settingsAppearanceFontDefault)} (Inter)',
-                  trailing: Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    runSpacing: 6,
-                    children: [
-                      EngravedButton(
-                        label: l10n.t(L10nKey.settingsAppearanceFontBrowse),
-                        compact: true,
-                        leading: BistreIcon(
-                          BistreUiIcon.font,
-                          size: 13,
-                          color: theme.accentBrass,
-                        ),
-                        onPressed: () =>
-                            unawaited(_browseLocalFont(isMono: false)),
-                      ),
-                      if (s.proseFontFamily.isNotEmpty ||
-                          s.proseFontPath.isNotEmpty) ...[
-                        const SizedBox(width: 6),
-                        EngravedButton(
-                          label: l10n.t(L10nKey.settingsAppearanceFontReset),
-                          compact: true,
-                          onPressed: () => unawaited(ctrl.resetProseFont()),
-                        ),
-                      ],
-                      const SizedBox(width: 6),
-                      BistreIconButton(
-                        icon: _prosePickerOpen
-                            ? BistreUiIcon.chevronUp
-                            : BistreUiIcon.chevronDown,
-                        semanticsLabel: l10n.t(
-                          L10nKey.settingsAppearanceProseFont,
-                        ),
-                        onPressed: () => setState(
-                          () => _prosePickerOpen = !_prosePickerOpen,
-                        ),
-                      ),
-                    ],
+                  // The picker names the font in use (state on the control); its list holds
+                  // the bundled default, installed fonts, and Choose file.
+                  trailing: EngravedButton(
+                    label: s.proseFontFamily.isNotEmpty
+                        ? s.proseFontFamily
+                        : BistreTypography.fontProse,
+                    semanticsLabel: l10n.t(L10nKey.settingsAppearanceProseFont),
+                    compact: true,
+                    trailing: BistreIcon(
+                      _prosePickerOpen
+                          ? BistreUiIcon.chevronUp
+                          : BistreUiIcon.chevronDown,
+                      size: 12,
+                      color: theme.inkSecondary,
+                    ),
+                    onPressed: () =>
+                        setState(() => _prosePickerOpen = !_prosePickerOpen),
                   ),
                   bottom: _prosePickerOpen
                       ? _buildFontPickerList(
@@ -299,6 +258,8 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
                             () => _proseFilter = q.trim().toLowerCase(),
                           ),
                           onReset: () => unawaited(ctrl.resetProseFont()),
+                          onBrowse: () =>
+                              unawaited(_browseLocalFont(isMono: false)),
                           onPickFont: (f) => unawaited(
                             ctrl.applyLocalProseFont(
                               familyLabel: f.familyName,
@@ -310,45 +271,23 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
                 ),
                 BistreSettingRow(
                   label: l10n.t(L10nKey.settingsAppearanceMonoFont),
-                  description: s.monoFontFamily.isNotEmpty
-                      ? s.monoFontFamily
-                      : '${l10n.t(L10nKey.settingsAppearanceFontDefault)} (JetBrainsMono)',
-                  trailing: Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    runSpacing: 6,
-                    children: [
-                      EngravedButton(
-                        label: l10n.t(L10nKey.settingsAppearanceFontBrowse),
-                        compact: true,
-                        leading: BistreIcon(
-                          BistreUiIcon.code,
-                          size: 13,
-                          color: theme.accentBrass,
-                        ),
-                        onPressed: () =>
-                            unawaited(_browseLocalFont(isMono: true)),
-                      ),
-                      if (s.monoFontFamily.isNotEmpty ||
-                          s.monoFontPath.isNotEmpty) ...[
-                        const SizedBox(width: 6),
-                        EngravedButton(
-                          label: l10n.t(L10nKey.settingsAppearanceFontReset),
-                          compact: true,
-                          onPressed: () => unawaited(ctrl.resetMonoFont()),
-                        ),
-                      ],
-                      const SizedBox(width: 6),
-                      BistreIconButton(
-                        icon: _monoPickerOpen
-                            ? BistreUiIcon.chevronUp
-                            : BistreUiIcon.chevronDown,
-                        semanticsLabel: l10n.t(
-                          L10nKey.settingsAppearanceMonoFont,
-                        ),
-                        onPressed: () =>
-                            setState(() => _monoPickerOpen = !_monoPickerOpen),
-                      ),
-                    ],
+                  // The picker names the font in use (state on the control); its list holds
+                  // the bundled default, installed fonts, and Choose file.
+                  trailing: EngravedButton(
+                    label: s.monoFontFamily.isNotEmpty
+                        ? s.monoFontFamily
+                        : BistreTypography.fontMono,
+                    semanticsLabel: l10n.t(L10nKey.settingsAppearanceMonoFont),
+                    compact: true,
+                    trailing: BistreIcon(
+                      _monoPickerOpen
+                          ? BistreUiIcon.chevronUp
+                          : BistreUiIcon.chevronDown,
+                      size: 12,
+                      color: theme.inkSecondary,
+                    ),
+                    onPressed: () =>
+                        setState(() => _monoPickerOpen = !_monoPickerOpen),
                   ),
                   bottom: _monoPickerOpen
                       ? _buildFontPickerList(
@@ -365,6 +304,8 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
                             () => _monoFilter = q.trim().toLowerCase(),
                           ),
                           onReset: () => unawaited(ctrl.resetMonoFont()),
+                          onBrowse: () =>
+                              unawaited(_browseLocalFont(isMono: true)),
                           onPickFont: (f) => unawaited(
                             ctrl.applyLocalMonoFont(
                               familyLabel: f.familyName,
@@ -375,10 +316,7 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
                       : null,
                 ),
                 BistreSettingRow(
-                  label: l10n.t(
-                    L10nKey.settingsAppearanceFontSizePx,
-                    <String, Object?>{'px': s.fontSizePx},
-                  ),
+                  label: l10n.t(L10nKey.settingsAppearanceFontSize),
                   trailing: Wrap(
                     crossAxisAlignment: WrapCrossAlignment.center,
                     runSpacing: 6,
@@ -399,13 +337,14 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
                           },
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      if (s.fontSizePx != 15)
+                      if (s.fontSizePx != 15) ...[
+                        const SizedBox(width: 8),
                         EngravedButton(
                           label: l10n.t(L10nKey.settingsAppearanceFontReset),
                           compact: true,
                           onPressed: () => _commitFontSizePx(15),
                         ),
+                      ],
                     ],
                   ),
                   bottom: BistreSlider(
@@ -413,42 +352,32 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
                     min: 12,
                     max: 28,
                     step: 1,
-                    semanticsLabel: l10n.t(
-                      L10nKey.settingsAppearanceFontSizePx,
-                      <String, Object?>{'px': s.fontSizePx},
-                    ),
+                    semanticsLabel: l10n.t(L10nKey.settingsAppearanceFontSize),
                     onChanged: (v) => _commitFontSizePx(v.round()),
                   ),
                 ),
                 BistreSettingRow(
-                  label: l10n.t(
-                    L10nKey.settingsAppearanceLineHeight,
-                    <String, Object?>{
-                      'value': lineHeightVal.toStringAsFixed(2),
-                    },
-                  ),
-                  trailing: s.lineHeightBps != 16000
-                      ? EngravedButton(
-                          label: l10n.t(L10nKey.settingsAppearanceFontReset),
-                          compact: true,
-                          onPressed: () => unawaited(
+                  label: l10n.t(L10nKey.settingsAppearanceLineSpacing),
+                  trailing: _valueWithReset(
+                    theme,
+                    l10n,
+                    lineHeightVal.toStringAsFixed(2),
+                    s.lineHeightBps == 16000
+                        ? null
+                        : () => unawaited(
                             ctrl.updateSettings(
                               s.copyWith(lineHeightBps: 16000),
                               quiet: true,
                             ),
                           ),
-                        )
-                      : null,
+                  ),
                   bottom: BistreSlider(
                     value: lineHeightVal,
                     min: 1.30,
                     max: 2.00,
                     step: 0.05,
                     semanticsLabel: l10n.t(
-                      L10nKey.settingsAppearanceLineHeight,
-                      <String, Object?>{
-                        'value': lineHeightVal.toStringAsFixed(2),
-                      },
+                      L10nKey.settingsAppearanceLineSpacing,
                     ),
                     onChanged: (v) => unawaited(
                       ctrl.updateSettings(
@@ -459,30 +388,36 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
                   ),
                 ),
                 BistreSettingRow(
-                  label: l10n.t(
-                    L10nKey.settingsAppearanceReadingWidth,
-                    <String, Object?>{'px': s.readingWidthPx},
-                  ),
-                  trailing: s.readingWidthPx != 760
-                      ? EngravedButton(
-                          label: l10n.t(L10nKey.settingsAppearanceFontReset),
-                          compact: true,
-                          onPressed: () => unawaited(
+                  label: l10n.t(L10nKey.settingsAppearanceReadingWidthLabel),
+                  trailing: _valueWithReset(
+                    theme,
+                    l10n,
+                    l10n.t(L10nKey.settingsAppearancePixels, <String, Object?>{
+                      'px': s.readingWidthPx,
+                    }),
+                    s.readingWidthPx == BistreSpacing.readingWidthDefault
+                        ? null
+                        : () => unawaited(
                             ctrl.updateSettings(
-                              s.copyWith(readingWidthPx: 760),
+                              s.copyWith(
+                                readingWidthPx: BistreSpacing
+                                    .readingWidthDefault
+                                    .toInt(),
+                              ),
                               quiet: true,
                             ),
                           ),
-                        )
-                      : null,
+                  ),
                   bottom: BistreSlider(
-                    value: s.readingWidthPx.clamp(600, 1120).toDouble(),
-                    min: 600,
-                    max: 1120,
+                    value: s.readingWidthPx.toDouble().clamp(
+                      BistreSpacing.readingWidthMin,
+                      BistreSpacing.readingWidthMax,
+                    ),
+                    min: BistreSpacing.readingWidthMin,
+                    max: BistreSpacing.readingWidthMax,
                     step: 20,
                     semanticsLabel: l10n.t(
-                      L10nKey.settingsAppearanceReadingWidth,
-                      <String, Object?>{'px': s.readingWidthPx},
+                      L10nKey.settingsAppearanceReadingWidthLabel,
                     ),
                     onChanged: (v) => unawaited(
                       ctrl.updateSettings(
@@ -707,6 +642,74 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
                 ),
               ],
             ),
+            const SizedBox(height: BistreSpacing.s24),
+            BistreSettingsSection(
+              children: [
+                BistreSettingRow(
+                  label: l10n.t(L10nKey.settingsAppearanceTextSize),
+                  bottom: BistreSegmentedControl<int>(
+                    selected: ctrl.uiPrefs.textSizePercent,
+                    onSelected: (v) => unawaited(
+                      ctrl.saveUiPrefs(
+                        ctrl.uiPrefs.copyWith(textSizePercent: v),
+                        quiet: true,
+                      ),
+                    ),
+                    options: <BistreSegmentedOption<int>>[
+                      for (final size in UiDisplayPrefs.textSizes)
+                        BistreSegmentedOption<int>(
+                          value: size,
+                          label: l10n.t(
+                            L10nKey.settingsAppearanceTextSizeValue,
+                            <String, Object?>{'percent': size},
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                BistreSettingRow(
+                  label: l10n.t(L10nKey.settingsAppearanceCodeSize),
+                  bottom: BistreSegmentedControl<int>(
+                    selected: ctrl.uiPrefs.codeTextPercent,
+                    onSelected: (v) => unawaited(
+                      ctrl.saveUiPrefs(
+                        ctrl.uiPrefs.copyWith(codeTextPercent: v),
+                        quiet: true,
+                      ),
+                    ),
+                    options: <BistreSegmentedOption<int>>[
+                      for (final size in UiDisplayPrefs.textSizes)
+                        BistreSegmentedOption<int>(
+                          value: size,
+                          label: l10n.t(
+                            L10nKey.settingsAppearanceTextSizeValue,
+                            <String, Object?>{'percent': size},
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                BistreSettingRow(
+                  label: l10n.t(L10nKey.settingsAppearanceEnterSends),
+                  description: s.sendOnEnter
+                      ? null
+                      : l10n.t(L10nKey.settingsAppearanceEnterSendsOff),
+                  trailing: BistreSwitch(
+                    value: s.sendOnEnter,
+                    semanticsLabel: l10n.t(
+                      L10nKey.settingsAppearanceEnterSends,
+                    ),
+                    reduceMotionOverride: ctrl.reduceMotionOverride,
+                    onChanged: (v) => unawaited(
+                      ctrl.updateSettings(
+                        s.copyWith(sendOnEnter: v),
+                        quiet: true,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
             AppearancePreferencesExtra(controller: ctrl),
           ],
         ),
@@ -714,14 +717,31 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
     );
   }
 
+  /// A slider's value, shown once at the row's end, with Reset beside it when changed.
+  Widget _valueWithReset(
+    BistreThemeData theme,
+    BistreLocalizationController l10n,
+    String value,
+    VoidCallback? onReset,
+  ) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      InkText(value, role: InkTextRole.captionMeta, color: theme.inkSecondary),
+      if (onReset != null) ...[
+        const SizedBox(width: 8),
+        EngravedButton(
+          label: l10n.t(L10nKey.settingsAppearanceFontReset),
+          compact: true,
+          onPressed: onReset,
+        ),
+      ],
+    ],
+  );
+
   Widget _buildPreviewCard(
     BistreThemeData theme,
     BistreLocalizationController l10n,
   ) {
-    final fontSpecBadge = l10n.joinMeta(<String>[
-      theme.typography.proseFontFamily,
-      '${theme.typography.baseFontSizePx.round()}px',
-    ]);
     return FolioSurface(
       tone: FolioTone.elevated,
       padding: const EdgeInsetsDirectional.all(20),
@@ -730,19 +750,10 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Wrap(
-            spacing: BistreSpacing.s8,
-            runSpacing: BistreSpacing.s4,
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              InkText(
-                l10n.t(L10nKey.settingsAppearancePreviewTitle),
-                role: InkTextRole.captionMeta,
-                color: theme.accentBrass,
-              ),
-              WaxSealBadge(label: fontSpecBadge, status: WaxSealStatus.neutral),
-            ],
+          InkText(
+            l10n.t(L10nKey.settingsAppearancePreviewTitle),
+            role: InkTextRole.captionMeta,
+            color: theme.accentBrass,
           ),
           const SizedBox(height: 10),
           InkText(l10n.t(L10nKey.settingsAppearancePreviewBody)),
@@ -783,6 +794,7 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
     required String selectedFamily,
     required ValueChanged<String> onFilterChanged,
     required VoidCallback onReset,
+    required VoidCallback onBrowse,
     required ValueChanged<LocalFontEntry> onPickFont,
   }) {
     final visible = filter.isEmpty
@@ -794,14 +806,26 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        QuillInput(
-          controller: filterCtrl,
-          focusNode: filterFocus,
-          placeholder: l10n.t(L10nKey.settingsAppearanceFontSearch),
-          maxLines: 1,
-          submitOnEnter: false,
-          onSubmitted: () {},
-          onChanged: onFilterChanged,
+        Row(
+          children: [
+            Expanded(
+              child: QuillInput(
+                controller: filterCtrl,
+                focusNode: filterFocus,
+                placeholder: l10n.t(L10nKey.settingsAppearanceFontSearch),
+                maxLines: 1,
+                submitOnEnter: false,
+                onSubmitted: () {},
+                onChanged: onFilterChanged,
+              ),
+            ),
+            const SizedBox(width: 8),
+            EngravedButton(
+              label: l10n.t(L10nKey.settingsAppearanceFontBrowse),
+              compact: true,
+              onPressed: onBrowse,
+            ),
+          ],
         ),
         const SizedBox(height: 8),
         ConstrainedBox(
@@ -863,372 +887,4 @@ class _AppearanceSettingsViewState extends State<AppearanceSettingsView> {
   static const String _kFontSizePlaceholder = '15';
   static const String _kPreviewCode =
       'let total = MoneyMicros(1_000_000); // exact integer USD';
-}
-
-class _AccentSwatchPill extends StatefulWidget {
-  const _AccentSwatchPill({
-    required this.label,
-    required this.swatch,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final Color swatch;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  State<_AccentSwatchPill> createState() => _AccentSwatchPillState();
-}
-
-class _AccentSwatchPillState extends State<_AccentSwatchPill> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: PressFeedback(
-        pressScale: kRowPressScale,
-        hoverScale: 1,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: widget.selected
-                  ? theme.bgSurface
-                  : (_hovered ? theme.hoverTint : theme.bgCanvas),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                color: widget.selected ? widget.swatch : theme.borderHairline,
-                width: widget.selected ? 1.5 : 1,
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.symmetric(
-                horizontal: 10,
-                vertical: 6,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox.square(
-                    dimension: 12,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: widget.swatch,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 7),
-                  Flexible(
-                    child: InkText(
-                      widget.label,
-                      role: InkTextRole.captionMeta,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      color: widget.selected
-                          ? theme.inkPrimary
-                          : theme.inkSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FontListRow extends StatefulWidget {
-  const _FontListRow({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  State<_FontListRow> createState() => _FontListRowState();
-}
-
-class _FontListRowState extends State<_FontListRow> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: PressFeedback(
-        pressScale: kRowPressScale,
-        hoverScale: 1,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: widget.selected || _hovered ? theme.hoverTint : null,
-              borderRadius: BorderRadius.circular(7),
-            ),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.symmetric(
-                horizontal: 10,
-                vertical: 7,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: InkText(
-                      widget.label,
-                      role: InkTextRole.bodyCompact,
-                      color: widget.selected
-                          ? theme.inkPrimary
-                          : theme.inkSecondary,
-                    ),
-                  ),
-                  if (widget.selected)
-                    BistreIcon(
-                      BistreUiIcon.check,
-                      size: 13,
-                      color: theme.accentBrass,
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Visual gallery of the color theme presets.
-class _ThemePresetChoices extends StatelessWidget {
-  const _ThemePresetChoices({
-    required this.activePresetId,
-    required this.l10n,
-    required this.onSelectPreset,
-  });
-
-  final String activePresetId;
-  final BistreLocalizationController l10n;
-  final ValueChanged<String> onSelectPreset;
-
-  static String _presetLabel(BistreLocalizationController l10n, String id) =>
-      switch (id) {
-        'day' => l10n.t(L10nKey.settingsAppearancePresetWarmSepia),
-        'blue_cream' => l10n.t(L10nKey.settingsAppearancePresetBlueCream),
-        'night_blue' => l10n.t(L10nKey.settingsAppearancePresetNightBlue),
-        'warm_ivory' => l10n.t(L10nKey.settingsAppearancePresetWarmIvory),
-        'deep_sepia' => l10n.t(L10nKey.settingsAppearancePresetDeepSepia),
-        'night' => l10n.t(L10nKey.settingsAppearancePresetWarmDark),
-        'pure_black' => l10n.t(L10nKey.settingsAppearancePresetPureBlack),
-        'clean_paper' => l10n.t(L10nKey.settingsAppearancePresetCleanPaper),
-        'dark_slate' => l10n.t(L10nKey.settingsAppearancePresetDarkSlate),
-        _ => l10n.t(L10nKey.settingsAppearancePresetWarmSepia),
-      };
-
-  @override
-  Widget build(BuildContext context) {
-    final scale = textScaleOf(context);
-    final sampleAa = l10n.t(L10nKey.settingsAppearanceThemeSampleAa);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final desired = (132.0 * scale).clamp(132.0, 210.0);
-        final cardWidth =
-            constraints.hasBoundedWidth && constraints.maxWidth < desired
-            ? constraints.maxWidth
-            : desired;
-        return Wrap(
-          spacing: BistreSpacing.s8,
-          runSpacing: BistreSpacing.s8,
-          children: [
-            for (final preset in BistreThemePreset.presets)
-              _ThemePreviewCard(
-                preset: preset,
-                label: _presetLabel(l10n, preset.id),
-                sampleAa: sampleAa,
-                width: cardWidth,
-                selected: activePresetId == preset.id,
-                onTap: () => onSelectPreset(preset.id),
-              ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-/// Miniature preview of the app in [preset]: sidebar strip, page, sample letters, and accent rule.
-class _ThemePreviewCard extends StatefulWidget {
-  const _ThemePreviewCard({
-    required this.preset,
-    required this.label,
-    required this.sampleAa,
-    required this.width,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final BistreThemePreset preset;
-  final String label;
-  final String sampleAa;
-  final double width;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  State<_ThemePreviewCard> createState() => _ThemePreviewCardState();
-}
-
-class _ThemePreviewCardState extends State<_ThemePreviewCard> {
-  bool _focused = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    final preview = widget.preset.theme;
-    return Semantics(
-      button: true,
-      selected: widget.selected,
-      label: widget.label,
-      excludeSemantics: true,
-      onTap: widget.onTap,
-      child: FocusableActionDetector(
-        mouseCursor: SystemMouseCursors.click,
-        onShowFocusHighlight: (f) {
-          if (_focused != f) setState(() => _focused = f);
-        },
-        actions: <Type, Action<Intent>>{
-          ActivateIntent: CallbackAction<ActivateIntent>(
-            onInvoke: (_) {
-              widget.onTap();
-              return null;
-            },
-          ),
-          ButtonActivateIntent: CallbackAction<ButtonActivateIntent>(
-            onInvoke: (_) {
-              widget.onTap();
-              return null;
-            },
-          ),
-        },
-        child: PressFeedback(
-          pressScale: 0.97,
-          hoverScale: 1.01,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.onTap,
-            child: SizedBox(
-              width: widget.width,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: theme.bgElevated,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: widget.selected || _focused
-                        ? theme.accentWax
-                        : theme.borderHairline,
-                    width: widget.selected || _focused ? 1.5 : 1,
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsetsDirectional.all(6),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: ColoredBox(
-                          color: preview.bgCanvas,
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(minHeight: 56),
-                            child: IntrinsicHeight(
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  SizedBox(
-                                    width: 24,
-                                    child: ColoredBox(color: preview.bgSurface),
-                                  ),
-                                  Expanded(
-                                    child: Padding(
-                                      padding: const EdgeInsetsDirectional.all(
-                                        8,
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          InkText(
-                                            widget.sampleAa,
-                                            role: InkTextRole.labelStrong,
-                                            color: preview.inkPrimary,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          const SizedBox(height: 5),
-                                          SizedBox(
-                                            width: 40,
-                                            height: 4,
-                                            child: DecoratedBox(
-                                              decoration: BoxDecoration(
-                                                color: preview.accentWax,
-                                                borderRadius:
-                                                    BorderRadius.circular(999),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Padding(
-                        padding: const EdgeInsetsDirectional.symmetric(
-                          horizontal: 2,
-                        ),
-                        child: InkText(
-                          widget.label,
-                          role: InkTextRole.captionMeta,
-                          color: widget.selected
-                              ? theme.accentWax
-                              : theme.inkPrimary,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }

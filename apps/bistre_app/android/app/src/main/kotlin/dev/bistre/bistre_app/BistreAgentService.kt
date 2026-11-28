@@ -28,7 +28,7 @@ import androidx.work.WorkManager
  * - Holds bounded `PARTIAL_WAKE_LOCK` + `WIFI_MODE_FULL_LOW_LATENCY` strictly during active runs.
  * - Implements `onTimeout(startId, fgsType)` defensively to flush SQLite WAL and call `stopSelf()`
  *   before Android's ANR deadline.
- * - Watches `ConnectivityManager.NetworkCallback` for seamless Wi-Fi <-> 5G handoff recovery.
+ * - Watches `ConnectivityManager.NetworkCallback` to recover when the network switches between Wi-Fi and mobile data.
  */
 class BistreAgentService : Service() {
 

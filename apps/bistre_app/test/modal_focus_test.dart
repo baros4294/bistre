@@ -23,7 +23,7 @@ bool _focusInside(WidgetTester tester, Finder modal) {
 
 void main() {
   testWidgets(
-    'Tab stays inside the command palette and focus comes back after (U26)',
+    'Tab stays inside the command palette and focus comes back after',
     (tester) async {
       final shell = await ShellHarness.pump(tester);
       final composer = find.byType(EditableText).last;

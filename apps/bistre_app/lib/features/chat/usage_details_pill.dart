@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -5,7 +7,6 @@ import '../../bridge/bistre_engine.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
-import '../../design/hover_hint.dart';
 import '../../design/ink_primitives.dart';
 import '../../design/press_feedback.dart';
 import '../../l10n/bistre_localizations.dart';
@@ -20,11 +21,15 @@ class UsageDetailsPill extends StatefulWidget {
     super.key,
     required this.usage,
     required this.summaryText,
+    this.spokenLabel,
     this.reduceMotionOverride = false,
   });
 
   final NodeUsageMeta usage;
   final String summaryText;
+
+  /// The line in words for screen readers (the visible line uses arrows).
+  final String? spokenLabel;
   final bool reduceMotionOverride;
 
   @override
@@ -37,6 +42,52 @@ class _UsageDetailsPillState extends State<UsageDetailsPill> {
   bool _hovered = false;
   bool _focused = false;
 
+  /// Hover opens the breakdown after a short rest; a click or Enter pins it open.
+  static const Duration _hoverDelay = Duration(milliseconds: 500);
+  Timer? _hoverTimer;
+  bool _pinned = false;
+  bool _openedByHover = false;
+
+  void _onHover(bool inside) {
+    _hoverTimer?.cancel();
+    if (inside) {
+      if (_popover.isShowing) return;
+      _hoverTimer = Timer(_hoverDelay, () {
+        if (!mounted || _popover.isShowing) return;
+        _openedByHover = true;
+        _popover.show();
+        setState(() {});
+      });
+    } else if (_openedByHover && !_pinned) {
+      _hoverTimer = Timer(const Duration(milliseconds: 150), () {
+        if (!mounted || _pinned) return;
+        _openedByHover = false;
+        _popover.hide();
+        setState(() {});
+      });
+    }
+  }
+
+  void _toggle() {
+    _hoverTimer?.cancel();
+    if (_popover.isShowing && (_pinned || !_openedByHover)) {
+      _pinned = false;
+      _openedByHover = false;
+      _popover.hide();
+    } else {
+      _pinned = true;
+      _openedByHover = false;
+      _popover.show();
+    }
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _hoverTimer?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
@@ -48,14 +99,15 @@ class _UsageDetailsPillState extends State<UsageDetailsPill> {
       overlayBuilder: _buildPopover,
       child: CompositedTransformTarget(
         link: _link,
-        child: HoverHint(
-          message: hint,
+        child: MouseRegion(
+          onEnter: (_) => _onHover(true),
+          onExit: (_) => _onHover(false),
           child: PressFeedback(
             pressScale: kRowPressScale,
             hoverScale: 1,
             child: Semantics(
               button: true,
-              label: widget.summaryText,
+              label: widget.spokenLabel ?? widget.summaryText,
               hint: hint,
               child: FocusableActionDetector(
                 mouseCursor: SystemMouseCursors.click,
@@ -68,14 +120,14 @@ class _UsageDetailsPillState extends State<UsageDetailsPill> {
                 actions: <Type, Action<Intent>>{
                   ActivateIntent: CallbackAction<ActivateIntent>(
                     onInvoke: (_) {
-                      _popover.toggle();
+                      _toggle();
                       return null;
                     },
                   ),
                 },
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: _popover.toggle,
+                  onTap: _toggle,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       color: _hovered || _popover.isShowing
@@ -92,7 +144,8 @@ class _UsageDetailsPillState extends State<UsageDetailsPill> {
                       color: _hovered || _popover.isShowing
                           ? theme.accentBrass
                           : theme.inkMuted,
-                      maxLines: 1,
+                      // Wraps rather than hiding the cost at large text.
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -110,9 +163,6 @@ class _UsageDetailsPillState extends State<UsageDetailsPill> {
     final l10n = BistreLocalizations.of(context);
     final dir = Directionality.of(context);
     final u = widget.usage;
-    final costValue = u.costKnown
-        ? FolioController.formatMicrosUsd(u.costMicros, showSubCent: true)
-        : l10n.t(L10nKey.chatCostUnavailableTitle);
 
     return Stack(
       children: [
@@ -177,66 +227,7 @@ class _UsageDetailsPillState extends State<UsageDetailsPill> {
                     const SizedBox(height: 6),
                     const FolioDivider(),
                     const SizedBox(height: 6),
-                    if (u.hasTokens) ...[
-                      _DetailRow(
-                        label: l10n.t(L10nKey.chatUsageInputTokens),
-                        value: '${u.inputTokens}',
-                      ),
-                      if (u.cachedInputTokens > 0) ...[
-                        const SizedBox(height: 3),
-                        _DetailRow(
-                          label: l10n.t(L10nKey.chatUsageCachedTokens),
-                          value: '${u.cachedInputTokens}',
-                        ),
-                      ],
-                      if (u.cacheCreationInputTokens > 0) ...[
-                        const SizedBox(height: 3),
-                        _DetailRow(
-                          label: l10n.t(L10nKey.chatUsageCacheWriteTokens),
-                          value: '${u.cacheCreationInputTokens}',
-                        ),
-                      ],
-                      if (u.reasoningTokens > 0) ...[
-                        const SizedBox(height: 3),
-                        _DetailRow(
-                          label: l10n.t(L10nKey.chatUsageReasoningTokens),
-                          value: '${u.reasoningTokens}',
-                        ),
-                      ],
-                      const SizedBox(height: 3),
-                      _DetailRow(
-                        label: l10n.t(L10nKey.chatUsageOutputTokens),
-                        value: '${u.outputTokens}',
-                      ),
-                      const SizedBox(height: 3),
-                    ],
-                    if (u.firstTokenMs > 0) ...[
-                      _DetailRow(
-                        label: l10n.t(L10nKey.chatUsageTtftLabel),
-                        value:
-                            '${(u.firstTokenMs / 1000.0).toStringAsFixed(2)}s',
-                      ),
-                      const SizedBox(height: 3),
-                    ],
-                    if (u.elapsedMs > 0) ...[
-                      _DetailRow(
-                        label: l10n.t(L10nKey.chatUsageDurationLabel),
-                        value: '${(u.elapsedMs / 1000.0).toStringAsFixed(1)}s',
-                      ),
-                      const SizedBox(height: 3),
-                    ],
-                    if (u.tokensPerSecond case final tps?) ...[
-                      _DetailRow(
-                        label: l10n.t(L10nKey.chatUsageSpeedLabel),
-                        value: '${tps.toStringAsFixed(1)} tok/s',
-                      ),
-                      const SizedBox(height: 3),
-                    ],
-                    _DetailRow(
-                      label: l10n.t(L10nKey.chatUsageCostLabel),
-                      value: costValue,
-                      accent: u.costKnown && u.costMicros > 0,
-                    ),
+                    UsageBreakdownRows(usage: u),
                   ],
                 ),
               ),
@@ -275,6 +266,88 @@ class _DetailRow extends StatelessWidget {
           value,
           role: InkTextRole.captionMeta,
           color: accent ? theme.accentBrass : theme.inkPrimary,
+        ),
+      ],
+    );
+  }
+}
+
+/// The reply's usage in plain rows: sent, reused and saved cache, thinking, received, time to
+/// first word, total time, speed, and cost. Shared by the usage popover and Turn details.
+class UsageBreakdownRows extends StatelessWidget {
+  const UsageBreakdownRows({super.key, required this.usage});
+
+  final NodeUsageMeta usage;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = BistreLocalizations.of(context);
+    final u = usage;
+    final costValue = u.costKnown
+        ? FolioController.formatMicrosUsd(u.costMicros, showSubCent: true)
+        : l10n.t(L10nKey.chatCostUnavailableTitle);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (u.hasTokens) ...[
+          _DetailRow(
+            label: l10n.t(L10nKey.chatUsageInputTokens),
+            value: '${u.inputTokens}',
+          ),
+          if (u.cachedInputTokens > 0) ...[
+            const SizedBox(height: 3),
+            _DetailRow(
+              label: l10n.t(L10nKey.chatUsageCachedTokens),
+              value: '${u.cachedInputTokens}',
+            ),
+          ],
+          if (u.cacheCreationInputTokens > 0) ...[
+            const SizedBox(height: 3),
+            _DetailRow(
+              label: l10n.t(L10nKey.chatUsageCacheWriteTokens),
+              value: '${u.cacheCreationInputTokens}',
+            ),
+          ],
+          if (u.reasoningTokens > 0) ...[
+            const SizedBox(height: 3),
+            _DetailRow(
+              label: l10n.t(L10nKey.chatUsageReasoningTokens),
+              value: '${u.reasoningTokens}',
+            ),
+          ],
+          const SizedBox(height: 3),
+          _DetailRow(
+            label: l10n.t(L10nKey.chatUsageOutputTokens),
+            value: '${u.outputTokens}',
+          ),
+          const SizedBox(height: 3),
+        ],
+        if (u.firstTokenMs > 0) ...[
+          _DetailRow(
+            label: l10n.t(L10nKey.chatUsageTtftLabel),
+            value: '${(u.firstTokenMs / 1000.0).toStringAsFixed(2)}s',
+          ),
+          const SizedBox(height: 3),
+        ],
+        if (u.elapsedMs > 0) ...[
+          _DetailRow(
+            label: l10n.t(L10nKey.chatUsageDurationLabel),
+            value: '${(u.elapsedMs / 1000.0).toStringAsFixed(1)}s',
+          ),
+          const SizedBox(height: 3),
+        ],
+        if (u.tokensPerSecond case final tps?) ...[
+          _DetailRow(
+            label: l10n.t(L10nKey.chatUsageSpeedLabel),
+            value: '${tps.toStringAsFixed(1)} tok/s',
+          ),
+          const SizedBox(height: 3),
+        ],
+        _DetailRow(
+          label: l10n.t(L10nKey.chatUsageCostLabel),
+          value: costValue,
+          accent: u.costKnown && u.costMicros > 0,
         ),
       ],
     );

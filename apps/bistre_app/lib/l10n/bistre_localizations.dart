@@ -291,6 +291,18 @@ class BistreLocalizationController extends ChangeNotifier {
       .map(isolate)
       .join(t(L10nKey.appMetaSeparator));
 
+  /// A file size in the locale's units: bytes, then KB, then MB (1 KB = 1024 bytes).
+  String fileSize(int bytes) {
+    const kb = 1024;
+    if (bytes < kb) return t(L10nKey.appSizeBytes, {'size': '$bytes'});
+    if (bytes < kb * kb) {
+      return t(L10nKey.appSizeKb, {'size': (bytes / kb).toStringAsFixed(1)});
+    }
+    return t(L10nKey.appSizeMb, {
+      'size': (bytes / (kb * kb)).toStringAsFixed(2),
+    });
+  }
+
   /// [text] as its own direction run (Unicode first-strong isolate), so a Latin name next
   /// to Arabic text keeps its place in either direction.
   String isolate(String text) => '\u2068$text\u2069';

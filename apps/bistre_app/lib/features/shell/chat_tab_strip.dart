@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../../bridge/bistre_engine.dart';
-import '../../design/bistre_decorations.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
@@ -11,11 +10,12 @@ import '../../design/ink_primitives.dart';
 import '../../design/press_feedback.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
+import '../chat/content_direction.dart';
 import 'folio_controller.dart';
 
 /// Open chats as tabs under the header. Shown once two or more chats are open; the current
-/// tab carries the one `rubricMark`, streaming tabs pulse, and trailing `+` / `N tabs` buttons
-/// create a new tab or open the tab overview modal.
+/// tab is a raised sheet, streaming tabs pulse, and trailing `+` / overview icon buttons
+/// create a new tab or open the tab overview modal (its hint names the count).
 class ChatTabStrip extends StatelessWidget {
   const ChatTabStrip({super.key, required this.controller});
 
@@ -56,11 +56,15 @@ class ChatTabStrip extends StatelessWidget {
             ),
           ),
           const SizedBox(width: BistreSpacing.s8),
-          EngravedButton(
-            label: l10n.t(L10nKey.shellTabsCount, <String, Object?>{
+          // The tabs show how many are open; the overview button names the count in
+          // its hint and screen-reader label only.
+          BistreIconButton(
+            icon: BistreUiIcon.chevronDown,
+            size: 13,
+            dimension: 30,
+            semanticsLabel: l10n.t(L10nKey.shellTabsCount, <String, Object?>{
               'count': tabs.length,
             }),
-            compact: true,
             onPressed: controller.openTabSwitcher,
           ),
         ],
@@ -121,8 +125,13 @@ class _ChatTabState extends State<_ChatTab> {
               behavior: HitTestBehavior.opaque,
               onTap: widget.onSelect,
               child: DecoratedBox(
+                // The open tab is a raised sheet; the one accent bar stays in the sidebar.
                 decoration: widget.selected
-                    ? rubricMark(theme, fill: theme.bgElevated)
+                    ? BoxDecoration(
+                        color: theme.bgElevated,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: theme.borderHairline),
+                      )
                     : BoxDecoration(
                         borderRadius: BorderRadius.circular(6),
                         border: _focused
@@ -143,14 +152,17 @@ class _ChatTabState extends State<_ChatTab> {
                       ],
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 200),
-                        child: InkText(
-                          widget.thread.title,
-                          role: InkTextRole.captionMeta,
-                          color: widget.selected
-                              ? theme.inkPrimary
-                              : theme.inkSecondary,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        child: OwnDirection(
+                          text: widget.thread.title,
+                          child: InkText(
+                            widget.thread.title,
+                            role: InkTextRole.captionMeta,
+                            color: widget.selected
+                                ? theme.inkPrimary
+                                : theme.inkSecondary,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ),
                       BistreIconButton(

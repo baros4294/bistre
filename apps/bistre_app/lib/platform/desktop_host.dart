@@ -1,7 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
+
+import '../bridge/api/media.dart' as core;
 
 /// Persisted normal/maximized desktop window bounds.
 class DesktopWindowBounds {
@@ -65,6 +69,16 @@ class DesktopWindowBounds {
 /// - Multi-monitor-safe window geometry persistence
 ///
 /// Safely degrades to no-op on Android, Linux, or widget tests.
+/// Largest pasted picture taken from the clipboard (bytes of PNG).
+const int kMaxPastedImageBytes = 32 * 1024 * 1024;
+
+/// Largest picture file Copy picture reads, in bytes.
+const int kMaxCopiedPictureFileBytes = 64 * 1024 * 1024;
+
+/// Longest side of a copied picture, in pixels; a larger one is scaled down to it (the
+/// runners refuse more than its square).
+const int kMaxCopiedPictureSidePx = 4096;
+
 class BistreDesktopHost {
   BistreDesktopHost._();
 
@@ -72,16 +86,36 @@ class BistreDesktopHost {
   static VoidCallback? _onSystemThemeChanged;
   static void Function(DesktopWindowBounds bounds)? _onWindowBoundsChanged;
   static void Function(String pcmBase64)? _onMicPcmChunk;
-  static Process? _activeDictationProc;
-  static Process? _activeTtsProc;
+  static void Function(List<String> paths)? _onFilesDropped;
+  static VoidCallback? _onQuickEntry;
   static bool _channelHandlerAttached = false;
 
+  /// True while the saved quick entry shortcut is on but Windows refused it (another app
+  /// holds it); Settings > Shortcuts says so.
+  static final ValueNotifier<bool> quickEntryRefused = ValueNotifier<bool>(
+    false,
+  );
+
   static void _ensureChannelHandler() {
-    if (_channelHandlerAttached || !Platform.isWindows) return;
+    // Windows sends theme, bounds, mic, and drops; Android and Linux send drops.
+    if (_channelHandlerAttached ||
+        !(Platform.isWindows || Platform.isAndroid || Platform.isLinux)) {
+      return;
+    }
     _channelHandlerAttached = true;
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'onSystemThemeChanged') {
         _onSystemThemeChanged?.call();
+      } else if (call.method == 'onQuickEntry') {
+        _onQuickEntry?.call();
+      } else if (call.method == 'onFilesDropped') {
+        final raw = call.arguments;
+        if (raw is List) {
+          _onFilesDropped?.call(<String>[
+            for (final p in raw)
+              if (p is String && p.isNotEmpty) p,
+          ]);
+        }
       } else if (call.method == 'onMicPcmChunk') {
         final b64 = call.arguments;
         if (b64 is String && b64.isNotEmpty) {
@@ -114,6 +148,92 @@ class BistreDesktopHost {
         }
       }
     });
+  }
+
+  /// Files dragged onto the window (Windows, Linux) or the app (Android); the host keeps at
+  /// most 16 per drop (Android copies each into the app's cache first).
+  static void attachFilesDroppedListener(
+    void Function(List<String> paths) callback,
+  ) {
+    _onFilesDropped = callback;
+    _ensureChannelHandler();
+  }
+
+  /// Removes [callback] if it is the registered drop listener.
+  static void detachFilesDroppedListener(
+    void Function(List<String> paths) callback,
+  ) {
+    if (_onFilesDropped == callback) _onFilesDropped = null;
+  }
+
+  /// The quick entry shortcut was pressed in any app (Windows); the host has already
+  /// brought the window to the front.
+  static void attachQuickEntryListener(VoidCallback callback) {
+    _onQuickEntry = callback;
+    _ensureChannelHandler();
+  }
+
+  /// Removes [callback] if it is the registered quick entry listener.
+  static void detachQuickEntryListener(VoidCallback callback) {
+    if (_onQuickEntry == callback) _onQuickEntry = null;
+  }
+
+  /// Registers [combo] (the saved `Ctrl+Alt+B` form) as the system-wide quick entry
+  /// shortcut, replacing the previous one; `''` turns it off. Windows only; elsewhere
+  /// nothing is registered.
+  static Future<void> setQuickEntryHotkey(String combo) async {
+    if (!Platform.isWindows) return;
+    try {
+      final ok = await _channel.invokeMethod<bool>(
+        'setQuickEntryHotkey',
+        <String, Object?>{'combo': combo},
+      );
+      // Only the host's `false` means another app holds the combo; the notice says so.
+      quickEntryRefused.value = combo.isNotEmpty && ok == false;
+    } on PlatformException catch (e) {
+      quickEntryRefused.value = false;
+      debugPrint('[bistre] non-fatal quick_entry_hotkey: $e');
+    } on MissingPluginException catch (e) {
+      quickEntryRefused.value = false;
+      debugPrint('[bistre] non-fatal quick_entry_hotkey: $e');
+    }
+  }
+
+  /// The files or the picture (PNG bytes, at most [kMaxPastedImageBytes]) copied to the
+  /// clipboard: Windows and Android through the host, Linux through core (`wl-paste` or
+  /// `xclip`); none elsewhere.
+  static Future<({List<String> files, Uint8List? png})>
+  clipboardAttachments() async {
+    if (Platform.isLinux) {
+      final got = await core.linuxClipboardAttachments();
+      final png = got.png;
+      return (
+        files: got.files,
+        png: png != null && png.length <= kMaxPastedImageBytes ? png : null,
+      );
+    }
+    if (!Platform.isWindows && !Platform.isAndroid) {
+      return (files: const <String>[], png: null);
+    }
+    final raw = await _channel.invokeMethod<Object?>('clipboardAttachments');
+    final files = <String>[];
+    Uint8List? png;
+    if (raw is Map<Object?, Object?>) {
+      final listed = raw['files'];
+      if (listed is List) {
+        for (final p in listed) {
+          if (p is String && p.isNotEmpty) files.add(p);
+        }
+      }
+      final b64 = raw['png'];
+      // Base64 holds 3 bytes in every 4 characters.
+      if (b64 is String &&
+          b64.isNotEmpty &&
+          b64.length ~/ 4 * 3 <= kMaxPastedImageBytes) {
+        png = base64Decode(b64);
+      }
+    }
+    return (files: files, png: png);
   }
 
   static void attachSystemThemeListener(VoidCallback callback) {
@@ -161,7 +281,7 @@ class BistreDesktopHost {
     }
   }
 
-  /// Sets the native window caption (`<chat title> — Bistre`, live run progress included).
+  /// Sets the native window caption (`<chat title> - Bistre`, live run progress included).
   static Future<void> setWindowTitle(String title) async {
     if (!Platform.isWindows || title.trim().isEmpty) return;
     try {
@@ -187,13 +307,17 @@ class BistreDesktopHost {
     }
   }
 
+  /// Whether this platform has the native open and save file dialogs (Windows
+  /// `IFileDialog`, Linux GTK); elsewhere [pickLocalFile] and [saveLocalFile] return null.
+  static bool get canSaveFiles => Platform.isWindows || Platform.isLinux;
+
   /// Opens a native OS file picker for local fonts (`.ttf`/`.otf`) or custom icons.
   static Future<String?> pickLocalFile({
     required String title,
     required String filterLabel,
     required String filterSpec,
   }) async {
-    if (!Platform.isWindows) return null;
+    if (!canSaveFiles) return null;
     try {
       return await _channel.invokeMethod<String>(
         'pickLocalFile',
@@ -228,23 +352,12 @@ class BistreDesktopHost {
       }
     }
     if (Platform.isLinux) {
-      for (final cmd in const <(String, List<String>)>[
-        ('zenity', <String>['--file-selection', '--directory']),
-        ('kdialog', <String>['--getexistingdirectory', '.']),
-      ]) {
-        try {
-          final args = cmd.$1 == 'zenity'
-              ? <String>[...cmd.$2, '--title=$title']
-              : <String>[...cmd.$2, '--title', title];
-          final res = await Process.run(cmd.$1, args);
-          if (res.exitCode == 0) {
-            final path = (res.stdout as String? ?? '').trim();
-            if (path.isNotEmpty) return path;
-          }
-          return null;
-        } on ProcessException {
-          continue;
-        }
+      // Core runs zenity/kdialog contained, like every other child process.
+      try {
+        return await core.linuxPickFolder(title: title);
+      } on Object catch (e) {
+        debugPrint('[bistre] non-fatal linux_pick_folder: $e');
+        return null;
       }
     }
     return null;
@@ -252,7 +365,11 @@ class BistreDesktopHost {
 
   /// Whether the native desktop window is currently the OS foreground window.
   static Future<bool> isWindowFocused() async {
-    if (!Platform.isWindows) return true;
+    // Elsewhere the embedder reports focus through the app lifecycle (inactive = unfocused).
+    if (!Platform.isWindows) {
+      final state = WidgetsBinding.instance.lifecycleState;
+      return state == null || state == AppLifecycleState.resumed;
+    }
     try {
       return await _channel.invokeMethod<bool>('isWindowFocused') ?? true;
     } on PlatformException {
@@ -283,16 +400,37 @@ class BistreDesktopHost {
       return;
     }
     if (Platform.isLinux) {
+      // Core runs notify-send contained, and the text can never be read as an option.
       try {
-        await Process.start('notify-send', <String>[title, body]);
-      } on ProcessException {
-        return;
+        await core.linuxNotify(title: title, body: body, playSound: playSound);
+      } on Object catch (e) {
+        debugPrint('[bistre] non-fatal linux_notify: $e');
       }
     }
   }
 
-  /// Registers or unregisters run-on-startup (`HKCU\...\Run` on Windows).
+  /// Registers or unregisters run-on-startup (`HKCU\...\Run` on Windows, an XDG
+  /// `~/.config/autostart/bistre.desktop` entry on Linux).
   static Future<bool> setAutoStart(bool enabled) async {
+    if (Platform.isLinux) {
+      final config =
+          Platform.environment['XDG_CONFIG_HOME'] ??
+          '${Platform.environment['HOME'] ?? ''}/.config';
+      final entry = File('$config/autostart/bistre.desktop');
+      try {
+        if (!enabled) {
+          if (entry.existsSync()) entry.deleteSync();
+          return true;
+        }
+        entry.parent.createSync(recursive: true);
+        entry.writeAsStringSync(
+          linuxAutostartEntry(Platform.resolvedExecutable),
+        );
+        return true;
+      } on FileSystemException {
+        return false;
+      }
+    }
     if (!Platform.isWindows) return false;
     try {
       return await _channel.invokeMethod<bool>(
@@ -304,6 +442,39 @@ class BistreDesktopHost {
       return false;
     } on MissingPluginException {
       return false;
+    }
+  }
+
+  /// The XDG autostart entry that starts [executable] at sign-in.
+  static String linuxAutostartEntry(String executable) {
+    // Desktop Entry `Exec` quoting: the path in double quotes; `"`, `` ` `` and `$` take a
+    // backslash, and a backslash is written four times (string escaping, then quoting).
+    final quoted = executable.replaceAllMapped(
+      RegExp(r'["`$\\]'),
+      (m) => m[0] == '\\' ? r'\\\\' : '\\${m[0]}',
+    );
+    return '[Desktop Entry]\n'
+        'Type=Application\n'
+        'Name=Bistre\n'
+        'Exec="$quoted"\n'
+        'X-GNOME-Autostart-enabled=true\n';
+  }
+
+  /// The tray menu's labels (Open, Quit) in the app's language.
+  static Future<void> setTrayLabels({
+    required String open,
+    required String quit,
+  }) async {
+    if (!Platform.isWindows) return;
+    try {
+      await _channel.invokeMethod<bool>('setTrayLabels', <String, Object?>{
+        'open': open,
+        'quit': quit,
+      });
+    } on PlatformException {
+      return;
+    } on MissingPluginException {
+      return;
     }
   }
 
@@ -328,7 +499,7 @@ class BistreDesktopHost {
     required String filterLabel,
     required String filterSpec,
   }) async {
-    if (!Platform.isWindows) return null;
+    if (!canSaveFiles) return null;
     try {
       return await _channel.invokeMethod<String>(
         'saveLocalFile',
@@ -387,11 +558,123 @@ class BistreDesktopHost {
     }
     if (Platform.isLinux) {
       try {
-        await Process.start('xdg-open', <String>[dirPath]);
-      } on ProcessException {
-        // Best-effort on headless Linux environments.
+        await core.linuxOpenFolder(path: dirPath);
+      } on Object catch (e) {
+        debugPrint('[bistre] non-fatal linux_open_folder: $e');
       }
     }
+  }
+
+  /// `true` for an existing local file that is neither a Windows UNC network path nor named
+  /// like an executable, script, or shortcut.
+  static bool isSafeLocalFile(String rawPath) {
+    final path = rawPath.trim();
+    if (path.isEmpty || path.replaceAll(r'\', '/').startsWith('//')) {
+      return false;
+    }
+    final dot = path.lastIndexOf('.');
+    if (dot > 0 &&
+        blockedOpenExtensions.contains(path.substring(dot + 1).toLowerCase())) {
+      return false;
+    }
+    return FileSystemEntity.isFileSync(path);
+  }
+
+  /// Whether this platform can hand a file to its default app (on Android, the app the
+  /// user picks).
+  static bool get canOpenFiles =>
+      Platform.isWindows || Platform.isLinux || Platform.isAndroid;
+
+  /// Opens `filePath` in its default app (safe local files only); `false` when it was not
+  /// opened.
+  static Future<bool> openFile(String filePath) async {
+    if (!isSafeLocalFile(filePath)) return false;
+    try {
+      if (Platform.isWindows || Platform.isAndroid) {
+        return await _channel.invokeMethod<bool>('openFile', <String, Object?>{
+              'path': filePath,
+            }) ??
+            false;
+      }
+      if (Platform.isLinux) {
+        await core.linuxOpenFile(path: filePath);
+        return true;
+      }
+    } on PlatformException catch (e) {
+      debugPrint('[bistre] non-fatal open_file: $e');
+    } on MissingPluginException catch (e) {
+      debugPrint('[bistre] non-fatal open_file: $e');
+    } on Object catch (e) {
+      debugPrint('[bistre] non-fatal linux_open_file: $e');
+    }
+    return false;
+  }
+
+  /// Whether this platform can put a picture on the clipboard.
+  static bool get canCopyPictures =>
+      Platform.isWindows || Platform.isLinux || Platform.isAndroid;
+
+  /// Puts the picture at [filePath] on the clipboard; `false` when it was not copied. Android
+  /// shares the file itself; a desktop gets its pixels (and on Windows a PNG as well), decoded
+  /// here at most [kMaxCopiedPictureSidePx] on a side. A file that does not decode throws.
+  static Future<bool> copyPicture(String filePath) async {
+    if (!isSafeLocalFile(filePath) || !canCopyPictures) return false;
+    if (Platform.isAndroid) {
+      return _invokeCopyPicture(<String, Object?>{'path': filePath});
+    }
+    final file = File(filePath);
+    if (await file.length() > kMaxCopiedPictureFileBytes) return false;
+    final buffer = await ui.ImmutableBuffer.fromUint8List(
+      await file.readAsBytes(),
+    );
+    final codec = await ui.instantiateImageCodecWithSize(
+      buffer,
+      getTargetSize: (w, h) {
+        final side = w > h ? w : h;
+        if (side <= kMaxCopiedPictureSidePx) {
+          return ui.TargetImageSize(width: w, height: h);
+        }
+        final scale = kMaxCopiedPictureSidePx / side;
+        return ui.TargetImageSize(
+          width: (w * scale).round().clamp(1, kMaxCopiedPictureSidePx),
+          height: (h * scale).round().clamp(1, kMaxCopiedPictureSidePx),
+        );
+      },
+    );
+    final ui.Image image;
+    try {
+      image = (await codec.getNextFrame()).image;
+    } finally {
+      codec.dispose();
+    }
+    try {
+      final rgba = await image.toByteData(
+        format: ui.ImageByteFormat.rawStraightRgba,
+      );
+      final png = Platform.isWindows
+          ? await image.toByteData(format: ui.ImageByteFormat.png)
+          : null;
+      if (rgba == null) return false;
+      return await _invokeCopyPicture(<String, Object?>{
+        'rgba': rgba.buffer.asUint8List(),
+        'width': image.width,
+        'height': image.height,
+        if (png != null) 'png': png.buffer.asUint8List(),
+      });
+    } finally {
+      image.dispose();
+    }
+  }
+
+  static Future<bool> _invokeCopyPicture(Map<String, Object?> args) async {
+    try {
+      return await _channel.invokeMethod<bool>('copyPicture', args) ?? false;
+    } on PlatformException catch (e) {
+      debugPrint('[bistre] non-fatal copy_picture: $e');
+    } on MissingPluginException catch (e) {
+      debugPrint('[bistre] non-fatal copy_picture: $e');
+    }
+    return false;
   }
 
   static Future<DesktopWindowBounds?> readWindowBounds() async {
@@ -472,8 +755,6 @@ class BistreDesktopHost {
 
   /// Stops any active WAV playback or OS speech synthesis.
   static Future<void> stopAudioPlayback() async {
-    _activeTtsProc?.kill();
-    _activeTtsProc = null;
     if (Platform.isWindows || Platform.isAndroid) {
       try {
         await _channel.invokeMethod<bool>('stopAudioPlayback');
@@ -517,105 +798,90 @@ class BistreDesktopHost {
     }
   }
 
-  /// Native OS speech-to-text dictation (Windows `System.Speech` / Android `RecognizerIntent`).
+  /// Native OS speech-to-text dictation (Windows SAPI in the runner, Android
+  /// `RecognizerIntent`): the words of one phrase, or null. No child process is started.
   static Future<String?> dictateVoiceOnce() async {
-    if (Platform.isAndroid) {
-      try {
-        return await _channel.invokeMethod<String>('dictateVoiceOnce');
-      } on PlatformException {
-        return null;
-      } on MissingPluginException {
-        return null;
-      }
-    }
-    if (!Platform.isWindows) return null;
-    await stopVoiceDictation();
-    const psScript = r'''
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-Add-Type -AssemblyName System.Speech
-$rec = New-Object System.Speech.Recognition.SpeechRecognitionEngine
-$rec.LoadGrammar((New-Object System.Speech.Recognition.DictationGrammar))
-$rec.SetInputToDefaultAudioDevice()
-$res = $rec.Recognize([TimeSpan]::FromSeconds(12))
-if ($res -ne $null -and $res.Text) { Write-Output $res.Text }
-''';
+    if (!(Platform.isAndroid || Platform.isWindows)) return null;
     try {
-      final proc = await Process.start('powershell.exe', <String>[
-        '-NoProfile',
-        '-NonInteractive',
-        '-WindowStyle',
-        'Hidden',
-        '-Command',
-        psScript,
-      ]);
-      _activeDictationProc = proc;
-      await proc.stdin.close();
-      final outFuture = proc.stdout.transform(utf8.decoder).join();
-      await proc.exitCode.timeout(
-        const Duration(seconds: 16),
-        onTimeout: () {
-          proc.kill();
-          return -1;
-        },
-      );
-      if (identical(_activeDictationProc, proc)) {
-        _activeDictationProc = null;
-      }
-      final text = (await outFuture).trim();
-      return text.isEmpty ? null : text;
-    } on ProcessException {
-      _activeDictationProc = null;
+      return await _channel.invokeMethod<String>('dictateVoiceOnce');
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
       return null;
     }
   }
 
+  /// Ends a dictation early; it then completes with what was heard so far (or nothing).
   static Future<void> stopVoiceDictation() async {
-    _activeDictationProc?.kill();
-    _activeDictationProc = null;
+    if (!Platform.isWindows) return;
+    try {
+      await _channel.invokeMethod<bool>('stopVoiceDictation');
+    } on PlatformException {
+      // Non-fatal: the dictation ends by itself after a pause.
+    } on MissingPluginException {
+      // Non-fatal: the dictation ends by itself after a pause.
+    }
   }
 
-  /// OS-native speech synthesis fallback when the active model is text-only.
+  /// Reads [text] with the system voice (Windows SAPI in the runner, Android TextToSpeech);
+  /// completes when it finishes or is stopped. No child process is started.
   static Future<void> speakTextAloud(String text) async {
     final clean = text.trim();
-    if (clean.isEmpty) return;
-    if (Platform.isAndroid) {
-      try {
-        await _channel.invokeMethod<bool>('speakTextAloud', <String, Object?>{
-          'text': clean,
-        });
-      } on PlatformException {
-        // Non-fatal.
-      } on MissingPluginException {
-        // Non-fatal.
-      }
-      return;
-    }
-    if (!Platform.isWindows) return;
-    _activeTtsProc?.kill();
-    final safeText = clean.length > 4000 ? clean.substring(0, 4000) : clean;
-    final b64 = base64Encode(utf8.encode(safeText));
-    final psScript =
-        'Add-Type -AssemblyName System.Speech; '
-        "\$t = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('$b64')); "
-        '\$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; '
-        '\$s.Speak(\$t)';
+    if (clean.isEmpty || !(Platform.isAndroid || Platform.isWindows)) return;
     try {
-      final proc = await Process.start('powershell.exe', <String>[
-        '-NoProfile',
-        '-NonInteractive',
-        '-WindowStyle',
-        'Hidden',
-        '-Command',
-        psScript,
-      ]);
-      _activeTtsProc = proc;
-      await proc.stdin.close();
-      await proc.exitCode;
-      if (identical(_activeTtsProc, proc)) {
-        _activeTtsProc = null;
+      await _channel.invokeMethod<bool>('speakTextAloud', <String, Object?>{
+        // Bounded: a reply read aloud is at most this many characters.
+        'text': clean.characters.take(4000).toString(),
+      });
+    } on PlatformException {
+      // Non-fatal: the reply stays on screen.
+    } on MissingPluginException {
+      // Non-fatal: the reply stays on screen.
+    }
+  }
+
+  static const MethodChannel _phoneUseChannel = MethodChannel(
+    'bistre/phone_use',
+  );
+
+  /// Executes one approved `computer_use` (desktop) or `phone_use` (Android) host action
+  /// through the native platform bridge and returns `{ok, outputText, imageBase64?}`.
+  static Future<Map<String, Object?>> runComputerUseAction(
+    Map<String, Object?> action,
+  ) async {
+    try {
+      final res = Platform.isAndroid
+          ? await _phoneUseChannel.invokeMethod<Map<Object?, Object?>>(
+              'phoneUse',
+              action,
+            )
+          : await _channel.invokeMethod<Map<Object?, Object?>>(
+              'computerUse',
+              action,
+            );
+      if (res == null) {
+        return const <String, Object?>{
+          'ok': false,
+          'outputText': 'Native host bridge returned no result.',
+        };
       }
-    } on ProcessException {
-      _activeTtsProc = null;
+      return <String, Object?>{
+        'ok': res['ok'] as bool? ?? false,
+        'outputText': res['outputText'] as String? ?? '',
+        if (res['imageBase64'] is String)
+          'imageBase64': res['imageBase64'] as String,
+      };
+    } on PlatformException catch (e) {
+      return <String, Object?>{
+        'ok': false,
+        'outputText': e.message ?? 'Host action failed.',
+      };
+    } on MissingPluginException {
+      return const <String, Object?>{
+        'ok': false,
+        'outputText':
+            'Native screen-control bridge is unavailable on this host.',
+      };
     }
   }
 }

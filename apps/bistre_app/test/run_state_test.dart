@@ -25,7 +25,7 @@ Future<(ShellHarness, String, String)> _twoChats(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('a second run never takes over the first (U11)', (tester) async {
+  testWidgets('a second run never takes over the first', (tester) async {
     final (shell, a, b) = await _twoChats(tester);
     final ctrl = shell.controller;
     shell.gateway
@@ -51,7 +51,7 @@ void main() {
     );
   });
 
-  testWidgets('a reply that finished in the background is marked new (U11)', (
+  testWidgets('a reply that finished in the background is marked new', (
     tester,
   ) async {
     final (shell, a, _) = await _twoChats(tester);
@@ -69,7 +69,7 @@ void main() {
     expect(shell.controller.threadRunState(a), ThreadRunState.idle);
   });
 
-  testWidgets('an approval asked in a background chat waits there (U4)', (
+  testWidgets('an approval asked in a background chat waits there', (
     tester,
   ) async {
     final (shell, a, _) = await _twoChats(tester);
@@ -96,7 +96,7 @@ void main() {
     );
   });
 
-  testWidgets('a lost RunFinished is repaired from the run list (U10)', (
+  testWidgets('a lost RunFinished is repaired from the run list', (
     tester,
   ) async {
     final (shell, a, _) = await _twoChats(tester);
@@ -110,7 +110,7 @@ void main() {
     expect(shell.controller.isThreadStreaming(a), isFalse);
   });
 
-  testWidgets('a new run starts with no tool rows from earlier runs (U9)', (
+  testWidgets('a new run starts with no tool rows from earlier runs', (
     tester,
   ) async {
     final (shell, _, b) = await _twoChats(tester);
@@ -139,7 +139,7 @@ void main() {
     expect(shell.controller.toolActivities, isEmpty);
   });
 
-  testWidgets('coming back to the app tells core and rechecks runs (P19)', (
+  testWidgets('coming back to the app tells core and rechecks runs', (
     tester,
   ) async {
     final (shell, a, _) = await _twoChats(tester);

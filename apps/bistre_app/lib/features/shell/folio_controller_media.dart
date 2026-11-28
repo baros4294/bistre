@@ -3,12 +3,12 @@ part of 'folio_controller.dart';
 /// Multi-key vault management, hidden model filters, live catalog fill, export/import,
 /// storage file manager, immediate steering, OS dictation, Live TTS, and Live Voice sessions.
 extension FolioControllerMedia on FolioController {
-  /// The last update error (A-W 7c): shown only in Updates, never in the chat composer.
+  /// The last update error: shown only in Updates, never in the chat composer.
   String? get lastOtaDiagnostic => _lastOtaDiagnostic;
   String? get lastOtaDetail => _lastOtaDetail;
   String? get retryReasonDetail => _retryReasonDetail;
 
-  /// Which automatic try the current wait follows (P20); `null` when core did not say.
+  /// Which automatic try the current wait follows; `null` when core did not say.
   int? get backoffAttempt => _backoffAttempt;
   List<EngineStorageFileEntry> get storageFiles => _storageFiles;
   String? get speakingNodeId => _speakingNodeId;
@@ -19,7 +19,10 @@ extension FolioControllerMedia on FolioController {
   String? get liveVoiceError => _liveVoiceError;
   String get liveVoiceTranscript => _liveVoiceTranscript;
 
-  // --- Multi-key Vault Reveal & Management (#4) ---
+  /// Whether the transcript line is the user's words (else the model's).
+  bool get liveVoiceTranscriptIsUser => _liveVoiceTranscriptIsUser;
+
+  // --- Multi-key Vault Reveal & Management ---
 
   Future<List<String>> loadProviderApiKeys(String providerId) async {
     try {
@@ -63,7 +66,7 @@ extension FolioControllerMedia on FolioController {
     return saveProviderApiKey(providerId, existing.join('\n'));
   }
 
-  // --- Per-Model Hidden/Deleted Filter (#6) ---
+  // --- Per-Model Hidden/Deleted Filter ---
 
   Set<String> hiddenModelIdsFor(String providerId) =>
       _hiddenModelsByProvider[providerId] ?? const <String>{};
@@ -117,14 +120,17 @@ extension FolioControllerMedia on FolioController {
     _notify();
   }
 
-  // --- Live Catalog Lookup (#12) ---
+  // --- Live Catalog Lookup ---
 
-  Future<EngineModelCatalogInfo?> lookupModelCatalogInfo(String modelId) async {
+  Future<EngineModelCatalogInfo?> lookupModelCatalogInfo(
+    String providerId,
+    String modelId,
+  ) async {
     try {
-      var info = await _gateway.lookupModelCatalogInfo(modelId);
+      var info = await _gateway.lookupModelCatalogInfo(providerId, modelId);
       if (info == null) {
         await _gateway.refreshPrices();
-        info = await _gateway.lookupModelCatalogInfo(modelId);
+        info = await _gateway.lookupModelCatalogInfo(providerId, modelId);
       }
       return info;
     } catch (e) {
@@ -133,7 +139,7 @@ extension FolioControllerMedia on FolioController {
     }
   }
 
-  // --- Export / Import & Storage File Manager (#17) ---
+  // --- Export / Import & Storage File Manager ---
 
   Future<bool> exportCurrentThreadToFile(
     String filePath, {
@@ -150,21 +156,7 @@ extension FolioControllerMedia on FolioController {
       showToast(L10nKey.toastExported);
       return true;
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
-      return false;
-    }
-  }
-
-  Future<bool> exportAllThreadsToFile(String filePath) async {
-    try {
-      final jsonText = await _gateway.exportAllThreadsJson();
-      await File(filePath).writeAsString(jsonText);
-      showToast(L10nKey.toastExported);
-      return true;
-    } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
       return false;
     }
   }
@@ -180,8 +172,7 @@ extension FolioControllerMedia on FolioController {
       _notify();
       return count;
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
       return 0;
     }
   }
@@ -193,8 +184,7 @@ extension FolioControllerMedia on FolioController {
       showToast(L10nKey.toastExported);
       return true;
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
       return false;
     }
   }
@@ -204,15 +194,14 @@ extension FolioControllerMedia on FolioController {
     try {
       raw = await File(filePath).readAsString();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
       return false;
     }
     return importSettingsJson(raw);
   }
 
   /// Imports settings JSON. A file that would loosen trust or the spending limit is not
-  /// applied; a toast explains it and offers "Import anyway" (A-S3).
+  /// applied; a toast explains it and offers "Import anyway".
   Future<bool> importSettingsJson(
     String raw, {
     bool allowLoosening = false,
@@ -246,6 +235,19 @@ extension FolioControllerMedia on FolioController {
     }
   }
 
+  /// Settled spend per purpose over the last [days] days; `null` when it could not be read
+  /// (logged with its diagnostic key).
+  Future<List<EnginePurposeUsage>?> loadUsageByPurpose({int days = 30}) async {
+    try {
+      return await _gateway.getWalletUsageByPurpose(
+        _clock().subtract(Duration(days: days)),
+      );
+    } catch (e) {
+      _noteNonFatal('wallet_usage_by_purpose', e);
+      return null;
+    }
+  }
+
   Future<void> refreshStorageFiles() async {
     try {
       _storageFiles = await _gateway.listStorageFiles();
@@ -261,8 +263,7 @@ extension FolioControllerMedia on FolioController {
       await _gateway.deleteStorageFile(relPath);
       await refreshStorageFiles();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -273,13 +274,12 @@ extension FolioControllerMedia on FolioController {
       showToast(L10nKey.toastStorageCleaned);
       return freed;
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
       return 0;
     }
   }
 
-  // --- Immediate Steer Now (#19) ---
+  // --- Immediate Steer Now ---
 
   Future<bool> steerActiveRunNow(String text) async {
     final active = _activeThread;
@@ -297,8 +297,7 @@ extension FolioControllerMedia on FolioController {
       _notify();
       return true;
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
       return false;
     }
   }
@@ -308,7 +307,7 @@ extension FolioControllerMedia on FolioController {
     await steerActiveRunNow(item.content);
   }
 
-  // --- OS Dictation Mic (#22) ---
+  // --- OS Dictation Mic ---
 
   Future<String?> dictateVoiceOnce() async {
     if (_dictatingActive) {
@@ -341,13 +340,12 @@ extension FolioControllerMedia on FolioController {
     _speakingNodeId = nodeId;
     _notify();
     try {
-      final provider = activeProvider;
-      final model = activeModelId.toLowerCase();
-      final isTtsModel = model.contains('tts') || model.contains('audio');
-      if (provider != null && isTtsModel) {
+      // Settings > Default models names the speech model; without one the system voice reads.
+      final speech = readAloudModel;
+      if (speech != null) {
         final wavBytes = await _gateway.synthesizeSpeech(
-          providerId: provider.id,
-          modelId: activeModelId,
+          providerId: speech.provider.id,
+          modelId: speech.modelId,
           text: clean,
         );
         if (wavBytes.isNotEmpty) {
@@ -355,7 +353,6 @@ extension FolioControllerMedia on FolioController {
           return;
         }
       }
-      // Fallback to OS native speech synthesis when active model is text-only.
       await BistreDesktopHost.speakTextAloud(clean);
     } catch (e) {
       _noteNonFatal('speak_assistant_message', e);
@@ -397,7 +394,8 @@ extension FolioControllerMedia on FolioController {
       final sid = await _gateway.startLiveVoiceSession(
         providerId: provider.id,
         modelId: model,
-        voice: provider.dialect == 'google_gemini' ? 'Kore' : 'alloy',
+        // Core picks the provider's default voice.
+        voice: '',
         systemPrompt: sysPrompt,
       );
       _liveVoiceSessionId = sid;
@@ -412,12 +410,15 @@ extension FolioControllerMedia on FolioController {
           );
         }
       });
-      await BistreDesktopHost.startMicCapture();
+      if (!await BistreDesktopHost.startMicCapture()) {
+        await stopLiveVoice();
+        _liveVoiceError = 'diag.voice.mic_unavailable';
+      }
       _notify();
     } catch (e) {
       _liveVoiceSessionId = null;
       _liveVoiceState = 'error';
-      _liveVoiceError = e.toString();
+      _liveVoiceError = FolioController.extractDiagnosticKey(e);
       _notify();
     }
   }
@@ -426,6 +427,8 @@ extension FolioControllerMedia on FolioController {
     final sid = _liveVoiceSessionId;
     _liveVoiceSessionId = null;
     _liveVoiceState = 'idle';
+    // Ending also dismisses a failed session's notice.
+    _liveVoiceError = null;
     BistreDesktopHost.detachMicPcmListener();
     await BistreDesktopHost.stopMicCapture();
     await BistreDesktopHost.stopAudioPlayback();
@@ -445,7 +448,9 @@ extension FolioControllerMedia on FolioController {
     }
     _liveVoiceState = event.state;
     if (event.state == 'error') {
-      _liveVoiceError = event.detail ?? 'Live voice connection failed';
+      _liveVoiceError = FolioController.extractDiagnosticKey(
+        event.detail ?? '',
+      );
       _liveVoiceSessionId = null;
       BistreDesktopHost.detachMicPcmListener();
       unawaited(BistreDesktopHost.stopMicCapture());
@@ -459,9 +464,12 @@ extension FolioControllerMedia on FolioController {
 
   void _handleLiveVoiceTranscriptEvent(LiveVoiceTranscriptEvent event) {
     if (event.sessionId != _liveVoiceSessionId) return;
-    final prefix = event.role == 'user' ? 'You: ' : 'AI: ';
-    if (event.isFinal || _liveVoiceTranscript.length > 600) {
-      _liveVoiceTranscript = '$prefix${event.text}';
+    final isUser = event.role == 'user';
+    if (event.isFinal ||
+        isUser != _liveVoiceTranscriptIsUser ||
+        _liveVoiceTranscript.length > 600) {
+      _liveVoiceTranscript = event.text;
+      _liveVoiceTranscriptIsUser = isUser;
     } else {
       _liveVoiceTranscript = '$_liveVoiceTranscript${event.text}';
     }
@@ -478,5 +486,32 @@ extension FolioControllerMedia on FolioController {
     } on FormatException {
       // Ignore malformed audio chunk.
     }
+  }
+
+  Future<void> _handleHostActionRequested(
+    HostActionRequestedEvent event,
+  ) async {
+    if (event.requestId.isEmpty) return;
+    Map<String, Object?> parsed;
+    try {
+      final decoded = jsonDecode(event.actionJson);
+      parsed = decoded is Map<String, Object?>
+          ? decoded
+          : const <String, Object?>{};
+    } on FormatException {
+      await _gateway.respondHostAction(
+        requestId: event.requestId,
+        ok: false,
+        outputText: 'Malformed host action payload.',
+      );
+      return;
+    }
+    final res = await BistreDesktopHost.runComputerUseAction(parsed);
+    await _gateway.respondHostAction(
+      requestId: event.requestId,
+      ok: res['ok'] as bool? ?? false,
+      outputText: res['outputText'] as String? ?? '',
+      imageBase64: res['imageBase64'] as String?,
+    );
   }
 }

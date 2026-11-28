@@ -34,21 +34,21 @@ flutter:
     - assets/icons/ui/
     - assets/icons/labs/
     # Registered lazily on the first math block (lib/design/math_font_gate.dart).
-    - assets/fonts/NotoSansMath-Regular.ttf
+    - assets/fonts/noto-sans-math-regular.ttf
   fonts:
     - family: Inter
       fonts:
-        - asset: assets/fonts/Inter-Regular.ttf
+        - asset: assets/fonts/inter-regular.ttf
           weight: 400
-        - asset: assets/fonts/Inter-Medium.ttf
+        - asset: assets/fonts/inter-medium.ttf
           weight: 500
-        - asset: assets/fonts/Inter-SemiBold.ttf
+        - asset: assets/fonts/inter-semibold.ttf
           weight: 600
-        - asset: assets/fonts/Inter-Bold.ttf
+        - asset: assets/fonts/inter-bold.ttf
           weight: 700
     - family: JetBrainsMono
       fonts:
-        - asset: assets/fonts/JetBrainsMono-Regular.ttf
+        - asset: assets/fonts/jetbrains-mono-regular.ttf
           weight: 400
-        - asset: assets/fonts/JetBrainsMono-Medium.ttf
+        - asset: assets/fonts/jetbrains-mono-medium.ttf
           weight: 500

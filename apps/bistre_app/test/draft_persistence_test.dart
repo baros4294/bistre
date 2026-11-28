@@ -28,7 +28,7 @@ void main() {
     );
   }
 
-  testWidgets('a slash command clears the saved draft (U35)', (tester) async {
+  testWidgets('a slash command clears the saved draft', (tester) async {
     final shell = await ShellHarness.pump(tester);
     await tester.enterText(find.byType(EditableText).last, '/plan');
     await tester.pump(const Duration(milliseconds: 400));
@@ -42,7 +42,7 @@ void main() {
     expect(await shell.gateway.loadDraft(threadId), isEmpty);
   });
 
-  testWidgets('the last keystrokes are saved when the app is paused (P27)', (
+  testWidgets('the last keystrokes are saved when the app is paused', (
     tester,
   ) async {
     final shell = await ShellHarness.pump(tester);

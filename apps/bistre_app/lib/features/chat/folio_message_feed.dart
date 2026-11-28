@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
@@ -12,21 +11,28 @@ import '../../design/bistre_selection_controls.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/context_menu.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/label_control_layout.dart';
 import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
+import '../../design/user_avatar_thumb.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
 import '../shell/live_turn_notifier.dart';
 import 'code_wrap_scope.dart';
+import 'committed_tool_steps.dart';
 import 'cost_unavailable_button.dart';
+import 'earlier_messages_button.dart';
 import 'markdown_folio_view.dart';
 import 'message_nav_rail.dart';
+import 'plain_preview.dart';
 import 'reasoning_block.dart';
+import 'sent_picture_thumb.dart';
 import 'tool_timeline_view.dart';
 import 'usage_details_pill.dart';
 
 part 'folio_message_cards.dart';
+part 'folio_passage_item.dart';
 
 /// Calm Studio Atelier reading canvas:
 /// - Unconfigured Welcome Desk: ONE calm setup card without promotional brand-icon clutter
@@ -58,6 +64,7 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
   final BistreSelectionControls _selectionControls = BistreSelectionControls();
   bool _autoFollow = true;
   bool _showJumpToLatest = false;
+  double? _lastViewport;
   late int _lastNodeCount;
   late int _lastStreamLen;
   String? _lastThreadId;
@@ -99,7 +106,7 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
     });
   }
 
-  /// How much the live reply shows (P22): its text, its thinking, and its tool rows with
+  /// How much the live reply shows: its text, its thinking, and its tool rows with
   /// their output, so growth of any of them keeps the reader at the bottom.
   int _liveSize() {
     final ctrl = widget.controller;
@@ -116,7 +123,9 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
     final len = _liveSize();
     final grew = len > _lastStreamLen;
     _lastStreamLen = len;
-    if (!grew || !_autoFollow) return;
+    // Settings > Follow replies while they are written.
+    final follows = widget.controller.uiPrefs.followWhileStreaming;
+    if (!grew || !_autoFollow || !follows) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
       _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
@@ -139,7 +148,10 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
       return;
     }
 
-    final grew = visibleCount > _lastNodeCount || streamLen > _lastStreamLen;
+    // A new message always scrolls into view; a reply growing only when it is followed.
+    final grew =
+        visibleCount > _lastNodeCount ||
+        (streamLen > _lastStreamLen && ctrl.uiPrefs.followWhileStreaming);
     _lastNodeCount = visibleCount;
     _lastStreamLen = streamLen;
 
@@ -159,8 +171,23 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
     if (shouldShow != _showJumpToLatest) {
       setState(() => _showJumpToLatest = shouldShow);
     }
-    // U12: following resumes only when a scroll ends near the bottom (idle, below) or on
+    // Following resumes only when a scroll ends near the bottom (idle, below) or on
     // Jump to latest, never mid-drag, so a slow upward drag is not pulled back down.
+  }
+
+  /// A notice or a taller composer shortens the chat from below; a reader at the bottom
+  /// stays there, so the last reply's usage line is never hidden under the change.
+  bool _handleMetrics(ScrollMetricsNotification notification) {
+    final viewport = notification.metrics.viewportDimension;
+    final shrank = _lastViewport != null && viewport < _lastViewport!;
+    _lastViewport = viewport;
+    if (shrank && _autoFollow) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) return;
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      });
+    }
+    return false;
   }
 
   bool _handleUserScroll(UserScrollNotification notification) {
@@ -222,7 +249,7 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
     }
   }
 
-  /// The message being revealed (P23) carries this key so it can be scrolled into view once
+  /// The message being revealed carries this key so it can be scrolled into view once
   /// the lazy list has built it.
   final GlobalKey _revealKey = GlobalKey();
   String? _revealNodeId;
@@ -285,14 +312,17 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                 child: SelectableRegion(
                   selectionControls: _selectionControls,
                   contextMenuBuilder: buildBistreSelectableContextMenu,
-                  child: NotificationListener<UserScrollNotification>(
-                    onNotification: _handleUserScroll,
-                    child: RawScrollbar(
-                      controller: _scrollController,
-                      thumbColor: theme.inkMuted.withValues(alpha: 0.22),
-                      radius: const Radius.circular(999),
-                      thickness: 4,
-                      child: _buildFeedContent(context, theme, l10n, ctrl),
+                  child: NotificationListener<ScrollMetricsNotification>(
+                    onNotification: _handleMetrics,
+                    child: NotificationListener<UserScrollNotification>(
+                      onNotification: _handleUserScroll,
+                      child: RawScrollbar(
+                        controller: _scrollController,
+                        thumbColor: theme.inkMuted.withValues(alpha: 0.22),
+                        radius: const Radius.circular(999),
+                        thickness: 4,
+                        child: _buildFeedContent(context, theme, l10n, ctrl),
+                      ),
                     ),
                   ),
                 ),
@@ -373,7 +403,7 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
 
     final visibleNodes = ctrl.visibleBranchNodes;
     if (visibleNodes.isEmpty && !ctrl.isStreaming) {
-      // A-W 2d: only messages are selectable; clicks on the empty page select nothing.
+      // Only messages are selectable; clicks on the empty page select nothing.
       return SelectionContainer.disabled(
         child: _buildWelcomeDesk(theme, l10n, ctrl),
       );
@@ -384,11 +414,21 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
     return CustomScrollView(
       controller: _scrollController,
       slivers: [
-        const SliverToBoxAdapter(child: SizedBox(height: 12)),
+        SliverToBoxAdapter(
+          child: ctrl.hasEarlierNodes
+              ? EarlierMessagesButton(controller: ctrl)
+              : const SizedBox(height: 12),
+        ),
         SliverList.builder(
           itemCount: itemCount,
           itemBuilder: (context, index) {
             if (index >= visibleNodes.length) {
+              // Finished rows already sit in the feed's checklist. Tool rows change only with
+              // a controller notify, so they are filtered here, never once per delta batch.
+              final liveToolRows = uncommittedToolRows(
+                ctrl.toolActivities,
+                visibleNodes,
+              );
               // Leaf-isolated live reply: only this subtree rebuilds per 16 ms delta batch.
               return _ReadingColumn(
                 child: RepaintBoundary(
@@ -402,7 +442,7 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                       modelId: ctrl.activeModelId,
                       buffer: turn?.text ?? '',
                       thinkingBuffer: turn?.thinking ?? '',
-                      toolActivities: ctrl.toolActivities,
+                      toolActivities: liveToolRows,
                       layoutMode: ctrl.layoutMode,
                       prefs: ctrl.uiPrefs,
                       reduceMotionOverride: ctrl.reduceMotionOverride,
@@ -427,19 +467,50 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
             }
 
             final node = visibleNodes[index];
-            if (node.role == 'compaction_summary') {
+            final asked = askUserQuestionOf(visibleNodes, index);
+            if (asked != null) {
+              final open =
+                  index + 1 == visibleNodes.length && !ctrl.isStreaming;
+              return _ReadingColumn(
+                child: AskUserCard(
+                  question: asked,
+                  onAnswer: open
+                      ? (option) => unawaited(ctrl.submitPassage(option))
+                      : null,
+                ),
+              );
+            }
+            if (isToolStepNode(node)) {
+              // A run of tool steps shows once, as one checklist, at its first node.
+              if (!startsToolSteps(visibleNodes, index)) {
+                return const SizedBox.shrink();
+              }
               return _ReadingColumn(
                 child: RepaintBoundary(
-                  child: _CompactionSummaryCard(
-                    node: node,
-                    onUndo: !ctrl.isStreaming
-                        ? () => unawaited(ctrl.undoCompaction(node.id))
-                        : null,
+                  child: ToolTimelineView(
+                    entries: committedToolEntries(
+                      visibleNodes,
+                      index,
+                      withThinking: ctrl.uiPrefs.showThinkingCards,
+                    ),
+                    collapsed: true,
+                    onRewindCheckpoint: (cpId) =>
+                        unawaited(ctrl.rewindCheckpoint(cpId)),
                   ),
                 ),
               );
             }
+            if (node.role == 'compaction_summary') {
+              return _ReadingColumn(
+                child: RepaintBoundary(
+                  child: _CompactionSummaryCard(node: node, ctrl: ctrl),
+                ),
+              );
+            }
 
+            if (node.role == 'user' && (node.usageMeta?.goalCheck ?? false)) {
+              return const _ReadingColumn(child: _GoalCheckNote());
+            }
             final branchInfo = ctrl.branchInfoFor(node);
             final isLast = index + 1 == itemCount;
             final isPinnedStart = ctrl.pinnedContextNodeId == node.id;
@@ -458,7 +529,9 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                     _PassageItem(
                       node: node,
                       onOpenAttachment: ctrl.openSentAttachment,
+                      attachmentPath: ctrl.sentAttachmentPath,
                       userName: ctrl.settings.userDisplayName.trim(),
+                      userAvatarPath: ctrl.profileAvatarPath,
                       assistantName:
                           ctrl.activeAssistant?.name ??
                           l10n.t(L10nKey.shellRoleAssistant),
@@ -474,8 +547,22 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                       showBottomDivider: !isLast && node.role == 'assistant',
                       reduceMotionOverride: ctrl.reduceMotionOverride,
                       showActionsAtRest:
-                          _isTouchPlatform && index + 2 >= itemCount,
+                          // No hover on touch: the newest turns show their actions.
+                          isTouchPlatform && index + 2 >= itemCount,
                       onCopy: () => unawaited(ctrl.copyText(node.content)),
+                      onCopyPlain: node.content.trim().isEmpty
+                          ? null
+                          : () => unawaited(
+                              ctrl.copyText(markdownToPlainText(node.content)),
+                            ),
+                      onBranchNewChat: !ctrl.isStreaming
+                          ? () => unawaited(ctrl.branchIntoNewChat(node.id))
+                          : null,
+                      onSaveAsSkill:
+                          node.role == 'assistant' &&
+                              node.content.trim().isNotEmpty
+                          ? () => unawaited(ctrl.saveReplyAsSkill(node))
+                          : null,
                       onCopyCode: (code) => unawaited(ctrl.copyText(code)),
                       onSaveCode: (code, language) => ctrl.saveCodeBlock(
                         code,
@@ -491,6 +578,13 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                       onTogglePinReply: () =>
                           unawaited(ctrl.togglePinNode(node.id)),
                       onInspectTurnDetails: () => ctrl.openTurnDetails(node),
+                      onTranslate:
+                          !ctrl.isStreaming && node.content.trim().isNotEmpty
+                          ? () => unawaited(ctrl.translateMessage(node))
+                          : null,
+                      sourceCount: node.role == 'assistant'
+                          ? ctrl.groundingFor(node.id).length
+                          : 0,
                       isSpeaking: ctrl.speakingNodeId == node.id,
                       onSpeak: node.role == 'assistant'
                           ? () => unawaited(
@@ -500,6 +594,14 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                       onEditResend: node.role == 'user' && !ctrl.isStreaming
                           ? (edited) =>
                                 ctrl.editUserMessageAndResend(node.id, edited)
+                          : null,
+                      onEditReply: node.role == 'assistant' && !ctrl.isStreaming
+                          ? (edited) =>
+                                ctrl.editReplyAsNewVersion(node.id, edited)
+                          : null,
+                      isExcluded: ctrl.isExcluded(node.id),
+                      onToggleExcluded: !ctrl.isStreaming
+                          ? () => unawaited(ctrl.toggleNodeExcluded(node.id))
                           : null,
                       onRegenerate:
                           node.role == 'assistant' && !ctrl.isStreaming
@@ -610,9 +712,7 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
     BistreLocalizationController l10n,
     FolioController ctrl,
   ) {
-    final activeProv = ctrl.activeProvider;
-    final activeModel = ctrl.activeModelId;
-    // Quiet empty chat: one rubric-marked line with the model beneath it at the top
+    // Quiet empty chat: one rubric-marked line (the header already names the model) at the top
     // of the reading column; without a key, one setup card. Opening a new chat is a 100+/day
     // action, so nothing animates in.
     return SingleChildScrollView(
@@ -643,18 +743,6 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
                       l10n.t(L10nKey.chatEmptyIntro),
                       role: InkTextRole.titleMedium,
                     ),
-                    if (ctrl.hasConfiguredProvider &&
-                        activeProv != null &&
-                        activeModel.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      InkText(
-                        activeModel,
-                        role: InkTextRole.captionMeta,
-                        color: theme.inkMuted,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -665,790 +753,6 @@ class _FolioMessageFeedState extends State<FolioMessageFeed> {
             ],
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _ProviderSetupBanner extends StatelessWidget {
-  const _ProviderSetupBanner({required this.onOpenProviders});
-
-  final VoidCallback onOpenProviders;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    final l10n = BistreLocalizations.of(context);
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: theme.bgElevated,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: theme.borderHairline),
-          boxShadow: theme.cardShadow,
-        ),
-        child: Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(20, 18, 20, 18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  BistreIcon(
-                    BistreUiIcon.key,
-                    size: 16,
-                    color: theme.accentBrass,
-                  ),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: InkText(
-                      l10n.t(L10nKey.providerSetupTitle),
-                      role: InkTextRole.titleMedium,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              InkText(
-                l10n.t(L10nKey.providerSetupBody),
-                role: InkTextRole.bodyCompact,
-                color: theme.inkSecondary,
-              ),
-              const SizedBox(height: 14),
-              EngravedButton(
-                label: l10n.t(L10nKey.providerSetupCta),
-                primary: true,
-                compact: true,
-                leading: BistreIcon(
-                  BistreUiIcon.key,
-                  size: 13,
-                  color: theme.onAccentWax,
-                ),
-                onPressed: onOpenProviders,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Phones and tablets (no hover): actions stay visible on the newest turns.
-bool get _isTouchPlatform =>
-    defaultTargetPlatform == TargetPlatform.android ||
-    defaultTargetPlatform == TargetPlatform.iOS;
-
-class _PassageItem extends StatefulWidget {
-  const _PassageItem({
-    required this.node,
-    required this.onOpenAttachment,
-    this.userName = '',
-    required this.assistantName,
-    required this.activeProvider,
-    required this.layoutMode,
-    required this.showTokenMetrics,
-    this.prefs = const UiDisplayPrefs(),
-    this.editorialDialogueStyling = false,
-    this.isPinnedContextStart = false,
-    required this.branchInfo,
-    required this.showBottomDivider,
-    required this.reduceMotionOverride,
-    this.showActionsAtRest = false,
-    required this.onCopy,
-    required this.onCopyCode,
-    required this.onSaveCode,
-    required this.onReply,
-    required this.onQuoteThinking,
-    required this.onToggleContextPin,
-    required this.onEditResend,
-    required this.onRegenerate,
-    required this.onDelete,
-    required this.onBranchDelta,
-    this.isPinnedReply = false,
-    this.onTogglePinReply,
-    this.onInspectTurnDetails,
-    this.isSpeaking = false,
-    this.onSpeak,
-  });
-
-  final EngineNode node;
-
-  /// Opens a file sent with this message (P1).
-  final ValueChanged<EngineNodeAttachment> onOpenAttachment;
-
-  /// Settings > Your name; empty shows the plain `You` label.
-  final String userName;
-  final String assistantName;
-  final EngineProvider? activeProvider;
-  final FolioLayoutMode layoutMode;
-  final bool showTokenMetrics;
-
-  /// Settings > Appearance display choices (W8: each one is read here).
-  final UiDisplayPrefs prefs;
-  final bool editorialDialogueStyling;
-  final bool isPinnedContextStart;
-  final bool isPinnedReply;
-  final BranchSlotInfo? branchInfo;
-  final bool showBottomDivider;
-  final bool reduceMotionOverride;
-
-  /// Touch screens have no hover: the newest turns keep their actions visible.
-  final bool showActionsAtRest;
-  final VoidCallback onCopy;
-  final ValueChanged<String> onCopyCode;
-  final Future<void> Function(String code, String language) onSaveCode;
-  final VoidCallback onReply;
-  final ValueChanged<String> onQuoteThinking;
-  final VoidCallback? onToggleContextPin;
-  final VoidCallback? onTogglePinReply;
-  final VoidCallback? onInspectTurnDetails;
-  final bool isSpeaking;
-  final VoidCallback? onSpeak;
-  final Future<bool> Function(String edited)? onEditResend;
-  final VoidCallback? onRegenerate;
-  final VoidCallback? onDelete;
-  final ValueChanged<int>? onBranchDelta;
-
-  @override
-  State<_PassageItem> createState() => _PassageItemState();
-}
-
-class _PassageItemState extends State<_PassageItem>
-    with AutomaticKeepAliveClientMixin<_PassageItem> {
-  bool _hovered = false;
-  bool _focused = false;
-  bool _editing = false;
-  bool _moreActionsOpen = false;
-  final TextEditingController _editCtrl = TextEditingController();
-  final FocusNode _editFocus = FocusNode();
-
-  @override
-  void dispose() {
-    _editCtrl.dispose();
-    _editFocus.dispose();
-    super.dispose();
-  }
-
-  /// U30: an open inline edit keeps its card alive, so scrolling it out of view (with the
-  /// focus elsewhere) never throws the half-written text away.
-  @override
-  bool get wantKeepAlive => _editing;
-
-  void _setEditing(bool editing) {
-    setState(() => _editing = editing);
-    updateKeepAlive();
-  }
-
-  void _startEdit() {
-    _editCtrl.text = widget.node.content;
-    _setEditing(true);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _editFocus.requestFocus();
-    });
-  }
-
-  Future<void> _submitEdit() async {
-    final cb = widget.onEditResend;
-    if (cb == null) return;
-    final ok = await cb(_editCtrl.text);
-    if (ok && mounted) {
-      _setEditing(false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-    final theme = BistreTheme.of(context);
-    final l10n = BistreLocalizations.of(context);
-    final isAssistant = widget.node.role == 'assistant';
-    final speaker = isAssistant
-        ? widget.assistantName
-        : widget.userName.isNotEmpty
-        ? widget.userName
-        : l10n.t(L10nKey.shellRoleUser);
-    final usage = isAssistant ? widget.node.usageMeta : null;
-    final actionBar = _buildActionBar(theme, l10n, isAssistant);
-
-    final contentBody = _editing
-        ? _buildInlineEditor(theme, l10n)
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (isAssistant &&
-                  usage != null &&
-                  usage.hasThinking &&
-                  widget.prefs.showThinkingCards)
-                ReasoningBlock(
-                  thinkingText: usage.thinkingText,
-                  durationMs: usage.thinkingDurationMs,
-                  onQuoteIntoComposer: widget.onQuoteThinking,
-                  autoCollapse: widget.prefs.autoCollapseThinking,
-                ),
-              if (!isAssistant && !widget.prefs.renderUserMarkdown)
-                InkText(widget.node.content, color: theme.inkPrimary)
-              else
-                MarkdownFolioView(
-                  onSaveCode: (code, language) =>
-                      unawaited(widget.onSaveCode(code, language)),
-                  markdown: widget.node.content,
-                  onCopyCode: widget.onCopyCode,
-                  editorialDialogueStyling: widget.editorialDialogueStyling,
-                  renderMath: widget.prefs.renderMathFormulas,
-                  foldCodeBlocks: widget.prefs.autoCollapseCodeBlocks,
-                ),
-              // P1: the files sent with this message, each opening its preview.
-              if (widget.node.attachments.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsetsDirectional.only(top: 8),
-                  child: Wrap(
-                    spacing: BistreSpacing.s8,
-                    runSpacing: BistreSpacing.s4,
-                    children: [
-                      for (final a in widget.node.attachments)
-                        EngravedButton(
-                          label: a.name,
-                          compact: true,
-                          onPressed: () => widget.onOpenAttachment(a),
-                        ),
-                    ],
-                  ),
-                ),
-              if (isAssistant &&
-                  widget.showTokenMetrics &&
-                  usage != null &&
-                  (usage.hasTokens || usage.modelId.isNotEmpty)) ...[
-                const SizedBox(height: 10),
-                _buildMetricsFooter(theme, l10n, usage),
-              ],
-            ],
-          );
-
-    final Widget inner;
-    if (widget.layoutMode == FolioLayoutMode.bubbles) {
-      if (isAssistant) {
-        inner = Padding(
-          padding: const EdgeInsetsDirectional.symmetric(vertical: 6),
-          child: FolioSurface(
-            tone: FolioTone.elevated,
-            padding: const EdgeInsetsDirectional.fromSTEB(16, 12, 16, 14),
-            borderRadius: 14,
-            boxShadow: theme.cardShadow,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildSpeakerHeader(theme, speaker, true, usage, actionBar),
-                const SizedBox(height: 8),
-                contentBody,
-              ],
-            ),
-          ),
-        );
-      } else {
-        inner = Align(
-          alignment: AlignmentDirectional.centerEnd,
-          child: Padding(
-            padding: const EdgeInsetsDirectional.only(
-              top: 6,
-              bottom: 6,
-              start: 48,
-            ),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
-              child: FolioSurface(
-                padding: const EdgeInsetsDirectional.fromSTEB(15, 10, 15, 10),
-                customBorderRadius: const BorderRadiusDirectional.only(
-                  topStart: Radius.circular(16),
-                  topEnd: Radius.circular(4),
-                  bottomStart: Radius.circular(16),
-                  bottomEnd: Radius.circular(16),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildSpeakerHeader(theme, speaker, false, null, actionBar),
-                    const SizedBox(height: 4),
-                    contentBody,
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      }
-    } else if (!isAssistant) {
-      inner = Padding(
-        padding: const EdgeInsetsDirectional.only(
-          top: BistreSpacing.s8,
-          bottom: BistreSpacing.s12,
-        ),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: theme.bgSurface.withValues(
-              alpha: theme.isDark ? 0.58 : 0.65,
-            ),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(16, 12, 14, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildSpeakerHeader(theme, speaker, false, null, actionBar),
-                const SizedBox(height: 6),
-                contentBody,
-              ],
-            ),
-          ),
-        ),
-      );
-    } else {
-      inner = Padding(
-        padding: const EdgeInsetsDirectional.only(
-          top: BistreSpacing.s8,
-          bottom: BistreSpacing.s16,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSpeakerHeader(theme, speaker, true, usage, actionBar),
-            const SizedBox(height: 10),
-            contentBody,
-            if (widget.showBottomDivider) ...[
-              const SizedBox(height: BistreSpacing.s24),
-              const FolioDivider(),
-            ],
-          ],
-        ),
-      );
-    }
-
-    return FocusableActionDetector(
-      onShowHoverHighlight: (v) => setState(() => _hovered = v),
-      onShowFocusHighlight: (v) => setState(() => _focused = v),
-      child: ContextMenuRegion(
-        entries: _editing
-            ? const <ContextMenuEntry>[]
-            : _menuEntries(l10n, isAssistant),
-        child: inner,
-      ),
-    );
-  }
-
-  /// Right-click menu mirroring the message action bar plus pin & turn details.
-  List<ContextMenuEntry> _menuEntries(
-    BistreLocalizationController l10n,
-    bool isAssistant,
-  ) {
-    final w = widget;
-    final edit = w.onEditResend;
-    final regenerate = w.onRegenerate;
-    final pin = w.onToggleContextPin;
-    final pinReply = w.onTogglePinReply;
-    final inspectTurn = w.onInspectTurnDetails;
-    final delete = w.onDelete;
-    return <ContextMenuEntry>[
-      if (isAssistant)
-        ContextMenuEntry(
-          label: l10n.t(L10nKey.chatActionReply),
-          icon: BistreUiIcon.reply,
-          onSelected: w.onReply,
-        ),
-      if (!isAssistant && edit != null)
-        ContextMenuEntry(
-          label: l10n.t(L10nKey.chatActionEdit),
-          icon: BistreUiIcon.edit,
-          onSelected: _startEdit,
-        ),
-      ContextMenuEntry(
-        label: l10n.t(L10nKey.chatActionCopy),
-        icon: BistreUiIcon.copy,
-        onSelected: w.onCopy,
-      ),
-      if (regenerate != null)
-        ContextMenuEntry(
-          label: l10n.t(L10nKey.chatActionRegenerate),
-          icon: BistreUiIcon.refresh,
-          onSelected: regenerate,
-        ),
-      if (pinReply != null)
-        ContextMenuEntry(
-          label: w.isPinnedReply
-              ? l10n.t(L10nKey.chatUnpinReply)
-              : l10n.t(L10nKey.chatPinReply),
-          icon: w.isPinnedReply ? BistreUiIcon.pinFilled : BistreUiIcon.pin,
-          onSelected: pinReply,
-        ),
-      if (inspectTurn != null)
-        ContextMenuEntry(
-          label: l10n.t(L10nKey.chatTurnDetails),
-          icon: BistreUiIcon.info,
-          onSelected: inspectTurn,
-        ),
-      if (pin != null)
-        ContextMenuEntry(
-          label: l10n.t(L10nKey.chatPinContextStart),
-          icon: w.isPinnedContextStart
-              ? BistreUiIcon.pinFilled
-              : BistreUiIcon.pin,
-          onSelected: pin,
-        ),
-      if (delete != null)
-        ContextMenuEntry(
-          label: l10n.t(L10nKey.chatActionDelete),
-          icon: BistreUiIcon.trash,
-          onSelected: delete,
-          destructive: true,
-        ),
-    ];
-  }
-
-  Widget _buildInlineEditor(
-    BistreThemeData theme,
-    BistreLocalizationController l10n,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        QuillInput(
-          controller: _editCtrl,
-          focusNode: _editFocus,
-          placeholder: l10n.t(L10nKey.shellComposerPlaceholder),
-          maxLines: 6,
-          submitOnEnter: false,
-          onSubmitted: () => unawaited(_submitEdit()),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            EngravedButton(
-              label: l10n.t(L10nKey.threadCancel),
-              compact: true,
-              onPressed: () => _setEditing(false),
-            ),
-            const SizedBox(width: 8),
-            EngravedButton(
-              label: l10n.t(L10nKey.chatActionSaveResend),
-              primary: true,
-              compact: true,
-              onPressed: () => unawaited(_submitEdit()),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMetricsFooter(
-    BistreThemeData theme,
-    BistreLocalizationController l10n,
-    NodeUsageMeta usage,
-  ) {
-    final parts = <String>[];
-    if (usage.hasTokens) {
-      parts.add(
-        l10n.t(L10nKey.chatTokensMeta, <String, Object?>{
-          'input': usage.inputTokens,
-          'output': usage.outputTokens,
-        }),
-      );
-    }
-    if (usage.costMicros > 0) {
-      parts.add(
-        FolioController.formatMicrosUsd(usage.costMicros, showSubCent: true),
-      );
-    }
-    if (parts.isEmpty) return const SizedBox.shrink();
-
-    return Row(
-      children: [
-        if (usage.modelId.isNotEmpty) ...[
-          LabIcon(
-            iconSlug: usage.iconSlug.isNotEmpty
-                ? usage.iconSlug
-                : widget.activeProvider?.iconSlug,
-            customIconPath: widget.activeProvider?.customIconPath,
-            dialect: widget.activeProvider?.dialect,
-            providerName: usage.providerName.isNotEmpty
-                ? usage.providerName
-                : widget.activeProvider?.name,
-            modelId: usage.modelId,
-            size: 13,
-          ),
-          const SizedBox(width: 6),
-        ],
-        Expanded(
-          child: Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: UsageDetailsPill(
-              usage: usage,
-              summaryText: l10n.joinMeta(parts),
-              reduceMotionOverride: widget.reduceMotionOverride,
-            ),
-          ),
-        ),
-        if (!usage.costKnown && usage.hasTokens)
-          CostUnavailableButton(usage: usage),
-      ],
-    );
-  }
-
-  /// The reply's model (and provider) under Settings > Appearance, or null when hidden.
-  String? _modelLabel(NodeUsageMeta? usage) {
-    final prefs = widget.prefs;
-    if (usage == null || usage.modelId.isEmpty || !prefs.showModelName) {
-      return null;
-    }
-    final l10n = BistreLocalizations.of(context);
-    // Each name is its own direction run; the sentence follows the app's direction.
-    if (!prefs.showProviderAfterModel || usage.providerName.isEmpty) {
-      return l10n.isolate(usage.modelId);
-    }
-    return l10n.t(L10nKey.shellModelOnProvider, <String, Object?>{
-      'model': l10n.isolate(usage.modelId),
-      'provider': l10n.isolate(usage.providerName),
-    });
-  }
-
-  Widget _buildSpeakerHeader(
-    BistreThemeData theme,
-    String speaker,
-    bool isAssistant,
-    NodeUsageMeta? usage,
-    Widget actionBar,
-  ) {
-    final l10n = BistreLocalizations.of(context);
-    return Row(
-      children: [
-        if (isAssistant)
-          LabIcon(
-            iconSlug: (usage != null && usage.iconSlug.isNotEmpty)
-                ? usage.iconSlug
-                : widget.activeProvider?.iconSlug,
-            customIconPath: widget.activeProvider?.customIconPath,
-            dialect: widget.activeProvider?.dialect,
-            providerName: (usage != null && usage.providerName.isNotEmpty)
-                ? usage.providerName
-                : widget.activeProvider?.name,
-            modelId: usage?.modelId,
-            size: 15,
-          )
-        else
-          BistreIcon(BistreUiIcon.edit, size: 14, color: theme.accentBrass),
-        const SizedBox(width: BistreSpacing.s8),
-        // One line: the name, then the model label, which shortens first. The free room
-        // stays before the actions, so they sit at the end of the row.
-        Expanded(
-          child: Text.rich(
-            TextSpan(
-              children: <InlineSpan>[
-                TextSpan(
-                  text: l10n.isolate(speaker),
-                  style: BistreTypography.labelStrong(
-                    isAssistant ? theme.inkPrimary : theme.inkSecondary,
-                    config: theme.typography,
-                  ),
-                ),
-                if (_modelLabel(usage) case final label?) ...[
-                  const WidgetSpan(child: SizedBox(width: BistreSpacing.s8)),
-                  TextSpan(
-                    text: label,
-                    style: BistreTypography.captionMeta(
-                      theme.inkMuted,
-                      config: theme.typography,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        actionBar,
-      ],
-    );
-  }
-
-  Widget _buildActionBar(
-    BistreThemeData theme,
-    BistreLocalizationController l10n,
-    bool isAssistant,
-  ) {
-    final branch = widget.branchInfo;
-    // Controls appear when needed (DESIGN §1.1): hidden at rest on pointer
-    // devices, revealed on hover or keyboard focus (focusing a hidden button reveals the bar).
-    final alwaysShow =
-        branch != null ||
-        _hovered ||
-        _focused ||
-        _editing ||
-        widget.showActionsAtRest;
-
-    return AnimatedOpacity(
-      opacity: alwaysShow ? 1.0 : 0.0,
-      duration: BistreMotion.overlayDuration(
-        context,
-        reduceMotionOverride: widget.reduceMotionOverride,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (branch != null && widget.onBranchDelta != null) ...[
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: theme.bgSurface,
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: theme.borderHairline),
-              ),
-              child: Padding(
-                padding: const EdgeInsetsDirectional.symmetric(
-                  horizontal: 3,
-                  vertical: 1,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    BistreIconButton(
-                      icon: BistreUiIcon.chevronStart,
-                      size: 12,
-                      dimension: 22,
-                      semanticsLabel: l10n.t(L10nKey.chatBranchPrev),
-                      onPressed: branch.index > 0
-                          ? () => widget.onBranchDelta!(-1)
-                          : null,
-                    ),
-                    Padding(
-                      padding: const EdgeInsetsDirectional.symmetric(
-                        horizontal: 3,
-                      ),
-                      child: InkText(
-                        l10n.t(L10nKey.chatBranchIndicator, <String, Object?>{
-                          'current': branch.index + 1,
-                          'total': branch.total,
-                        }),
-                        role: InkTextRole.captionMeta,
-                        color: theme.accentBrass,
-                      ),
-                    ),
-                    BistreIconButton(
-                      icon: BistreUiIcon.chevronEnd,
-                      size: 12,
-                      dimension: 22,
-                      semanticsLabel: l10n.t(L10nKey.chatBranchNext),
-                      onPressed: branch.index + 1 < branch.total
-                          ? () => widget.onBranchDelta!(1)
-                          : null,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-          ],
-          if (!isAssistant && widget.onEditResend != null && !_editing)
-            BistreIconButton(
-              icon: BistreUiIcon.edit,
-              size: 14,
-              dimension: 28,
-              semanticsLabel: l10n.t(L10nKey.chatActionEdit),
-              onPressed: _startEdit,
-            ),
-          BistreIconButton(
-            icon: BistreUiIcon.copy,
-            size: 14,
-            dimension: 28,
-            semanticsLabel: l10n.t(L10nKey.chatActionCopy),
-            onPressed: widget.onCopy,
-          ),
-          if (widget.onSpeak != null)
-            BistreIconButton(
-              icon: widget.isSpeaking ? BistreUiIcon.stop : BistreUiIcon.volume,
-              size: 14,
-              dimension: 28,
-              active: widget.isSpeaking,
-              color: widget.isSpeaking ? theme.accentWax : null,
-              semanticsLabel: widget.isSpeaking
-                  ? l10n.t(L10nKey.chatActionStop)
-                  : l10n.t(L10nKey.chatActionListen),
-              onPressed: widget.onSpeak,
-            ),
-          if (widget.onRegenerate != null)
-            BistreIconButton(
-              icon: BistreUiIcon.refresh,
-              size: 14,
-              dimension: 28,
-              semanticsLabel: l10n.t(L10nKey.chatActionRegenerate),
-              onPressed: widget.onRegenerate,
-            ),
-          if (_moreActionsOpen) ...[
-            if (isAssistant)
-              BistreIconButton(
-                icon: BistreUiIcon.reply,
-                size: 14,
-                dimension: 28,
-                semanticsLabel: l10n.t(L10nKey.chatActionReply),
-                onPressed: widget.onReply,
-              ),
-            if (widget.onTogglePinReply != null && !_editing)
-              BistreIconButton(
-                icon: widget.isPinnedReply
-                    ? BistreUiIcon.pinFilled
-                    : BistreUiIcon.pin,
-                size: 13,
-                dimension: 28,
-                color: widget.isPinnedReply
-                    ? theme.accentBrass
-                    : theme.inkMuted,
-                semanticsLabel: widget.isPinnedReply
-                    ? l10n.t(L10nKey.chatUnpinReply)
-                    : l10n.t(L10nKey.chatPinReply),
-                onPressed: widget.onTogglePinReply,
-              ),
-            if (widget.onToggleContextPin != null && !_editing)
-              BistreIconButton(
-                icon: BistreUiIcon.branchTree,
-                size: 13,
-                dimension: 28,
-                color: widget.isPinnedContextStart
-                    ? theme.accentBrass
-                    : theme.inkMuted,
-                semanticsLabel: l10n.t(L10nKey.chatPinContextStart),
-                onPressed: widget.onToggleContextPin,
-              ),
-            if (widget.onInspectTurnDetails != null)
-              BistreIconButton(
-                icon: BistreUiIcon.info,
-                size: 13,
-                dimension: 28,
-                semanticsLabel: l10n.t(L10nKey.chatTurnDetails),
-                onPressed: widget.onInspectTurnDetails,
-              ),
-            if (widget.onDelete != null && !_editing)
-              BistreIconButton(
-                icon: BistreUiIcon.trash,
-                size: 14,
-                dimension: 28,
-                semanticsLabel: l10n.t(L10nKey.chatActionDelete),
-                onPressed: widget.onDelete,
-              ),
-          ],
-          BistreIconButton(
-            icon: _moreActionsOpen
-                ? BistreUiIcon.chevronEnd
-                : BistreUiIcon.sliders,
-            size: 13,
-            dimension: 28,
-            active: _moreActionsOpen,
-            semanticsLabel: l10n.t(L10nKey.chatActionMore),
-            onPressed: () =>
-                setState(() => _moreActionsOpen = !_moreActionsOpen),
-          ),
-        ],
       ),
     );
   }

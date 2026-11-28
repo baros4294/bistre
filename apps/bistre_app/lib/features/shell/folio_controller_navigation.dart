@@ -19,8 +19,7 @@ extension FolioNavigationAndSettingsActions on FolioController {
     try {
       await _gateway.refreshPrices();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -85,7 +84,7 @@ extension FolioNavigationAndSettingsActions on FolioController {
     await persistWindowBounds(bounds, immediate: true);
   }
 
-  /// U22: a resize sends bounds on every tick; they join the quiet, debounced settings save
+  /// A resize sends bounds on every tick; they join the quiet, debounced settings save
   /// (one write after the window settles), and the save always carries the latest settings,
   /// so a change made meanwhile is never undone.
   Future<void> persistWindowBounds(
@@ -354,7 +353,7 @@ extension FolioNavigationAndSettingsActions on FolioController {
       closeSettings();
       return;
     }
-    // D3/U6: Esc never stops a reply from here (it may come from any text field); only the
+    // Esc never stops a reply from here (it may come from any text field); only the
     // empty composer, the Stop button, and the stop shortcut do.
     if (_quotedExcerpt != null) {
       clearQuote();
@@ -375,9 +374,7 @@ extension FolioNavigationAndSettingsActions on FolioController {
 
   void replyToPassage(String content) {
     final compact = content.replaceAll(RegExp(r'\s+'), ' ').trim();
-    _quotedExcerpt = compact.length > 96
-        ? '${compact.substring(0, 96)}...'
-        : compact;
+    _quotedExcerpt = clipText(compact, 96);
     _notify();
   }
 
@@ -456,8 +453,7 @@ extension FolioNavigationAndSettingsActions on FolioController {
       }
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 

@@ -11,6 +11,8 @@ import 'bistre_theme.dart';
 import 'hover_hint.dart';
 import 'press_feedback.dart';
 
+part 'ink_primitive_painters.dart';
+
 /// 1. `BistreScaffold`: Edge-to-edge inset-safe page shell (Android 15/16 compliant).
 class BistreScaffold extends StatelessWidget {
   const BistreScaffold({
@@ -190,11 +192,15 @@ class EngravedButton extends StatefulWidget {
     required this.onPressed,
     this.primary = false,
     this.leading,
+    this.trailing,
     this.compact = false,
     this.semanticsLabel,
   });
 
   final String label;
+
+  /// A small mark after the label, such as the chevron of a picker that opens a list.
+  final Widget? trailing;
 
   /// A fuller name when [label] is shortened (e.g. `Auto` for `Thinking: Auto`): screen
   /// readers announce it and a hover hint shows it.
@@ -240,7 +246,7 @@ class _EngravedButtonState extends State<EngravedButton> {
         : theme.borderHairline;
     final minH = widget.compact ? 34.0 : 38.0;
 
-    // Compact controls still take taps across the minimum target (DESIGN.md §7).
+    // Compact controls still take taps across the minimum target (design.md §7).
     return TapTargetExpander(
       minSize: minTapTarget,
       child: HoverHint(
@@ -341,6 +347,10 @@ class _EngravedButtonState extends State<EngravedButton> {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
+                              if (widget.trailing != null) ...[
+                                const SizedBox(width: 6),
+                                widget.trailing!,
+                              ],
                             ],
                           ),
                         ),
@@ -418,54 +428,6 @@ class WaxSealBadge extends StatelessWidget {
   }
 }
 
-class _SealGlyphPainter extends CustomPainter {
-  const _SealGlyphPainter({required this.color, required this.status});
-
-  final Color color;
-  final WaxSealStatus status;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-    final center = Offset(size.width / 2, size.height / 2);
-    switch (status) {
-      case WaxSealStatus.ok:
-        canvas.drawCircle(center, size.width * 0.42, paint);
-      case WaxSealStatus.warn:
-        final path = Path()
-          ..moveTo(size.width / 2, 0)
-          ..lineTo(size.width, size.height)
-          ..lineTo(0, size.height)
-          ..close();
-        canvas.drawPath(path, paint);
-      case WaxSealStatus.error:
-        canvas.drawRect(
-          Rect.fromCenter(
-            center: center,
-            width: size.width * 0.78,
-            height: size.height * 0.78,
-          ),
-          paint,
-        );
-      case WaxSealStatus.neutral:
-        final r = size.width * 0.38;
-        final diamond = Path()
-          ..moveTo(center.dx, center.dy - r)
-          ..lineTo(center.dx + r, center.dy)
-          ..lineTo(center.dx, center.dy + r)
-          ..lineTo(center.dx - r, center.dy)
-          ..close();
-        canvas.drawPath(diamond, paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_SealGlyphPainter oldDelegate) =>
-      oldDelegate.color != color || oldDelegate.status != status;
-}
-
 /// 6. `QuillInput`: Pure `EditableText` composer safe for Vietnamese Telex/VNI & CJK IMEs.
 class QuillInput extends StatefulWidget {
   const QuillInput({
@@ -500,7 +462,7 @@ class QuillInput extends StatefulWidget {
   /// A pointer down outside the field while it has focus (commit-on-click-away editors).
   final TapRegionCallback? onTapOutside;
 
-  /// The field's accessible name; the placeholder when omitted (U27).
+  /// The field's accessible name; the placeholder when omitted.
   final String? semanticsLabel;
 
   @override
@@ -566,7 +528,6 @@ class _QuillInputState extends State<QuillInput>
   }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
-    if (!widget.submitOnEnter) return KeyEventResult.ignored;
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     if (event.logicalKey != LogicalKeyboardKey.enter) {
       return KeyEventResult.ignored;
@@ -575,7 +536,12 @@ class _QuillInputState extends State<QuillInput>
     if (widget.controller.value.composing.isValid) {
       return KeyEventResult.ignored;
     }
-    if (HardwareKeyboard.instance.isShiftPressed) {
+    final keys = HardwareKeyboard.instance;
+    if (keys.isShiftPressed) return KeyEventResult.ignored;
+    // Ctrl+Enter (Cmd+Enter) always submits; plain Enter only when [submitOnEnter].
+    if (!widget.submitOnEnter &&
+        !keys.isControlPressed &&
+        !keys.isMetaPressed) {
       return KeyEventResult.ignored;
     }
     widget.onSubmitted();
@@ -588,7 +554,7 @@ class _QuillInputState extends State<QuillInput>
     final isEmpty = widget.controller.text.isEmpty;
 
     final isMultiline = !widget.obscureText && widget.minLines > 1;
-    // A-W 2a: a one-line field always submits on Enter (`submitOnEnter` only shapes the
+    // A one-line field always submits on Enter (`submitOnEnter` only shapes the
     // multi-line composer, where Enter may also add a line).
     final singleLine = widget.obscureText || widget.maxLines == 1;
     final editorStack = Stack(
@@ -598,7 +564,7 @@ class _QuillInputState extends State<QuillInput>
       children: [
         if (isEmpty)
           IgnorePointer(
-            // U27: the field carries the name; the drawn placeholder is not read twice.
+            // The field carries the name; the drawn placeholder is not read twice.
             child: ExcludeSemantics(
               child: InkText(
                 widget.placeholder,
@@ -680,23 +646,6 @@ class _QuillInputState extends State<QuillInput>
   }
 }
 
-class _QuillSelectionGestureDetectorBuilder
-    extends TextSelectionGestureDetectorBuilder {
-  _QuillSelectionGestureDetectorBuilder({required _QuillInputState state})
-    : _state = state,
-      super(delegate: state);
-
-  final _QuillInputState _state;
-
-  @override
-  void onSingleTapUp(TapDragUpDetails details) {
-    super.onSingleTapUp(details);
-    if (!_state.widget.focusNode.hasFocus) {
-      _state.widget.focusNode.requestFocus();
-    }
-  }
-}
-
 /// 7. `FolioDivider`: Subtle 1px translucent hairline divider.
 class FolioDivider extends StatelessWidget {
   const FolioDivider({super.key, this.vertical = false});
@@ -722,12 +671,16 @@ class InkChip extends StatefulWidget {
     required this.selected,
     required this.onSelected,
     this.semanticsLabel,
+    this.leading,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onSelected;
   final String? semanticsLabel;
+
+  /// Drawn before the label (a format chip's shape).
+  final Widget? leading;
 
   @override
   State<InkChip> createState() => _InkChipState();
@@ -739,7 +692,7 @@ class _InkChipState extends State<InkChip> {
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
-    // Compact controls still take taps across the minimum target (DESIGN.md §7).
+    // Compact controls still take taps across the minimum target (design.md §7).
     return TapTargetExpander(
       minSize: minTapTarget,
       child: PressFeedback(
@@ -785,12 +738,23 @@ class _InkChipState extends State<InkChip> {
                     child: Center(
                       widthFactor: 1,
                       heightFactor: 1,
-                      child: InkText(
-                        widget.label,
-                        role: InkTextRole.captionMeta,
-                        color: widget.selected
-                            ? theme.inkPrimary
-                            : theme.inkSecondary,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (widget.leading case final leading?) ...[
+                            leading,
+                            const SizedBox(width: 6),
+                          ],
+                          Flexible(
+                            child: InkText(
+                              widget.label,
+                              role: InkTextRole.captionMeta,
+                              color: widget.selected
+                                  ? theme.inkPrimary
+                                  : theme.inkSecondary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -1028,45 +992,4 @@ class _EngravedIconState extends State<EngravedIcon> {
     }
     return Semantics(image: true, label: widget.semanticsLabel, child: vector);
   }
-}
-
-class _VectorPicturePainter extends CustomPainter {
-  const _VectorPicturePainter({required this.pictureInfo, this.color});
-
-  final PictureInfo pictureInfo;
-  final Color? color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final srcSize = pictureInfo.size;
-    if (srcSize.width <= 0 || srcSize.height <= 0 || size.isEmpty) return;
-
-    final fitted = applyBoxFit(BoxFit.contain, srcSize, size);
-    final dst = fitted.destination;
-    final sx = dst.width / srcSize.width;
-    final sy = dst.height / srcSize.height;
-    final dx = (size.width - dst.width) / 2.0;
-    final dy = (size.height - dst.height) / 2.0;
-
-    canvas.save();
-    if (color != null) {
-      canvas.saveLayer(
-        Offset.zero & size,
-        Paint()..colorFilter = ColorFilter.mode(color!, BlendMode.srcIn),
-      );
-    }
-    canvas
-      ..translate(dx, dy)
-      ..scale(sx, sy)
-      ..drawPicture(pictureInfo.picture);
-    if (color != null) {
-      canvas.restore();
-    }
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(_VectorPicturePainter oldDelegate) =>
-      !identical(oldDelegate.pictureInfo, pictureInfo) ||
-      oldDelegate.color != color;
 }

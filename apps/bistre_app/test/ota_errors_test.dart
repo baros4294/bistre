@@ -38,9 +38,7 @@ void main() {
     },
   );
 
-  testWidgets('a failed update download offers Open Updates (A-W 7d)', (
-    tester,
-  ) async {
+  testWidgets('a failed update download offers Open Updates', (tester) async {
     final gateway = FakeEngineGateway(seedConnectedOpenAi: true)
       ..stageUpdateFailure = 'diag.ota.integrity_failed:asset_mismatch';
     final shell = await ShellHarness.pump(tester, gateway: gateway);
@@ -54,9 +52,7 @@ void main() {
     await tester.pump(const Duration(seconds: 7));
   });
 
-  testWidgets('notice close buttons say Dismiss, not Cancel (A-W 7e)', (
-    tester,
-  ) async {
+  testWidgets('notice close buttons say Dismiss, not Cancel', (tester) async {
     final shell = await ShellHarness.pump(tester);
     shell.controller.showToast(L10nKey.toastCopied);
     await tester.pump();

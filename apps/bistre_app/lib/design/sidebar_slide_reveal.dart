@@ -59,80 +59,27 @@ mixin _DockMotion<T extends StatefulWidget>
   }
 }
 
-/// Horizontal reveal for the trailing docks (inspector, Studio). The panel keeps a fixed width
-/// and is clipped by the reveal; it stays mounted while closed.
-class SidebarSlideReveal extends StatefulWidget {
-  const SidebarSlideReveal({
-    super.key,
-    required this.open,
-    required this.child,
-    this.fromTrailingEdge = false,
-    this.reduceMotionOverride = false,
-  });
-
-  final bool open;
-  final Widget child;
-
-  /// `false` for a leading panel, `true` for a trailing dock.
-  final bool fromTrailingEdge;
-  final bool reduceMotionOverride;
-
-  @override
-  State<SidebarSlideReveal> createState() => _SidebarSlideRevealState();
-}
-
-class _SidebarSlideRevealState extends State<SidebarSlideReveal>
-    with SingleTickerProviderStateMixin, _DockMotion {
-  @override
-  bool get dockOpen => widget.open;
-  @override
-  bool get dockReduceMotionOverride => widget.reduceMotionOverride;
-
-  @override
-  void didUpdateWidget(SidebarSlideReveal oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.open != widget.open) moveDock();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final align = widget.fromTrailingEdge
-        ? AlignmentDirectional.centerStart
-        : AlignmentDirectional.centerEnd;
-    return AnimatedBuilder(
-      animation: progress,
-      child: RepaintBoundary(child: widget.child),
-      builder: (context, child) {
-        final t = progress.value;
-        return ClipRect(
-          clipBehavior: t < 1 ? Clip.hardEdge : Clip.none,
-          child: Align(
-            alignment: align,
-            widthFactor: t,
-            child: hiddenWhenClosed(child!, t),
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// The leading sidebar beside the main area (A-W 3a). The main area is laid out once, at its
-/// final width, when the sidebar is toggled; while the sidebar slides in or out, both are only
-/// moved, so the chat never re-lays out (re-wraps text, shifts titles) on every frame. The
-/// sidebar keeps its own width and stays mounted while closed. RTL slides from the right.
+/// A docked panel beside the main area: the sidebar at the leading edge, or a trailing dock
+/// (inspector, Studio) with [trailing]. The main area is laid out once, at its final width,
+/// when the panel is toggled; while the panel slides in or out, both are only moved, so the
+/// chat never re-lays out (re-wraps text, shifts titles) on every frame. The panel keeps its
+/// own width and stays mounted while closed. RTL mirrors both edges.
 class SidebarDock extends StatefulWidget {
   const SidebarDock({
     super.key,
     required this.open,
     required this.sidebar,
     required this.child,
+    this.trailing = false,
     this.reduceMotionOverride = false,
   });
 
   final bool open;
   final Widget sidebar;
   final Widget child;
+
+  /// The panel sits at the trailing edge (the end in reading order).
+  final bool trailing;
   final bool reduceMotionOverride;
 
   @override
@@ -160,7 +107,7 @@ class _SidebarDockState extends State<SidebarDock>
         delegate: _SidebarDockDelegate(
           progress: progress,
           open: widget.open,
-          rtl: rtl,
+          fromRight: rtl != widget.trailing,
         ),
         children: [
           LayoutId(
@@ -188,12 +135,14 @@ class _SidebarDockDelegate extends MultiChildLayoutDelegate {
   _SidebarDockDelegate({
     required this.progress,
     required this.open,
-    required this.rtl,
+    required this.fromRight,
   }) : super(relayout: progress);
 
   final Animation<double> progress;
   final bool open;
-  final bool rtl;
+
+  /// The panel enters from the right edge (a leading panel in RTL, a trailing one in LTR).
+  final bool fromRight;
 
   @override
   void performLayout(Size size) {
@@ -214,7 +163,7 @@ class _SidebarDockDelegate extends MultiChildLayoutDelegate {
       BoxConstraints.tightFor(width: mainWidth, height: size.height),
     );
     final shown = width * progress.value;
-    if (rtl) {
+    if (fromRight) {
       positionChild(_DockSlot.sidebar, Offset(size.width - shown, 0));
       positionChild(_DockSlot.main, Offset(size.width - shown - mainWidth, 0));
     } else {
@@ -226,6 +175,6 @@ class _SidebarDockDelegate extends MultiChildLayoutDelegate {
   @override
   bool shouldRelayout(_SidebarDockDelegate oldDelegate) =>
       oldDelegate.open != open ||
-      oldDelegate.rtl != rtl ||
+      oldDelegate.fromRight != fromRight ||
       oldDelegate.progress != progress;
 }

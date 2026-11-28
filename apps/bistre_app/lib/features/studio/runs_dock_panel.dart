@@ -11,14 +11,14 @@ import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../../platform/power_guard_host.dart';
 import '../shell/folio_controller.dart';
+import 'chat_files_tab.dart';
 
 /// Multi-tab right-hand Studio Pane (`328px` wide, hidden by default) hosting:
 /// - `[Runs]`: OS Sleep & Disruption Guard, active/recent SQLite-journaled runs, `INDETERMINATE_HALT`
 ///   reconciliation, and mid-stream steering queue.
-/// - `[Files]`: Touched workspace files / checkpoints with 1-click Rewind & inline `"Comment in chat"`
-///   chips (`@file:L1-L20` attached straight into composer).
+/// - `[Files]`: the chat's files, sent, made, and edited (`chat_files_tab.dart`).
 /// - `[Story]` & `[Prompt]`: Story Bible & Live Prompt Inspector tabs.
-/// - `[Sources]`: web pages the chat's replies used (B2), parsed in core.
+/// - `[Sources]`: web pages the chat's replies used, parsed in core.
 class RunsDockPanel extends StatelessWidget {
   const RunsDockPanel({
     super.key,
@@ -44,7 +44,6 @@ class RunsDockPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);
-    final power = controller.powerStatus;
     final activeTab = controller.studioTab;
 
     return SizedBox(
@@ -71,8 +70,6 @@ class RunsDockPanel extends StatelessWidget {
                       color: theme.inkPrimary,
                     ),
                   ),
-                  if (power.keepAwakeActive)
-                    WaxSealBadge(label: l10n.t(L10nKey.studioAwakeBadge)),
                   const SizedBox(width: 4),
                   BistreIconButton(
                     icon: BistreUiIcon.close,
@@ -86,27 +83,25 @@ class RunsDockPanel extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsetsDirectional.fromSTEB(12, 0, 12, 8),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    for (var i = 0; i < _tabs.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 4),
-                      InkChip(
-                        label: l10n.t(_tabs[i].$2),
-                        selected: activeTab == _tabs[i].$1,
-                        onSelected: () => controller.setStudioTab(_tabs[i].$1),
-                      ),
-                    ],
-                  ],
-                ),
+              // Every tab stays in view: the row wraps instead of clipping.
+              child: Wrap(
+                spacing: 4,
+                runSpacing: 4,
+                children: [
+                  for (final tab in _tabs)
+                    InkChip(
+                      label: l10n.t(tab.$2),
+                      selected: activeTab == tab.$1,
+                      onSelected: () => controller.setStudioTab(tab.$1),
+                    ),
+                ],
               ),
             ),
             const FolioDivider(),
             Expanded(
               child: switch (activeTab) {
                 StudioTab.runs => _RunsTabBody(controller: controller),
-                StudioTab.files => _FilesTabBody(controller: controller),
+                StudioTab.files => ChatFilesTab(controller: controller),
                 StudioTab.story =>
                   storyTabBuilder?.call(context) ??
                       const _StoryPlaceholderBody(
@@ -218,115 +213,7 @@ class _RunsTabBody extends StatelessWidget {
   }
 }
 
-class _FilesTabBody extends StatelessWidget {
-  const _FilesTabBody({required this.controller});
-
-  final FolioController controller;
-
-  static String _formatHashPair(EngineCheckpoint cp) {
-    final pre = cp.preHashBlake3.length <= 8
-        ? cp.preHashBlake3
-        : cp.preHashBlake3.substring(0, 8);
-    final post = cp.postHashBlake3.length <= 8
-        ? cp.postHashBlake3
-        : cp.postHashBlake3.substring(0, 8);
-    return '$pre -> $post';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    final l10n = BistreLocalizations.of(context);
-    final checkpoints = controller.checkpoints;
-
-    return SmoothScrollable(
-      builder: (_, scroll) => SingleChildScrollView(
-        controller: scroll,
-        padding: const EdgeInsetsDirectional.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (checkpoints.isEmpty)
-              FolioSurface(
-                tone: FolioTone.elevated,
-                padding: const EdgeInsetsDirectional.all(14),
-                child: InkText(
-                  l10n.t(L10nKey.studioFilesEmpty),
-                  role: InkTextRole.bodyCompact,
-                  color: theme.inkSecondary,
-                ),
-              )
-            else
-              for (final cp in checkpoints) ...[
-                FolioSurface(
-                  tone: FolioTone.elevated,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          BistreIcon(
-                            BistreUiIcon.document,
-                            size: 13,
-                            color: theme.accentBrass,
-                          ),
-                          const SizedBox(width: 7),
-                          Expanded(
-                            child: InkText(
-                              cp.filePath,
-                              role: InkTextRole.labelStrong,
-                              color: theme.inkPrimary,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      InkText(
-                        _formatHashPair(cp),
-                        role: InkTextRole.captionMeta,
-                        color: theme.inkMuted,
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          EngravedButton(
-                            label: l10n.t(L10nKey.studioCommentAdd),
-                            compact: true,
-                            onPressed: () => controller.attachInlineFileComment(
-                              cp.filePath,
-                              'L1-L20',
-                            ),
-                          ),
-                          EngravedButton(
-                            label: l10n.t(L10nKey.toolRewind),
-                            compact: true,
-                            leading: BistreIcon(
-                              BistreUiIcon.rewind,
-                              size: 12,
-                              color: theme.inkSecondary,
-                            ),
-                            onPressed: () =>
-                                unawaited(controller.rewindCheckpoint(cp.id)),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-              ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// The web pages the open chat's replies used, newest reply last (B2).
+/// The web pages the open chat's replies used, newest reply last.
 class _SourcesTabBody extends StatelessWidget {
   const _SourcesTabBody({required this.controller});
 
@@ -494,12 +381,8 @@ class _PowerGuardCard extends StatelessWidget {
                   color: theme.inkPrimary,
                 ),
               ),
-              WaxSealBadge(
-                label: isAwake
-                    ? l10n.t(L10nKey.studioAwakeBadge)
-                    : power.platform.toUpperCase(),
-                status: isAwake ? WaxSealStatus.ok : WaxSealStatus.neutral,
-              ),
+              if (isAwake)
+                WaxSealBadge(label: l10n.t(L10nKey.studioAwakeBadge)),
             ],
           ),
           const SizedBox(height: 6),
@@ -532,23 +415,53 @@ class _RunCard extends StatelessWidget {
   final EngineAgentRun run;
   final FolioController controller;
 
-  static String _formatRunTitle(
-    BistreLocalizationController l10n,
-    EngineAgentRun run,
-  ) => l10n.joinMeta(<String>[run.mode.toUpperCase(), '#${run.stepIndex + 1}']);
+  static L10nKey? _modeKey(String mode) => switch (mode) {
+    'chat' => L10nKey.modeChat,
+    'code' => L10nKey.modeCode,
+    'plan' => L10nKey.modePlan,
+    'write' => L10nKey.modeWrite,
+    'translate' => L10nKey.modeTranslate,
+    _ => null,
+  };
+
+  static L10nKey _statusKey(String status) => switch (status) {
+    'running' => L10nKey.studioRunStatusRunning,
+    'waiting_approval' => L10nKey.studioRunStatusWaitingApproval,
+    'backoff_wait' => L10nKey.studioRunStatusBackoffWait,
+    'sleep_paused' => L10nKey.studioRunStatusSleepPaused,
+    'indeterminate_halt' => L10nKey.studioRunStatusIndeterminateHalt,
+    'completed' => L10nKey.studioRunStatusCompleted,
+    'cancelled' => L10nKey.studioRunStatusCancelled,
+    _ => L10nKey.studioRunStatusFailed,
+  };
 
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);
+    // A run at work is the normal state: calm, not a warning.
     final statusBadge = switch (run.status) {
-      'running' => WaxSealStatus.warn,
+      'running' => WaxSealStatus.neutral,
+      'waiting_approval' || 'backoff_wait' => WaxSealStatus.warn,
       'completed' => WaxSealStatus.ok,
       'indeterminate_halt' || 'failed' => WaxSealStatus.error,
       _ => WaxSealStatus.neutral,
     };
 
-    final runTitle = _formatRunTitle(l10n, run);
+    final thread = controller.threads
+        .where((t) => t.id == run.threadId)
+        .firstOrNull;
+    final runTitle = thread == null || thread.title.trim().isEmpty
+        ? l10n.t(L10nKey.shellThreadDefaultTitle)
+        : thread.title;
+    final modeKey = _modeKey(run.mode);
+    final meta = l10n.joinMeta(<String>[
+      if (modeKey != null) l10n.t(modeKey),
+      l10n.t(L10nKey.studioRunStep, <String, Object?>{
+        'step': run.stepIndex + 1,
+      }),
+      FolioController.formatMicrosUsd(run.costMicros, showSubCent: true),
+    ]);
     return FolioSurface(
       tone: FolioTone.elevated,
       child: Column(
@@ -565,15 +478,14 @@ class _RunCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              WaxSealBadge(label: run.status, status: statusBadge),
+              WaxSealBadge(
+                label: l10n.t(_statusKey(run.status)),
+                status: statusBadge,
+              ),
             ],
           ),
           const SizedBox(height: 4),
-          InkText(
-            FolioController.formatMicrosUsd(run.costMicros, showSubCent: true),
-            role: InkTextRole.captionMeta,
-            color: theme.inkMuted,
-          ),
+          InkText(meta, role: InkTextRole.captionMeta, color: theme.inkMuted),
           if (run.status == 'indeterminate_halt') ...[
             const SizedBox(height: 8),
             InkText(

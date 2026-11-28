@@ -5,7 +5,7 @@ import 'package:flutter/widgets.dart';
 
 import 'bistre_theme.dart';
 
-/// The one sanctioned height animation (DESIGN §6, owner decision 2026-11-24): a disclosure's
+/// The one sanctioned height animation (DESIGN §6): a disclosure's
 /// content grows and shrinks on a critically damped spring while it fades.
 /// Toggling mid-motion reverses from the current height and speed. The content stays
 /// mounted while it closes and is dropped once closed. Reduce motion snaps it.

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+part 'engine_harness_models.dart';
+
 /// Parsed token usage, thinking trace, & model attribution metadata stored on assistant DAG nodes.
 class NodeUsageMeta {
   const NodeUsageMeta({
@@ -21,6 +23,8 @@ class NodeUsageMeta {
     this.elapsedMs = 0,
     this.requestId = '',
     this.compactedCount = 0,
+    this.goalCheck = false,
+    this.editedFrom = '',
   });
 
   final String providerId;
@@ -44,6 +48,12 @@ class NodeUsageMeta {
   final int elapsedMs;
   final String requestId;
   final int compactedCount;
+
+  /// A work check core sent while the chat's goal was open (a user turn Bistre wrote).
+  final bool goalCheck;
+
+  /// The reply this version was edited from; empty for a written reply.
+  final String editedFrom;
 
   bool get hasTokens => inputTokens > 0 || outputTokens > 0;
   bool get hasThinking => thinkingText.trim().isNotEmpty;
@@ -78,11 +88,74 @@ class NodeUsageMeta {
         elapsedMs: (decoded['elapsed_ms'] as num?)?.toInt() ?? 0,
         requestId: decoded['request_id'] as String? ?? '',
         compactedCount: (decoded['compacted_count'] as num?)?.toInt() ?? 0,
+        goalCheck: decoded['goal_check'] as bool? ?? false,
+        editedFrom: decoded['edited_from'] as String? ?? '',
       );
     } on FormatException {
       return null;
     }
   }
+}
+
+/// A chat's goal: open until the model calls `goal_complete` with what it did and checked.
+class EngineThreadGoal {
+  const EngineThreadGoal({
+    required this.objective,
+    required this.completed,
+    this.summary = '',
+  });
+
+  final String objective;
+  final bool completed;
+  final String summary;
+}
+
+/// A recent reply's raw request body and response stream, kept in memory by core.
+/// One file of a chat and the message it came with.
+class EngineChatFile {
+  const EngineChatFile({
+    required this.nodeId,
+    required this.fromUser,
+    required this.name,
+    required this.mimeType,
+    required this.sizeBytes,
+    required this.blobRelPath,
+    required this.createdAtMs,
+  });
+
+  final String nodeId;
+
+  /// You sent it; otherwise a reply or a tool made it.
+  final bool fromUser;
+  final String name;
+  final String mimeType;
+  final int sizeBytes;
+  final String blobRelPath;
+  final int createdAtMs;
+
+  /// The file as a message attachment (opens in the same preview).
+  EngineNodeAttachment get attachment => EngineNodeAttachment(
+    name: name,
+    mimeType: mimeType,
+    sizeBytes: sizeBytes,
+    blobRelPath: blobRelPath,
+  );
+}
+
+class EngineRawExchange {
+  const EngineRawExchange({
+    required this.url,
+    required this.requestBody,
+    required this.response,
+    required this.truncated,
+  });
+
+  final String url;
+  final String requestBody;
+  final String response;
+
+  /// Core kept only the first part of the request or the response.
+  final bool truncated;
 }
 
 /// Immutable health snapshot returned from Rust `bistre-core`.
@@ -255,7 +328,6 @@ class EngineSettings {
     this.walletDailyCeilingMicros = 5000000,
     this.walletLocalFirst = true,
     this.providerStatelessDefault = true,
-    this.fontScaleBps = 10000,
     this.fontSizePx = 15,
     this.lineHeightBps = 16000,
     this.readingWidthPx = 760,
@@ -286,6 +358,7 @@ class EngineSettings {
     this.codeWrapMode = 'auto',
     this.pricingAutoRefresh = true,
     this.userDisplayName = '',
+    this.autoCompactAtPercent = 85,
   });
 
   final String theme;
@@ -297,7 +370,6 @@ class EngineSettings {
   final int? walletDailyCeilingMicros;
   final bool walletLocalFirst;
   final bool providerStatelessDefault;
-  final int fontScaleBps;
   final int fontSizePx;
   final int lineHeightBps;
   final int readingWidthPx;
@@ -335,6 +407,9 @@ class EngineSettings {
   /// Your name: shown on your messages and told to the model in chats without a persona.
   final String userDisplayName;
 
+  /// How full the context window may get (percent) before a run shortens the chat.
+  final int autoCompactAtPercent;
+
   bool get isWalletUnlimited => walletDailyCeilingMicros == null;
 
   EngineSettings copyWith({
@@ -346,7 +421,6 @@ class EngineSettings {
     bool setWalletUnlimited = false,
     bool? walletLocalFirst,
     bool? providerStatelessDefault,
-    int? fontScaleBps,
     int? fontSizePx,
     int? lineHeightBps,
     int? readingWidthPx,
@@ -377,6 +451,7 @@ class EngineSettings {
     String? codeWrapMode,
     bool? pricingAutoRefresh,
     String? userDisplayName,
+    int? autoCompactAtPercent,
   }) {
     return EngineSettings(
       theme: theme ?? this.theme,
@@ -389,7 +464,6 @@ class EngineSettings {
       walletLocalFirst: walletLocalFirst ?? this.walletLocalFirst,
       providerStatelessDefault:
           providerStatelessDefault ?? this.providerStatelessDefault,
-      fontScaleBps: fontScaleBps ?? this.fontScaleBps,
       fontSizePx: fontSizePx ?? this.fontSizePx,
       lineHeightBps: lineHeightBps ?? this.lineHeightBps,
       readingWidthPx: readingWidthPx ?? this.readingWidthPx,
@@ -424,6 +498,7 @@ class EngineSettings {
       codeWrapMode: codeWrapMode ?? this.codeWrapMode,
       pricingAutoRefresh: pricingAutoRefresh ?? this.pricingAutoRefresh,
       userDisplayName: userDisplayName ?? this.userDisplayName,
+      autoCompactAtPercent: autoCompactAtPercent ?? this.autoCompactAtPercent,
     );
   }
 }
@@ -473,6 +548,57 @@ class EngineThread {
       temperatureMilli != null ||
       maxOutputTokens != null ||
       topPMilli != null;
+
+  /// This chat moved to the project (or default workspace) [workspace].
+  EngineThread withWorkspace(String workspace) => EngineThread(
+    id: id,
+    workspaceId: workspace,
+    title: title,
+    mode: mode,
+    topic: topic,
+    assistantId: assistantId,
+    isPinned: isPinned,
+    activeHeadNodeId: activeHeadNodeId,
+    providerIdOverride: providerIdOverride,
+    modelIdOverride: modelIdOverride,
+    systemPromptOverride: systemPromptOverride,
+    temperatureMilli: temperatureMilli,
+    maxOutputTokens: maxOutputTokens,
+    topPMilli: topPMilli,
+    createdAtMs: createdAtMs,
+    updatedAtMs: updatedAtMs,
+  );
+}
+
+/// A project: a named group of chats with a folder they work in and instructions every
+/// reply in them reads. An empty [folderPath] keeps the app's open folders; an empty [id]
+/// saves a new project.
+class EngineProject {
+  const EngineProject({
+    this.id = '',
+    required this.name,
+    this.folderPath = '',
+    this.instructions = '',
+    this.createdAtMs = 0,
+  });
+
+  final String id;
+  final String name;
+  final String folderPath;
+  final String instructions;
+  final int createdAtMs;
+
+  EngineProject copyWith({
+    String? name,
+    String? folderPath,
+    String? instructions,
+  }) => EngineProject(
+    id: id,
+    name: name ?? this.name,
+    folderPath: folderPath ?? this.folderPath,
+    instructions: instructions ?? this.instructions,
+    createdAtMs: createdAtMs,
+  );
 }
 
 /// Immutable canonical DAG node mirrored from Rust SQLite.
@@ -496,10 +622,10 @@ class EngineNode {
   final String? providerMetaJson;
   final int createdAtMs;
 
-  /// Files sent with this message (P1), parsed once by core.
+  /// Files sent with this message, parsed once by core.
   final List<EngineNodeAttachment> attachments;
 
-  /// Parsed once per node and cached (R39: it was parsed on every access in every build).
+  /// Parsed once per node and cached (it was parsed on every access in every build).
   NodeUsageMeta? get usageMeta {
     final cached = _usageCache[this];
     if (cached != null) return cached.meta;
@@ -517,7 +643,7 @@ class _UsageBox {
   final NodeUsageMeta? meta;
 }
 
-/// One file sent with a message (P1); [blobRelPath] is relative to the data directory.
+/// One file sent with a message; [blobRelPath] is relative to the data directory.
 class EngineNodeAttachment {
   const EngineNodeAttachment({
     required this.name,
@@ -760,6 +886,20 @@ final class LiveVoiceAudioEvent extends BistreEvent {
   final String wavBase64;
 }
 
+final class HostActionRequestedEvent extends BistreEvent {
+  const HostActionRequestedEvent({
+    required this.requestId,
+    required this.threadId,
+    required this.runId,
+    required this.actionJson,
+  });
+
+  final String requestId;
+  final String threadId;
+  final String runId;
+  final String actionJson;
+}
+
 final class ToolApprovalRequestedEvent extends BistreEvent {
   const ToolApprovalRequestedEvent({
     required this.threadId,
@@ -827,435 +967,4 @@ final class LocalePackVerifiedEvent extends BistreEvent {
   const LocalePackVerifiedEvent({required this.packId, required this.semver});
   final String packId;
   final String semver;
-}
-
-/// Result of executing a built-in workspace or web tool in Rust `bistre-core`.
-class EngineToolOutput {
-  const EngineToolOutput({
-    required this.toolName,
-    required this.riskTier,
-    required this.ok,
-    required this.summary,
-    required this.outputText,
-    this.diffText,
-    this.checkpointId,
-    this.durationMs = 0,
-  });
-
-  final String toolName;
-  final String riskTier;
-  final bool ok;
-  final String summary;
-  final String outputText;
-  final String? diffText;
-  final String? checkpointId;
-  final int durationMs;
-
-  static EngineToolOutput fromJson(Map<String, Object?> m) => EngineToolOutput(
-    toolName: m['tool_name'] as String? ?? '',
-    riskTier: m['risk_tier'] as String? ?? 'tier0_read_only',
-    ok: m['ok'] as bool? ?? false,
-    summary: m['summary'] as String? ?? '',
-    outputText: m['output_text'] as String? ?? '',
-    diffText: m['diff_text'] as String?,
-    checkpointId: m['checkpoint_id'] as String?,
-    durationMs: (m['duration_ms'] as num?)?.toInt() ?? 0,
-  );
-}
-
-/// Pre-image workspace file edit checkpoint persisted in SQLite for 1-click Rewind.
-class EngineCheckpoint {
-  const EngineCheckpoint({
-    required this.id,
-    required this.threadId,
-    required this.filePath,
-    required this.preHashBlake3,
-    required this.postHashBlake3,
-    required this.createdAtMs,
-  });
-
-  final String id;
-  final String threadId;
-  final String filePath;
-  final String preHashBlake3;
-  final String postHashBlake3;
-  final int createdAtMs;
-}
-
-/// Configured MCP server entry (`stdio` or Streamable `http`).
-class EngineMcpServerConfig {
-  const EngineMcpServerConfig({
-    required this.id,
-    required this.name,
-    required this.transport,
-    this.command = '',
-    this.args = const <String>[],
-    this.url = '',
-    this.enabled = true,
-  });
-
-  final String id;
-  final String name;
-  final String transport;
-  final String command;
-  final List<String> args;
-  final String url;
-  final bool enabled;
-
-  Map<String, Object?> toJson() => <String, Object?>{
-    'id': id,
-    'name': name,
-    'transport': transport,
-    'command': command,
-    'args': args,
-    'url': url,
-    'enabled': enabled,
-  };
-
-  static EngineMcpServerConfig fromJson(Map<String, Object?> m) {
-    final rawArgs = m['args'];
-    return EngineMcpServerConfig(
-      id: m['id'] as String? ?? '',
-      name: m['name'] as String? ?? '',
-      transport: m['transport'] as String? ?? 'http',
-      command: m['command'] as String? ?? '',
-      args: rawArgs is List<Object?>
-          ? rawArgs.whereType<String>().toList(growable: false)
-          : const <String>[],
-      url: m['url'] as String? ?? '',
-      enabled: m['enabled'] as bool? ?? true,
-    );
-  }
-}
-
-/// MCP discovery result detailing negotiated protocol (`2026-07-28` vs `2025-11-25`) and tool names.
-class EngineMcpDiscoveryReport {
-  const EngineMcpDiscoveryReport({
-    required this.negotiatedProtocol,
-    this.toolNames = const <String>[],
-  });
-
-  final String negotiatedProtocol;
-  final List<String> toolNames;
-
-  static EngineMcpDiscoveryReport fromJson(Map<String, Object?> m) {
-    final rawTools = m['tools'];
-    final names = <String>[];
-    if (rawTools is List<Object?>) {
-      for (final item in rawTools) {
-        if (item is Map<String, Object?> && item['name'] is String) {
-          names.add(item['name']! as String);
-        }
-      }
-    }
-    return EngineMcpDiscoveryReport(
-      negotiatedProtocol: m['negotiated_protocol'] as String? ?? '',
-      toolNames: names,
-    );
-  }
-}
-
-/// Persistent cross-chat / workspace memory item backed by SQLite `memory_entries`.
-class EngineMemoryEntry {
-  const EngineMemoryEntry({
-    required this.id,
-    required this.scope,
-    required this.scopeId,
-    required this.key,
-    required this.content,
-    this.pinned = false,
-    this.updatedAtMs = 0,
-  });
-
-  final String id;
-  final String scope;
-  final String scopeId;
-  final String key;
-  final String content;
-  final bool pinned;
-  final int updatedAtMs;
-}
-
-/// Progressive-disclosure `SKILL.md` frontmatter index entry.
-class EngineSkillIndex {
-  const EngineSkillIndex({
-    required this.name,
-    required this.description,
-    required this.path,
-  });
-
-  final String name;
-  final String description;
-  final String path;
-
-  static EngineSkillIndex fromJson(Map<String, Object?> m) => EngineSkillIndex(
-    name: m['name'] as String? ?? '',
-    description: m['description'] as String? ?? '',
-    path: m['path'] as String? ?? '',
-  );
-}
-
-/// Scheduled background cron/timer automation job backed by SQLite `cron_jobs`.
-class EngineCronJob {
-  const EngineCronJob({
-    this.id = '',
-    required this.name,
-    this.workspaceId = 'default',
-    this.assistantId = 'default_assistant',
-    required this.scheduleExpr,
-    required this.prompt,
-    this.mode = 'chat',
-    this.unattendedPolicy = 'pause_and_notify',
-    this.useWorktree = false,
-    this.enabled = true,
-    this.nextRunMs = 0,
-    this.lastRunId,
-    this.lastStatus = 'idle',
-  });
-
-  final String id;
-  final String name;
-  final String workspaceId;
-  final String assistantId;
-  final String scheduleExpr;
-  final String prompt;
-  final String mode;
-  final String unattendedPolicy;
-  final bool useWorktree;
-  final bool enabled;
-  final int nextRunMs;
-  final String? lastRunId;
-  final String lastStatus;
-}
-
-/// Live catalog metadata returned for a single model (`Fill from catalog`).
-class EngineModelCatalogInfo {
-  const EngineModelCatalogInfo({
-    this.contextWindow,
-    this.maxOutputTokens,
-    this.inputPerMtokMicros,
-    this.outputPerMtokMicros,
-    this.cachedInputPerMtokMicros,
-    this.reasoning,
-  });
-
-  final int? contextWindow;
-  final int? maxOutputTokens;
-  final int? inputPerMtokMicros;
-  final int? outputPerMtokMicros;
-  final int? cachedInputPerMtokMicros;
-  final bool? reasoning;
-}
-
-/// User-selected file attachment passed from Flutter composer into Rust core.
-class EngineAttachmentInput {
-  const EngineAttachmentInput({
-    required this.name,
-    required this.mimeType,
-    required this.localPath,
-  });
-
-  final String name;
-  final String mimeType;
-  final String localPath;
-}
-
-/// File entry reported by the Storage & File Manager inside Bistre's data directory.
-class EngineStorageFileEntry {
-  const EngineStorageFileEntry({
-    required this.relPath,
-    required this.category,
-    required this.sizeBytes,
-    required this.modifiedMs,
-    required this.deletable,
-  });
-
-  final String relPath;
-  final String category;
-  final int sizeBytes;
-  final int modifiedMs;
-  final bool deletable;
-}
-
-/// One hook from the workspace's `.bistre/hooks.json`, shown for review.
-class EngineWorkspaceHook {
-  const EngineWorkspaceHook({
-    required this.event,
-    required this.command,
-    this.toolFilter,
-  });
-
-  /// `pre_tool_use`, `post_tool_use`, `run_finished`, or `run_failed`.
-  final String event;
-  final String command;
-  final String? toolFilter;
-}
-
-/// The workspace's hooks file and whether the user approved exactly this file (by digest).
-class EngineWorkspaceHooksStatus {
-  const EngineWorkspaceHooksStatus({
-    required this.hooks,
-    required this.digest,
-    required this.approved,
-  });
-
-  final List<EngineWorkspaceHook> hooks;
-  final String digest;
-  final bool approved;
-}
-
-/// One web page a reply used (B2); parsed and bounded in core, `http(s)` only.
-class EngineGroundingSource {
-  const EngineGroundingSource({
-    required this.nodeId,
-    required this.url,
-    required this.title,
-    this.citedText,
-  });
-
-  final String nodeId;
-  final String url;
-  final String title;
-  final String? citedText;
-
-  /// The site's host name, shown under the title.
-  String get host => Uri.tryParse(url)?.host ?? url;
-}
-
-/// What core knows about one API format (P7): its default server URL and chat endpoint.
-class EngineDialectDescriptor {
-  const EngineDialectDescriptor({
-    required this.id,
-    required this.defaultBaseUrl,
-    required this.endpointPath,
-    required this.requiresApiKey,
-  });
-
-  final String id;
-  final String defaultBaseUrl;
-  final String endpointPath;
-  final bool requiresApiKey;
-}
-
-/// The exact URLs core calls a provider at (P8), shown in settings and connection tests.
-class EngineResolvedEndpoint {
-  const EngineResolvedEndpoint({
-    required this.chatUrl,
-    required this.modelsUrl,
-  });
-
-  final String chatUrl;
-  final String modelsUrl;
-}
-
-/// One row of the context breakdown (A-SE). [kind] is a fixed id from core
-/// (`messages`, `built_in_tools`, `mcp_tools`, `system_prompt`, `workspace_instructions`,
-/// `story`, `attachments`, `draft`, `deferred_mcp_tools`); the app maps it to its own words.
-class EngineContextCategory {
-  const EngineContextCategory({
-    required this.kind,
-    required this.tokens,
-    this.count,
-    this.sent = true,
-  });
-
-  final String kind;
-  final int tokens;
-  final int? count;
-  final bool sent;
-
-  @override
-  bool operator ==(Object other) =>
-      other is EngineContextCategory &&
-      other.kind == kind &&
-      other.tokens == tokens &&
-      other.count == count &&
-      other.sent == sent;
-
-  @override
-  int get hashCode => Object.hash(kind, tokens, count, sent);
-}
-
-/// One MCP tool's schema size in the breakdown.
-class EngineMcpToolUsage {
-  const EngineMcpToolUsage({
-    required this.name,
-    required this.tokens,
-    required this.deferred,
-  });
-
-  final String name;
-  final int tokens;
-  final bool deferred;
-}
-
-/// One MCP server and its tools in the breakdown.
-class EngineMcpServerUsage {
-  const EngineMcpServerUsage({
-    required this.serverId,
-    required this.label,
-    required this.tools,
-  });
-
-  final String serverId;
-  final String label;
-  final List<EngineMcpToolUsage> tools;
-
-  int get tokens => tools.fold(0, (sum, t) => sum + t.tokens);
-}
-
-/// What fills the next request, from core (A-SE): rows, the window, and the kept-free
-/// reserve. Core owns every number.
-class EngineContextBreakdown {
-  const EngineContextBreakdown({
-    this.categories = const <EngineContextCategory>[],
-    this.totalSent = 0,
-    this.limitTokens,
-    this.reserveTokens = 0,
-    this.mcp = const <EngineMcpServerUsage>[],
-    this.mcpTruncated = false,
-  });
-
-  static const EngineContextBreakdown empty = EngineContextBreakdown();
-
-  final List<EngineContextCategory> categories;
-  final int totalSent;
-  final int? limitTokens;
-  final int reserveTokens;
-  final List<EngineMcpServerUsage> mcp;
-  final bool mcpTruncated;
-
-  int tokensOf(String kind) =>
-      categories.where((c) => c.kind == kind).firstOrNull?.tokens ?? 0;
-
-  int? countOf(String kind) =>
-      categories.where((c) => c.kind == kind).firstOrNull?.count;
-
-  @override
-  bool operator ==(Object other) =>
-      other is EngineContextBreakdown &&
-      other.totalSent == totalSent &&
-      other.limitTokens == limitTokens &&
-      other.reserveTokens == reserveTokens &&
-      other.mcpTruncated == mcpTruncated &&
-      other.mcp.length == mcp.length &&
-      _listEquals(other.categories, categories);
-
-  @override
-  int get hashCode => Object.hash(
-    totalSent,
-    limitTokens,
-    reserveTokens,
-    mcpTruncated,
-    mcp.length,
-    Object.hashAll(categories),
-  );
-
-  static bool _listEquals(List<Object?> a, List<Object?> b) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) return false;
-    }
-    return true;
-  }
 }

@@ -1,5 +1,6 @@
 import 'package:bistre_app/bridge/bistre_engine.dart';
 import 'package:bistre_app/design/ink_primitives.dart';
+import 'package:bistre_app/features/shell/folio_controller.dart';
 import 'package:bistre_app/l10n/l10n_keys.g.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -56,7 +57,7 @@ void main() {
     });
   }
 
-  testWidgets('clicking elsewhere saves the title (A-W 2b)', (tester) async {
+  testWidgets('clicking elsewhere saves the title', (tester) async {
     final (shell, a, _) = await _open(tester);
     await tester.enterText(_titleEditor(), 'Trip plans');
     await tester.tapAt(const Offset(640, 400));
@@ -80,20 +81,19 @@ void main() {
     },
   );
 
-  testWidgets(
-    'switching chats ends the edit without saving it elsewhere (A-W 2b)',
-    (tester) async {
-      final (shell, a, b) = await _open(tester);
-      await tester.enterText(_titleEditor(), 'Trip half typed');
-      await shell.controller.selectThread(b.id);
-      await tester.pumpAndSettle();
-      expect(_titleEditor(), findsNothing);
-      expect(await _storedTitle(shell, b.id), 'Other chat');
-      expect(shell.t(L10nKey.threadRenamePlaceholder), isNotEmpty);
-    },
-  );
+  testWidgets('switching chats ends the edit without saving it elsewhere', (
+    tester,
+  ) async {
+    final (shell, a, b) = await _open(tester);
+    await tester.enterText(_titleEditor(), 'Trip half typed');
+    await shell.controller.selectThread(b.id);
+    await tester.pumpAndSettle();
+    expect(_titleEditor(), findsNothing);
+    expect(await _storedTitle(shell, b.id), 'Other chat');
+    expect(shell.t(L10nKey.threadRenamePlaceholder), isNotEmpty);
+  });
 
-  testWidgets('the rename box fits the title, not the whole header (A-W 2c)', (
+  testWidgets('the rename box fits the title, not the whole header', (
     tester,
   ) async {
     await _open(tester);

@@ -11,13 +11,16 @@ import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
+import 'auto_compact_row.dart';
 import 'model_picker_field.dart';
+import 'usage_by_purpose_section.dart';
 
 /// Dedicated Default Models settings tab:
 /// - Global default provider & model
 /// - Title generation model (default: Follow global choice) + editable prompt template
-/// - Summary / Shorten conversation model (default: Follow global choice)
+/// - Summary / Shorten conversation model (default: Follow global choice) + auto-shorten point
 /// - Translation model (default: Follow global choice) + target language
+/// - Read aloud model, then what paid requests were for over the last 30 days
 class DefaultModelsSettingsView extends StatefulWidget {
   const DefaultModelsSettingsView({super.key, required this.controller});
 
@@ -35,12 +38,14 @@ class _DefaultModelsSettingsViewState extends State<DefaultModelsSettingsView> {
   final TextEditingController _summaryModelCtrl = TextEditingController();
   final TextEditingController _transModelCtrl = TextEditingController();
   final TextEditingController _transLangCtrl = TextEditingController();
+  final TextEditingController _speechModelCtrl = TextEditingController();
   final FocusNode _globalModelFocus = FocusNode();
   final FocusNode _titleModelFocus = FocusNode();
   final FocusNode _titlePromptFocus = FocusNode();
   final FocusNode _summaryModelFocus = FocusNode();
   final FocusNode _transModelFocus = FocusNode();
   final FocusNode _transLangFocus = FocusNode();
+  final FocusNode _speechModelFocus = FocusNode();
 
   @override
   void initState() {
@@ -54,10 +59,20 @@ class _DefaultModelsSettingsViewState extends State<DefaultModelsSettingsView> {
         ? dm.globalModelId
         : widget.controller.activeModelId;
     _titleModelCtrl.text = dm.titleModelId;
-    _titlePromptCtrl.text = dm.titlePromptTemplate;
+    _titlePromptCtrl.text = dm.titlePromptTemplate.isEmpty
+        ? widget.controller.builtInTitlePrompt
+        : dm.titlePromptTemplate;
     _summaryModelCtrl.text = dm.summaryModelId;
     _transModelCtrl.text = dm.translationModelId;
     _transLangCtrl.text = dm.translationTargetLanguage;
+    _speechModelCtrl.text = dm.speechModelId;
+  }
+
+  /// The typed title prompt, or empty when it is the built-in one, so core keeps sending
+  /// its current built-in prompt.
+  String _ownTitlePrompt() {
+    final text = _titlePromptCtrl.text.trim();
+    return text == widget.controller.builtInTitlePrompt ? '' : text;
   }
 
   @override
@@ -68,12 +83,14 @@ class _DefaultModelsSettingsViewState extends State<DefaultModelsSettingsView> {
     _summaryModelCtrl.dispose();
     _transModelCtrl.dispose();
     _transLangCtrl.dispose();
+    _speechModelCtrl.dispose();
     _globalModelFocus.dispose();
     _titleModelFocus.dispose();
     _titlePromptFocus.dispose();
     _summaryModelFocus.dispose();
     _transModelFocus.dispose();
     _transLangFocus.dispose();
+    _speechModelFocus.dispose();
     super.dispose();
   }
 
@@ -88,6 +105,27 @@ class _DefaultModelsSettingsViewState extends State<DefaultModelsSettingsView> {
     final ctrl = widget.controller;
     final dm = ctrl.defaultModels;
     final providers = ctrl.providers;
+    // A slot that follows the global choice names the model it follows.
+    final globalProvider = providers
+        .where(
+          (p) =>
+              p.id ==
+              (dm.globalProviderId.isNotEmpty
+                  ? dm.globalProviderId
+                  : ctrl.activeProvider?.id),
+        )
+        .firstOrNull;
+    final globalModel = dm.globalModelId.isNotEmpty
+        ? dm.globalModelId
+        : (globalProvider?.defaultModel ?? '');
+    final inherited = globalModel.isEmpty
+        ? null
+        : globalProvider == null
+        ? l10n.isolate(globalModel)
+        : l10n.t(L10nKey.shellModelOnProvider, <String, Object?>{
+            'model': l10n.isolate(globalModel),
+            'provider': l10n.isolate(globalProvider.name),
+          });
 
     return SmoothScrollable(
       builder: (_, scroll) => SingleChildScrollView(
@@ -146,6 +184,7 @@ class _DefaultModelsSettingsViewState extends State<DefaultModelsSettingsView> {
               children: [
                 BistreSettingRow(
                   label: l10n.t(L10nKey.settingsDefaultModelsFollowGlobal),
+                  description: dm.titleFollowGlobal ? inherited : null,
                   trailing: BistreSwitch(
                     value: dm.titleFollowGlobal,
                     semanticsLabel: l10n.t(
@@ -178,15 +217,8 @@ class _DefaultModelsSettingsViewState extends State<DefaultModelsSettingsView> {
                     compact: true,
                     onPressed: () {
                       _titlePromptCtrl.text =
-                          DefaultModelsConfig.defaultTitlePrompt;
-                      unawaited(
-                        _save(
-                          dm.copyWith(
-                            titlePromptTemplate:
-                                DefaultModelsConfig.defaultTitlePrompt,
-                          ),
-                        ),
-                      );
+                          widget.controller.builtInTitlePrompt;
+                      unawaited(_save(dm.copyWith(titlePromptTemplate: '')));
                     },
                   ),
                   bottom: Column(
@@ -211,8 +243,7 @@ class _DefaultModelsSettingsViewState extends State<DefaultModelsSettingsView> {
                           onPressed: () => unawaited(
                             _save(
                               dm.copyWith(
-                                titlePromptTemplate: _titlePromptCtrl.text
-                                    .trim(),
+                                titlePromptTemplate: _ownTitlePrompt(),
                               ),
                             ),
                           ),
@@ -229,8 +260,11 @@ class _DefaultModelsSettingsViewState extends State<DefaultModelsSettingsView> {
             BistreSettingsSection(
               title: l10n.t(L10nKey.settingsDefaultModelsSummaryHeading),
               children: [
+                AutoCompactRow(controller: ctrl),
+                HistoryLimitRow(controller: ctrl),
                 BistreSettingRow(
                   label: l10n.t(L10nKey.settingsDefaultModelsFollowGlobal),
+                  description: dm.summaryFollowGlobal ? inherited : null,
                   trailing: BistreSwitch(
                     value: dm.summaryFollowGlobal,
                     semanticsLabel: l10n.t(
@@ -268,6 +302,7 @@ class _DefaultModelsSettingsViewState extends State<DefaultModelsSettingsView> {
               children: [
                 BistreSettingRow(
                   label: l10n.t(L10nKey.settingsDefaultModelsFollowGlobal),
+                  description: dm.translationFollowGlobal ? inherited : null,
                   trailing: BistreSwitch(
                     value: dm.translationFollowGlobal,
                     semanticsLabel: l10n.t(
@@ -343,6 +378,38 @@ class _DefaultModelsSettingsViewState extends State<DefaultModelsSettingsView> {
                 ),
               ],
             ),
+            const SizedBox(height: BistreSpacing.s24),
+
+            // 5. Read aloud: a provider speech model, or the system voice.
+            BistreSettingsSection(
+              title: l10n.t(L10nKey.settingsDefaultModelsSpeechHeading),
+              children: [
+                _ModelSlotRow(
+                  controller: ctrl,
+                  providers: providers,
+                  selectedProviderId: dm.speechProviderId,
+                  modelCtrl: _speechModelCtrl,
+                  modelFocus: _speechModelFocus,
+                  noneLabel: l10n.t(L10nKey.settingsDefaultModelsSystemVoice),
+                  onSelectNone: () {
+                    _speechModelCtrl.clear();
+                    unawaited(
+                      _save(
+                        dm.copyWith(speechProviderId: '', speechModelId: ''),
+                      ),
+                    );
+                  },
+                  onSelectProvider: (pid) =>
+                      unawaited(_save(dm.copyWith(speechProviderId: pid))),
+                  onSaveModel: () => unawaited(
+                    _save(
+                      dm.copyWith(speechModelId: _speechModelCtrl.text.trim()),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            UsageByPurposeSection(controller: ctrl),
           ],
         ),
       ),
@@ -359,6 +426,8 @@ class _ModelSlotRow extends StatelessWidget {
     required this.modelFocus,
     required this.onSelectProvider,
     required this.onSaveModel,
+    this.noneLabel,
+    this.onSelectNone,
   });
 
   final FolioController controller;
@@ -368,6 +437,10 @@ class _ModelSlotRow extends StatelessWidget {
   final FocusNode modelFocus;
   final ValueChanged<String> onSelectProvider;
   final VoidCallback onSaveModel;
+
+  /// A first chip that clears the slot (Read aloud: the system voice).
+  final String? noneLabel;
+  final VoidCallback? onSelectNone;
 
   @override
   Widget build(BuildContext context) {
@@ -381,6 +454,12 @@ class _ModelSlotRow extends StatelessWidget {
             spacing: 6,
             runSpacing: 6,
             children: [
+              if (noneLabel case final none?)
+                InkChip(
+                  label: none,
+                  selected: selectedProviderId.isEmpty,
+                  onSelected: () => onSelectNone?.call(),
+                ),
               for (final p in providers)
                 InkChip(
                   label: p.name,
@@ -389,15 +468,17 @@ class _ModelSlotRow extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: 8),
-          ModelPickerField(
-            controller: controller,
-            providerId: selectedProviderId,
-            textController: modelCtrl,
-            focusNode: modelFocus,
-            placeholder: l10n.t(L10nKey.settingsAssistantsDefaultModel),
-            onSelectedModel: (_) => onSaveModel(),
-          ),
+          if (noneLabel == null || selectedProviderId.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ModelPickerField(
+              controller: controller,
+              providerId: selectedProviderId,
+              textController: modelCtrl,
+              focusNode: modelFocus,
+              placeholder: l10n.t(L10nKey.settingsAssistantsDefaultModel),
+              onSelectedModel: (_) => onSaveModel(),
+            ),
+          ],
         ],
       ),
     );

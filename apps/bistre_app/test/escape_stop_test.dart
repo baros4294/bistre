@@ -24,7 +24,7 @@ Future<void> _settle(WidgetTester tester) =>
     tester.pump(const Duration(milliseconds: 300));
 
 void main() {
-  testWidgets('Esc in an empty composer stops the reply (D3)', (tester) async {
+  testWidgets('Esc in an empty composer stops the reply', (tester) async {
     final shell = await _streaming(tester);
     await tester.tap(_composer());
     await _settle(tester);
@@ -33,7 +33,7 @@ void main() {
     expect(shell.gateway.callsTo('cancelActiveRun'), hasLength(1));
   });
 
-  testWidgets('Esc in a composer with text never stops the reply (D3)', (
+  testWidgets('Esc in a composer with text never stops the reply', (
     tester,
   ) async {
     final shell = await _streaming(tester);
@@ -44,7 +44,7 @@ void main() {
     expect(shell.gateway.callsTo('cancelActiveRun'), isEmpty);
   });
 
-  testWidgets('Esc in search closes search and never stops the reply (U6)', (
+  testWidgets('Esc in search closes search and never stops the reply', (
     tester,
   ) async {
     final shell = await _streaming(tester);
@@ -58,7 +58,7 @@ void main() {
     expect(shell.gateway.callsTo('cancelActiveRun'), isEmpty);
   });
 
-  testWidgets('Ctrl+. stops the reply from anywhere (D3)', (tester) async {
+  testWidgets('Ctrl+. stops the reply from anywhere', (tester) async {
     final shell = await _streaming(tester);
     await tester.enterText(_composer(), 'typing');
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);

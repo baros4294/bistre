@@ -12,7 +12,17 @@ import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
 
-/// The context window breakdown (A-SE, DESIGN §8): what fills the next request, row by row,
+/// Whole percent, the same on the ring and in this panel (40 for 39.8). A share that is
+/// not empty never reads 0, and one that is not full never reads 100.
+String contextPercent(int tokens, int limit) {
+  if (tokens <= 0 || limit <= 0) return '0';
+  if (tokens >= limit) return '${(tokens * 100 / limit).round()}';
+  final pct = (tokens * 100 / limit).round();
+  if (pct < 1) return '<1';
+  return '${pct > 99 ? 99 : pct}';
+}
+
+/// The context window breakdown (DESIGN §8): what fills the next request, row by row,
 /// with each share of the window, the reserve kept free for shortening, and free space; then
 /// what is not sent (MCP schemas loaded on demand). The MCP row opens a second page listing
 /// each server's tools. Esc goes back a page, then closes. Core owns every number.
@@ -72,15 +82,12 @@ class _ContextBreakdownPanelState extends State<ContextBreakdownPanel> {
     return '$n';
   }
 
-  /// One decimal: 39.8.
-  static String percentOf(int tokens, int limit) =>
-      (tokens * 1000 ~/ limit / 10).toStringAsFixed(1);
-
   L10nKey _labelFor(String kind) => switch (kind) {
     'messages' => L10nKey.chatContextCatMessages,
     'built_in_tools' => L10nKey.chatContextCatBuiltInTools,
     'mcp_tools' => L10nKey.chatContextCatMcpTools,
     'system_prompt' => L10nKey.chatContextCatSystemPrompt,
+    'project_instructions' => L10nKey.chatContextCatProjectInstructions,
     'workspace_instructions' => L10nKey.chatContextCatWorkspaceInstructions,
     'story' => L10nKey.chatContextCatStory,
     'attachments' => L10nKey.chatContextCatAttachments,
@@ -94,6 +101,7 @@ class _ContextBreakdownPanelState extends State<ContextBreakdownPanel> {
     'built_in_tools' => theme.statusWarn,
     'mcp_tools' => theme.statusWarn.withValues(alpha: 0.6),
     'system_prompt' => theme.accentBrass,
+    'project_instructions' => theme.accentBrass.withValues(alpha: 0.8),
     'workspace_instructions' => theme.accentBrass.withValues(alpha: 0.6),
     'story' => theme.accentWax,
     'attachments' => theme.accentWax.withValues(alpha: 0.75),
@@ -145,7 +153,7 @@ class _ContextBreakdownPanelState extends State<ContextBreakdownPanel> {
     String pct(int tokens) => limit == null || limit <= 0
         ? l10n.t(L10nKey.chatContextNoPercent)
         : l10n.t(L10nKey.chatContextPercent, <String, Object?>{
-            'percent': percentOf(tokens, limit),
+            'percent': contextPercent(tokens, limit),
           });
 
     Widget row(
@@ -254,7 +262,7 @@ class _ContextBreakdownPanelState extends State<ContextBreakdownPanel> {
             if (limit != null && limit > 0)
               InkText(
                 l10n.t(L10nKey.chatContextPercentUsed, <String, Object?>{
-                  'percent': percentOf(used, limit),
+                  'percent': contextPercent(used, limit),
                 }),
                 role: InkTextRole.labelStrong,
                 color: theme.accentBrass,

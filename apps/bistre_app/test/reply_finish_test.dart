@@ -6,9 +6,7 @@ import 'support/fake_engine_gateway.dart';
 import 'support/shell_harness.dart';
 
 void main() {
-  testWidgets('a provider error shows what the provider said (P4)', (
-    tester,
-  ) async {
+  testWidgets('a provider error shows what the provider said', (tester) async {
     final shell = await ShellHarness.pump(tester);
     shell.gateway.emit(
       const DiagnosticRaisedEvent(
@@ -28,7 +26,7 @@ void main() {
     );
   });
 
-  testWidgets('a reply cut at its length limit offers Continue (R10)', (
+  testWidgets('a reply cut at its length limit offers Continue', (
     tester,
   ) async {
     final gateway = FakeEngineGateway(seedConnectedOpenAi: true);

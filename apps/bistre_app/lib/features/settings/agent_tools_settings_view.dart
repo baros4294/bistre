@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 
@@ -6,13 +7,19 @@ import '../../bridge/bistre_engine.dart';
 import '../../design/bistre_controls.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
+import '../../design/disclosure_reveal.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/label_control_layout.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../../platform/desktop_host.dart';
 import '../../platform/power_guard_host.dart';
+import '../chat/content_direction.dart';
 import '../shell/folio_controller.dart';
+import 'mcp_registry_browser.dart';
+import 'mcp_server_row.dart';
+import 'workspace_hooks_card.dart';
 
 /// Dedicated Agent, Workspace Tools, MCP Server Manager, and Android Termux Bridge settings tab.
 class AgentToolsSettingsView extends StatefulWidget {
@@ -35,6 +42,7 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
   final FocusNode _webSearchFocus = FocusNode();
 
   String _mcpTransport = 'http';
+  bool _registryOpen = false;
   bool _discoveringIdBusy = false;
   final Map<String, EngineMcpDiscoveryReport> _mcpReports =
       <String, EngineMcpDiscoveryReport>{};
@@ -43,7 +51,7 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
   @override
   void initState() {
     super.initState();
-    _workspaceCtrl.text = widget.controller.workspaceRootPath;
+    _workspaceCtrl.text = widget.controller.appWorkspaceRootPath;
     _webSearchCtrl.text = widget.controller.webSearchEndpoint;
     unawaited(_probeTermux());
     // After the first frame: a refresh can notify the controller, which must never happen
@@ -110,34 +118,22 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
   static const String _kMcpTransportStdio = 'Stdio';
   static const String _kMcpCommandPlaceholder =
       'npx -y @modelcontextprotocol/server';
-  static const List<String> _kPermissionTools = <String>[
-    'read_file',
-    'edit_file',
-    'grep',
-    'glob',
-    'shell',
-    'web_fetch',
-    'mcp',
-  ];
 
-  static String _formatMcpMeta(
-    BistreLocalizationController l10n,
-    EngineMcpServerConfig server,
-    EngineMcpDiscoveryReport? report,
-  ) {
-    final target = server.transport == 'http' ? server.url : server.command;
-    if (report == null) {
-      return l10n.joinMeta(<String>[server.transport.toUpperCase(), target]);
-    }
-    final tools = l10n.t(L10nKey.settingsAgentMcpToolsCount, <String, Object?>{
-      'count': report.toolNames.length,
-    });
-    return l10n.joinMeta(<String>[
-      server.transport.toUpperCase(),
-      'MCP ${report.negotiatedProtocol}',
-      tools,
-    ]);
-  }
+  /// Each tool id core checks, with its name in words.
+  static const List<(String, L10nKey)> _kPermissionTools = <(String, L10nKey)>[
+    ('read_file', L10nKey.settingsAgentToolReadFile),
+    ('edit_file', L10nKey.settingsAgentToolEditFile),
+    ('grep', L10nKey.settingsAgentToolGrep),
+    ('glob', L10nKey.settingsAgentToolGlob),
+    ('shell', L10nKey.settingsAgentToolShell),
+    ('web_fetch', L10nKey.settingsAgentToolWebFetch),
+    ('web_search', L10nKey.settingsAgentWebSearch),
+    ('mcp', L10nKey.settingsAgentToolMcp),
+    ('agent_delegate', L10nKey.settingsAgentToolAgentDelegate),
+    ('todo_write', L10nKey.settingsAgentToolTodoWrite),
+    ('calc_eval', L10nKey.settingsAgentToolCalcEval),
+    ('dice_roll', L10nKey.settingsAgentToolDiceRoll),
+  ];
 
   static String _formatTermuxBadge(
     BistreLocalizationController l10n,
@@ -216,11 +212,14 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
                             ),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: InkText(
-                                folder,
-                                role: InkTextRole.codeBlock,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              child: OwnDirection(
+                                text: folder,
+                                child: InkText(
+                                  folder,
+                                  role: InkTextRole.codeBlock,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                             ),
                             BistreIconButton(
@@ -285,9 +284,10 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
             BistreSettingsSection(
               title: l10n.t(L10nKey.settingsAgentPermissionsTitle),
               children: [
-                for (final tool in _kPermissionTools)
+                for (final (tool, name) in _kPermissionTools)
                   BistreSettingRow(
-                    label: tool,
+                    key: ValueKey<String>('tool_perm_row_$tool'),
+                    label: l10n.t(name),
                     trailing: BistreSegmentedControl<String>(
                       selected: ctrl.toolPermissionFor(tool),
                       onSelected: (v) =>
@@ -312,49 +312,11 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
             ),
             const SizedBox(height: 16),
 
-            // 1c. Workspace hooks (A-S5): shown for review, run only once allowed.
+            // 1c. Workspace hooks: shown for review, run only once allowed.
             if (ctrl.workspaceHooks case final hooks?) ...[
-              BistreSettingsSection(
-                title: l10n.t(L10nKey.settingsAgentHooksTitle),
-                children: [
-                  Padding(
-                    padding: const EdgeInsetsDirectional.fromSTEB(
-                      16,
-                      12,
-                      16,
-                      4,
-                    ),
-                    child: InkText(
-                      l10n.t(L10nKey.settingsAgentHooksBody),
-                      role: InkTextRole.captionMeta,
-                      color: theme.inkMuted,
-                    ),
-                  ),
-                  for (final hook in hooks.hooks)
-                    BistreSettingRow(
-                      label: l10n.joinMeta(<String>[
-                        hook.event,
-                        if (hook.toolFilter case final f? when f.isNotEmpty) f,
-                      ]),
-                      description: hook.command,
-                    ),
-                  BistreSettingRow(
-                    label: l10n.t(
-                      hooks.approved
-                          ? L10nKey.settingsAgentHooksAllowed
-                          : L10nKey.settingsAgentHooksPending,
-                    ),
-                    trailing: hooks.approved
-                        ? null
-                        : EngravedButton(
-                            label: l10n.t(L10nKey.settingsAgentHooksAllow),
-                            primary: true,
-                            compact: true,
-                            onPressed: () =>
-                                unawaited(ctrl.approveWorkspaceHooks()),
-                          ),
-                  ),
-                ],
+              WorkspaceHooksCard(
+                hooks: hooks,
+                onAllow: () => unawaited(ctrl.approveWorkspaceHooks()),
               ),
               const SizedBox(height: 16),
             ],
@@ -386,52 +348,13 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
                   const SizedBox(height: 12),
                   if (servers.isNotEmpty) ...[
                     for (final srv in servers) ...[
-                      FolioSurface(
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  InkText(
-                                    srv.name,
-                                    role: InkTextRole.labelStrong,
-                                  ),
-                                  const SizedBox(height: 2),
-                                  InkText(
-                                    _formatMcpMeta(
-                                      l10n,
-                                      srv,
-                                      _mcpReports[srv.id],
-                                    ),
-                                    role: InkTextRole.captionMeta,
-                                    color: theme.inkMuted,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            if (srv.transport == 'http')
-                              EngravedButton(
-                                label: l10n.t(L10nKey.providerActionLoadModels),
-                                compact: true,
-                                onPressed: _discoveringIdBusy
-                                    ? null
-                                    : () => unawaited(_discoverServer(srv)),
-                              ),
-                            const SizedBox(width: 6),
-                            BistreIconButton(
-                              icon: BistreUiIcon.trash,
-                              size: 14,
-                              dimension: 28,
-                              semanticsLabel: l10n.t(L10nKey.threadDelete),
-                              onPressed: () =>
-                                  unawaited(ctrl.removeMcpServer(srv.id)),
-                            ),
-                          ],
-                        ),
+                      McpServerRow(
+                        controller: ctrl,
+                        server: srv,
+                        report: _mcpReports[srv.id],
+                        onDiscover: _discoveringIdBusy
+                            ? null
+                            : () => unawaited(_discoverServer(srv)),
                       ),
                       const SizedBox(height: 8),
                     ],
@@ -462,19 +385,35 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
                           ),
                         ],
                       ),
-                      EngravedButton(
-                        label: l10n.t(L10nKey.settingsAgentImportMcpJson),
-                        compact: true,
-                        onPressed: () async {
-                          final picked = await BistreDesktopHost.pickLocalFile(
-                            title: l10n.t(L10nKey.settingsAgentImportMcpJson),
-                            filterLabel: 'MCP JSON (*.json)',
-                            filterSpec: '*.json',
-                          );
-                          if (picked != null && picked.isNotEmpty) {
-                            await ctrl.importMcpJsonFile(picked);
-                          }
-                        },
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          // Lit while the registry search is open.
+                          InkChip(
+                            label: l10n.t(L10nKey.settingsAgentMcpRegistryOpen),
+                            selected: _registryOpen,
+                            onSelected: () =>
+                                setState(() => _registryOpen = !_registryOpen),
+                          ),
+                          EngravedButton(
+                            label: l10n.t(L10nKey.settingsAgentImportMcpJson),
+                            compact: true,
+                            onPressed: () async {
+                              final picked =
+                                  await BistreDesktopHost.pickLocalFile(
+                                    title: l10n.t(
+                                      L10nKey.settingsAgentImportMcpJson,
+                                    ),
+                                    filterLabel: 'MCP JSON (*.json)',
+                                    filterSpec: '*.json',
+                                  );
+                              if (picked != null && picked.isNotEmpty) {
+                                await ctrl.importMcpJsonFile(picked);
+                              }
+                            },
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -531,14 +470,29 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      EngravedButton(
-                        label: l10n.t(L10nKey.settingsAgentMcpAdd),
-                        primary: true,
-                        compact: true,
-                        onPressed: () => unawaited(_addMcpServer()),
-                      ),
                     ],
+                  ),
+                  // Under the fields, so a long label at large text never squeezes them.
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: EngravedButton(
+                      label: l10n.t(L10nKey.settingsAgentMcpAdd),
+                      primary: true,
+                      compact: true,
+                      onPressed: () => unawaited(_addMcpServer()),
+                    ),
+                  ),
+                  DisclosureReveal(
+                    open: _registryOpen,
+                    child: _registryOpen
+                        ? Padding(
+                            padding: const EdgeInsetsDirectional.only(
+                              top: BistreSpacing.s12,
+                            ),
+                            child: McpRegistryBrowser(controller: ctrl),
+                          )
+                        : const SizedBox.shrink(),
                   ),
                 ],
               ),
@@ -553,29 +507,32 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      BistreIcon(
-                        BistreUiIcon.bookOpen,
-                        size: 16,
-                        color: theme.accentBrass,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: InkText(
-                          l10n.t(L10nKey.settingsAgentSkillsTitle),
-                          role: InkTextRole.titleMedium,
+                  // The button drops below the title when both do not fit.
+                  LabelControlLayout(
+                    label: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        BistreIcon(
+                          BistreUiIcon.bookOpen,
+                          size: 16,
+                          color: theme.accentBrass,
                         ),
-                      ),
-                      EngravedButton(
-                        label: l10n.t(L10nKey.settingsAgentSkillsScan),
-                        compact: true,
-                        onPressed: ctrl.workspaceRootPath.isEmpty
-                            ? null
-                            : () =>
-                                  unawaited(ctrl.refreshMemorySkillsAndCron()),
-                      ),
-                    ],
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: InkText(
+                            l10n.t(L10nKey.settingsAgentSkillsTitle),
+                            role: InkTextRole.titleMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                    control: EngravedButton(
+                      label: l10n.t(L10nKey.settingsAgentSkillsScan),
+                      compact: true,
+                      onPressed: ctrl.appWorkspaceRootPath.isEmpty
+                          ? null
+                          : () => unawaited(ctrl.refreshMemorySkillsAndCron()),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   if (ctrl.discoveredSkills.isEmpty)
@@ -752,34 +709,42 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
                     ),
                   ),
                 ),
-                BistreSettingRow(
-                  label: l10n.t(L10nKey.settingsSleepDaemonActive),
-                  description: l10n.t(L10nKey.settingsSleepDaemonActiveDesc),
-                  trailing: BistreSwitch(
-                    value: ctrl.settings.daemonKeepAliveWhenActive,
-                    semanticsLabel: l10n.t(L10nKey.settingsSleepDaemonActive),
-                    reduceMotionOverride: ctrl.reduceMotionOverride,
-                    onChanged: (v) => unawaited(
-                      ctrl.updateSettings(
-                        ctrl.settings.copyWith(daemonKeepAliveWhenActive: v),
+                // Only the desktop background service can keep a reply going after the
+                // window closes, so the switch shows while the app is using it.
+                if (ctrl.powerStatus.daemonConnected)
+                  BistreSettingRow(
+                    label: l10n.t(L10nKey.settingsSleepDaemonActive),
+                    description: l10n.t(L10nKey.settingsSleepDaemonActiveDesc),
+                    trailing: BistreSwitch(
+                      value: ctrl.settings.daemonKeepAliveWhenActive,
+                      semanticsLabel: l10n.t(L10nKey.settingsSleepDaemonActive),
+                      reduceMotionOverride: ctrl.reduceMotionOverride,
+                      onChanged: (v) => unawaited(
+                        ctrl.updateSettings(
+                          ctrl.settings.copyWith(daemonKeepAliveWhenActive: v),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                BistreSettingRow(
-                  label: l10n.t(L10nKey.settingsSleepWindowsBattery),
-                  description: l10n.t(L10nKey.settingsSleepWindowsBatteryDesc),
-                  trailing: BistreSwitch(
-                    value: ctrl.settings.windowsKeepAwakeOnBattery,
-                    semanticsLabel: l10n.t(L10nKey.settingsSleepWindowsBattery),
-                    reduceMotionOverride: ctrl.reduceMotionOverride,
-                    onChanged: (v) => unawaited(
-                      ctrl.updateSettings(
-                        ctrl.settings.copyWith(windowsKeepAwakeOnBattery: v),
+                if (Platform.isWindows)
+                  BistreSettingRow(
+                    label: l10n.t(L10nKey.settingsSleepWindowsBattery),
+                    description: l10n.t(
+                      L10nKey.settingsSleepWindowsBatteryDesc,
+                    ),
+                    trailing: BistreSwitch(
+                      value: ctrl.settings.windowsKeepAwakeOnBattery,
+                      semanticsLabel: l10n.t(
+                        L10nKey.settingsSleepWindowsBattery,
+                      ),
+                      reduceMotionOverride: ctrl.reduceMotionOverride,
+                      onChanged: (v) => unawaited(
+                        ctrl.updateSettings(
+                          ctrl.settings.copyWith(windowsKeepAwakeOnBattery: v),
+                        ),
                       ),
                     ),
                   ),
-                ),
                 BistreSettingRow(
                   label: l10n.t(L10nKey.settingsSleepUnattendedPolicy),
                   trailing: BistreSegmentedControl<String>(
@@ -805,21 +770,35 @@ class _AgentToolsSettingsViewState extends State<AgentToolsSettingsView> {
                     ],
                   ),
                 ),
-                BistreSettingRow(
-                  label: l10n.t(L10nKey.settingsAgentComputerUse),
-                  description: l10n.t(L10nKey.settingsAgentComputerUseHint),
-                  trailing: BistreSwitch(
-                    value: ctrl.uiPrefs.computerUseEnabled,
-                    semanticsLabel: l10n.t(L10nKey.settingsAgentComputerUse),
-                    reduceMotionOverride: ctrl.reduceMotionOverride,
-                    onChanged: (v) => unawaited(
-                      ctrl.saveUiPrefs(
-                        ctrl.uiPrefs.copyWith(computerUseEnabled: v),
-                        quiet: true,
+                if (!(Platform.isLinux &&
+                    (Platform.environment['WAYLAND_DISPLAY'] ?? '').isNotEmpty))
+                  BistreSettingRow(
+                    label: l10n.t(
+                      BistrePowerGuardHost.isAndroid
+                          ? L10nKey.settingsAgentPhoneUse
+                          : L10nKey.settingsAgentComputerUse,
+                    ),
+                    description: l10n.t(
+                      BistrePowerGuardHost.isAndroid
+                          ? L10nKey.settingsAgentPhoneUseHint
+                          : L10nKey.settingsAgentComputerUseHint,
+                    ),
+                    trailing: BistreSwitch(
+                      value: ctrl.uiPrefs.computerUseEnabled,
+                      semanticsLabel: l10n.t(
+                        BistrePowerGuardHost.isAndroid
+                            ? L10nKey.settingsAgentPhoneUse
+                            : L10nKey.settingsAgentComputerUse,
+                      ),
+                      reduceMotionOverride: ctrl.reduceMotionOverride,
+                      onChanged: (v) => unawaited(
+                        ctrl.saveUiPrefs(
+                          ctrl.uiPrefs.copyWith(computerUseEnabled: v),
+                          quiet: true,
+                        ),
                       ),
                     ),
                   ),
-                ),
                 if (BistrePowerGuardHost.isAndroid)
                   BistreSettingRow(
                     label: l10n.t(L10nKey.settingsSleepAndroidBattery),

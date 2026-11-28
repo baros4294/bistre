@@ -13,6 +13,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.provider.DocumentsContract
 import android.provider.Settings
+import android.view.DragEvent
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
 import androidx.core.view.WindowCompat
@@ -168,8 +169,25 @@ class MainActivity : FlutterActivity() {
         }
 
         val hostChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, HOST_CHANNEL)
+        listenForDrops(hostChannel)
         hostChannel.setMethodCallHandler { call, result ->
             when (call.method) {
+                "clipboardAttachments" -> {
+                    // Copying can take a while: off the UI thread, replying on the main looper.
+                    val main = Handler(Looper.getMainLooper())
+                    Thread {
+                        val files = SharedFiles.clipboardFiles(this)
+                        main.post { result.success(mapOf("files" to files)) }
+                    }.start()
+                }
+                "openFile" -> {
+                    val path = call.argument<String>("path")
+                    result.success(path != null && ViewerFiles.openInApp(this, path))
+                }
+                "copyPicture" -> {
+                    val path = call.argument<String>("path")
+                    result.success(path != null && ViewerFiles.copyPicture(this, path))
+                }
                 "pickLocalFolder" -> {
                     pendingFolderResult?.success(null)
                     pendingFolderResult = result
@@ -251,6 +269,29 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PHONE_USE_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                if (call.method != "phoneUse") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                val service = BistrePhoneUseService.instance
+                if (service == null) {
+                    result.success(
+                        mapOf(
+                            "ok" to false,
+                            "outputText" to "Phone use requires enabling Bistre in Android Accessibility settings.",
+                        ),
+                    )
+                    return@setMethodCallHandler
+                }
+                @Suppress("UNCHECKED_CAST")
+                val args = (call.arguments as? Map<String, Any?>) ?: emptyMap()
+                service.executeAction(args) { response ->
+                    Handler(Looper.getMainLooper()).post { result.success(response) }
+                }
+            }
     }
 
     override fun onDestroy() {
@@ -266,6 +307,35 @@ class MainActivity : FlutterActivity() {
         super.onDestroy()
     }
 
+    /**
+     * Files dragged onto Bistre (split screen, desktop mode) are copied into the cache and sent
+     * to Dart as `onFilesDropped`, as Windows does; a text-only drag is left to Flutter.
+     */
+    private fun listenForDrops(hostChannel: MethodChannel) {
+        val main = Handler(Looper.getMainLooper())
+        window.decorView.setOnDragListener { _, event ->
+            when (event.action) {
+                DragEvent.ACTION_DRAG_STARTED -> {
+                    val desc = event.clipDescription ?: return@setOnDragListener false
+                    (0 until desc.mimeTypeCount).any { desc.getMimeType(it) != "text/plain" }
+                }
+                DragEvent.ACTION_DROP -> {
+                    val permissions = requestDragAndDropPermissions(event)
+                    val clip = event.clipData
+                    Thread {
+                        val files = SharedFiles.copyClip(this, clip)
+                        permissions?.release()
+                        if (files.isNotEmpty()) {
+                            main.post { hostChannel.invokeMethod("onFilesDropped", files) }
+                        }
+                    }.start()
+                    true
+                }
+                else -> true
+            }
+        }
+    }
+
     private fun currentPowerState(): Map<String, Any> {
         val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
         val ignoring = pm?.isIgnoringBatteryOptimizations(packageName) == true
@@ -277,6 +347,7 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val HOST_CHANNEL = "bistre/desktop_host"
+        private const val PHONE_USE_CHANNEL = "bistre/phone_use"
         private const val POWER_CHANNEL = "dev.bistre.app/power_guard"
         private const val TERMUX_CHANNEL = "dev.bistre.app/termux"
         private const val VAULT_CHANNEL = "dev.bistre.app/vault_key"

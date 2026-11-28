@@ -2,7 +2,7 @@ import 'package:bistre_app/features/settings/settings_workspace.dart';
 import 'package:bistre_app/features/shell/folio_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// W8: every settings page can be found by the labels on it (Default models and World book
+/// Every settings page can be found by the labels on it (Default models and World book
 /// could not be found at all, and several pages missed whole groups of their labels).
 void main() {
   test('settings search covers every page\'s own labels', () {

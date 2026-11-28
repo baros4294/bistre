@@ -13,7 +13,7 @@ import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
 
-/// The model field (A-W 6): one combobox. Focusing or clicking it opens the provider's models
+/// The model field: one combobox. Focusing or clicking it opens the provider's models
 /// under it (fetched once if none are loaded); typing filters them; arrow keys move the
 /// highlight; Enter picks the highlighted model, or keeps the typed id when nothing matches;
 /// Esc or a click elsewhere closes the list. Shared by Default models, Assistants, and the
@@ -378,7 +378,7 @@ class _PickerModelItemState extends State<_PickerModelItem> {
   }
 }
 
-/// The models the picker lists (P24): every visible model, or those matching [query] by id
+/// The models the picker lists: every visible model, or those matching [query] by id
 /// or name. No cap: the list is built lazily, so a provider with hundreds of models shows
 /// them all.
 List<EngineProviderModel> modelPickerMatches(

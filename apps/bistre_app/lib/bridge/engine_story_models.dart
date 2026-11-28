@@ -305,6 +305,17 @@ class EngineStoryChapter {
       );
 }
 
+/// A chapter's era summary as written by the librarian, and the earlier facts it contradicts.
+class EngineChapterSummary {
+  const EngineChapterSummary({
+    required this.eraSummary,
+    this.contradictions = const <String>[],
+  });
+
+  final String eraSummary;
+  final List<String> contradictions;
+}
+
 /// Long-form fiction Manuscript Scene (`story_scenes`) pairing Beats -> Prose.
 class EngineStoryScene {
   const EngineStoryScene({

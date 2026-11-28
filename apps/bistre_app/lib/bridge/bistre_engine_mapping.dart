@@ -83,7 +83,6 @@ EngineSettings _mapSettings(frb.FfiAppSettings s) => EngineSettings(
   walletDailyCeilingMicros: s.walletDailyCeilingMicros?.toInt(),
   walletLocalFirst: s.walletLocalFirst,
   providerStatelessDefault: s.providerStatelessDefault,
-  fontScaleBps: s.fontScaleBps,
   fontSizePx: s.fontSizePx,
   lineHeightBps: s.lineHeightBps,
   readingWidthPx: s.readingWidthPx,
@@ -114,6 +113,7 @@ EngineSettings _mapSettings(frb.FfiAppSettings s) => EngineSettings(
   codeWrapMode: s.codeWrapMode,
   pricingAutoRefresh: s.pricingAutoRefresh,
   userDisplayName: s.userDisplayName,
+  autoCompactAtPercent: s.autoCompactAtPercent,
 );
 
 EngineAgentRun _mapAgentRun(frb.FfiAgentRunRecord r) => EngineAgentRun(
@@ -253,6 +253,7 @@ BistreEvent _mapEvent(frb.FfiEngineEvent e) => switch (e.kind) {
   'live_voice_state' => _mapLiveVoiceState(e.payloadJson),
   'live_voice_transcript' => _mapLiveVoiceTranscript(e.payloadJson),
   'live_voice_audio' => _mapLiveVoiceAudio(e.payloadJson),
+  'host_action_requested' => _mapHostActionRequested(e.payloadJson),
   'tool_approval_requested' => _mapToolApprovalRequested(e.payloadJson),
   'tool_execution_updated' => _mapToolExecutionUpdated(e.payloadJson),
   _ => UnknownEngineEvent(e.kind),
@@ -311,6 +312,16 @@ BistreEvent _mapLiveVoiceAudio(String? raw) {
   return LiveVoiceAudioEvent(
     sessionId: m['session_id'] as String? ?? '',
     wavBase64: m['wav_base64'] as String? ?? '',
+  );
+}
+
+BistreEvent _mapHostActionRequested(String? raw) {
+  final m = _decodeMap(raw);
+  return HostActionRequestedEvent(
+    requestId: m['request_id'] as String? ?? '',
+    threadId: m['thread_id'] as String? ?? '',
+    runId: m['run_id'] as String? ?? '',
+    actionJson: m['action_json'] as String? ?? '{}',
   );
 }
 
@@ -389,7 +400,6 @@ frb.FfiAppSettings _toFfiSettings(EngineSettings settings) =>
       walletDailyCeilingMicros: settings.walletDailyCeilingMicros,
       walletLocalFirst: settings.walletLocalFirst,
       providerStatelessDefault: settings.providerStatelessDefault,
-      fontScaleBps: settings.fontScaleBps,
       fontSizePx: settings.fontSizePx,
       lineHeightBps: settings.lineHeightBps,
       readingWidthPx: settings.readingWidthPx,
@@ -420,6 +430,7 @@ frb.FfiAppSettings _toFfiSettings(EngineSettings settings) =>
       codeWrapMode: settings.codeWrapMode,
       pricingAutoRefresh: settings.pricingAutoRefresh,
       userDisplayName: settings.userDisplayName,
+      autoCompactAtPercent: settings.autoCompactAtPercent,
     );
 
 EngineGroundingSource _mapGroundingSource(frb.FfiGroundingSource r) =>
@@ -467,3 +478,188 @@ EngineContextBreakdown _mapContextBreakdown(frb.FfiContextBreakdown b) =>
           .toList(growable: false),
       mcpTruncated: b.mcpTruncated,
     );
+
+mixin _FrbUtilityAndVoiceMixin {
+  Future<EngineNode> compactThread({
+    required String threadId,
+    int keepRecentTurns = 4,
+    String? customSummary,
+    String? instructions,
+  }) async => _mapNode(
+    await frb.compactThread(
+      threadId: threadId,
+      keepRecentTurns: keepRecentTurns,
+      customSummary: customSummary,
+      instructions: instructions,
+    ),
+  );
+
+  Future<EngineNode> rewriteCompactionSummary({
+    required String threadId,
+    required String nodeId,
+    required String content,
+  }) async => _mapNode(
+    await frb.rewriteCompactionSummary(
+      threadId: threadId,
+      nodeId: nodeId,
+      content: content,
+    ),
+  );
+
+  Future<void> undoCompaction({
+    required String threadId,
+    required String compactionNodeId,
+  }) => frb.undoCompaction(
+    threadId: threadId,
+    compactionNodeId: compactionNodeId,
+  );
+
+  Future<List<int>> synthesizeSpeech({
+    required String providerId,
+    required String modelId,
+    required String text,
+    String? voice,
+  }) => frb.synthesizeSpeech(
+    providerId: providerId,
+    modelId: modelId,
+    text: text,
+    voice: voice,
+  );
+
+  Future<String> startLiveVoiceSession({
+    required String providerId,
+    required String modelId,
+    required String voice,
+    required String systemPrompt,
+  }) => frb.startLiveVoiceSession(
+    providerId: providerId,
+    modelId: modelId,
+    voice: voice,
+    systemPrompt: systemPrompt,
+  );
+
+  Future<void> sendLiveVoicePcmChunk({
+    required String sessionId,
+    required String pcmBase64,
+  }) => frb.sendLiveVoicePcmChunk(sessionId: sessionId, pcmBase64: pcmBase64);
+
+  Future<void> sendLiveVoiceText({
+    required String sessionId,
+    required String text,
+  }) => frb.sendLiveVoiceText(sessionId: sessionId, text: text);
+
+  Future<void> stopLiveVoiceSession(String sessionId) =>
+      frb.stopLiveVoiceSession(sessionId: sessionId);
+
+  Future<EngineThread> generateThreadTitle(String threadId) async =>
+      _mapThread(await frb.generateThreadTitle(threadId: threadId));
+
+  Future<EngineNode> translateNode({
+    required String threadId,
+    required String nodeId,
+    String? targetLanguage,
+  }) async => _mapNode(
+    await frb.translateNode(
+      threadId: threadId,
+      nodeId: nodeId,
+      targetLanguage: targetLanguage,
+    ),
+  );
+
+  Future<String> reinstallUpdate(EngineUpdateCheck check) =>
+      frb.reinstallUpdate(
+        check: frb.FfiUpdateCheckResult(
+          currentVersion: check.currentVersion,
+          latestVersion: check.latestVersion,
+          updateAvailable: check.updateAvailable,
+          track: check.track,
+          ownershipMode: check.ownershipMode,
+          signatureVerified: check.signatureVerified,
+          activeRunsBlocking: check.activeRunsBlocking,
+          releaseNotes: check.releaseNotes,
+          downloadUrl: check.downloadUrl,
+          sha256Hex: check.sha256Hex,
+          downloadSizeBytes: BigInt.from(check.downloadSizeBytes),
+          checkedAtMs: check.checkedAtMs,
+        ),
+      );
+
+  Future<bool> respondHostAction({
+    required String requestId,
+    required bool ok,
+    required String outputText,
+    String? imageBase64,
+  }) => frb.respondHostAction(
+    requestId: requestId,
+    ok: ok,
+    outputText: outputText,
+    imageBase64: imageBase64,
+  );
+
+  Future<EngineInspectedRequest> inspectNextRequest({
+    required String threadId,
+    required String draft,
+  }) async {
+    final req = await frb.inspectNextRequest(threadId: threadId, draft: draft);
+    return EngineInspectedRequest(
+      method: req.method,
+      url: req.url,
+      dialect: req.dialect,
+      model: req.model,
+      headers: req.headers,
+      bodyJson: req.bodyJson,
+    );
+  }
+
+  Future<String> exportProviderShareCode({
+    required String providerId,
+    bool includeApiKey = false,
+  }) => frb.exportProviderShareCode(
+    providerId: providerId,
+    includeApiKey: includeApiKey,
+  );
+
+  Future<EngineProvider> importProviderShareCode(String code) async =>
+      _mapProvider(await frb.importProviderShareCode(code: code));
+
+  Future<List<EngineNode>> listNodesWindow({
+    required String threadId,
+    String? beforeNodeId,
+    required int limit,
+  }) async => (await frb.listNodesWindow(
+    threadId: threadId,
+    beforeNodeId: beforeNodeId,
+    limit: limit,
+  )).map(_mapNode).toList(growable: false);
+
+  Future<int> getThreadSpendMicros(String threadId) async =>
+      (await frb.getThreadSpendMicros(threadId: threadId)).toInt();
+
+  Future<int> threadHistoryRev(String threadId) async =>
+      (await frb.threadHistoryRev(threadId: threadId)).toInt();
+
+  Future<List<EnginePurposeUsage>> getWalletUsageByPurpose(
+    DateTime since,
+  ) async {
+    final rows = await frb.getWalletUsageByPurpose(
+      sinceUnixMs: since.millisecondsSinceEpoch,
+    );
+    return [
+      for (final r in rows)
+        EnginePurposeUsage(
+          // Core names only known purposes; anything else is a broken bridge, not data.
+          purpose: EngineSpendPurpose.values.byName(r.purpose),
+          requests: r.requests.toInt(),
+          costMicros: r.costMicros,
+        ),
+    ];
+  }
+
+  Future<EngineMcpRegistryPage> searchMcpRegistry(
+    String query, {
+    String? cursor,
+  }) async => EngineMcpRegistryPage.fromJson(
+    jsonDecode(await frb.searchMcpRegistryJson(query: query, cursor: cursor))
+        as Map<String, Object?>,
+  );
+}

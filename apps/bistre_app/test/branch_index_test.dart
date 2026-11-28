@@ -5,7 +5,7 @@ import 'support/shell_harness.dart';
 
 void main() {
   testWidgets(
-    'branch info is computed from one index, not one pass per message (U15)',
+    'branch info is computed from one index, not one pass per message',
     (tester) async {
       final gateway = FakeEngineGateway(seedConnectedOpenAi: true);
       final chat = gateway.seedThread(title: 'Long', updatedAtMs: 1000);

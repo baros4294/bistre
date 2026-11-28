@@ -4,9 +4,9 @@ import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
-import 'bistre_decorations.dart';
 import 'bistre_theme.dart';
 import 'ink_primitives.dart';
+import 'label_control_layout.dart';
 import 'press_feedback.dart';
 
 /// Pure `package:flutter/widgets.dart` smooth VSYNC slider with keyboard support,
@@ -22,9 +22,19 @@ class BistreSlider extends StatefulWidget {
     this.step = 1.0,
     this.onChangeEnd,
     this.reduceMotionOverride = false,
+    this.unset = false,
+    this.valueLabel,
   });
 
   final double value;
+
+  /// No value is chosen here (it follows a default, or Auto): the track has no fill and
+  /// the thumb is hollow, so its place says nothing; moving it chooses a value.
+  final bool unset;
+
+  /// What a screen reader hears as the value, when the number alone says the wrong thing
+  /// (Default, Auto).
+  final String? valueLabel;
   final double min;
   final double max;
   final double step;
@@ -141,7 +151,9 @@ class _BistreSliderState extends State<BistreSlider>
     return Semantics(
       slider: true,
       label: widget.semanticsLabel,
-      value: widget.value.toStringAsFixed(widget.step < 1 ? 2 : 0),
+      value:
+          widget.valueLabel ??
+          widget.value.toStringAsFixed(widget.step < 1 ? 2 : 0),
       child: FocusableActionDetector(
         onShowFocusHighlight: (v) => setState(() => _focused = v),
         onShowHoverHighlight: (v) => setState(() => _hovered = v),
@@ -222,8 +234,9 @@ class _BistreSliderState extends State<BistreSlider>
                         0.0,
                         1.0,
                       );
-                      final visualFrac = isRtl ? (1.0 - fraction) : fraction;
-                      final thumbOffset = visualFrac * usableW;
+                      // The thumb starts at the start edge (the right one in RTL).
+                      final thumbOffset =
+                          (isRtl ? -fraction : fraction) * usableW;
                       final thumbScale = _dragging
                           ? 1.15
                           : (_hovered || _focused ? 1.08 : 1.0);
@@ -245,21 +258,22 @@ class _BistreSliderState extends State<BistreSlider>
                               ),
                             ),
                           ),
-                          Align(
-                            alignment: AlignmentDirectional.centerStart,
-                            child: FractionallySizedBox(
-                              widthFactor: fraction,
-                              child: SizedBox(
-                                height: 4,
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    color: theme.accentBrass,
-                                    borderRadius: BorderRadius.circular(999),
+                          if (!widget.unset)
+                            Align(
+                              alignment: AlignmentDirectional.centerStart,
+                              child: FractionallySizedBox(
+                                widthFactor: fraction,
+                                child: SizedBox(
+                                  height: 4,
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      color: theme.accentBrass,
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
                           Transform.translate(
                             offset: Offset(thumbOffset, 0),
                             child: Transform.scale(
@@ -268,15 +282,21 @@ class _BistreSliderState extends State<BistreSlider>
                                 dimension: thumbSize,
                                 child: DecoratedBox(
                                   decoration: BoxDecoration(
-                                    color: theme.bgElevated,
+                                    color: widget.unset
+                                        ? theme.bgCanvas
+                                        : theme.bgElevated,
                                     shape: BoxShape.circle,
                                     border: Border.all(
                                       color: _focused || _dragging || _hovered
                                           ? theme.accentBrass
+                                          : widget.unset
+                                          ? theme.inkMuted
                                           : theme.inkSecondary,
                                       width: _focused || _dragging ? 2.2 : 1.6,
                                     ),
-                                    boxShadow: theme.cardShadow,
+                                    boxShadow: widget.unset
+                                        ? null
+                                        : theme.cardShadow,
                                   ),
                                 ),
                               ),
@@ -485,7 +505,10 @@ class BistreSegmentedControl<T> extends StatelessWidget {
             for (var i = 0; i < options.length; i++) ...[
               if (i > 0) const SizedBox(width: 2),
               if (expand)
+                // Filled width shared by label length, so a longer word (a translation)
+                // gets the room it needs instead of an equal third.
                 Expanded(
+                  flex: options[i].label.characters.length + 4,
                   child: _SegmentTile<T>(
                     option: options[i],
                     selected: options[i].value == selected,
@@ -606,11 +629,12 @@ class _SegmentTileState<T> extends State<_SegmentTile<T>> {
 class BistreSettingsSection extends StatelessWidget {
   const BistreSettingsSection({
     super.key,
-    required this.title,
+    this.title = '',
     this.subtitle,
     required this.children,
   });
 
+  /// Empty when the page title above already names the card (no heading repeats it).
   final String title;
   final String? subtitle;
   final List<Widget> children;
@@ -621,16 +645,18 @@ class BistreSettingsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        InkText(title, role: InkTextRole.titleMedium),
-        if (subtitle != null && subtitle!.isNotEmpty) ...[
-          const SizedBox(height: 3),
-          InkText(
-            subtitle!,
-            role: InkTextRole.captionMeta,
-            color: theme.inkMuted,
-          ),
+        if (title.isNotEmpty) ...[
+          InkText(title, role: InkTextRole.titleMedium),
+          if (subtitle != null && subtitle!.isNotEmpty) ...[
+            const SizedBox(height: 3),
+            InkText(
+              subtitle!,
+              role: InkTextRole.captionMeta,
+              color: theme.inkMuted,
+            ),
+          ],
+          const SizedBox(height: BistreSpacing.s12),
         ],
-        const SizedBox(height: BistreSpacing.s12),
         FolioSurface(
           tone: FolioTone.elevated,
           padding: EdgeInsetsDirectional.zero,
@@ -680,12 +706,14 @@ class BistreSettingRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Adaptive: `label | control` side by side on wide layouts, stacked
-          // `label / full-width control` on phones and at large text.
-          LayoutBuilder(
-            builder: (context, constraints) {
+          // The control stays on its label's row whenever its real width fits beside a
+          // readable label (a switch, a compact picker, a short button), on a phone and at
+          // 200% text alike; only a control too wide for that drops below the label.
+          Builder(
+            builder: (context) {
               final labels = Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   InkText(
                     label,
@@ -702,31 +730,8 @@ class BistreSettingRow extends StatelessWidget {
                   ],
                 ],
               );
-              final stacked =
-                  trailing != null &&
-                  constraints.maxWidth / textScaleOf(context) < 480;
-              if (stacked) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    labels,
-                    const SizedBox(height: BistreSpacing.s8),
-                    Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      child: trailing,
-                    ),
-                  ],
-                );
-              }
-              return Row(
-                children: [
-                  Expanded(child: labels),
-                  if (trailing != null) ...[
-                    const SizedBox(width: BistreSpacing.s16),
-                    trailing!,
-                  ],
-                ],
-              );
+              if (trailing == null) return labels;
+              return LabelControlLayout(label: labels, control: trailing!);
             },
           ),
           if (bottom != null) ...[

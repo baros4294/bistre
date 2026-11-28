@@ -201,7 +201,7 @@ void main() {
   );
 
   testWidgets(
-    'FolioTopBanner, centered FolioToastBanner, SidebarSlideReveal, and MessageNavRail work',
+    'FolioTopBanner, centered FolioToastBanner, SidebarDock, and MessageNavRail work',
     (tester) async {
       final l10n = loadDiskCatalogs();
       var dismissed = false;
@@ -239,10 +239,15 @@ void main() {
                     onAction: () {},
                     onDismiss: () => dismissed = true,
                   ),
-                  const SidebarSlideReveal(
-                    open: true,
-                    reduceMotionOverride: true,
-                    child: SizedBox(width: 120, height: 40),
+                  const SizedBox(
+                    height: 40,
+                    child: SidebarDock(
+                      open: true,
+                      trailing: true,
+                      reduceMotionOverride: true,
+                      sidebar: SizedBox(width: 120),
+                      child: SizedBox.expand(),
+                    ),
                   ),
                   BistreSlider(
                     value: 2,

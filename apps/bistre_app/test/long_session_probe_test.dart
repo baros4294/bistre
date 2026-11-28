@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/shell_harness.dart';
 
-/// W6.3 probe (cherry-studio #24718): a 500-turn tool session keeps every UI-side
+/// Probe: a 500-turn tool session keeps every UI-side
 /// collection bounded, and once the run ends nothing keeps the app awake (zero idle polling:
 /// no scheduled frame, no running animation).
 void main() {
