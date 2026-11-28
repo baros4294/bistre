@@ -10,7 +10,7 @@ class GuardResult {
   bool get isValid => errors.isEmpty;
 }
 
-/// Canonical 10 Ink Primitives budget locked by `docs/design/DESIGN.md` & `ADR-0011`.
+/// Canonical 10 Ink Primitives budget locked by `docs/design/design.md` & `ADR-0011`.
 const Set<String> canonicalInkPrimitives = <String>{
   'BistreScaffold',
   'FolioSurface',
@@ -133,7 +133,7 @@ void checkDocPathsAndIndexes(Directory repoRoot, List<String> errors) {
     }
   }
 
-  // Verify every docs/adr/ADR-*.md file is indexed in AGENTS.md and follows the ADR structure.
+  // Verify every docs/adr/adr-*.md file is indexed in AGENTS.md and follows the ADR structure.
   final adrDir = Directory('${repoRoot.path}/docs/adr');
   if (adrDir.existsSync()) {
     final adrs =
@@ -145,19 +145,18 @@ void checkDocPathsAndIndexes(Directory repoRoot, List<String> errors) {
           ..sort((a, b) => a.path.compareTo(b.path));
     for (final adr in adrs) {
       final name = adr.uri.pathSegments.last;
-      final idMatch = RegExp(r'^(ADR-\d{4})').firstMatch(name);
+      final idMatch = RegExp(r'^adr-(\d{4})-[a-z0-9-]+\.md$').firstMatch(name);
       if (idMatch == null) {
-        errors.add('[doc-adr] docs/adr/$name must follow ADR-NNNN-slug.md');
+        errors.add('[doc-adr] docs/adr/$name must follow adr-nnnn-slug.md');
         continue;
       }
-      final adrId = idMatch.group(1)!;
+      final adrId = 'ADR-${idMatch.group(1)}';
       if (!agentsText.contains(adrId)) {
         errors.add('[doc-index] $adrId ($name) is not indexed in AGENTS.md');
       }
       final text = adr.readAsStringSync();
       for (final requiredSection in const <String>[
-        '- **Status**:',
-        '- **Date**:',
+        '- Status:',
         '## Context',
         '## Decision',
         '## Rejected Alternatives',
@@ -195,7 +194,7 @@ void checkDocPathsAndIndexes(Directory repoRoot, List<String> errors) {
     'AGENTS.md',
     'README.md',
     'CONTRIBUTING.md',
-    'docs/design/DESIGN.md',
+    'docs/design/design.md',
   ];
   final pathSpanPattern = RegExp(
     r'`((?:docs|crates|apps|tools|l10n|\.github|\.agents|assets)/[A-Za-z0-9_./\-]+)`',
@@ -377,7 +376,7 @@ void checkCodeHygiene(Directory repoRoot, List<String> errors) {
     if (found.length != canonicalInkPrimitives.length ||
         !found.containsAll(canonicalInkPrimitives)) {
       errors.add(
-        '[ui-budget] ink_primitives.dart public widgets $found diverge from the 10 Ink Primitives budget $canonicalInkPrimitives (DESIGN.md / ADR-0011).',
+        '[ui-budget] ink_primitives.dart public widgets $found diverge from the 10 Ink Primitives budget $canonicalInkPrimitives (design.md / ADR-0011).',
       );
     }
   } else {

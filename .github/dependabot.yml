@@ -6,6 +6,9 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    groups:
+      actions-minor-patch:
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "cargo"
     directory: "/"
@@ -14,6 +17,9 @@ updates:
     cooldown:
       default-days: 7
       semver-major-days: 14
+    groups:
+      cargo-minor-patch:
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "pub"
     directory: "/"
@@ -22,6 +28,9 @@ updates:
     cooldown:
       default-days: 7
       semver-major-days: 14
+    groups:
+      pub-minor-patch:
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "gradle"
     directory: "/apps/bistre_app/android"
@@ -30,3 +39,6 @@ updates:
     cooldown:
       default-days: 7
       semver-major-days: 14
+    groups:
+      gradle-minor-patch:
+        update-types: ["minor", "patch"]

@@ -5,13 +5,13 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/error/error.dart';
 
-/// Mechanically enforces DESIGN.md Section 2 / ADR-0011:
+/// Mechanically enforces design.md Section 2 / ADR-0011:
 /// All UI colors must derive from WCAG-verified `BistreThemeData` tokens in `bistre_theme.dart`.
 class ForbidRawColorsRule extends AnalysisRule {
   static const LintCode code = LintCode(
     'bistre_forbid_raw_colors',
     'Raw Color literal is forbidden outside bistre_theme.dart.',
-    correctionMessage: 'Use semantic Sepia Book tokens from BistreTheme.of(context) (DESIGN.md).',
+    correctionMessage: 'Use semantic Sepia Book tokens from BistreTheme.of(context) (design.md).',
     severity: DiagnosticSeverity.ERROR,
   );
 

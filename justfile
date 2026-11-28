@@ -52,10 +52,11 @@ test-tools:
 test-flutter:
   dart run ../../tools/bistre_guard/bin/bistre_guard.dart locked flutter test
 
-# Capture high-DPI UIGalleryTest visual inspection screenshots into apps/bistre_app/build/ui_gallery/
+# Render the UI gallery from scratch into apps/bistre_app/build/ui_gallery/ (stale PNGs are removed first)
 [working-directory: 'apps/bistre_app']
 ui-gallery:
-  dart run ../../tools/bistre_guard/bin/bistre_guard.dart locked flutter test test/ui_gallery_test.dart test/ui_gallery_a11y_test.dart test/ui_gallery_review_test.dart
+  git clean -fdXq -- build/ui_gallery
+  dart run ../../tools/bistre_guard/bin/bistre_guard.dart locked flutter test test/ui_gallery_shell_test.dart test/ui_gallery_overlays_test.dart test/ui_gallery_settings_test.dart test/ui_gallery_matrix_test.dart test/ui_gallery_stress_test.dart test/ui_gallery_sheets_test.dart
 
 # Run all Dart & Flutter tests (cross-platform safe on Windows PowerShell and Linux bash)
 test-dart: test-tools test-flutter

@@ -71,11 +71,11 @@ jobs:
           android=false
           while IFS= read -r path; do
             case "$path" in
-              .github/*) all ;;
+              .github/*|packaging/*) all ;;
               crates/*|Cargo.toml|Cargo.lock|.cargo/*|rust-toolchain.toml|clippy.toml|deny.toml)
                 rust=true; flutter=true; android=true ;;
               apps/bistre_app/android/*) android=true ;;
-              apps/*|l10n/*|pubspec.yaml|pubspec.lock|analysis_options.yaml|tools/bistre_lints/*)
+              apps/*|l10n/*|pubspec.yaml|pubspec.lock|analysis_options.yaml|tools/*)
                 flutter=true; android=true ;;
               *) ;;
             esac
@@ -100,7 +100,7 @@ jobs:
           persist-credentials: false
       - uses: taiki-e/install-action@25f51f6b1bf4e18876107cece836f4f77ac17c8c # v2
         with:
-          tool: zizmor
+          tool: zizmor@1.33.1
       - name: Install pinned actionlint (checksum-verified)
         shell: bash
         run: bash .github/scripts/install-actionlint.sh
@@ -109,6 +109,8 @@ jobs:
         run: actionlint
       - name: Security-audit GitHub Actions and Dependabot config (zizmor auditor)
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: zizmor --persona auditor .github/
       - name: Scan repository history and working tree for secrets (open-source gitleaks CLI)
         shell: bash
@@ -196,7 +198,7 @@ jobs:
           cache-bin: false
       - uses: taiki-e/install-action@25f51f6b1bf4e18876107cece836f4f77ac17c8c # v2
         with:
-          tool: cargo-nextest,cargo-deny
+          tool: cargo-nextest@0.9.152,cargo-deny@0.22.0
       - name: Rust format check
         shell: bash
         run: cargo fmt --all -- --check
@@ -225,27 +227,6 @@ jobs:
           done
           if cargo tree --locked -p bistre-ffi --depth 1 | grep -E "rusqlite|reqwest|openssl-sys"; then
             echo "ERROR: Direct SQLite/HTTP/OpenSSL dependency leaked into thin bistre-ffi"
-            exit 1
-          fi
-      - name: Build and smoke-test bistre-daemon and bistre-updater release binaries
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo build --locked --release -p bistre-daemon -p bistre-updater
-          tmp_dir="${RUNNER_TEMP}/bistre-daemon-smoke"
-          rm -rf "$tmp_dir"
-          mkdir -p "$tmp_dir"
-          trap 'rm -rf "$tmp_dir"' EXIT
-          health_json="$(./target/release/bistre-daemon --health-check --data-dir "$tmp_dir")"
-          echo "$health_json"
-          echo "$health_json" | grep -q '"wal_mode_active":true'
-          echo "$health_json" | grep -q '"status_key":"diag.ok"'
-          set +e
-          ./target/release/bistre-updater >/dev/null 2>&1
-          status=$?
-          set -e
-          if [ "$status" -ne 2 ]; then
-            echo "ERROR: expected bistre-updater usage exit code 2, got $status"
             exit 1
           fi
 
@@ -290,6 +271,27 @@ jobs:
       - name: Resolve Dart Pub Workspace (enforcing pubspec.lock)
         shell: bash
         run: bash .github/scripts/with-download-retry.sh flutter pub get --enforce-lockfile
+      - name: Build and smoke-test bistre-daemon and bistre-updater release binaries (built once per OS; the launch checks reuse them)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked --release -p bistre-daemon -p bistre-updater
+          tmp_dir="${RUNNER_TEMP}/bistre-daemon-smoke"
+          rm -rf "$tmp_dir"
+          mkdir -p "$tmp_dir"
+          trap 'rm -rf "$tmp_dir"' EXIT
+          health_json="$(./target/release/bistre-daemon --health-check --data-dir "$tmp_dir")"
+          echo "$health_json"
+          echo "$health_json" | grep -q '"wal_mode_active":true'
+          echo "$health_json" | grep -q '"status_key":"diag.ok"'
+          set +e
+          ./target/release/bistre-updater >/dev/null 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 2 ]; then
+            echo "ERROR: expected bistre-updater usage exit code 2, got $status"
+            exit 1
+          fi
       - name: Flutter static analysis (includes all 5 bistre_lints rules)
         shell: bash
         run: flutter analyze apps/bistre_app
@@ -323,7 +325,6 @@ jobs:
           set -euo pipefail
           # Launch-verify the release binary in CI so broken bundles never ship.
           # --skip-streaming avoids re-running streaming_frame_probe_test.dart (already run in `flutter test`).
-          cargo build --locked --release -p bistre-daemon
           xvfb-run -a dart run tools/bistre_guard/bin/bistre_guard.dart perf --strict --skip-streaming --rss-report-only
       - name: Profile-mode streaming benchmark (Spec 11 frame timings, xvfb)
         if: runner.os == 'Linux'
@@ -351,7 +352,6 @@ jobs:
           set -euo pipefail
           # Idle RSS outside xvfb's software GL is reported; launch, first paint, and idle frames still fail the job.
           # --skip-streaming avoids re-running streaming_frame_probe_test.dart (already run in `flutter test`).
-          cargo build --locked --release -p bistre-daemon
           dart run tools/bistre_guard/bin/bistre_guard.dart perf --strict --skip-streaming --rss-report-only
       - name: Upload the Windows release bundle (GPU measurements on a developer machine)
         if: runner.os == 'Windows'
@@ -418,9 +418,23 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+      # The pinned NDK is about 2 GB; restore it instead of downloading it on every run.
+      # Saved from main only, like rust-cache; release.yml never restores caches.
+      - name: Restore the pinned Android NDK
+        id: ndk-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
+          key: android-ndk-${{ runner.os }}-${{ env.ANDROID_NDK_VERSION }}
       - name: Provision Android SDK API 36 and pinned NDK r30
         shell: bash
         run: bash .github/scripts/provision-android-sdk.sh
+      - name: Save the pinned Android NDK
+        if: github.ref == 'refs/heads/main' && steps.ndk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
+          key: android-ndk-${{ runner.os }}-${{ env.ANDROID_NDK_VERSION }}
       - name: Resolve Dart Pub Workspace (enforcing pubspec.lock)
         shell: bash
         run: bash .github/scripts/with-download-retry.sh flutter pub get --enforce-lockfile
@@ -437,7 +451,7 @@ jobs:
         working-directory: apps/bistre_app
         shell: bash
         env:
-          # CI check build, never shipped: debug signing is explicit, not a silent fallback (C1).
+          # CI check build, never shipped: debug signing is explicit, not a silent fallback.
           BISTRE_ALLOW_DEBUG_SIGNING: "1"
         run: |
           set -euo pipefail

@@ -13,7 +13,7 @@ class StorageBudget {
 }
 
 const List<StorageBudget> storageBudgets = <StorageBudget>[
-  StorageBudget('target', 5 * gib, 'Rust target/'),
+  StorageBudget('target', 4 * gib, 'Rust target/'),
   StorageBudget('apps/bistre_app/build', 1 * gib, 'Flutter build/'),
   StorageBudget('apps/bistre_app/.dart_tool', 512 * mib, 'Flutter .dart_tool/'),
   StorageBudget('.bistre-local', 128 * mib, 'Local verification state'),
@@ -21,6 +21,14 @@ const List<StorageBudget> storageBudgets = <StorageBudget>[
 
 /// Maximum size of a single verification log under `.bistre-local/`.
 const int maxVerificationLogBytes = 2 * mib;
+
+/// The only `target/` entries worth keeping: the host debug profile (every check and test)
+/// and the Android build (slow to rebuild). Release and other targets rebuild at task end.
+const Set<String> keptTargetDirs = <String>{
+  'debug',
+  'tmp',
+  'aarch64-linux-android',
+};
 
 /// Number of newest nested `build/<crate>/<hash>/` units kept per unit kind.
 const int keepBuildUnitsDebug = 2;
@@ -92,13 +100,18 @@ String renderDiskReport(List<BucketUsage> usage) {
   return buf.toString();
 }
 
-/// Surgical, non-destructive cache pruner. Never runs `cargo clean`; only removes superseded
+/// Cache pruner. Never runs `cargo clean` and never touches sources: it removes `target/`
+/// directories outside [keptTargetDirs], the stray workspace-root `build/`, superseded
 /// incremental sessions, stale nested build units, orphaned flat `deps/`, stale hashed `deps/`
 /// files, and oversized verification logs.
 PruneReport pruneWorkspace(Directory repoRoot) {
   final report = PruneReport();
   final target = Directory('${repoRoot.path}/target');
+  _deleteRecorded(Directory('${repoRoot.path}/build'), report);
   if (target.existsSync()) {
+    for (final dir in target.listSync().whereType<Directory>()) {
+      if (!keptTargetDirs.contains(_name(dir))) _deleteRecorded(dir, report);
+    }
     for (final profileDir in _profileDirs(target)) {
       final name = profileDir.uri.pathSegments.where((s) => s.isNotEmpty).last;
       final keep = name == 'debug'
@@ -305,6 +318,12 @@ DateTime _mtime(FileSystemEntity e) {
   } on FileSystemException {
     return DateTime.fromMillisecondsSinceEpoch(0);
   }
+}
+
+void _deleteRecorded(Directory dir, PruneReport report) {
+  if (!dir.existsSync()) return;
+  final bytes = directorySize(dir);
+  if (_tryDelete(dir)) report.record('removed ${_rel(dir)}', bytes);
 }
 
 bool _tryDelete(FileSystemEntity e) {

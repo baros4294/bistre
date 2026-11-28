@@ -41,6 +41,16 @@ void main() {
     expect(errors.single, contains('tools.rs:1'));
   });
 
+  test('process-spawn gate rejects Process.run/start in the app', () {
+    final errors = _run(checkProcessSpawnAndMmap, <String, Object>{
+      'apps/bistre_app/lib/platform/host.dart': "await Process.start('notify-send', args);\n// Process.run( in a comment\n",
+      'apps/bistre_app/test/x_test.dart': "await Process.run('git', args);\n",
+      'apps/bistre_app/lib/ok.dart': 'final p = ProcessInfo.currentRss;\n',
+    });
+    expect(errors, hasLength(1));
+    expect(errors.single, contains('host.dart:1'));
+  });
+
   test('mmap gate rejects memmap deps and memory-mapped search', () {
     final errors = _run(checkProcessSpawnAndMmap, <String, Object>{
       'crates/bistre-core/Cargo.toml': '[dependencies]\nmemmap2 = "0.9"\n',
@@ -58,14 +68,14 @@ void main() {
       'docs/bom.md': <int>[0xEF, 0xBB, 0xBF, 0x23, 0x0A],
       'scripts/build.ps1': 'Write-Output "caf\u00e9"\n',
       'scripts/ok.ps1': 'Write-Output "ok"\n',
-      'apps/bistre_app/windows/runner/Runner.rc': 'a\nb\n',
+      'apps/bistre_app/windows/runner/runner.rc': 'a\nb\n',
       'apps/bistre_app/windows/runner/Good.rc': 'a\r\nb\r\n',
       'docs/plain.md': '# ok\n',
     });
     final joined = errors.join('\n');
     expect(joined, contains('bom.md starts with a UTF-8 BOM'));
     expect(joined, contains('build.ps1 must be ASCII-only'));
-    expect(joined, contains('Runner.rc must use CRLF'));
+    expect(joined, contains('runner.rc must use CRLF'));
     expect(joined, isNot(contains('ok.ps1')));
     expect(joined, isNot(contains('Good.rc')));
     expect(errors, hasLength(3));
@@ -161,26 +171,23 @@ void main() {
     expect(errors, hasLength(3), reason: joined);
   });
 
-  test('AGENTS.md budget and markdown anchors are enforced', () {
+  test('markdown anchors resolve to real headings', () {
     final (root, rels) = _repo(<String, Object>{
-      'AGENTS.md': 'x' * (maxAgentsChars + 1),
-      'docs/a.md': '# Title — Sub\n## 1. Setup & Run\nSee [ok](#1-setup--run), [ok2](b.md#target-heading), [bad](b.md#nope), [self](#title--sub).\n',
+      'docs/a.md': '# Title \u2014 Sub\n## 1. Setup & Run\nSee [ok](#1-setup--run), [ok2](b.md#target-heading), [bad](b.md#nope), [self](#title--sub).\n',
       'docs/b.md': '## Target `Heading`\n',
     });
     final errors = <String>[];
-    checkAgentsBudget(root, errors);
     checkMarkdownAnchors(root, rels, errors);
     final joined = errors.join('\n');
-    expect(joined, contains('AGENTS.md has ${maxAgentsChars + 1} characters'));
     expect(joined, contains('missing heading "#nope"'));
-    expect(errors, hasLength(2), reason: joined);
+    expect(errors, hasLength(1), reason: joined);
   });
 
-  test('single version source spans Cargo, pubspec, Runner.rc, and MCP', () {
+  test('single version source spans Cargo, pubspec, runner.rc, and MCP', () {
     final good = _repo(<String, Object>{
       'Cargo.toml': '[workspace.package]\nversion = "1.2.3"\n',
       'apps/bistre_app/pubspec.yaml': 'version: 1.2.3+4\n',
-      'apps/bistre_app/windows/runner/Runner.rc': '#define VERSION_AS_NUMBER 1,2,3,4\r\n#define VERSION_AS_STRING "1.2.3"\r\nVALUE "ProductName", "Bistre" "\\0"\r\n',
+      'apps/bistre_app/windows/runner/runner.rc': '#define VERSION_AS_NUMBER 1,2,3,4\r\n#define VERSION_AS_STRING "1.2.3"\r\nVALUE "ProductName", "Bistre" "\\0"\r\n',
       'crates/bistre-core/src/mcp.rs':
           '"clientInfo": { "name": "Bistre", "version": crate::CORE_VERSION }',
     });
@@ -191,21 +198,21 @@ void main() {
     final bad = _repo(<String, Object>{
       'Cargo.toml': '[workspace.package]\nversion = "1.2.3"\n',
       'apps/bistre_app/pubspec.yaml': 'version: 1.3.0+1\n',
-      'apps/bistre_app/windows/runner/Runner.rc': '#define VERSION_AS_NUMBER 1,0,0,0\r\nVALUE "ProductName", "bistre_app" "\\0"\r\n',
+      'apps/bistre_app/windows/runner/runner.rc': '#define VERSION_AS_NUMBER 1,0,0,0\r\nVALUE "ProductName", "bistre_app" "\\0"\r\n',
       'crates/bistre-core/src/mcp.rs': '"version": "0.1.0"',
     });
     final badErrors = <String>[];
     checkSingleVersionSource(bad.$1, badErrors);
     final joined = badErrors.join('\n');
     expect(joined, contains('!= apps/bistre_app/pubspec.yaml version 1.3.0'));
-    expect(joined, contains('Runner.rc fallback version'));
+    expect(joined, contains('runner.rc fallback version'));
     expect(joined, contains('generator boilerplate'));
     expect(joined, contains('must use crate::CORE_VERSION'));
   });
 
   test('heading slugs follow GitHub rules', () {
     expect(headingSlug('1. Identity & North Star'), '1-identity--north-star');
-    expect(headingSlug('Batch 1 — `QC` Storage'), 'batch-1--qc-storage');
+    expect(headingSlug('Batch 1 \u2014 `QC` Storage'), 'batch-1--qc-storage');
     expect(
       headingSlug('3.5 Offline Vector Iconography'),
       '35-offline-vector-iconography',
@@ -239,5 +246,55 @@ void main() {
     expect(joined, contains('crates/b/src/lib.rs: `s`'));
     expect(joined, contains('crates/e/src/lib.rs: `key`'));
     expect(errors, hasLength(3), reason: joined);
+  });
+
+  test('font budget gate fails when bundled fonts exceed 2 MiB', () {
+    final errors = _run(checkSecretsAndArtifacts, <String, Object>{
+      'apps/bistre_app/assets/fonts/A.ttf': List<int>.filled(
+        maxTrackedFileBytes + 100,
+        0,
+      ),
+      'apps/bistre_app/assets/fonts/B.ttf': List<int>.filled(
+        maxTrackedFileBytes + 100,
+        0,
+      ),
+    });
+    expect(errors.join('\n'), contains('[font-budget]'));
+  });
+
+  test('single version source accepts SemVer prereleases', () {
+    final pre = _repo(<String, Object>{
+      'Cargo.toml': '[workspace.package]\nversion = "1.2.3-rc.1"\n',
+      'apps/bistre_app/pubspec.yaml': 'version: 1.2.3-rc.1+4\n',
+      'apps/bistre_app/windows/runner/runner.rc': '#define VERSION_AS_NUMBER 1,2,3,4\r\n#define VERSION_AS_STRING "1.2.3-rc.1"\r\nVALUE "ProductName", "Bistre" "\\0"\r\n',
+      'crates/bistre-core/src/mcp.rs':
+          '"clientInfo": { "name": "Bistre", "version": crate::CORE_VERSION }',
+    });
+    final preErrors = <String>[];
+    checkSingleVersionSource(pre.$1, preErrors);
+    expect(preErrors, isEmpty, reason: preErrors.join('\n'));
+  });
+
+  test('dependency budget rejects bloated Cargo.lock', () {
+    final lock = List<String>.generate(
+      maxCargoLockPackages + 1,
+      (i) => '[[package]]\nname = "crate_$i"\nversion = "0.1.0"\n',
+    ).join('\n');
+    final (root, _) = _repo(<String, Object>{'Cargo.lock': lock});
+    final errors = <String>[];
+    checkDependencyBudget(root, errors);
+    expect(errors.join('\n'), contains('[deps-budget]'));
+  });
+
+  test('desktop renderer gate enforces Impeller default with BISTRE_IMPELLER fallback', () {
+    final bad = _repo(<String, Object>{
+      'apps/bistre_app/windows/runner/main.cpp':
+          'project.set_impeller_switch(flutter::ImpellerSwitch::Disabled);\n',
+      'apps/bistre_app/linux/runner/my_application.cc':
+          'fl_dart_project_set_enable_impeller(project, FALSE);\n',
+    });
+    final errors = <String>[];
+    checkDesktopRendererDefault(bad.$1, errors);
+    expect(errors, hasLength(2), reason: errors.join('\n'));
   });
 }

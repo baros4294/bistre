@@ -25,6 +25,7 @@ jobs:
     permissions:
       contents: write # merge the CI-tested Dependabot pull request
       pull-requests: write # approve and merge the Dependabot pull request via gh
+      actions: write # dispatch CI on main after the merge (a GITHUB_TOKEN push starts no workflow)
     steps:
       - name: Merge tested minor/patch Dependabot PR (refuses major bumps)
         shell: bash
@@ -77,3 +78,6 @@ jobs:
             exit 0
           fi
           gh pr merge "$number" --repo "$REPO" --rebase --match-head-commit "$TESTED_SHA"
+          # A push made with GITHUB_TOKEN never starts a workflow run, but workflow_dispatch
+          # always does: run CI on the merged main so it is tested and its caches are saved.
+          gh workflow run ci.yml --repo "$REPO" --ref main

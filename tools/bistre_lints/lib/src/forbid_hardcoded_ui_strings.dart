@@ -119,7 +119,7 @@ class ForbidHardcodedUiStringsRule extends AnalysisRule {
     final trimmed = val.trim();
     // Allow empty/punctuation/whitespace-only separators (e.g. '', ' · ').
     return trimmed.isEmpty ||
-        RegExp(r'^[\s·•—–\-:/|()\[\]]+$').hasMatch(trimmed);
+        RegExp(r'^[\s·•\u2014–\-:/|()\[\]]+$').hasMatch(trimmed);
   }
 }
 
