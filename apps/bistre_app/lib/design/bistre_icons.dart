@@ -5,6 +5,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import 'bistre_decorations.dart';
 import 'bistre_theme.dart';
 import 'hover_hint.dart';
 import 'ink_primitives.dart';
@@ -101,7 +102,8 @@ class BistreIcon extends StatelessWidget {
     return EngravedIcon(
       assetPath: icon.assetPath,
       semanticsLabel: semanticsLabel,
-      size: size,
+      // Grows with the text size (capped), so icons keep pace with the words beside them.
+      size: size * iconScaleOf(context),
       color: color ?? theme.inkSecondary,
     );
   }
@@ -156,7 +158,7 @@ class _BistreIconButtonState extends State<BistreIconButton> {
     return TapTargetExpander(
       minSize: minTapTarget,
       child: SizedBox.square(
-        dimension: widget.dimension,
+        dimension: widget.dimension * iconScaleOf(context),
         child: HoverHint(
           message: widget.semanticsLabel,
           child: PressFeedback(
@@ -231,12 +233,13 @@ class _BistreIconButtonState extends State<BistreIconButton> {
   }
 }
 
-/// Smallest tap area for a control: 48 dp on touch screens, 40 px with a pointer.
-double get minTapTarget =>
+/// Whether this is a touch-first platform (phone or tablet), where keyboard hints are noise.
+bool get isTouchPlatform =>
     defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.iOS
-    ? 48
-    : 40;
+    defaultTargetPlatform == TargetPlatform.iOS;
+
+/// Smallest tap area for a control: 48 dp on touch screens, 40 px with a pointer.
+double get minTapTarget => isTouchPlatform ? 48 : 40;
 
 /// Accepts taps within a [minSize] square centred on its child, while laying out and painting
 /// at the child's own size, so small icons get a full tap area without growing their rows.
@@ -263,17 +266,78 @@ class _RenderTapTargetExpander extends RenderProxyBox {
 
   double minSize;
 
+  /// Every expander on screen, so a widened target yields to a nearer control.
+  static final Set<_RenderTapTargetExpander> _live = {};
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    _live.add(this);
+  }
+
+  @override
+  void detach() {
+    _live.remove(this);
+    super.detach();
+  }
+
+  Rect _area(Rect box) {
+    final extraX = ((minSize - box.width) / 2).clamp(0.0, double.infinity);
+    final extraY = ((minSize - box.height) / 2).clamp(0.0, double.infinity);
+    return Rect.fromLTRB(
+      box.left - extraX,
+      box.top - extraY,
+      box.right + extraX,
+      box.bottom + extraY,
+    );
+  }
+
+  Rect get _globalBox =>
+      MatrixUtils.transformRect(getTransformTo(null), Offset.zero & size);
+
+  /// The row or wrap that lays this control out beside its neighbours.
+  RenderObject? get _row {
+    RenderObject? node = parent;
+    for (var depth = 0; depth < 12 && node != null; depth++) {
+      if (node is RenderFlex || node is RenderWrap) return node;
+      node = node.parent;
+    }
+    return null;
+  }
+
+  /// Whether a neighbour in the same row holds [global] in its own box, or is nearer to it.
+  bool _nearerControlAt(Offset global) {
+    final row = _row;
+    if (row == null) return false;
+    final mine = _distance(_globalBox, global);
+    for (final other in _live) {
+      if (identical(other, this) || !other.hasSize || other._row != row) {
+        continue;
+      }
+      final box = other._globalBox;
+      if (box.contains(global)) return true;
+      if (other._area(box).contains(global) && _distance(box, global) < mine) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static double _distance(Rect box, Offset p) =>
+      (p -
+              Offset(
+                p.dx.clamp(box.left, box.right),
+                p.dy.clamp(box.top, box.bottom),
+              ))
+          .distance;
+
   @override
   bool hitTest(BoxHitTestResult result, {required Offset position}) {
-    final extraX = ((minSize - size.width) / 2).clamp(0.0, double.infinity);
-    final extraY = ((minSize - size.height) / 2).clamp(0.0, double.infinity);
-    final area = Rect.fromLTRB(
-      -extraX,
-      -extraY,
-      size.width + extraX,
-      size.height + extraY,
-    );
-    if (!area.contains(position)) return false;
+    final box = Offset.zero & size;
+    if (!_area(box).contains(position)) return false;
+    if (!box.contains(position) && _nearerControlAt(localToGlobal(position))) {
+      return false;
+    }
     // Route the tap to the child's nearest point so its gesture handlers fire.
     final inside = Offset(
       position.dx.clamp(0.0, size.width - 0.01),
@@ -444,13 +508,15 @@ class LabIconCatalog {
     if (probe.contains('vllm')) return _bySlug['vllm'];
     if (probe.contains('openai') ||
         probe.contains('gpt-') ||
-        probe.contains('o1') ||
-        probe.contains('o3') ||
-        probe.contains('o4')) {
+        _oSeries.hasMatch(modelId?.toLowerCase() ?? '')) {
       return _bySlug['openai'];
     }
     return null;
   }
+
+  /// An `o1`/`o3`/`o4` model id (optionally after a `vendor/` prefix), never a name that
+  /// merely contains those letters ("solo1", "pro3").
+  static final RegExp _oSeries = RegExp(r'(?:^|/)o[134](?:$|[-_.])');
 }
 
 /// Renders an authentic full-color (or theme-adaptive monochrome brand) AI lab icon,
@@ -492,7 +558,7 @@ class LabIcon extends StatelessWidget {
     if (customPath.isNotEmpty && _customIconExists(customPath)) {
       mark = ClipRRect(
         borderRadius: BorderRadius.circular(4),
-        // U23: decoded at the size it is drawn, never the file's full size.
+        // Decoded at the size it is drawn, never the file's full size.
         child: Image.file(
           File(customPath),
           width: size,

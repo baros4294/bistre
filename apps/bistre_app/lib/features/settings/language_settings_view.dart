@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../design/bistre_controls.dart';
@@ -16,12 +17,12 @@ class LanguageSettingsView extends StatelessWidget {
 
   final FolioController controller;
 
-  static const List<(String, String, String)> _locales =
-      <(String, String, String)>[
-        ('en', 'English', 'LTR'),
-        ('vi', 'Tiếng Việt', 'LTR'),
-        ('ar', 'العربية', 'RTL'),
-      ];
+  /// Each language named in itself; the selected one carries a check.
+  static const List<(String, String)> _locales = <(String, String)>[
+    ('en', 'English'),
+    ('vi', 'Tiếng Việt'),
+    ('ar', 'العربية'),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -34,17 +35,12 @@ class LanguageSettingsView extends StatelessWidget {
         padding: const EdgeInsetsDirectional.fromSTEB(28, 22, 28, 40),
         child: BistreSettingsSection(
           title: l10n.t(L10nKey.settingsLanguageHeading),
-          subtitle: l10n.t(L10nKey.settingsLanguageNote),
           children: [
-            for (final loc in _locales)
+            for (final (code, name) in _locales)
               _LanguageChoiceRow(
-                name: loc.$2,
-                codeBadge: l10n.joinMeta(<String>[
-                  loc.$1.toUpperCase(),
-                  loc.$3,
-                ]),
-                selected: currentLocale == loc.$1,
-                onTap: () => controller.syncLocale(loc.$1),
+                name: name,
+                selected: currentLocale == code,
+                onTap: () => controller.syncLocale(code),
               ),
           ],
         ),
@@ -56,13 +52,11 @@ class LanguageSettingsView extends StatelessWidget {
 class _LanguageChoiceRow extends StatefulWidget {
   const _LanguageChoiceRow({
     required this.name,
-    required this.codeBadge,
     required this.selected,
     required this.onTap,
   });
 
   final String name;
-  final String codeBadge;
   final bool selected;
   final VoidCallback onTap;
 
@@ -72,63 +66,73 @@ class _LanguageChoiceRow extends StatefulWidget {
 
 class _LanguageChoiceRowState extends State<_LanguageChoiceRow> {
   bool _hovered = false;
+  bool _focused = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: PressFeedback(
-        pressScale: kRowPressScale,
-        hoverScale: 1,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: ColoredBox(
-            color: widget.selected || _hovered
-                ? theme.hoverTint
-                : theme.bgElevated,
-            child: Padding(
-              padding: const EdgeInsetsDirectional.symmetric(
-                horizontal: BistreSpacing.s16,
-                vertical: 14,
+    return Semantics(
+      button: true,
+      selected: widget.selected,
+      label: widget.name,
+      child: FocusableActionDetector(
+        mouseCursor: SystemMouseCursors.click,
+        onShowHoverHighlight: (v) => setState(() => _hovered = v),
+        onShowFocusHighlight: (v) => setState(() => _focused = v),
+        shortcuts: const <ShortcutActivator, Intent>{
+          SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+          SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+        },
+        actions: <Type, Action<Intent>>{
+          ActivateIntent: CallbackAction<ActivateIntent>(
+            onInvoke: (_) {
+              widget.onTap();
+              return null;
+            },
+          ),
+        },
+        child: PressFeedback(
+          pressScale: kRowPressScale,
+          hoverScale: 1,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onTap,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: _hovered ? theme.hoverTint : theme.bgElevated,
+                border: _focused
+                    ? Border.all(color: theme.accentBrass, width: 1.6)
+                    : null,
               ),
-              child: Row(
-                children: [
-                  BistreIcon(
-                    BistreUiIcon.globe,
-                    size: 16,
-                    color: widget.selected
-                        ? theme.accentBrass
-                        : theme.inkSecondary,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: InkText(
-                      widget.name,
-                      role: widget.selected
-                          ? InkTextRole.labelStrong
-                          : InkTextRole.bodyCompact,
-                      color: theme.inkPrimary,
+              child: Padding(
+                padding: const EdgeInsetsDirectional.symmetric(
+                  horizontal: BistreSpacing.s16,
+                  vertical: 14,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: ExcludeSemantics(
+                        child: InkText(
+                          widget.name,
+                          role: InkTextRole.bodyCompact,
+                          color: theme.inkPrimary,
+                        ),
+                      ),
                     ),
-                  ),
-                  WaxSealBadge(
-                    label: widget.codeBadge,
-                    status: widget.selected
-                        ? WaxSealStatus.ok
-                        : WaxSealStatus.neutral,
-                  ),
-                  if (widget.selected) ...[
-                    const SizedBox(width: 10),
-                    BistreIcon(
-                      BistreUiIcon.check,
-                      size: 14,
-                      color: theme.accentBrass,
+                    // Space is kept for the check, so the names never shift.
+                    SizedBox.square(
+                      dimension: 16,
+                      child: widget.selected
+                          ? BistreIcon(
+                              BistreUiIcon.check,
+                              size: 14,
+                              color: theme.accentBrass,
+                            )
+                          : null,
                     ),
                   ],
-                ],
+                ),
               ),
             ),
           ),

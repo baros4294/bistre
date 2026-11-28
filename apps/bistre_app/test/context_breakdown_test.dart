@@ -1,4 +1,5 @@
 import 'package:bistre_app/bridge/bistre_engine.dart';
+import 'package:bistre_app/features/chat/context_breakdown_popover.dart';
 import 'package:bistre_app/features/chat/context_gauge_ring.dart';
 import 'package:bistre_app/l10n/l10n_keys.g.dart';
 import 'package:flutter/services.dart';
@@ -37,7 +38,7 @@ const _breakdown = EngineContextBreakdown(
 
 void main() {
   testWidgets(
-    'the breakdown shows each share, what is not sent, and MCP tools (A-SE)',
+    'the breakdown shows each share, what is not sent, and MCP tools',
     (tester) async {
       final gateway = FakeEngineGateway(seedConnectedOpenAi: true)
         ..contextBreakdownFixture = _breakdown;
@@ -48,13 +49,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text(shell.t(L10nKey.chatContextPercentUsed, {'percent': '50.0'})),
+        find.text(shell.t(L10nKey.chatContextPercentUsed, {'percent': '50'})),
         findsOneWidget,
       );
       expect(
-        find.text(shell.t(L10nKey.chatContextPercent, {'percent': '39.8'})),
+        find.text(shell.t(L10nKey.chatContextPercent, {'percent': '40'})),
         findsOneWidget,
-        reason: 'messages are 39.8 % of the window',
+        reason: 'messages are 39.8 % of the window, shown whole',
       );
       expect(find.text(shell.t(L10nKey.chatContextCatReserve)), findsOneWidget);
       expect(find.text(shell.t(L10nKey.chatContextNotSent)), findsOneWidget);
@@ -78,4 +79,17 @@ void main() {
       expect(find.text(shell.t(L10nKey.chatContextNotSent)), findsNothing);
     },
   );
+
+  test('the ring and the panel round a share the same way', () {
+    expect(contextPercent(398, 1000), '40');
+    expect(contextPercent(500, 1000), '50');
+    expect(contextPercent(3, 1000), '<1', reason: 'a share that is not empty');
+    expect(contextPercent(0, 1000), '0');
+    expect(
+      contextPercent(999, 1000),
+      '99',
+      reason: 'a window that is not full',
+    );
+    expect(contextPercent(1000, 1000), '100');
+  });
 }

@@ -14,7 +14,9 @@ import '../../design/press_feedback.dart';
 import '../../design/sidebar_slide_reveal.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
+import '../../platform/desktop_host.dart';
 import '../chat/chat_overlays.dart';
+import '../chat/content_direction.dart';
 import '../chat/folio_composer.dart';
 import '../chat/folio_message_feed.dart';
 import '../chat/session_tree_overlay.dart';
@@ -31,8 +33,11 @@ import 'chat_tab_strip.dart';
 import 'folio_controller.dart';
 import 'inline_title_editor.dart';
 import 'model_picker_popover.dart';
+import 'shortcut_combo.dart';
 import 'split_secondary_pane.dart';
 import 'tab_switcher_modal.dart';
+
+part 'folio_shell_parts.dart';
 
 class _TogglePaletteIntent extends Intent {
   const _TogglePaletteIntent();
@@ -88,7 +93,7 @@ class _PrevTabIntent extends Intent {
 
 /// Studio Atelier native desktop & mobile workspace:
 /// - Workspace Mode: Left `FolioSidebar` (`268px`) + Minimal `44px` Header +
-///   `FolioMessageFeed` + `FolioComposer` + collapsible right `ChatInspectorDrawer` (`312px`)
+///   `FolioMessageFeed` + `FolioComposer` + collapsible end `ChatInspectorDrawer` (`312px`) under the header
 /// - Settings Mode: Full-window `SettingsWorkspace` (`← Back to chat` / `Esc`)
 /// - Zero duplicate "Add API Key" header pills when unconfigured
 /// - User-customizable global keyboard shortcuts persisted in SQLite
@@ -108,6 +113,9 @@ class _FolioShellScreenState extends State<FolioShellScreen>
   final FocusNode _searchFocus = FocusNode();
   final FolioOverlayController _providerPopoverCtrl = FolioOverlayController();
   final LayerLink _providerPillLink = LayerLink();
+
+  /// The model pill, so the picker can keep itself inside the window on a phone.
+  final GlobalKey _providerPillKey = GlobalKey();
   bool _narrowDrawerOpen = false;
   bool _isWideViewport = true;
 
@@ -115,6 +123,16 @@ class _FolioShellScreenState extends State<FolioShellScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    BistreDesktopHost.attachQuickEntryListener(_onQuickEntry);
+  }
+
+  /// The quick entry shortcut: the window is already in front; a new chat (the open one
+  /// when it has no messages yet) waits with the composer focused.
+  Future<void> _onQuickEntry() async {
+    final ctrl = widget.controller;
+    ctrl.closeSettings();
+    if (ctrl.visibleBranchNodes.isNotEmpty) await ctrl.createNewFolio();
+    if (mounted) _composerFocus.requestFocus();
   }
 
   /// Android back: the innermost open layer closes first; with nothing open, the app exits
@@ -154,6 +172,7 @@ class _FolioShellScreenState extends State<FolioShellScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    BistreDesktopHost.detachQuickEntryListener(_onQuickEntry);
     _composerFocus.dispose();
     _searchController.dispose();
     _searchFocus.dispose();
@@ -212,7 +231,7 @@ class _FolioShellScreenState extends State<FolioShellScreen>
           const _PrevTabIntent(),
     };
     void bind(String actionId, Intent intent) {
-      final activator = _parseCombo(ctrl.shortcutFor(actionId));
+      final activator = ShortcutCombo.parse(ctrl.shortcutFor(actionId));
       if (activator != null) {
         map[activator] = intent;
       }
@@ -229,79 +248,6 @@ class _FolioShellScreenState extends State<FolioShellScreen>
     bind('jump_prompt', const _JumpPromptIntent());
     bind('stop_reply', const _StopReplyIntent());
     return map;
-  }
-
-  static SingleActivator? _parseCombo(String combo) {
-    final parts = combo
-        .split('+')
-        .map((p) => p.trim())
-        .where((p) => p.isNotEmpty)
-        .toList();
-    if (parts.isEmpty) return null;
-    var control = false;
-    var meta = false;
-    var alt = false;
-    var shift = false;
-    LogicalKeyboardKey? trigger;
-    for (final p in parts) {
-      final low = p.toLowerCase();
-      if (low == 'ctrl' || low == 'control') {
-        control = true;
-      } else if (low == 'meta' || low == 'cmd') {
-        meta = true;
-      } else if (low == 'alt') {
-        alt = true;
-      } else if (low == 'shift') {
-        shift = true;
-      } else {
-        trigger = _keyFromToken(p);
-      }
-    }
-    if (trigger == null) return null;
-    return SingleActivator(
-      trigger,
-      control: control,
-      meta: meta,
-      alt: alt,
-      shift: shift,
-    );
-  }
-
-  static LogicalKeyboardKey? _keyFromToken(String token) {
-    if (token == ',') return LogicalKeyboardKey.comma;
-    if (token == '/') return LogicalKeyboardKey.slash;
-    if (token == '.') return LogicalKeyboardKey.period;
-    if (token == ';') return LogicalKeyboardKey.semicolon;
-    final up = token.toUpperCase();
-    return switch (up) {
-      'A' => LogicalKeyboardKey.keyA,
-      'B' => LogicalKeyboardKey.keyB,
-      'C' => LogicalKeyboardKey.keyC,
-      'D' => LogicalKeyboardKey.keyD,
-      'E' => LogicalKeyboardKey.keyE,
-      'F' => LogicalKeyboardKey.keyF,
-      'G' => LogicalKeyboardKey.keyG,
-      'H' => LogicalKeyboardKey.keyH,
-      'I' => LogicalKeyboardKey.keyI,
-      'J' => LogicalKeyboardKey.keyJ,
-      'K' => LogicalKeyboardKey.keyK,
-      'L' => LogicalKeyboardKey.keyL,
-      'M' => LogicalKeyboardKey.keyM,
-      'N' => LogicalKeyboardKey.keyN,
-      'O' => LogicalKeyboardKey.keyO,
-      'P' => LogicalKeyboardKey.keyP,
-      'Q' => LogicalKeyboardKey.keyQ,
-      'R' => LogicalKeyboardKey.keyR,
-      'S' => LogicalKeyboardKey.keyS,
-      'T' => LogicalKeyboardKey.keyT,
-      'U' => LogicalKeyboardKey.keyU,
-      'V' => LogicalKeyboardKey.keyV,
-      'W' => LogicalKeyboardKey.keyW,
-      'X' => LogicalKeyboardKey.keyX,
-      'Y' => LogicalKeyboardKey.keyY,
-      'Z' => LogicalKeyboardKey.keyZ,
-      _ => null,
-    };
   }
 
   @override
@@ -465,22 +411,26 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                     onDismiss: ctrl.dismissUpdateBanner,
                   );
 
-                  final workspace = BistreScaffold(
-                    header: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildHeader(theme, l10n, ctrl, isWide: isWide),
-                        topBanner,
-                      ],
-                    ),
-                    body: workspaceBody,
-                    footer: isWriteMode && ctrl.manuscriptViewActive
-                        ? const SizedBox.shrink()
-                        : FolioComposer(
-                            controller: ctrl,
-                            focusNode: _composerFocus,
-                          ),
+                  final crashBanner = FolioTopBanner(
+                    visible: ctrl.pendingCrashReport != null,
+                    icon: BistreUiIcon.info,
+                    message: l10n.t(L10nKey.shellCrashBanner),
+                    actionLabel: l10n.t(L10nKey.shellCrashCopy),
+                    onAction: () => unawaited(ctrl.copyCrashReport()),
+                    dismissLabel: l10n.t(L10nKey.shellDismiss),
+                    onDismiss: ctrl.dismissCrashReport,
+                  );
+
+                  final workspace = Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: workspaceBody),
+                      if (!(isWriteMode && ctrl.manuscriptViewActive))
+                        FolioComposer(
+                          controller: ctrl,
+                          focusNode: _composerFocus,
+                        ),
+                    ],
                   );
 
                   final runsDock = RunsDockPanel(
@@ -490,7 +440,23 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                         PromptInspectorPanel(controller: ctrl),
                   );
 
-                  final mainArea = Row(
+                  // The header spans the chat and its side panes, so opening the inspector or
+                  // Studio never moves New chat, Studio and Settings (DESIGN §6).
+                  // The inspector and Studio slide in like the sidebar: the chat takes its
+                  // final width once per toggle instead of re-laying out every frame.
+                  Widget trailingDock(bool open, Widget pane, Widget child) =>
+                      SidebarDock(
+                        open: open,
+                        trailing: true,
+                        reduceMotionOverride: ctrl.reduceMotionOverride,
+                        sidebar: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [const FolioDivider(vertical: true), pane],
+                        ),
+                        child: child,
+                      );
+                  final chatPanes = Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Expanded(child: workspace),
@@ -498,37 +464,33 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                         const FolioDivider(vertical: true),
                         Expanded(child: SplitSecondaryPane(controller: ctrl)),
                       ],
-                      if (canDockInspector)
-                        SidebarSlideReveal(
-                          open: ctrl.inspectorOpen,
-                          fromTrailingEdge: true,
-                          reduceMotionOverride: ctrl.reduceMotionOverride,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              const FolioDivider(vertical: true),
-                              ChatInspectorDrawer(controller: ctrl),
-                            ],
-                          ),
-                        ),
-                      if (canDockInspector)
-                        SidebarSlideReveal(
-                          open: ctrl.studioPaneOpen,
-                          fromTrailingEdge: true,
-                          reduceMotionOverride: ctrl.reduceMotionOverride,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              const FolioDivider(vertical: true),
-                              runsDock,
-                            ],
-                          ),
-                        ),
                     ],
                   );
-                  // A-W 3a: the docked sidebar slides without re-laying out the chat.
+                  final panes = canDockInspector
+                      ? trailingDock(
+                          ctrl.studioPaneOpen,
+                          runsDock,
+                          trailingDock(
+                            ctrl.inspectorOpen,
+                            ChatInspectorDrawer(controller: ctrl),
+                            chatPanes,
+                          ),
+                        )
+                      : chatPanes;
+                  final mainArea = BistreScaffold(
+                    header: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildHeader(theme, l10n, ctrl, isWide: isWide),
+                        crashBanner,
+                        topBanner,
+                      ],
+                    ),
+                    body: panes,
+                    footer: const SizedBox.shrink(),
+                  );
+                  // The docked sidebar slides without re-laying out the chat.
                   final baseLayout = ColoredBox(
                     color: theme.bgCanvas,
                     child: isWide
@@ -641,6 +603,30 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                           attachment: previewAtt,
                           reduceMotionOverride: ctrl.reduceMotionOverride,
                           onClose: ctrl.closeAttachmentPreview,
+                          onOpenFolder: ctrl.canOpenFolderOf(previewAtt)
+                              ? () => unawaited(ctrl.openFolderOf(previewAtt))
+                              : null,
+                          onOpenInApp: ctrl.canOpenInAppOf(previewAtt)
+                              ? () => unawaited(ctrl.openInAppOf(previewAtt))
+                              : null,
+                          onSaveCopy: ctrl.canSaveCopyOf(previewAtt)
+                              ? () => unawaited(
+                                  ctrl.saveCopyOf(
+                                    previewAtt,
+                                    l10n.t(L10nKey.viewerSaveCopy),
+                                  ),
+                                )
+                              : null,
+                          onCopyPicture: ctrl.canCopyPictureOf(previewAtt)
+                              ? () => unawaited(ctrl.copyPictureOf(previewAtt))
+                              : null,
+                          onPlay: ctrl.canPlayOf(previewAtt)
+                              ? () => unawaited(ctrl.playOf(previewAtt))
+                              : null,
+                          onStop: ctrl.canPlayOf(previewAtt)
+                              ? () => unawaited(ctrl.stopPlayback())
+                              : null,
+                          onCopied: () => ctrl.showToast(L10nKey.toastCopied),
                         ),
                       // Only the toast rebuilds when a notice shows or hides.
                       ValueListenableBuilder<ToastMessage?>(
@@ -712,7 +698,7 @@ class _FolioShellScreenState extends State<FolioShellScreen>
               // subtitle; trailing new chat, Studio, and settings. Mode, branches, inspector,
               // search, and the palette live in the composer, Ctrl+K, and shortcuts.
               final leading = <Widget>[
-                // A-W 3b: the one sidebar toggle, always first in the header, open or closed.
+                // The one sidebar toggle, always first in the header, open or closed.
                 BistreIconButton(
                   icon: BistreUiIcon.sidebar,
                   active: isWide && ctrl.sidebarOpen,
@@ -729,7 +715,7 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                         children: [
                           InlineTitleEditor(
                             // One editor per chat (and per Settings visit): switching ends
-                            // an edit without saving it into the next chat (A-W 2b).
+                            // an edit without saving it into the next chat.
                             key: ValueKey<String>(
                               '${active?.id}|${ctrl.settingsOpen}',
                             ),
@@ -749,12 +735,15 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                                 ),
                                 cursor: SystemMouseCursors.text,
                                 onPressed: active != null ? startEditing : null,
-                                child: InkText(
-                                  active?.title ??
-                                      l10n.t(L10nKey.shellThreadDefaultTitle),
-                                  role: InkTextRole.titleMedium,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                                child: OwnDirection(
+                                  text: active?.title ?? '',
+                                  child: InkText(
+                                    active?.title ??
+                                        l10n.t(L10nKey.shellThreadDefaultTitle),
+                                    role: InkTextRole.titleMedium,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                               ),
                             ),
@@ -785,9 +774,11 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                           overlayBuilder: (_) => ModelPickerPopover(
                             controller: ctrl,
                             link: _providerPillLink,
+                            anchorKey: _providerPillKey,
                             onDismiss: _providerPopoverCtrl.hide,
                           ),
                           child: CompositedTransformTarget(
+                            key: _providerPillKey,
                             link: _providerPillLink,
                             child: _HeaderPressable(
                               semanticsLabel: l10n.t(
@@ -854,7 +845,7 @@ class _FolioShellScreenState extends State<FolioShellScreen>
                   semanticsLabel: l10n.t(L10nKey.sidebarNewFolio),
                   onPressed: () => unawaited(ctrl.createNewFolio()),
                 ),
-                // A-W 4a: Studio is always reachable, not only during a run.
+                // Studio is always reachable, not only during a run.
                 BistreIconButton(
                   icon: BistreUiIcon.server,
                   active: ctrl.studioPaneOpen,
@@ -968,232 +959,6 @@ class _FolioShellScreenState extends State<FolioShellScreen>
               ),
             ),
         ],
-      ),
-    );
-  }
-}
-
-/// Compact header tab counter badge shown on narrow screens (`TopEditorialBar`,
-/// Compact tab switcher badge shown when `> 1` tab is open or any
-/// background chat is streaming.
-class _CompactTabBadge extends StatefulWidget {
-  const _CompactTabBadge({
-    required this.count,
-    required this.backgroundStreaming,
-    required this.reduceMotionOverride,
-    required this.semanticsLabel,
-    required this.onPressed,
-  });
-
-  final int count;
-  final bool backgroundStreaming;
-  final bool reduceMotionOverride;
-  final String semanticsLabel;
-  final VoidCallback onPressed;
-
-  @override
-  State<_CompactTabBadge> createState() => _CompactTabBadgeState();
-}
-
-class _CompactTabBadgeState extends State<_CompactTabBadge> {
-  bool _focused = false;
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    final active = widget.backgroundStreaming;
-    return TapTargetExpander(
-      minSize: minTapTarget,
-      child: HoverHint(
-        message: widget.semanticsLabel,
-        child: PressFeedback(
-          child: Semantics(
-            button: true,
-            label: widget.semanticsLabel,
-            excludeSemantics: true,
-            child: FocusableActionDetector(
-              mouseCursor: SystemMouseCursors.click,
-              onShowHoverHighlight: (v) => setState(() => _hovered = v),
-              onShowFocusHighlight: (v) => setState(() => _focused = v),
-              shortcuts: const <ShortcutActivator, Intent>{
-                SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
-                SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
-              },
-              actions: <Type, Action<Intent>>{
-                ActivateIntent: CallbackAction<ActivateIntent>(
-                  onInvoke: (_) {
-                    widget.onPressed();
-                    return null;
-                  },
-                ),
-              },
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: widget.onPressed,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    minWidth: 32,
-                    minHeight: 32,
-                  ),
-                  child: EaseDecoration(
-                    decoration: BoxDecoration(
-                      color: active
-                          ? theme.accentBrass.withValues(alpha: 0.16)
-                          : (_hovered ? theme.hoverTint : theme.bgSurface),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: _focused || active
-                            ? theme.accentBrass
-                            : theme.borderHairline,
-                        width: _focused ? 1.8 : 1,
-                      ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsetsDirectional.symmetric(
-                        horizontal: 6,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          if (active) ...[
-                            StreamingPulseDot(
-                              color: theme.accentBrass,
-                              size: 6,
-                              reduceMotionOverride: widget.reduceMotionOverride,
-                            ),
-                            const SizedBox(width: 4),
-                          ],
-                          InkText(
-                            widget.count.toString(),
-                            role: InkTextRole.labelStrong,
-                            color: active
-                                ? theme.accentBrass
-                                : theme.inkPrimary,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BootFailedPage extends StatelessWidget {
-  const _BootFailedPage({required this.onRetry});
-
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    final l10n = BistreLocalizations.of(context);
-    return ColoredBox(
-      color: theme.bgCanvas,
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsetsDirectional.all(BistreSpacing.s24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Semantics(
-                liveRegion: true,
-                child: InkText(
-                  l10n.t(L10nKey.bootFailed),
-                  role: InkTextRole.titleMedium,
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(height: BistreSpacing.s16),
-              EngravedButton(
-                label: l10n.t(L10nKey.bootTryAgain),
-                primary: true,
-                onPressed: onRetry,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// A focusable, labelled header control (title rename, model picker): keyboard Enter/Space
-/// activates it, and a 2 px focus ring appears only for keyboard focus.
-class _HeaderPressable extends StatefulWidget {
-  const _HeaderPressable({
-    required this.child,
-    required this.semanticsLabel,
-    required this.onPressed,
-    this.cursor = SystemMouseCursors.click,
-  });
-
-  final Widget child;
-  final String semanticsLabel;
-  final VoidCallback? onPressed;
-  final MouseCursor cursor;
-
-  @override
-  State<_HeaderPressable> createState() => _HeaderPressableState();
-}
-
-class _HeaderPressableState extends State<_HeaderPressable> {
-  bool _focused = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    final onPressed = widget.onPressed;
-    return HoverHint(
-      message: onPressed != null ? widget.semanticsLabel : '',
-      child: Semantics(
-        button: onPressed != null,
-        label: widget.semanticsLabel,
-        child: FocusableActionDetector(
-          enabled: onPressed != null,
-          mouseCursor: onPressed != null ? widget.cursor : MouseCursor.defer,
-          onShowFocusHighlight: (v) => setState(() => _focused = v),
-          actions: <Type, Action<Intent>>{
-            ActivateIntent: CallbackAction<ActivateIntent>(
-              onInvoke: (_) {
-                onPressed?.call();
-                return null;
-              },
-            ),
-          },
-          child: PressFeedback(
-            pressScale: kRowPressScale,
-            hoverScale: 1,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onPressed,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(6),
-                  border: _focused
-                      ? Border.all(color: theme.accentBrass, width: 2)
-                      : null,
-                ),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: 24),
-                  child: Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    widthFactor: 1,
-                    heightFactor: 1,
-                    child: widget.child,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }

@@ -30,3 +30,36 @@ EngineContextBreakdown estimateFakeBreakdown(
     reserveTokens: 19200,
   );
 }
+
+/// Stands in for core's built-in title prompt in widget tests.
+const String kTestDefaultTitlePrompt =
+    'Write a short title for this conversation.';
+
+/// Test fixture mirroring core's `ProviderDialect` descriptors (`bistre-protocol`).
+const List<EngineDialectDescriptor> kTestDialectDescriptors =
+    <EngineDialectDescriptor>[
+      EngineDialectDescriptor(
+        id: 'openai',
+        defaultBaseUrl: 'https://api.openai.com/v1',
+        endpointPath: '/responses',
+        requiresApiKey: true,
+      ),
+      EngineDialectDescriptor(
+        id: 'google_gemini',
+        defaultBaseUrl: 'https://generativelanguage.googleapis.com',
+        endpointPath: '/v1beta/interactions',
+        requiresApiKey: true,
+      ),
+      EngineDialectDescriptor(
+        id: 'anthropic',
+        defaultBaseUrl: 'https://api.anthropic.com/v1',
+        endpointPath: '/messages',
+        requiresApiKey: true,
+      ),
+      EngineDialectDescriptor(
+        id: 'custom_openai',
+        defaultBaseUrl: 'http://127.0.0.1:11434/v1',
+        endpointPath: '/chat/completions',
+        requiresApiKey: false,
+      ),
+    ];

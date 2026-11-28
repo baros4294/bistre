@@ -6,6 +6,7 @@ import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/hover_hint.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/popover_placement.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 
@@ -27,9 +28,96 @@ int thinkingStopIndex(String value) {
   return i < 0 ? 0 : i;
 }
 
-/// Composer chip `Thinking: Medium` that opens a step slider above itself: Auto, Off, Low,
-/// Medium, High, Extra, Max, plus a custom effort input. Usable by mouse, touch, keyboard
-/// (arrows), and screen reader; the popover closes on an outside tap or Escape.
+/// The words for [value]: a level, Adaptive, or Auto (anything else).
+L10nKey thinkingLabelKey(String value) => value == 'adaptive'
+    ? L10nKey.chatEffortAdaptive
+    : kThinkingStops[thinkingStopIndex(value)].$2;
+
+/// Whether [value] is a level on the slider (Off to Max), not Auto or Adaptive, which show
+/// on their own chip; only a level is repeated beside a heading.
+bool isThinkingLevel(String value) =>
+    value != 'adaptive' && thinkingLabelKey(value) != L10nKey.chatEffortAuto;
+
+/// The one Thinking control (composer, chat inspector, provider settings): Auto and
+/// Adaptive as choices, then a slider over the fixed levels, Off to Max. While Auto or
+/// Adaptive is chosen the slider has no fill and a hollow thumb, so it shows no level.
+class ThinkingEffortPicker extends StatelessWidget {
+  const ThinkingEffortPicker({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.reduceMotionOverride = false,
+  });
+
+  final String value;
+  final ValueChanged<String> onChanged;
+  final bool reduceMotionOverride;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = BistreTheme.of(context);
+    final l10n = BistreLocalizations.of(context);
+    final levels = kThinkingStops.sublist(1);
+    final at = levels.indexWhere((s) => s.$1 == value);
+    final isAuto = value != 'adaptive' && at < 0;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            InkChip(
+              label: l10n.t(L10nKey.chatEffortAuto),
+              selected: isAuto,
+              onSelected: () => onChanged('default'),
+            ),
+            InkChip(
+              label: l10n.t(L10nKey.chatEffortAdaptive),
+              selected: value == 'adaptive',
+              onSelected: () => onChanged('adaptive'),
+            ),
+          ],
+        ),
+        const SizedBox(height: BistreSpacing.s8),
+        BistreSlider(
+          // Unset, the thumb rests mid-track: its place claims no level.
+          value: at < 0 ? (levels.length - 1) / 2 : at.toDouble(),
+          min: 0,
+          max: (levels.length - 1).toDouble(),
+          unset: at < 0,
+          valueLabel: l10n.t(at < 0 ? thinkingLabelKey(value) : levels[at].$2),
+          reduceMotionOverride: reduceMotionOverride,
+          semanticsLabel: l10n.t(L10nKey.chatReasoningEffort),
+          onChanged: (v) {
+            final i = v.round().clamp(0, levels.length - 1);
+            if (i != at) onChanged(levels[i].$1);
+          },
+        ),
+        Row(
+          children: [
+            InkText(
+              l10n.t(L10nKey.chatThinkingFaster),
+              role: InkTextRole.captionMeta,
+              color: theme.inkMuted,
+            ),
+            const Spacer(),
+            InkText(
+              l10n.t(L10nKey.chatThinkingThorough),
+              role: InkTextRole.captionMeta,
+              color: theme.inkMuted,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Composer chip `Thinking: Medium` that opens a [ThinkingEffortPicker] above itself. Usable
+/// by mouse, touch, keyboard (arrows), and screen reader; the popover closes on an outside
+/// tap or Escape.
 class ThinkingControl extends StatefulWidget {
   const ThinkingControl({
     super.key,
@@ -53,40 +141,12 @@ class ThinkingControl extends StatefulWidget {
 class _ThinkingControlState extends State<ThinkingControl> {
   final FolioOverlayController _popover = FolioOverlayController();
   final LayerLink _link = LayerLink();
-  final TextEditingController _customCtrl = TextEditingController();
-  final FocusNode _customFocus = FocusNode();
-
-  @override
-  void initState() {
-    super.initState();
-    _customCtrl.text = widget.value == 'default' ? '' : widget.value;
-  }
-
-  @override
-  void didUpdateWidget(ThinkingControl oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.value != widget.value && !_customFocus.hasFocus) {
-      _customCtrl.text = widget.value == 'default' ? '' : widget.value;
-    }
-  }
-
-  @override
-  void dispose() {
-    _customCtrl.dispose();
-    _customFocus.dispose();
-    super.dispose();
-  }
-
-  void _commitCustom() {
-    final clean = _customCtrl.text.trim().toLowerCase();
-    widget.onChanged(clean.isEmpty ? 'default' : clean);
-  }
 
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);
-    final level = l10n.t(kThinkingStops[thinkingStopIndex(widget.value)].$2);
+    final level = l10n.t(thinkingLabelKey(widget.value));
     final full = l10n.t(L10nKey.chatThinkingChip, <String, Object?>{
       'level': level,
     });
@@ -123,8 +183,12 @@ class _ThinkingControlState extends State<ThinkingControl> {
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);
     final dir = Directionality.of(context);
-    final index = thinkingStopIndex(widget.value);
-    final last = kThinkingStops.length - 1;
+    final width = PopoverPlacement.popoverWidthFor(context, 320);
+    final shift = PopoverPlacement.popoverShiftFor(
+      this.context,
+      width: width,
+      alignStart: true,
+    );
     return Stack(
       children: [
         Positioned.fill(
@@ -139,12 +203,13 @@ class _ThinkingControlState extends State<ThinkingControl> {
           showWhenUnlinked: false,
           targetAnchor: AlignmentDirectional.topStart.resolve(dir),
           followerAnchor: AlignmentDirectional.bottomStart.resolve(dir),
-          offset: const Offset(0, -8),
+          // Moved back inside the window on a narrow screen (never off its edge).
+          offset: Offset(shift, -8),
           child: FolioFadeSlide(
             beginOffset: const Offset(0, 0.06),
             reduceMotionOverride: widget.reduceMotionOverride,
             child: ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 280, maxWidth: 320),
+              constraints: BoxConstraints(minWidth: width, maxWidth: width),
               child: FolioSurface(
                 tone: FolioTone.elevated,
                 padding: const EdgeInsetsDirectional.fromSTEB(14, 12, 14, 12),
@@ -162,83 +227,26 @@ class _ThinkingControlState extends State<ThinkingControl> {
                             role: InkTextRole.labelStrong,
                           ),
                         ),
-                        InkText(
-                          l10n.t(kThinkingStops[index].$2),
-                          role: InkTextRole.captionMeta,
-                          color: theme.accentBrass,
-                        ),
+                        // Auto and Adaptive show on their chip; a level shows here.
+                        if (isThinkingLevel(widget.value))
+                          InkText(
+                            l10n.t(thinkingLabelKey(widget.value)),
+                            role: InkTextRole.captionMeta,
+                            color: theme.accentBrass,
+                          ),
                       ],
                     ),
                     const SizedBox(height: BistreSpacing.s8),
-                    BistreSlider(
-                      value: index.toDouble(),
-                      min: 0,
-                      max: last.toDouble(),
+                    ThinkingEffortPicker(
+                      value: widget.value,
+                      onChanged: widget.onChanged,
                       reduceMotionOverride: widget.reduceMotionOverride,
-                      semanticsLabel: l10n.t(L10nKey.chatReasoningEffort),
-                      onChanged: (v) {
-                        final i = v.round().clamp(0, last);
-                        if (i != index) widget.onChanged(kThinkingStops[i].$1);
-                      },
-                    ),
-                    Row(
-                      children: [
-                        InkText(
-                          l10n.t(L10nKey.chatThinkingFaster),
-                          role: InkTextRole.captionMeta,
-                          color: theme.inkMuted,
-                        ),
-                        const Spacer(),
-                        InkText(
-                          l10n.t(L10nKey.chatThinkingThorough),
-                          role: InkTextRole.captionMeta,
-                          color: theme.inkMuted,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: BistreSpacing.s8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        InkChip(
-                          label: l10n.t(L10nKey.chatEffortAdaptive),
-                          selected: widget.value == 'adaptive',
-                          onSelected: () => widget.onChanged('adaptive'),
-                        ),
-                        InkChip(
-                          label: l10n.t(L10nKey.chatEffortAuto),
-                          selected:
-                              widget.value == 'default' ||
-                              widget.value == 'auto',
-                          onSelected: () => widget.onChanged('default'),
-                        ),
-                      ],
                     ),
                     const SizedBox(height: BistreSpacing.s8),
                     InkText(
                       l10n.t(L10nKey.chatThinkingHint),
                       role: InkTextRole.captionMeta,
                       color: theme.inkMuted,
-                    ),
-                    const SizedBox(height: BistreSpacing.s8),
-                    const FolioDivider(),
-                    const SizedBox(height: BistreSpacing.s8),
-                    InkText(
-                      l10n.t(L10nKey.chatThinkingCustomLabel),
-                      role: InkTextRole.captionMeta,
-                      color: theme.inkSecondary,
-                    ),
-                    const SizedBox(height: BistreSpacing.s4),
-                    QuillInput(
-                      controller: _customCtrl,
-                      focusNode: _customFocus,
-                      placeholder: l10n.t(
-                        L10nKey.chatThinkingCustomPlaceholder,
-                      ),
-                      maxLines: 1,
-                      compact: true,
-                      onSubmitted: _commitCustom,
                     ),
                   ],
                 ),

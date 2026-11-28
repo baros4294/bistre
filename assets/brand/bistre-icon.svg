@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="bistre-day-title">
-  <title id="bistre-day-title">Bistre app icon — Warm Sepia</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="t">
+  <title id="t">Bistre app icon</title>
   <defs>
     <linearGradient id="day-bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#F8F0E2" />
@@ -61,23 +61,7 @@
       <path d="M 154 182 C 200 182 232 188 256 204 C 280 188 312 182 358 182 A 8 8 0 0 1 366 190 V 314 A 8 8 0 0 1 358 322 C 312 322 280 328 256 342 C 232 328 200 322 154 322 A 8 8 0 0 1 146 314 V 190 A 8 8 0 0 1 154 182 Z" />
     </clipPath>
   </defs>
-
-  
-  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#day-bg)" />
-  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#paper-sheen)" />
-  <rect x="17" y="17" width="478" height="478" rx="107" fill="none" stroke="#6B4B32" stroke-opacity="0.18" stroke-width="2" />
-  <rect x="36" y="36" width="440" height="440" rx="88" fill="none" stroke="#7D5434" stroke-opacity="0.22" stroke-width="1.5" />
-
-  
-  <g fill="none" stroke="#8C5D38" stroke-opacity="0.42" stroke-width="2" stroke-linecap="round">
-    <path d="M 74 52 H 58 A 6 6 0 0 0 52 58 V 74" />
-    <path d="M 438 52 H 454 A 6 6 0 0 1 460 58 V 74" />
-    <path d="M 74 460 H 58 A 6 6 0 0 1 52 454 V 438" />
-    <path d="M 438 460 H 454 A 6 6 0 0 0 460 454 V 438" />
-  </g>
-
-  
-  <path d="M 136 220 A 8 8 0 0 1 144 212 C 194 212 228 218 256 232 C 284 218 318 212 368 212 A 8 8 0 0 1 376 220 V 338 A 10 10 0 0 1 366 348 C 316 348 282 354 256 368 C 230 354 196 348 146 348 A 10 10 0 0 1 136 338 Z" fill="#3B2416" fill-opacity="0.13" />
+  <g transform="translate(256 256) scale(1.86) translate(-263 -287)">
 
   
   <path d="M 242 344 H 270 V 394 L 256 380 L 242 394 Z" fill="url(#wax-vermilion)" />
@@ -159,5 +143,7 @@
 
     
     <ellipse cx="0" cy="-2.8" rx="2.2" ry="3" fill="#FFF7E6" fill-opacity="0.82" />
+  </g>
+
   </g>
 </svg>

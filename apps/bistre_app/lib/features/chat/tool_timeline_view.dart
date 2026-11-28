@@ -42,7 +42,7 @@ class ToolActivityEntry {
   final String threadId;
   final String runId;
 
-  /// This row with its output replaced (the timeline keeps a capped copy, U9).
+  /// This row with its output replaced (the timeline keeps a capped copy).
   ToolActivityEntry copyWithOutput(String output) => ToolActivityEntry(
     id: id,
     toolName: toolName,
@@ -72,6 +72,10 @@ class ToolActivityEntry {
   );
 }
 
+/// The row name of a step's thinking in a checklist (never a tool's name: tools are
+/// `snake_case` verbs or `mcp__` names).
+const String kThinkingRow = 'thinking';
+
 /// Tools whose consecutive completed steps fold into one quiet row.
 const Set<String> kFoldableReadOnlyTools = <String>{
   'read',
@@ -79,6 +83,8 @@ const Set<String> kFoldableReadOnlyTools = <String>{
   'glob',
   'web_fetch',
   'web_search',
+  'history_search',
+  'history_open',
 };
 
 /// Splits a compound shell command on `&&`, `||`, `;`, or `|` outside single/double quotes for
@@ -134,9 +140,12 @@ List<String> splitShellCompoundSteps(String command) {
   return steps;
 }
 
-/// Folds runs of consecutive completed read/search steps into a single entry (summaries and
-/// outputs joined) so long exploration bursts read as one quiet line (`docs/design/DESIGN.md` §8).
-/// [joinSummaries] is the locale's meta join (`BistreLocalizationController.joinMeta`).
+/// Folds runs of completed read/search steps into a single entry so long exploration bursts
+/// read as one quiet line (`docs/design/design.md` §8). Thinking rows between two of those
+/// steps fold with them: the fold's summary joins the steps' summaries, and its output keeps
+/// the steps' outputs and the thinking in order. Thinking after a run's last read stays out,
+/// with the step it leads to. [joinSummaries] is the locale's meta join
+/// (`BistreLocalizationController.joinMeta`).
 List<ToolActivityEntry> foldReadOnlySteps(
   List<ToolActivityEntry> entries, {
   required String Function(Iterable<String>) joinSummaries,
@@ -146,23 +155,33 @@ List<ToolActivityEntry> foldReadOnlySteps(
   final out = <ToolActivityEntry>[];
   var i = 0;
   while (i < entries.length) {
-    var j = i;
-    while (j < entries.length && foldable(entries[j])) {
-      j++;
+    var last = i;
+    var steps = 0;
+    for (
+      var j = i;
+      j < entries.length &&
+          (foldable(entries[j]) || entries[j].toolName == kThinkingRow);
+      j++
+    ) {
+      if (foldable(entries[j])) {
+        last = j;
+        steps++;
+      }
     }
-    if (j - i >= 2) {
-      final run = entries.sublist(i, j);
+    if (foldable(entries[i]) && steps >= 2) {
+      final run = entries.sublist(i, last + 1);
+      final reads = run.where(foldable);
       out.add(
         ToolActivityEntry(
           id: run.first.id,
           toolName: run.first.toolName,
-          summary: joinSummaries(run.map((e) => e.summary)),
+          summary: joinSummaries(reads.map((e) => e.summary)),
           status: 'completed',
           outputText: run.map((e) => e.outputText).join('\n\n'),
           durationMs: run.fold<int>(0, (sum, e) => sum + e.durationMs),
         ),
       );
-      i = j;
+      i = last + 1;
     } else {
       out.add(entries[i]);
       i++;
@@ -182,9 +201,13 @@ class ToolTimelineView extends StatefulWidget {
     this.onDeny,
     this.onStop,
     this.onRewindCheckpoint,
+    this.collapsed = false,
   });
 
   final List<ToolActivityEntry> entries;
+
+  /// Starts folded (finished steps in a committed reply); a pending approval still opens it.
+  final bool collapsed;
   final ValueChanged<String>? onApproveOnce;
   final ValueChanged<String>? onApproveChat;
   final ValueChanged<String>? onDeny;
@@ -200,9 +223,9 @@ class ToolTimelineView extends StatefulWidget {
 }
 
 class _ToolTimelineViewState extends State<ToolTimelineView> {
-  bool _checklistOpen = true;
+  late bool _checklistOpen = !widget.collapsed;
 
-  /// U14: the folded rows of the entries list they came from. The live reply rebuilds this
+  /// The folded rows of the entries list they came from. The live reply rebuilds this
   /// view every frame; the entries list is replaced only when a row changes, so the fold
   /// (which joins outputs) runs once per change, not once per frame.
   List<ToolActivityEntry>? _foldedFrom;
@@ -232,8 +255,10 @@ class _ToolTimelineViewState extends State<ToolTimelineView> {
         ),
       );
     }
-    final total = widget.entries.length;
-    final done = widget.entries.where((e) => e.status == 'completed').length;
+    // Thinking rows sit between the steps but are not steps themselves.
+    final steps = widget.entries.where((e) => e.toolName != kThinkingRow);
+    final total = steps.length;
+    final done = steps.where((e) => e.status == 'completed').length;
     final running = widget.entries.any((e) => e.status == 'running');
     final awaiting = widget.entries.any((e) => e.status == 'awaiting_approval');
     final totalMs = widget.entries.fold<int>(0, (s, e) => s + e.durationMs);
@@ -384,6 +409,8 @@ class _ToolActivityRowState extends State<_ToolActivityRow> {
         ? l10n.t(L10nKey.toolRunning)
         : l10n.t(L10nKey.toolCompleted);
 
+    // The dot carries running and done; the word shows only when it needs the reader.
+    final showStatusWord = awaiting || failed;
     final durationBadge = _formatDuration(entry.durationMs);
     final shellSteps =
         (entry.toolName == 'shell' ||
@@ -429,71 +456,76 @@ class _ToolActivityRowState extends State<_ToolActivityRow> {
                     horizontal: 12,
                     vertical: 8,
                   ),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 7,
-                        height: 7,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: statusColor,
-                            shape: BoxShape.circle,
+                  child: Semantics(
+                    label: statusText,
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 7,
+                          height: 7,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: statusColor,
+                              shape: BoxShape.circle,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      BistreIcon(
-                        BistreUiIcon.terminal,
-                        size: 13,
-                        color: theme.inkMuted,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: InkText(
-                          entry.summary.isNotEmpty
-                              ? entry.summary
-                              : entry.toolName,
-                          role: InkTextRole.captionMeta,
-                          color: theme.inkPrimary,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (durationBadge.isNotEmpty) ...[
                         const SizedBox(width: 8),
-                        InkText(
-                          durationBadge,
-                          role: InkTextRole.captionMeta,
-                          color: theme.inkMuted,
-                        ),
-                      ],
-                      const SizedBox(width: 8),
-                      InkText(
-                        statusText,
-                        role: InkTextRole.captionMeta,
-                        color: statusColor,
-                      ),
-                      if (entry.checkpointId != null &&
-                          widget.onRewindCheckpoint != null) ...[
-                        const SizedBox(width: 8),
-                        EngravedButton(
-                          label: l10n.t(L10nKey.toolRewind),
-                          compact: true,
-                          onPressed: () =>
-                              widget.onRewindCheckpoint!(entry.checkpointId!),
-                        ),
-                      ],
-                      if (hasExpandableDetails) ...[
-                        const SizedBox(width: 6),
                         BistreIcon(
-                          _expanded
-                              ? BistreUiIcon.chevronUp
-                              : BistreUiIcon.chevronDown,
+                          toolIconFor(entry.toolName),
                           size: 13,
                           color: theme.inkMuted,
                         ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: InkText(
+                            entry.summary.isNotEmpty
+                                ? entry.summary
+                                : entry.toolName,
+                            role: InkTextRole.captionMeta,
+                            color: theme.inkPrimary,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (durationBadge.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          InkText(
+                            durationBadge,
+                            role: InkTextRole.captionMeta,
+                            color: theme.inkMuted,
+                          ),
+                        ],
+                        if (showStatusWord) ...[
+                          const SizedBox(width: 8),
+                          InkText(
+                            statusText,
+                            role: InkTextRole.captionMeta,
+                            color: statusColor,
+                          ),
+                        ],
+                        if (entry.checkpointId != null &&
+                            widget.onRewindCheckpoint != null) ...[
+                          const SizedBox(width: 8),
+                          EngravedButton(
+                            label: l10n.t(L10nKey.toolRewind),
+                            compact: true,
+                            onPressed: () =>
+                                widget.onRewindCheckpoint!(entry.checkpointId!),
+                          ),
+                        ],
+                        if (hasExpandableDetails) ...[
+                          const SizedBox(width: 6),
+                          BistreIcon(
+                            _expanded
+                                ? BistreUiIcon.chevronUp
+                                : BistreUiIcon.chevronDown,
+                            size: 13,
+                            color: theme.inkMuted,
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -590,7 +622,9 @@ class _ToolActivityRowState extends State<_ToolActivityRow> {
                                 controller: scroll,
                                 child: InkText(
                                   entry.outputText.trim(),
-                                  role: InkTextRole.codeBlock,
+                                  role: entry.toolName == kThinkingRow
+                                      ? InkTextRole.bodyCompact
+                                      : InkTextRole.codeBlock,
                                   color: theme.inkSecondary,
                                 ),
                               ),
@@ -806,4 +840,33 @@ class _DiffLine extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Each tool's own icon, so a row says what kind of work it was at a glance.
+BistreUiIcon toolIconFor(String toolName) {
+  final t = toolName.toLowerCase();
+  if (t.startsWith('mcp')) return BistreUiIcon.mcpPlug;
+  return switch (t) {
+    'read_file' || 'read' || 'view' || 'history_open' => BistreUiIcon.document,
+    'edit_file' ||
+    'write_file' ||
+    'edit' ||
+    'write' ||
+    'fs_write' ||
+    'fs_multi_edit' ||
+    'fs_move' => BistreUiIcon.edit,
+    'fs_delete' => BistreUiIcon.trash,
+    'fs_list' => BistreUiIcon.folder,
+    'agent_delegate' => BistreUiIcon.branchTree,
+    'todo_write' => BistreUiIcon.check,
+    'grep' ||
+    'glob' ||
+    'search' ||
+    'find' ||
+    'history_search' => BistreUiIcon.search,
+    'web_fetch' || 'web_search' || 'fetch' => BistreUiIcon.globe,
+    'memory' || 'remember' => BistreUiIcon.memory,
+    kThinkingRow => BistreUiIcon.think,
+    _ => BistreUiIcon.terminal,
+  };
 }

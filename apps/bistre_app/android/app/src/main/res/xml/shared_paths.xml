@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the file viewer may hand to another app: files sent with or made in chats, and
+     files pasted or dropped in (copied into the cache). -->
+<paths>
+    <files-path name="attachments" path="bistre_data/attachments/" />
+    <cache-path name="shared" path="." />
+</paths>

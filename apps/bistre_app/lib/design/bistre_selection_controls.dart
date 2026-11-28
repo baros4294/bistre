@@ -7,7 +7,7 @@ import 'ink_primitives.dart';
 
 /// Pure `package:flutter/widgets.dart` selection handles (zero Material/Cupertino, ADR-0001).
 /// Mixing in [TextSelectionHandleControls] makes Flutter use the `contextMenuBuilder` and its
-/// live Cut/Copy/Paste rules (A-W 1a): Paste only when the clipboard holds text, no Cut or Copy
+/// live Cut/Copy/Paste rules: Paste only when the clipboard holds text, no Cut or Copy
 /// in a masked field. Without it Flutter falls back to a fixed legacy toolbar.
 class BistreSelectionControls extends TextSelectionControls
     with TextSelectionHandleControls {
@@ -48,14 +48,48 @@ class BistreSelectionControls extends TextSelectionControls
 
 /// Pure `package:flutter/widgets.dart` context menu for `EditableText` inside `QuillInput`
 /// (Cut / Copy / Paste / Select all, zero Material/Cupertino dependency).
+///
+/// A field whose ancestors handle [PasteTextIntent] (the composer, which turns pasted files
+/// and pictures into attachments) gets Paste through that handler, and always offers it:
+/// Flutter shows Paste only for clipboard text, so a copied picture had no Paste on touch.
 Widget buildBistreEditableContextMenu(
   BuildContext context,
   EditableTextState editableTextState,
-) => _bistreContextMenu(
-  context,
-  editableTextState.contextMenuButtonItems,
-  editableTextState.contextMenuAnchors,
-);
+) {
+  final fieldContext = editableTextState.context;
+  final pasteHandler = Actions.maybeFind<PasteTextIntent>(fieldContext);
+  if (pasteHandler == null) {
+    return _bistreContextMenu(
+      context,
+      editableTextState.contextMenuButtonItems,
+      editableTextState.contextMenuAnchors,
+    );
+  }
+  void paste() {
+    editableTextState.hideToolbar();
+    Actions.invoke(
+      fieldContext,
+      const PasteTextIntent(SelectionChangedCause.toolbar),
+    );
+  }
+
+  final items = <ContextMenuButtonItem>[
+    for (final item in editableTextState.contextMenuButtonItems)
+      if (item.type != ContextMenuButtonType.paste) item,
+  ];
+  final selectAll = items.indexWhere(
+    (i) => i.type == ContextMenuButtonType.selectAll,
+  );
+  items.insert(
+    selectAll < 0 ? items.length : selectAll,
+    ContextMenuButtonItem(type: ContextMenuButtonType.paste, onPressed: paste),
+  );
+  return _bistreContextMenu(
+    context,
+    items,
+    editableTextState.contextMenuAnchors,
+  );
+}
 
 /// The same menu for selected message text (`SelectableRegion`): Copy and Select all.
 Widget buildBistreSelectableContextMenu(

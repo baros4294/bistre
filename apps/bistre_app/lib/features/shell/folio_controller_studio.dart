@@ -1,5 +1,8 @@
 part of 'folio_controller.dart';
 
+/// Pasted text longer than this many characters joins the message as a text file.
+const int kPasteAsFileChars = 8000;
+
 /// Studio, memory, skills, automation, and writing/roleplay actions of [FolioController].
 extension FolioStudioActions on FolioController {
   // --- Studio Tabs, Session Tree, Multimodal Attachments & Provider QoL ---
@@ -26,6 +29,8 @@ extension FolioStudioActions on FolioController {
   }
 
   void openSessionTree({bool onlyUserPrompts = false}) {
+    // The tree shows the whole chat.
+    unawaited(loadAllEarlierNodes());
     _sessionTreeOpen = true;
     _sessionTreePromptsOnly = onlyUserPrompts;
     _commandPaletteOpen = false;
@@ -46,7 +51,7 @@ extension FolioStudioActions on FolioController {
     var guard = 0;
     while (cursor != null && guard < _nodes.length + 1) {
       guard++;
-      final parentKey = cursor.parentId ?? '__root__';
+      final parentKey = _parentKeyOf(cursor);
       final siblings = grouped[parentKey];
       if (siblings != null) {
         final idx = siblings.indexWhere((s) => s.id == cursor!.id);
@@ -108,7 +113,53 @@ extension FolioStudioActions on FolioController {
           '*.yml;*.rs;*.dart;*.py;*.js;*.ts',
     );
     if (path == null || path.trim().isEmpty) return;
+    attachLocalFile(path);
+  }
+
+  /// Ctrl+V in the composer. Returns the text to type, or null when the clipboard became
+  /// attachments: copied files or a picture (Windows), or text longer than
+  /// [kPasteAsFileChars] as a `.txt` file named [textFileName].
+  Future<String?> takeComposerPaste({
+    required String textFileName,
+    required String imageFileName,
+  }) async {
+    try {
+      final copied = await BistreDesktopHost.clipboardAttachments();
+      if (copied.files.isNotEmpty) {
+        copied.files.forEach(attachLocalFile);
+        return null;
+      }
+      final png = copied.png;
+      if (png != null) {
+        attachLocalFile(await _writePastedFile('$imageFileName.png', png));
+        return null;
+      }
+      final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text ?? '';
+      if (text.length <= kPasteAsFileChars) return text;
+      attachLocalFile(
+        await _writePastedFile('$textFileName.txt', utf8.encode(text)),
+      );
+      return null;
+    } catch (e) {
+      _fail(e);
+      return null;
+    }
+  }
+
+  /// Writes pasted bytes to a new folder in the system temp folder; the file is read and
+  /// stored with the message when it is sent.
+  Future<String> _writePastedFile(String name, List<int> bytes) async {
+    final dir = await Directory.systemTemp.createTemp('bistre-paste-');
+    final file = File('${dir.path}${Platform.pathSeparator}$name');
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
+  }
+
+  /// Adds a local file to the message being written (picked, dropped, or pasted), its kind
+  /// taken from the extension.
+  void attachLocalFile(String path) {
     final clean = path.trim();
+    if (clean.isEmpty) return;
     final name = clean.split(RegExp(r'[/\\]')).last;
     final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
     final isImg =
@@ -188,7 +239,7 @@ extension FolioStudioActions on FolioController {
     required String bodyJson,
   }) async {
     try {
-      // Rust validates both fields and binds the headers to the provider's origin (A-S8).
+      // Rust validates both fields and binds the headers to the provider's origin.
       await _gateway.saveProviderOverrides(
         providerId: providerId,
         headersJson: headersJson,
@@ -197,21 +248,9 @@ extension FolioStudioActions on FolioController {
       showToast(L10nKey.toastSettingsSaved);
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
-
-  /// Exports a strictly non-secret provider profile JSON string (API key never included).
-  String exportProviderShareJson(EngineProvider provider) =>
-      jsonEncode(<String, Object?>{
-        'format': 'bistre_provider_v1',
-        'name': provider.name,
-        'dialect': provider.dialect,
-        'base_url': provider.baseUrl,
-        'default_model': provider.defaultModel,
-        'icon_slug': provider.iconSlug,
-      });
 
   // --- Memory, Progressive Skills & Scheduled Automations ---
 
@@ -255,8 +294,7 @@ extension FolioStudioActions on FolioController {
       showToast(L10nKey.toastSettingsSaved);
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -273,8 +311,7 @@ extension FolioStudioActions on FolioController {
       _memoryEntries = await _gateway.listMemoryEntries();
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -285,8 +322,7 @@ extension FolioStudioActions on FolioController {
       showToast(L10nKey.toastDeleted);
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -294,7 +330,8 @@ extension FolioStudioActions on FolioController {
     if (_workspaceRootPath.isEmpty) return '';
     try {
       return await _gateway.loadSkillBody(_workspaceRootPath, skillPath);
-    } catch (_) {
+    } catch (e) {
+      _noteNonFatal('skill_body', e);
       return '';
     }
   }
@@ -312,14 +349,15 @@ extension FolioStudioActions on FolioController {
           prompt: prompt.trim(),
           assistantId: activeAssistantId,
           unattendedPolicy: _settings.unattendedPolicy,
+          // Sandbox auto approves only inside the run's own worktree, so its jobs get one.
+          useWorktree: _settings.unattendedPolicy == 'sandbox_worktree_auto',
         ),
       );
       _cronJobs = await _gateway.listCronJobs();
       showToast(L10nKey.toastSettingsSaved);
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -345,8 +383,7 @@ extension FolioStudioActions on FolioController {
       _cronJobs = await _gateway.listCronJobs();
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -357,8 +394,7 @@ extension FolioStudioActions on FolioController {
       showToast(L10nKey.toastDeleted);
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -383,8 +419,7 @@ extension FolioStudioActions on FolioController {
       final refused = decision == 'deny' || decision == 'stop';
       recordToolActivity(entry.withStatus(refused ? 'failed' : 'running'));
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
   // --- Writing & Roleplay Studio State & Actions ---
@@ -482,13 +517,10 @@ extension FolioStudioActions on FolioController {
         role: 'assistant',
         content: greetings[idx],
       );
-      final reloaded = await _gateway.listNodes(active.id);
-      // U2: write only into the chat that is still open.
-      if (_activeThread?.id == active.id) _nodes = reloaded;
+      await _reloadActiveNodes(active.id);
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -521,10 +553,31 @@ extension FolioStudioActions on FolioController {
           threadId: active.id,
           activeSceneBeats: activeScene?.beatsText,
         );
+        await _loadInspectedRequest(active.id);
       }
       _notify();
     } catch (e) {
       _noteNonFatal('story_workspace_load', e);
+    }
+  }
+
+  EngineInspectedRequest? get inspectedRequest => _inspectedRequest;
+
+  String? get inspectedRequestError => _inspectedRequestError;
+
+  Future<void> _loadInspectedRequest(String threadId) async {
+    try {
+      final req = await _gateway.inspectNextRequest(
+        threadId: threadId,
+        draft: '',
+      );
+      if (_disposed || _activeThread?.id != threadId) return;
+      _inspectedRequest = req;
+      _inspectedRequestError = null;
+    } catch (e) {
+      if (_disposed || _activeThread?.id != threadId) return;
+      _inspectedRequest = null;
+      _inspectedRequestError = FolioController.extractDiagnosticKey(e);
     }
   }
 
@@ -536,10 +589,10 @@ extension FolioStudioActions on FolioController {
         threadId: active.id,
         activeSceneBeats: activeSceneBeats ?? activeScene?.beatsText,
       );
+      await _loadInspectedRequest(active.id);
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -549,8 +602,7 @@ extension FolioStudioActions on FolioController {
       await refreshStoryStudio();
       showToast(L10nKey.toastSettingsSaved);
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -560,8 +612,7 @@ extension FolioStudioActions on FolioController {
       await refreshStoryStudio();
       showToast(L10nKey.toastDeleted);
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -580,8 +631,7 @@ extension FolioStudioActions on FolioController {
       await refreshStoryStudio();
       showToast(L10nKey.toastSettingsSaved);
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -591,8 +641,7 @@ extension FolioStudioActions on FolioController {
       await Clipboard.setData(ClipboardData(text: jsonText));
       showToast(L10nKey.toastExported);
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -614,8 +663,7 @@ extension FolioStudioActions on FolioController {
         showToast(L10nKey.toolRewoundToast);
       }
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -645,8 +693,7 @@ extension FolioStudioActions on FolioController {
       await refreshStoryStudio();
       showToast(L10nKey.toastSettingsSaved);
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -656,8 +703,7 @@ extension FolioStudioActions on FolioController {
       await refreshStoryStudio();
       showToast(L10nKey.toastSettingsSaved);
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -667,8 +713,7 @@ extension FolioStudioActions on FolioController {
       await refreshStoryStudio();
       showToast(L10nKey.toastDeleted);
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -690,8 +735,7 @@ extension FolioStudioActions on FolioController {
       await refreshStoryStudio();
       showToast(L10nKey.toastSettingsSaved);
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -705,8 +749,7 @@ extension FolioStudioActions on FolioController {
       await refreshPromptInspector();
       _notify();
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -725,8 +768,7 @@ extension FolioStudioActions on FolioController {
       await refreshStoryStudio();
       showToast(L10nKey.toastSettingsSaved);
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -761,8 +803,7 @@ extension FolioStudioActions on FolioController {
       await refreshStoryStudio();
       showToast(L10nKey.toastSettingsSaved);
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -778,8 +819,7 @@ extension FolioStudioActions on FolioController {
       await refreshStoryStudio();
       showToast(L10nKey.toastSettingsSaved);
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 
@@ -794,30 +834,77 @@ extension FolioStudioActions on FolioController {
     await submitPassage(request);
   }
 
-  /// Sends `request` (the UI's localized rewrite/expand/shorten/polish message) for `excerpt`.
-  Future<void> runLaserRewrite({
+  Future<void> saveStoryChapter(EngineStoryChapter chapter) async {
+    try {
+      await _gateway.upsertStoryChapter(chapter);
+      await refreshStoryStudio();
+      showToast(L10nKey.toastSettingsSaved);
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
+  /// The replacement for [excerpt] under [mode] (`rewrite`, `expand`, `shorten`, `polish`)
+  /// with the scene text [context] around it, or null when it failed (the reason shows as
+  /// the chat's notice). Nothing is saved.
+  Future<String?> rewritePassage({
+    required String mode,
     required String excerpt,
-    required String request,
-  }) async {
-    if (excerpt.trim().isEmpty) return;
-    _manuscriptViewActive = false;
-    _notify();
-    await submitPassage(request);
+    required String context,
+  }) => _writerTool(
+    (threadId) => _gateway.rewritePassage(
+      threadId: threadId,
+      mode: mode,
+      excerpt: excerpt,
+      context: context,
+    ),
+  );
+
+  /// A writing brief for the scene from its [title] and [beats], or null when it failed.
+  Future<String?> planScene({required String title, required String beats}) =>
+      _writerTool(
+        (threadId) =>
+            _gateway.planScene(threadId: threadId, title: title, beats: beats),
+      );
+
+  /// The chapter's era summary and the earlier facts it contradicts, or null when it failed.
+  Future<EngineChapterSummary?> summarizeChapter(String chapterId) =>
+      _writerTool(
+        (threadId) =>
+            _gateway.summarizeChapter(threadId: threadId, chapterId: chapterId),
+      );
+
+  /// Runs a paid writing tool for the open chat and refreshes the spend it adds.
+  Future<T?> _writerTool<T>(Future<T> Function(String threadId) call) async {
+    final threadId = _activeThread?.id;
+    if (threadId == null) return null;
+    try {
+      final out = await call(threadId);
+      _walletSpendMicros = await _gateway.getWalletSpendMicros();
+      _notify();
+      return out;
+    } catch (e) {
+      _fail(e);
+      return null;
+    }
   }
 
   /// Sends the UI's localized "continue the story" message.
   Future<void> triggerStoryContinue({required String request}) =>
       submitPassage(request);
 
-  /// Name of the chat's user persona, or `null` when none is chosen.
-  String? get activePersonaName => _userPersonas
-      .where((p) => p.id == _storyState.userPersonaId)
-      .firstOrNull
-      ?.name;
+  /// Text Draft my reply wrote for the composer to add; a new epoch per draft.
+  ({int epoch, String text})? get draftInsert => _draftInsert;
 
-  /// Sends the UI's localized "draft my persona's next reply" message.
-  Future<void> triggerStoryImpersonate({required String request}) =>
-      submitPassage(request);
+  /// Draft my reply: drafts the user's next message (as the chat's persona in a story) and
+  /// hands it to the composer, which adds it after any text already typed.
+  Future<void> draftReplyIntoComposer() async {
+    final threadId = _activeThread?.id;
+    final text = await draftNextMessage('');
+    if (text == null || text.isEmpty || _activeThread?.id != threadId) return;
+    _draftInsert = (epoch: (_draftInsert?.epoch ?? 0) + 1, text: text);
+    _notify();
+  }
 
   Future<void> saveRegexRule(EngineRegexRule rule) async {
     try {
@@ -825,8 +912,7 @@ extension FolioStudioActions on FolioController {
       await refreshStoryStudio();
       showToast(L10nKey.toastSettingsSaved);
     } catch (e) {
-      _lastDiagnosticKey = FolioController.extractDiagnosticKey(e);
-      _notify();
+      _fail(e);
     }
   }
 }

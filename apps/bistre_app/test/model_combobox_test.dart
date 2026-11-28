@@ -58,7 +58,7 @@ Future<(TextEditingController, List<String>)> _pump(WidgetTester tester) async {
 
 void main() {
   testWidgets(
-    'one field: focusing lists models, typing filters, arrows + Enter pick (A-W 6)',
+    'one field: focusing lists models, typing filters, arrows + Enter pick',
     (tester) async {
       final (text, picked) = await _pump(tester);
       expect(
@@ -93,7 +93,7 @@ void main() {
     },
   );
 
-  testWidgets('Enter keeps a typed custom model id (A-W 6)', (tester) async {
+  testWidgets('Enter keeps a typed custom model id', (tester) async {
     final (text, picked) = await _pump(tester);
     await tester.tap(find.byType(EditableText));
     await tester.pumpAndSettle();
@@ -105,7 +105,7 @@ void main() {
     expect(text.text, 'my-local-model');
   });
 
-  testWidgets('Esc closes the list without picking (A-W 6)', (tester) async {
+  testWidgets('Esc closes the list without picking', (tester) async {
     final (_, picked) = await _pump(tester);
     await tester.tap(find.byType(EditableText));
     await tester.pumpAndSettle();

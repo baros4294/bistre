@@ -18,6 +18,7 @@ import 'budget_safety_settings_view.dart';
 import 'default_models_settings_view.dart';
 import 'language_settings_view.dart';
 import 'memory_skills_settings_view.dart';
+import 'projects_settings_view.dart';
 import 'providers_settings_view.dart';
 import 'shortcuts_settings_view.dart';
 import 'updates_storage_settings_view.dart';
@@ -39,6 +40,7 @@ _kSettingsTabs = <(SettingsTab, L10nKey, BistreUiIcon)>[
     L10nKey.settingsTabAssistants,
     BistreUiIcon.assistant,
   ),
+  (SettingsTab.projects, L10nKey.settingsTabProjects, BistreUiIcon.folder),
   (SettingsTab.appearance, L10nKey.settingsTabAppearance, BistreUiIcon.palette),
   (SettingsTab.trust, L10nKey.settingsTabTrust, BistreUiIcon.shield),
   (SettingsTab.agent, L10nKey.settingsTabAgent, BistreUiIcon.code),
@@ -173,6 +175,7 @@ class _SettingsWorkspaceState extends State<SettingsWorkspace>
       SettingsTab.providers => ProvidersSettingsView(controller: ctrl),
       SettingsTab.defaultModels => DefaultModelsSettingsView(controller: ctrl),
       SettingsTab.assistants => AssistantsSettingsView(controller: ctrl),
+      SettingsTab.projects => ProjectsSettingsView(controller: ctrl),
       SettingsTab.appearance => AppearanceSettingsView(controller: ctrl),
       SettingsTab.trust => BudgetSafetySettingsView(controller: ctrl),
       SettingsTab.agent => AgentToolsSettingsView(controller: ctrl),
@@ -232,11 +235,6 @@ class _SettingsTopBar extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-            ),
-            BistreIconButton(
-              icon: BistreUiIcon.close,
-              semanticsLabel: backLabel,
-              onPressed: onBack,
             ),
           ],
         ),
@@ -399,6 +397,7 @@ const Map<SettingsTab, List<String>> settingsSearchPrefixes =
         'settings.tab.memory',
       ],
       SettingsTab.worldBook: <String>['settings.world_book'],
+      SettingsTab.projects: <String>['settings.projects'],
       SettingsTab.updates: <String>['settings.ota', 'settings.storage'],
       SettingsTab.language: <String>['settings.language'],
       SettingsTab.shortcuts: <String>['shortcut.', 'shortcuts.'],

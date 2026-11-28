@@ -7,6 +7,7 @@ import '../../design/bistre_controls.dart';
 import '../../design/bistre_icons.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/label_control_layout.dart';
 import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
@@ -14,7 +15,10 @@ import '../../l10n/l10n_keys.g.dart';
 import '../../platform/desktop_host.dart';
 import '../shell/folio_controller.dart';
 import 'provider_presets.dart';
+import 'provider_share_import.dart';
 import 'provider_subpages.dart';
+
+part 'providers_settings_rows.dart';
 
 /// Full-window Providers & Keys Studio:
 /// - Every provider (including starter OpenAI/Gemini/Anthropic) is freely editable & deletable.
@@ -35,6 +39,7 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
   bool _showKey = false;
   bool _iconPickerOpen = false;
   bool _confirmDelete = false;
+  bool _shareWithKey = false;
   String _subpage = 'main'; // main | advanced | model
   String? _editingModelId;
   ProviderAdvancedConfig _advConfig = const ProviderAdvancedConfig();
@@ -103,6 +108,9 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
     super.dispose();
   }
 
+  /// `setState` for the page's parts in `providers_settings_rows.dart`.
+  void _rebuild(VoidCallback fn) => setState(fn);
+
   void _syncSelection() {
     final providers = widget.controller.providers;
     if (providers.isEmpty) {
@@ -120,6 +128,7 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
     _selectedId = p.id;
     _creating = false;
     _confirmDelete = false;
+    _shareWithKey = false;
     _iconPickerOpen = false;
     _showKey = false;
     _subpage = 'main';
@@ -169,7 +178,7 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
     return '${raw.substring(0, 4)}••••${raw.substring(raw.length - 4)}';
   }
 
-  /// Core's default server URL for an API format (P7).
+  /// Core's default server URL for an API format.
   String _defaultBaseUrl(String dialect) =>
       widget.controller.dialectDescriptor(dialect)?.defaultBaseUrl ?? '';
 
@@ -340,179 +349,6 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
     );
   }
 
-  Widget _buildEmptyState(
-    BistreThemeData theme,
-    BistreLocalizationController l10n,
-  ) {
-    return FolioSurface(
-      tone: FolioTone.elevated,
-      padding: const EdgeInsetsDirectional.all(BistreSpacing.s24),
-      borderRadius: 14,
-      boxShadow: theme.cardShadow,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          InkText(
-            l10n.t(L10nKey.providerEmptyTitle),
-            role: InkTextRole.titleMedium,
-          ),
-          const SizedBox(height: 6),
-          InkText(
-            l10n.t(L10nKey.providerEmptyBody),
-            role: InkTextRole.bodyCompact,
-            color: theme.inkSecondary,
-          ),
-          const SizedBox(height: BistreSpacing.s16),
-          EngravedButton(
-            label: l10n.t(L10nKey.providerAddButton),
-            primary: true,
-            leading: BistreIcon(
-              BistreUiIcon.plus,
-              size: 14,
-              color: theme.onAccentWax,
-            ),
-            onPressed: () => _openCreateFlow(kProviderPresets.first),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCreatePanel(
-    BistreThemeData theme,
-    BistreLocalizationController l10n,
-    FolioController ctrl,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        InkText(l10n.t(L10nKey.providerAddTitle), role: InkTextRole.titleLarge),
-        const SizedBox(height: 4),
-        InkText(
-          l10n.t(L10nKey.providerAddSubtitle),
-          role: InkTextRole.bodyCompact,
-          color: theme.inkSecondary,
-        ),
-        const SizedBox(height: BistreSpacing.s16),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final tpl in kProviderPresets)
-              _TemplateChip(
-                template: tpl,
-                selected:
-                    _newIconSlug == tpl.iconSlug && _newDialect == tpl.dialect,
-                onTap: () => _openCreateFlow(tpl),
-              ),
-          ],
-        ),
-        const SizedBox(height: BistreSpacing.s16),
-        BistreSettingsSection(
-          title: l10n.t(L10nKey.providerAddButton),
-          children: [
-            BistreSettingRow(
-              label: l10n.t(L10nKey.providerFieldName),
-              bottom: QuillInput(
-                controller: _newNameCtrl,
-                focusNode: _newNameFocus,
-                placeholder: l10n.t(L10nKey.providerFieldNamePlaceholder),
-                maxLines: 1,
-                submitOnEnter: false,
-                onSubmitted: () {},
-              ),
-            ),
-            BistreSettingRow(
-              label: l10n.t(L10nKey.providerDialectLabel),
-              bottom: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final entry in <(String, L10nKey)>[
-                    ('openai', L10nKey.providerDialectOpenai),
-                    ('google_gemini', L10nKey.providerDialectGemini),
-                    ('anthropic', L10nKey.providerDialectAnthropic),
-                    ('custom_openai', L10nKey.providerDialectCustom),
-                  ])
-                    InkChip(
-                      label: l10n.t(entry.$2),
-                      selected: _newDialect == entry.$1,
-                      onSelected: () => setState(() => _newDialect = entry.$1),
-                    ),
-                ],
-              ),
-            ),
-            BistreSettingRow(
-              label: l10n.t(L10nKey.providerFieldBaseUrl),
-              bottom: QuillInput(
-                controller: _newUrlCtrl,
-                focusNode: _newUrlFocus,
-                placeholder: _defaultBaseUrl(_newDialect),
-                maxLines: 1,
-                submitOnEnter: false,
-                onSubmitted: () {},
-              ),
-            ),
-            BistreSettingRow(
-              label: l10n.t(L10nKey.providerFieldModel),
-              bottom: QuillInput(
-                controller: _newModelCtrl,
-                focusNode: _newModelFocus,
-                placeholder: l10n.t(L10nKey.providerFieldModelPlaceholder),
-                maxLines: 1,
-                submitOnEnter: false,
-                onSubmitted: () {},
-              ),
-            ),
-            BistreSettingRow(
-              label: l10n.t(L10nKey.providerFieldApiKey),
-              description: l10n.t(L10nKey.providerVaultNote),
-              bottom: QuillInput(
-                controller: _newKeyCtrl,
-                focusNode: _newKeyFocus,
-                placeholder: l10n.t(L10nKey.providerFieldApiKeyPlaceholder),
-                maxLines: 1,
-                obscureText: true,
-                submitOnEnter: false,
-                onSubmitted: () {},
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
-              child: Row(
-                children: [
-                  EngravedButton(
-                    label: l10n.t(L10nKey.providerAddButton),
-                    primary: true,
-                    onPressed: () async {
-                      final created = await ctrl.createProvider(
-                        name: _newNameCtrl.text,
-                        dialect: _newDialect,
-                        baseUrl: _newUrlCtrl.text,
-                        defaultModel: _newModelCtrl.text,
-                        iconSlug: _newIconSlug,
-                        apiKey: _newKeyCtrl.text,
-                      );
-                      if (created != null && mounted) {
-                        setState(() => _loadProviderIntoForm(created));
-                      }
-                    },
-                  ),
-                  const SizedBox(width: 10),
-                  if (ctrl.providers.isNotEmpty)
-                    EngravedButton(
-                      label: l10n.t(L10nKey.threadCancel),
-                      onPressed: () => setState(() => _creating = false),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
   Widget _buildDetailPanel(
     BistreThemeData theme,
     BistreLocalizationController l10n,
@@ -545,83 +381,92 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
           padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
           borderRadius: 12,
           boxShadow: theme.cardShadow,
-          child: Row(
-            children: [
-              LabIcon(
-                iconSlug: p.iconSlug,
-                customIconPath: p.customIconPath,
-                dialect: p.dialect,
-                providerName: p.name,
-                size: 24,
-                framed: true,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: InkText(
-                            p.name,
-                            role: InkTextRole.titleMedium,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        WaxSealBadge(
-                          label: isActiveGlobal
-                              ? l10n.t(L10nKey.providerStatusActive)
-                              : (p.isReady
-                                    ? l10n.t(L10nKey.providerStatusConnected)
-                                    : l10n.t(
-                                        L10nKey.providerStatusNotConnected,
-                                      )),
-                          status: p.isReady
-                              ? WaxSealStatus.ok
-                              : WaxSealStatus.warn,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    InkText(
-                      p.baseUrl,
-                      role: InkTextRole.captionMeta,
-                      color: theme.inkMuted,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+          // The name and address keep the room they need; the actions sit beside them when
+          // they fit and drop below on a narrow screen (never squeezing the name).
+          child: LabelControlLayout(
+            minLabelWidth: 220,
+            stackGap: BistreSpacing.s12,
+            label: Row(
+              children: [
+                LabIcon(
+                  iconSlug: p.iconSlug,
+                  customIconPath: p.customIconPath,
+                  dialect: p.dialect,
+                  providerName: p.name,
+                  size: 24,
+                  framed: true,
                 ),
-              ),
-              const SizedBox(width: 8),
-              EngravedButton(
-                label: l10n.t(L10nKey.settingsProviderTestAction),
-                compact: true,
-                onPressed: loadingModels
-                    ? null
-                    : () => unawaited(ctrl.testProviderConnection(p.id)),
-              ),
-              const SizedBox(width: 6),
-              EngravedButton(
-                label: l10n.t(L10nKey.settingsProviderAdvancedTitle),
-                compact: true,
-                onPressed: () => setState(() => _subpage = 'advanced'),
-              ),
-              if (p.isReady && !isActiveGlobal) ...[
-                const SizedBox(width: 6),
-                EngravedButton(
-                  label: l10n.t(L10nKey.providerActionUseProvider),
-                  primary: true,
-                  compact: true,
-                  onPressed: () => unawaited(
-                    ctrl.setActiveProviderAndModel(p.id, _modelCtrl.text),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: InkText(
+                              p.name,
+                              role: InkTextRole.titleMedium,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          WaxSealBadge(
+                            label: isActiveGlobal
+                                ? l10n.t(L10nKey.providerStatusActive)
+                                : (p.isReady
+                                      ? l10n.t(L10nKey.providerStatusConnected)
+                                      : l10n.t(
+                                          L10nKey.providerStatusNotConnected,
+                                        )),
+                            status: p.isReady
+                                ? WaxSealStatus.ok
+                                : WaxSealStatus.warn,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      InkText(
+                        p.baseUrl,
+                        role: InkTextRole.captionMeta,
+                        color: theme.inkMuted,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
               ],
-            ],
+            ),
+            control: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                // Testing needs a key: without one it could only fail.
+                EngravedButton(
+                  label: l10n.t(L10nKey.settingsProviderTestAction),
+                  compact: true,
+                  onPressed: loadingModels || !p.hasApiKey
+                      ? null
+                      : () => unawaited(ctrl.testProviderConnection(p.id)),
+                ),
+                EngravedButton(
+                  label: l10n.t(L10nKey.settingsProviderAdvancedTitle),
+                  compact: true,
+                  onPressed: () => setState(() => _subpage = 'advanced'),
+                ),
+                if (p.isReady && !isActiveGlobal)
+                  EngravedButton(
+                    label: l10n.t(L10nKey.providerActionUseProvider),
+                    compact: true,
+                    onPressed: () => unawaited(
+                      ctrl.setActiveProviderAndModel(p.id, _modelCtrl.text),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: BistreSpacing.s16),
@@ -738,7 +583,10 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                     ],
                   ),
                   const SizedBox(height: 10),
-                  Row(
+                  // Wraps: both labels side by side do not fit a phone at 200% text.
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       EngravedButton(
                         label: _storedKeys.isEmpty
@@ -765,8 +613,7 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                           }
                         },
                       ),
-                      if (p.hasApiKey) ...[
-                        const SizedBox(width: 8),
+                      if (p.hasApiKey)
                         EngravedButton(
                           label: l10n.t(L10nKey.providerActionClearKey),
                           compact: true,
@@ -775,7 +622,6 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                             await _reloadStoredKeys(p.id);
                           },
                         ),
-                      ],
                     ],
                   ),
                 ],
@@ -785,9 +631,9 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
         ),
         const SizedBox(height: BistreSpacing.s16),
 
-        // Connection, Model & Icon Settings
+        // The provider itself: on or off, icon, name, address.
         BistreSettingsSection(
-          title: l10n.t(L10nKey.providerFieldModel),
+          title: l10n.t(L10nKey.providerSectionTitle),
           children: [
             BistreSettingRow(
               label: l10n.t(L10nKey.providerEnabledToggle),
@@ -802,47 +648,50 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
             ),
             BistreSettingRow(
               label: l10n.t(L10nKey.providerIconLabel),
-              trailing: Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  EngravedButton(
-                    label: l10n.t(L10nKey.providerIconChange),
-                    compact: true,
-                    leading: LabIcon(
-                      iconSlug: p.iconSlug,
-                      customIconPath: p.customIconPath,
-                      dialect: p.dialect,
-                      providerName: p.name,
-                      size: 15,
-                    ),
-                    onPressed: () =>
-                        setState(() => _iconPickerOpen = !_iconPickerOpen),
-                  ),
-                  EngravedButton(
-                    label: l10n.t(L10nKey.providerIconCustomUpload),
-                    compact: true,
-                    onPressed: () => unawaited(_pickCustomProviderIcon(p)),
-                  ),
-                  if (p.customIconPath.isNotEmpty)
-                    EngravedButton(
-                      label: l10n.t(L10nKey.providerIconClearCustom),
-                      compact: true,
-                      onPressed: () => unawaited(
-                        ctrl.saveProviderConfig(
-                          providerId: p.id,
-                          customIconPath: '',
-                        ),
-                      ),
-                    ),
-                ],
+              // One picker: the current icon opens the choices, a local image among them.
+              trailing: EngravedButton(
+                label: l10n.t(L10nKey.providerIconChange),
+                compact: true,
+                leading: LabIcon(
+                  iconSlug: p.iconSlug,
+                  customIconPath: p.customIconPath,
+                  dialect: p.dialect,
+                  providerName: p.name,
+                  size: 15,
+                ),
+                trailing: BistreIcon(
+                  _iconPickerOpen
+                      ? BistreUiIcon.chevronUp
+                      : BistreUiIcon.chevronDown,
+                  size: 12,
+                  color: theme.inkMuted,
+                ),
+                onPressed: () =>
+                    setState(() => _iconPickerOpen = !_iconPickerOpen),
               ),
               bottom: _iconPickerOpen
                   ? Wrap(
                       spacing: 6,
                       runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
+                        EngravedButton(
+                          label: l10n.t(L10nKey.providerIconCustomUpload),
+                          compact: true,
+                          onPressed: () =>
+                              unawaited(_pickCustomProviderIcon(p)),
+                        ),
+                        if (p.customIconPath.isNotEmpty)
+                          EngravedButton(
+                            label: l10n.t(L10nKey.providerIconClearCustom),
+                            compact: true,
+                            onPressed: () => unawaited(
+                              ctrl.saveProviderConfig(
+                                providerId: p.id,
+                                customIconPath: '',
+                              ),
+                            ),
+                          ),
                         for (final entry in LabIconCatalog.all)
                           _LabIconChoiceTile(
                             entry: entry,
@@ -952,7 +801,7 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxHeight: 168),
                       child: SmoothScrollable(
-                        // P24: lazy, so every model is reachable (the old list stopped at 60).
+                        // Lazy, so every model is reachable (the old list stopped at 60).
                         builder: (_, scroll) => ListView.builder(
                           controller: scroll,
                           shrinkWrap: true,
@@ -984,19 +833,15 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                 ],
               ),
             ),
-            if (p.dialect == 'openai' || p.dialect == 'anthropic')
+            if (p.hasApiKey)
               BistreSettingRow(
-                label: l10n.t(L10nKey.providerFieldServerCache),
+                label: l10n.t(L10nKey.providerShareWithKey),
+                description: l10n.t(L10nKey.providerShareWithKeyHint),
                 trailing: BistreSwitch(
-                  value: p.useServerStateCache,
-                  semanticsLabel: l10n.t(L10nKey.providerFieldServerCache),
+                  value: _shareWithKey,
+                  semanticsLabel: l10n.t(L10nKey.providerShareWithKey),
                   reduceMotionOverride: ctrl.reduceMotionOverride,
-                  onChanged: (v) => unawaited(
-                    ctrl.saveProviderConfig(
-                      providerId: p.id,
-                      useServerStateCache: v,
-                    ),
-                  ),
+                  onChanged: (v) => setState(() => _shareWithKey = v),
                 ),
               ),
             Padding(
@@ -1025,7 +870,10 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
                       color: theme.inkSecondary,
                     ),
                     onPressed: () => unawaited(
-                      ctrl.copyText(ctrl.exportProviderShareJson(p)),
+                      ctrl.copyProviderShareCode(
+                        p,
+                        includeApiKey: _shareWithKey && p.hasApiKey,
+                      ),
                     ),
                   ),
                   EngravedButton(
@@ -1058,368 +906,6 @@ class _ProvidersSettingsViewState extends State<ProvidersSettingsView> {
           ],
         ),
       ],
-    );
-  }
-}
-
-class _ProviderListRow extends StatefulWidget {
-  const _ProviderListRow({
-    required this.provider,
-    required this.selected,
-    required this.isActiveGlobal,
-    required this.onTap,
-  });
-
-  final EngineProvider provider;
-  final bool selected;
-  final bool isActiveGlobal;
-  final VoidCallback onTap;
-
-  @override
-  State<_ProviderListRow> createState() => _ProviderListRowState();
-}
-
-class _ProviderListRowState extends State<_ProviderListRow> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    final p = widget.provider;
-
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: PressFeedback(
-        pressScale: kRowPressScale,
-        hoverScale: 1,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: widget.selected
-                  ? theme.bgElevated
-                  : (_hovered ? theme.hoverTint : null),
-              borderRadius: BorderRadius.circular(10),
-              border: widget.selected
-                  ? Border.all(color: theme.borderHairline)
-                  : null,
-              boxShadow: widget.selected ? theme.cardShadow : null,
-            ),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.symmetric(
-                horizontal: 10,
-                vertical: 9,
-              ),
-              child: Row(
-                children: [
-                  if (widget.selected)
-                    Padding(
-                      padding: const EdgeInsetsDirectional.only(end: 8),
-                      child: SizedBox(
-                        width: 2.5,
-                        height: 18,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: theme.accentBrass,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ),
-                    ),
-                  LabIcon(
-                    iconSlug: p.iconSlug,
-                    customIconPath: p.customIconPath,
-                    dialect: p.dialect,
-                    providerName: p.name,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        InkText(
-                          p.name,
-                          role: widget.selected
-                              ? InkTextRole.labelStrong
-                              : InkTextRole.bodyCompact,
-                          color: p.isEnabled
-                              ? theme.inkPrimary
-                              : theme.inkMuted,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        if (p.defaultModel.isNotEmpty)
-                          InkText(
-                            p.defaultModel,
-                            role: InkTextRole.captionMeta,
-                            color: theme.inkMuted,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox.square(
-                    dimension: 7,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: widget.isActiveGlobal
-                            ? theme.accentWax
-                            : (p.isReady
-                                  ? theme.statusOk
-                                  : theme.borderHairline),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TemplateChip extends StatefulWidget {
-  const _TemplateChip({
-    required this.template,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final ProviderPreset template;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  State<_TemplateChip> createState() => _TemplateChipState();
-}
-
-class _TemplateChipState extends State<_TemplateChip> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: PressFeedback(
-        pressScale: kRowPressScale,
-        hoverScale: 1,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: widget.selected
-                  ? theme.bgElevated
-                  : (_hovered ? theme.hoverTint : theme.bgSurface),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: widget.selected
-                    ? theme.accentBrass
-                    : theme.borderHairline,
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.symmetric(
-                horizontal: 10,
-                vertical: 7,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  LabIcon(iconSlug: widget.template.iconSlug, size: 16),
-                  const SizedBox(width: 7),
-                  InkText(
-                    widget.template.name,
-                    role: InkTextRole.captionMeta,
-                    color: widget.selected
-                        ? theme.inkPrimary
-                        : theme.inkSecondary,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _LabIconChoiceTile extends StatefulWidget {
-  const _LabIconChoiceTile({
-    required this.entry,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final LabIconEntry entry;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  State<_LabIconChoiceTile> createState() => _LabIconChoiceTileState();
-}
-
-class _LabIconChoiceTileState extends State<_LabIconChoiceTile> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    return Semantics(
-      button: true,
-      selected: widget.selected,
-      label: widget.entry.displayName,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        child: PressFeedback(
-          pressScale: kRowPressScale,
-          hoverScale: 1,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.onTap,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: widget.selected
-                    ? theme.bgSurface
-                    : (_hovered ? theme.hoverTint : theme.bgCanvas),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: widget.selected
-                      ? theme.accentBrass
-                      : theme.borderHairline,
-                  width: widget.selected ? 1.5 : 1,
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsetsDirectional.symmetric(
-                  horizontal: 8,
-                  vertical: 6,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    LabIcon(iconSlug: widget.entry.slug, size: 16),
-                    const SizedBox(width: 6),
-                    InkText(
-                      widget.entry.displayName,
-                      role: InkTextRole.captionMeta,
-                      color: widget.selected
-                          ? theme.inkPrimary
-                          : theme.inkSecondary,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SelectableModelRow extends StatefulWidget {
-  const _SelectableModelRow({
-    required this.model,
-    required this.selected,
-    required this.onTap,
-    required this.onConfigure,
-    required this.onHide,
-  });
-
-  final EngineProviderModel model;
-  final bool selected;
-  final VoidCallback onTap;
-  final VoidCallback onConfigure;
-  final VoidCallback onHide;
-
-  @override
-  State<_SelectableModelRow> createState() => _SelectableModelRowState();
-}
-
-class _SelectableModelRowState extends State<_SelectableModelRow> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = BistreTheme.of(context);
-    final l10n = BistreLocalizations.of(context);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: PressFeedback(
-        pressScale: kRowPressScale,
-        hoverScale: 1,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: widget.selected || _hovered ? theme.hoverTint : null,
-              borderRadius: BorderRadius.circular(7),
-            ),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.symmetric(
-                horizontal: 10,
-                vertical: 6,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: InkText(
-                      widget.model.id,
-                      role: InkTextRole.captionMeta,
-                      color: widget.selected
-                          ? theme.inkPrimary
-                          : theme.inkSecondary,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (widget.selected) ...[
-                    BistreIcon(
-                      BistreUiIcon.check,
-                      size: 13,
-                      color: theme.accentBrass,
-                    ),
-                    const SizedBox(width: 4),
-                  ],
-                  BistreIconButton(
-                    icon: BistreUiIcon.settings,
-                    size: 12,
-                    dimension: 24,
-                    semanticsLabel: l10n.t(L10nKey.settingsTitle),
-                    onPressed: widget.onConfigure,
-                  ),
-                  BistreIconButton(
-                    icon: BistreUiIcon.trash,
-                    size: 12,
-                    dimension: 24,
-                    semanticsLabel: l10n.t(L10nKey.threadDelete),
-                    onPressed: widget.onHide,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

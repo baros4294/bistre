@@ -3,7 +3,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../design/ink_primitives.dart';
 
-/// The chat title in the header, renamed in place (A-W 2a-2c).
+/// The chat title in the header, renamed in place (2a-2c).
 ///
 /// Enter, a click elsewhere, or moving focus away saves; Esc cancels and restores the title,
 /// handled here before the shell's own Esc (which may stop a reply). The editor belongs to
@@ -89,7 +89,7 @@ class _InlineTitleEditorState extends State<InlineTitleEditor> {
         constraints: const BoxConstraints(maxWidth: _maxWidth),
         child: IntrinsicWidth(
           child: Focus(
-            // Esc never reaches the shell from here (U6).
+            // Esc never reaches the shell from here.
             onKeyEvent: (_, event) {
               if (event is KeyDownEvent &&
                   event.logicalKey == LogicalKeyboardKey.escape &&

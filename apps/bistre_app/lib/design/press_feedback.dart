@@ -1,4 +1,5 @@
 import 'package:flutter/physics.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'bistre_theme.dart';
@@ -7,7 +8,7 @@ import 'bistre_theme.dart';
 /// 300 px row by 12 px, which reads as a jump rather than a press.
 const double kRowPressScale = 0.985;
 
-/// Spring press and hover feedback for every clickable control (`docs/design/DESIGN.md` §6).
+/// Spring press and hover feedback for every clickable control (`docs/design/design.md` §6).
 /// `kissClickable`): pressing scales to 0.96, hovering scales to 1.012 and lifts 0.75 px.
 /// Pointer events pass through untouched, so the action still fires on the event; the motion
 /// only describes it. Reduced motion (system or in-app setting) makes it instant.
@@ -167,5 +168,46 @@ class _EaseDecorationState extends AnimatedWidgetBaseState<_EaseDecoration> {
   Widget build(BuildContext context) => DecoratedBox(
     decoration: _decoration?.evaluate(animation) ?? widget.decoration,
     child: widget.child,
+  );
+}
+
+/// A tappable area that is also a labelled, keyboard-focusable button (Enter or Space),
+/// for custom content where an icon button or engraved button does not fit.
+class PressableArea extends StatelessWidget {
+  const PressableArea({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    required this.child,
+  });
+
+  final String label;
+  final VoidCallback onPressed;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    label: label,
+    child: FocusableActionDetector(
+      mouseCursor: SystemMouseCursors.click,
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+      },
+      actions: <Type, Action<Intent>>{
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            onPressed();
+            return null;
+          },
+        ),
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onPressed,
+        child: child,
+      ),
+    ),
   );
 }

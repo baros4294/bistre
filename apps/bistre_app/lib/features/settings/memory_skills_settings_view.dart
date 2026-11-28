@@ -12,7 +12,10 @@ import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
+import '../../platform/desktop_host.dart';
 import '../shell/folio_controller.dart';
+import 'app_skills_section.dart';
+import 'schedule_words.dart';
 
 /// Unified Settings view (`SettingsTab.memory`) for:
 /// 1. Cross-Chat Saved Memory (local SQLite `memory_entries`)
@@ -106,7 +109,13 @@ class _MemorySkillsSettingsViewState extends State<MemorySkillsSettingsView> {
   static String _formatCronMeta(
     BistreLocalizationController l10n,
     EngineCronJob job,
-  ) => l10n.joinMeta(<String>[job.scheduleExpr, job.lastStatus]);
+  ) {
+    final status = scheduleStatusInWords(l10n, job.lastStatus);
+    return l10n.joinMeta(<String>[
+      scheduleInWords(l10n, job.scheduleExpr),
+      if (status != null) status,
+    ]);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -149,25 +158,44 @@ class _MemorySkillsSettingsViewState extends State<MemorySkillsSettingsView> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: QuillInput(
-                          controller: _memContentCtrl,
-                          focusNode: _memContentFocus,
-                          placeholder: l10n.t(L10nKey.memoryAddPlaceholder),
-                          maxLines: 1,
-                          onSubmitted: () => unawaited(_saveMemory()),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      EngravedButton(
+                  // Stacked on a phone, so the placeholder is never cut off.
+                  LayoutBuilder(
+                    builder: (context, box) {
+                      final narrow = box.maxWidth < 600;
+                      final field = QuillInput(
+                        controller: _memContentCtrl,
+                        focusNode: _memContentFocus,
+                        placeholder: l10n.t(L10nKey.memoryAddPlaceholder),
+                        maxLines: narrow ? 3 : 1,
+                        onSubmitted: () => unawaited(_saveMemory()),
+                      );
+                      final save = EngravedButton(
                         label: l10n.t(L10nKey.memoryAddAction),
                         primary: true,
                         compact: true,
                         onPressed: () => unawaited(_saveMemory()),
-                      ),
-                    ],
+                      );
+                      if (narrow) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            field,
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: AlignmentDirectional.centerEnd,
+                              child: save,
+                            ),
+                          ],
+                        );
+                      }
+                      return Row(
+                        children: [
+                          Expanded(child: field),
+                          const SizedBox(width: 8),
+                          save,
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 12),
                   if (memories.isEmpty)
@@ -245,55 +273,78 @@ class _MemorySkillsSettingsViewState extends State<MemorySkillsSettingsView> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: QuillInput(
-                          controller: _cronNameCtrl,
-                          focusNode: _cronNameFocus,
-                          placeholder: l10n.t(L10nKey.automationsTitle),
-                          maxLines: 1,
-                          onSubmitted: () => unawaited(_addSchedule()),
+                  // Side by side when there is room; stacked on a phone, so no placeholder
+                  // is cut off.
+                  LayoutBuilder(
+                    builder: (context, box) {
+                      final name = QuillInput(
+                        controller: _cronNameCtrl,
+                        focusNode: _cronNameFocus,
+                        placeholder: l10n.t(L10nKey.automationsNamePlaceholder),
+                        maxLines: 1,
+                        onSubmitted: () => unawaited(_addSchedule()),
+                      );
+                      final schedule = QuillInput(
+                        controller: _cronExprCtrl,
+                        focusNode: _cronExprFocus,
+                        placeholder: l10n.t(
+                          L10nKey.automationsSchedulePlaceholder,
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        flex: 3,
-                        child: QuillInput(
-                          controller: _cronExprCtrl,
-                          focusNode: _cronExprFocus,
-                          placeholder: l10n.t(
-                            L10nKey.automationsSchedulePlaceholder,
-                          ),
-                          maxLines: 1,
-                          onSubmitted: () => unawaited(_addSchedule()),
+                        maxLines: 1,
+                        onSubmitted: () => unawaited(_addSchedule()),
+                      );
+                      final prompt = QuillInput(
+                        controller: _cronPromptCtrl,
+                        focusNode: _cronPromptFocus,
+                        placeholder: l10n.t(
+                          L10nKey.automationsPromptPlaceholder,
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: QuillInput(
-                          controller: _cronPromptCtrl,
-                          focusNode: _cronPromptFocus,
-                          placeholder: l10n.t(
-                            L10nKey.automationsPromptPlaceholder,
-                          ),
-                          maxLines: 1,
-                          onSubmitted: () => unawaited(_addSchedule()),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      EngravedButton(
+                        maxLines: box.maxWidth < 600 ? 3 : 1,
+                        onSubmitted: () => unawaited(_addSchedule()),
+                      );
+                      final add = EngravedButton(
                         label: l10n.t(L10nKey.automationsAddAction),
                         primary: true,
                         compact: true,
                         onPressed: () => unawaited(_addSchedule()),
-                      ),
-                    ],
+                      );
+                      if (box.maxWidth < 600) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            name,
+                            const SizedBox(height: 8),
+                            schedule,
+                            const SizedBox(height: 8),
+                            prompt,
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: AlignmentDirectional.centerEnd,
+                              child: add,
+                            ),
+                          ],
+                        );
+                      }
+                      return Column(
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(flex: 2, child: name),
+                              const SizedBox(width: 8),
+                              Expanded(flex: 3, child: schedule),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(child: prompt),
+                              const SizedBox(width: 8),
+                              add,
+                            ],
+                          ),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 12),
                   if (jobs.isEmpty)
@@ -376,13 +427,34 @@ class _MemorySkillsSettingsViewState extends State<MemorySkillsSettingsView> {
                     ],
                   ),
                   const SizedBox(height: 10),
-                  if (skills.isEmpty)
+                  if (skills.isEmpty) ...[
                     InkText(
                       l10n.t(L10nKey.skillsEmpty),
                       role: InkTextRole.bodyCompact,
                       color: theme.inkMuted,
-                    )
-                  else
+                    ),
+                    // The empty state carries the action it asks for.
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: EngravedButton(
+                        label: l10n.t(L10nKey.settingsAgentChooseFolder),
+                        compact: true,
+                        onPressed: () async {
+                          final picked =
+                              await BistreDesktopHost.pickLocalFolder(
+                                title: l10n.t(
+                                  L10nKey.settingsAgentWorkspaceDir,
+                                ),
+                              );
+                          if (picked != null && picked.isNotEmpty) {
+                            await ctrl.setWorkspaceRootPath(picked);
+                            await ctrl.refreshMemorySkillsAndCron();
+                          }
+                        },
+                      ),
+                    ),
+                  ] else
                     for (final sk in skills) ...[
                       FolioSurface(
                         child: Column(
@@ -464,6 +536,8 @@ class _MemorySkillsSettingsViewState extends State<MemorySkillsSettingsView> {
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+            AppSkillsSection(controller: ctrl),
           ],
         ),
       ),

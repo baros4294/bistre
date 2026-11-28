@@ -6,8 +6,13 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
 
 import '../platform/vault_key_host.dart';
 import 'api.dart' as frb;
+import 'api/chat.dart' as frb;
 import 'api/harness.dart' as frb;
+import 'api/library.dart' as frb;
 import 'api/media.dart' as frb;
+import 'api/projects.dart' as frb;
+import 'api/providers.dart' as frb;
+import 'api/runs.dart' as frb;
 import 'api/story.dart' as frb;
 import 'engine_models.dart';
 import 'engine_story_models.dart';
@@ -16,374 +21,20 @@ import 'frb_generated.dart';
 export 'engine_models.dart';
 export 'engine_story_models.dart';
 
+part 'bistre_engine_chat.dart';
+part 'bistre_engine_gateway.dart';
+part 'bistre_engine_library.dart';
 part 'bistre_engine_mapping.dart';
-
-/// Thin transport interface isolating Flutter widgets from native FFI loading during widget tests.
-abstract interface class BistreEngineGateway {
-  Future<EngineHealth> init(String dataDir);
-  Future<EngineHealth> getHealth();
-  Future<EngineStorageStats> getStorageStats();
-  Future<List<EngineProvider>> listProviders();
-  Future<EngineProvider> createProvider({
-    required String name,
-    required String dialect,
-    required String baseUrl,
-    required String defaultModel,
-    required String iconSlug,
-    required String customIconPath,
-    String? apiKey,
-  });
-  Future<EngineProvider> updateProvider({
-    required String providerId,
-    String? name,
-    String? baseUrl,
-    String? defaultModel,
-    bool? isEnabled,
-    bool? useServerStateCache,
-    String? iconSlug,
-    String? customIconPath,
-  });
-  Future<EngineProvider> setProviderApiKey({
-    required String providerId,
-    required String apiKey,
-  });
-  Future<EngineProvider> clearProviderApiKey(String providerId);
-  Future<List<String>> getProviderApiKeys(String providerId);
-  Future<EngineModelCatalogInfo?> lookupModelCatalogInfo(String modelId);
-  Future<EngineProvider> createCustomProvider({
-    required String name,
-    required String baseUrl,
-    required String defaultModel,
-    String? apiKey,
-  });
-  Future<void> deleteProvider(String providerId);
-  Future<List<EngineProviderModel>> fetchProviderModels(String providerId);
-  Future<List<EngineAssistant>> listAssistants();
-  Future<EngineAssistant> createAssistant({
-    required String name,
-    required String roleSubtitle,
-    required String systemPrompt,
-    required String defaultMode,
-    required String badgeCode,
-  });
-  Future<EngineAssistant> updateAssistant({
-    required String assistantId,
-    String? name,
-    String? roleSubtitle,
-    String? systemPrompt,
-    String? defaultMode,
-    String? badgeCode,
-    String? iconSlug,
-    String? defaultProviderId,
-    String? defaultModelId,
-    int? temperatureMilli,
-    bool clearTemperature = false,
-    int? maxOutputTokens,
-    bool clearMaxOutputTokens = false,
-    int? topPMilli,
-    bool clearTopP = false,
-  });
-  Future<void> deleteAssistant(String assistantId);
-  Future<EngineThread> createThread(
-    String title,
-    String mode, {
-    String? topic,
-    String? assistantId,
-  });
-  Future<EngineThread> updateThread({
-    required String threadId,
-    String? title,
-    bool? isPinned,
-    String? topic,
-    String? mode,
-    String? assistantId,
-    String? providerIdOverride,
-    bool clearProviderOverride = false,
-    String? modelIdOverride,
-    bool clearModelOverride = false,
-    String? systemPromptOverride,
-    bool clearSystemPromptOverride = false,
-    int? temperatureMilli,
-    bool clearTemperature = false,
-    int? maxOutputTokens,
-    bool clearMaxOutputTokens = false,
-    int? topPMilli,
-    bool clearTopP = false,
-  });
-  Future<void> deleteThread(String threadId);
-  Future<List<EngineThread>> listThreads();
-  Future<EngineNode> appendNode({
-    required String threadId,
-    String? parentId,
-    required String role,
-    required String content,
-  });
-  Future<EngineNode> sendAndStreamReply({
-    required String threadId,
-    String? parentId,
-    required String userContent,
-  });
-  Future<EngineNode> sendAndStreamReplyWithAttachments({
-    required String threadId,
-    String? parentId,
-    required String userContent,
-    required List<EngineAttachmentInput> attachments,
-  });
-  Future<EngineNode> steerActiveRunNow({
-    required String threadId,
-    required String content,
-  });
-  Future<String> exportAllThreadsJson();
-  Future<int> importThreadsJson(String rawJson);
-  Future<String> exportSettingsJson();
-
-  /// Imports settings JSON; a file that would loosen trust or the spending limit fails with
-  /// `diag.import.loosens_safety` unless [allowLoosening] (the user confirmed).
-  Future<EngineSettings> importSettingsJson(
-    String rawJson, {
-    bool allowLoosening = false,
-  });
-  Future<List<EngineStorageFileEntry>> listStorageFiles();
-  Future<bool> deleteStorageFile(String relPath);
-  Future<int> cleanUnusedStorageFiles();
-  Future<List<int>> synthesizeSpeech({
-    required String providerId,
-    required String modelId,
-    required String text,
-    String? voice,
-  });
-  Future<String> startLiveVoiceSession({
-    required String providerId,
-    required String modelId,
-    required String voice,
-    required String systemPrompt,
-  });
-  Future<void> sendLiveVoicePcmChunk({
-    required String sessionId,
-    required String pcmBase64,
-  });
-  Future<void> sendLiveVoiceText({
-    required String sessionId,
-    required String text,
-  });
-  Future<void> stopLiveVoiceSession(String sessionId);
-  Future<String> regenerateReply({
-    required String threadId,
-    required String userNodeId,
-  });
-  Future<EngineNode> editUserNodeAndStream({
-    required String threadId,
-    required String nodeId,
-    required String newContent,
-  });
-  Future<void> deleteNode({required String threadId, required String nodeId});
-  Future<String> exportThread({
-    required String threadId,
-    required String format,
-  });
-  Future<void> backupDatabase(String destPath);
-  Future<bool> cancelActiveRun(String threadId);
-
-  /// Ends a run's backoff wait immediately (`Retry now`).
-  Future<bool> retryRunNow(String threadId);
-  Future<List<EngineNode>> listNodes(String threadId);
-  Future<void> saveDraft(String threadId, String text);
-  Future<String?> loadDraft(String threadId);
-  Future<EngineSettings> loadSettings();
-  Future<EngineSettings> saveSettings(EngineSettings settings);
-  Future<int> getWalletSpendMicros();
-  Future<int> getWalletDailySpendMicros();
-  Future<EngineUpdateCheck> checkForUpdates({String? feedUrlOverride});
-  Future<String> stageUpdate(EngineUpdateCheck check);
-  Future<List<EngineSearchHit>> searchNodes(
-    String query, {
-    String? threadId,
-    int limit = 20,
-  });
-  Future<String> verifyDataPack({
-    required String publicKeyB64,
-    required List<int> manifestBytes,
-    required String manifestSigText,
-    required List<int> packPayload,
-  });
-  Future<List<EngineAgentRun>> listAgentRuns({
-    String? threadId,
-    bool onlyActive = false,
-    int limit = 50,
-  });
-  Future<EngineSteeringMessage> enqueueSteering({
-    required String threadId,
-    required String content,
-  });
-  Future<List<EngineSteeringMessage>> listPendingSteering(String threadId);
-  Future<void> deleteSteering(String steeringId);
-  Future<EnginePowerGuardStatus> powerGuardStatus();
-  Future<int> notifyPowerEvent(String eventKind, {bool? onAc});
-  Future<EnginePowerGuardStatus> setAndroidPowerState({
-    required bool fgsActive,
-    required bool batteryUnrestricted,
-  });
-  Future<EngineAgentRun> resolveIndeterminateRun({
-    required String runId,
-    required bool confirmCompleted,
-  });
-
-  /// Starts a public price-list refresh now.
-  Future<void> refreshPrices();
-
-  /// The model's conversation limit in tokens, or null when unknown.
-  Future<int?> modelContextTokens(String model);
-
-  /// Estimated tokens the next request sends for the branch ending at [leafNodeId] (core
-  /// applies compaction and the context pin exactly as a run does).
-  /// What the next request sends for the branch ending at [leafNodeId], by category, with
-  /// [draft] as the message about to be sent.
-  Future<EngineContextBreakdown> contextBreakdown(
-    String threadId,
-    String leafNodeId, {
-    String draft = '',
-  });
-
-  /// Records the user's approval of one exact call; returns a one-use permit id.
-  Future<String> approveToolCall({
-    required String threadId,
-    required String toolName,
-    required Map<String, Object?> arguments,
-  });
-
-  /// "Allow once": the chat's next run may send requests whose price is unknown while a
-  /// spending cap is active (`diag.wallet.price_unknown`).
-  Future<void> allowUnpricedOnce(String threadId);
-
-  /// "Allow once" for the next read-aloud or live-voice request whose price is unknown.
-  Future<void> allowUnpricedMediaOnce();
-
-  /// The workspace's `.bistre/hooks.json` for review; `null` when the folder has none.
-  Future<EngineWorkspaceHooksStatus?> workspaceHooksStatus(
-    String workspaceRoot,
-  );
-
-  /// Core's facts for every API format (default server URL, endpoint path).
-  List<EngineDialectDescriptor> dialectDescriptors();
-
-  /// The URLs a provider with this format and server URL is called at (P8).
-  EngineResolvedEndpoint resolveProviderEndpoint(
-    String dialect,
-    String baseUrl,
-  );
-
-  /// Web sources of every reply in a chat (B2), oldest reply first.
-  Future<List<EngineGroundingSource>> listThreadGrounding(String threadId);
-
-  /// Approves the hooks file the user reviewed (by [digest]); a changed file is refused.
-  Future<void> approveWorkspaceHooks(String workspaceRoot, String digest);
-
-  /// Validates and saves a provider's custom headers and body fields (JSON objects).
-  Future<void> saveProviderOverrides({
-    required String providerId,
-    required String headersJson,
-    required String bodyJson,
-  });
-
-  /// Delivers a live tool-approval decision (`approve_once` / `approve_for_thread` / `deny` /
-  /// `stop`) to the run [runId] of [threadId] paused at [callId].
-  Future<bool> respondToolApproval({
-    required String threadId,
-    required String runId,
-    required String callId,
-    required String decision,
-  });
-
-  /// Runs a tool. Read-only tools need no permit; every other tool needs the
-  /// [permitId] from [approveToolCall] for exactly these [arguments].
-  Future<EngineToolOutput> executeWorkspaceTool({
-    required String workspaceRoot,
-    required String threadId,
-    required String toolName,
-    required Map<String, Object?> arguments,
-    String? permitId,
-  });
-  Future<String> rewindCheckpoint({
-    required String workspaceRoot,
-    required String checkpointId,
-  });
-  Future<List<EngineCheckpoint>> listCheckpoints(
-    String threadId, {
-    int limit = 50,
-  });
-  Future<EngineNode> compactThread({
-    required String threadId,
-    int keepRecentTurns = 4,
-    String? customSummary,
-  });
-  Future<void> undoCompaction({
-    required String threadId,
-    required String compactionNodeId,
-  });
-  Future<String?> setContextStartPin({
-    required String threadId,
-    String? nodeId,
-  });
-  Future<String?> getContextStartPin(String threadId);
-  Future<EngineMcpDiscoveryReport> discoverMcpServer(
-    EngineMcpServerConfig server,
-  );
-  Future<String?> getKvMeta(String key);
-  Future<void> setKvMeta(String key, String value);
-  Future<List<EngineMemoryEntry>> listMemoryEntries({String? scope});
-  Future<EngineMemoryEntry> upsertMemoryEntry({
-    String? id,
-    required String scope,
-    required String scopeId,
-    required String key,
-    required String content,
-    bool pinned = false,
-  });
-  Future<void> deleteMemoryEntry(String entryId);
-  Future<List<EngineSkillIndex>> discoverWorkspaceSkills(String workspaceRoot);
-  Future<String> loadSkillBody(String workspaceRoot, String skillPath);
-  Future<List<EngineCronJob>> listCronJobs();
-  Future<EngineCronJob> upsertCronJob(EngineCronJob job);
-  Future<void> deleteCronJob(String jobId);
-  Future<List<EngineCharacterCard>> listCharacterCards();
-  Future<EngineCharacterCard> upsertCharacterCard(EngineCharacterCard card);
-  Future<void> deleteCharacterCard(String cardId);
-  Future<EngineCharacterCard> importCharacterCardFile(String filePath);
-  Future<String> exportCharacterCardCcv3(String cardId);
-  Future<List<EngineUserPersona>> listUserPersonas();
-  Future<EngineUserPersona> upsertUserPersona(EngineUserPersona persona);
-  Future<List<EngineStoryEntry>> listStoryEntries({String? bookId});
-  Future<EngineStoryEntry> upsertStoryEntry(EngineStoryEntry entry);
-  Future<void> deleteStoryEntry(String entryId);
-  Future<List<EngineStoryProgression>> listStoryProgressions({String? entryId});
-  Future<EngineStoryProgression> addStoryProgression(
-    EngineStoryProgression progression,
-  );
-  Future<List<EngineStoryChapter>> listStoryChapters(String threadId);
-  Future<EngineStoryChapter> upsertStoryChapter(EngineStoryChapter chapter);
-  Future<List<EngineStoryScene>> listStoryScenes(String chapterId);
-  Future<EngineStoryScene> upsertStoryScene(EngineStoryScene scene);
-  Future<EngineStoryThreadState> loadStoryThreadState(String threadId);
-  Future<EngineStoryThreadState> saveStoryThreadState(
-    EngineStoryThreadState state,
-  );
-  Future<List<EngineRegexRule>> listRegexRules();
-  Future<EngineRegexRule> upsertRegexRule(EngineRegexRule rule);
-  Future<List<EngineStorySnapshot>> listStorySnapshots({
-    required String entityType,
-    required String entityId,
-    int limit = 10,
-  });
-  Future<EnginePromptReport> inspectStoryPrompt({
-    required String threadId,
-    String? activeSceneBeats,
-  });
-  Stream<BistreEvent> subscribeEvents();
-  Future<void> shutdown();
-}
+part 'bistre_engine_story.dart';
 
 /// Production FFI gateway backed by `flutter_rust_bridge 2.13` Native Assets.
-class FrbBistreEngineGateway implements BistreEngineGateway {
+class FrbBistreEngineGateway
+    with
+        _FrbUtilityAndVoiceMixin,
+        _FrbStoryMixin,
+        _FrbChatActionsMixin,
+        _FrbLibraryMixin
+    implements BistreEngineGateway {
   /// [externalLibrary] overrides the default loader (tests that run outside a
   /// bundled app, where the native library is not on the loader path).
   FrbBistreEngineGateway({ExternalLibrary? externalLibrary})
@@ -573,8 +224,10 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
     String mode, {
     String? topic,
     String? assistantId,
+    String? projectId,
   }) async => _mapThread(
     await frb.createThread(
+      projectId: projectId,
       title: title,
       mode: mode,
       topic: topic,
@@ -683,6 +336,23 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
   @override
   Future<void> deleteNode({required String threadId, required String nodeId}) =>
       frb.deleteNode(threadId: threadId, nodeId: nodeId);
+
+  @override
+  Future<EngineThread> forkThread({
+    required String threadId,
+    required String nodeId,
+  }) async =>
+      _mapThread(await frb.forkThread(threadId: threadId, nodeId: nodeId));
+
+  @override
+  Future<void> deleteFromNode({
+    required String threadId,
+    required String nodeId,
+  }) => frb.deleteFromNode(threadId: threadId, nodeId: nodeId);
+
+  @override
+  Future<void> clearThreadMessages(String threadId) =>
+      frb.clearThreadMessages(threadId: threadId);
 
   @override
   Future<String> exportThread({
@@ -846,8 +516,8 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
   Future<void> refreshPrices() => frb.refreshPrices();
 
   @override
-  Future<int?> modelContextTokens(String model) =>
-      frb.modelContextTokens(model: model);
+  Future<int?> modelContextTokens(String providerId, String model) =>
+      frb.modelContextTokens(providerId: providerId, model: model);
 
   @override
   Future<EngineContextBreakdown> contextBreakdown(
@@ -904,6 +574,9 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
         ),
       )
       .toList(growable: false);
+
+  @override
+  String defaultTitlePrompt() => frb.defaultTitlePrompt();
 
   @override
   EngineResolvedEndpoint resolveProviderEndpoint(
@@ -993,28 +666,6 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
         )
         .toList(growable: false);
   }
-
-  @override
-  Future<EngineNode> compactThread({
-    required String threadId,
-    int keepRecentTurns = 4,
-    String? customSummary,
-  }) async => _mapNode(
-    await frb.compactThread(
-      threadId: threadId,
-      keepRecentTurns: keepRecentTurns,
-      customSummary: customSummary,
-    ),
-  );
-
-  @override
-  Future<void> undoCompaction({
-    required String threadId,
-    required String compactionNodeId,
-  }) => frb.undoCompaction(
-    threadId: threadId,
-    compactionNodeId: compactionNodeId,
-  );
 
   @override
   Future<String?> setContextStartPin({
@@ -1122,228 +773,18 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
   Future<void> deleteCronJob(String jobId) => frb.deleteCronJob(jobId: jobId);
 
   @override
-  Future<List<EngineCharacterCard>> listCharacterCards() async {
-    final decoded = jsonDecode(await frb.listCharacterCardsJson());
-    if (decoded is! List<Object?>) return const <EngineCharacterCard>[];
-    return decoded
-        .whereType<Map<String, Object?>>()
-        .map(EngineCharacterCard.fromJson)
-        .toList(growable: false);
-  }
-
-  @override
-  Future<EngineCharacterCard> upsertCharacterCard(
-    EngineCharacterCard card,
-  ) async {
-    final raw = await frb.upsertCharacterCardJson(
-      cardJson: jsonEncode(card.toJson()),
-    );
-    return EngineCharacterCard.fromJson(
-      jsonDecode(raw) as Map<String, Object?>,
-    );
-  }
-
-  @override
-  Future<void> deleteCharacterCard(String cardId) =>
-      frb.deleteCharacterCard(cardId: cardId);
-
-  @override
-  Future<EngineCharacterCard> importCharacterCardFile(String filePath) async {
-    final raw = await frb.importCharacterCardFileJson(filePath: filePath);
-    return EngineCharacterCard.fromJson(
-      jsonDecode(raw) as Map<String, Object?>,
-    );
-  }
-
-  @override
-  Future<String> exportCharacterCardCcv3(String cardId) =>
-      frb.exportCharacterCardCcv3(cardId: cardId);
-
-  @override
-  Future<List<EngineUserPersona>> listUserPersonas() async {
-    final decoded = jsonDecode(await frb.listUserPersonasJson());
-    if (decoded is! List<Object?>) return const <EngineUserPersona>[];
-    return decoded
-        .whereType<Map<String, Object?>>()
-        .map(EngineUserPersona.fromJson)
-        .toList(growable: false);
-  }
-
-  @override
-  Future<EngineUserPersona> upsertUserPersona(EngineUserPersona persona) async {
-    final raw = await frb.upsertUserPersonaJson(
-      personaJson: jsonEncode(persona.toJson()),
-    );
-    return EngineUserPersona.fromJson(jsonDecode(raw) as Map<String, Object?>);
-  }
-
-  @override
-  Future<List<EngineStoryEntry>> listStoryEntries({String? bookId}) async {
-    final decoded = jsonDecode(await frb.listStoryEntriesJson(bookId: bookId));
-    if (decoded is! List<Object?>) return const <EngineStoryEntry>[];
-    return decoded
-        .whereType<Map<String, Object?>>()
-        .map(EngineStoryEntry.fromJson)
-        .toList(growable: false);
-  }
-
-  @override
-  Future<EngineStoryEntry> upsertStoryEntry(EngineStoryEntry entry) async {
-    final raw = await frb.upsertStoryEntryJson(
-      entryJson: jsonEncode(entry.toJson()),
-    );
-    return EngineStoryEntry.fromJson(jsonDecode(raw) as Map<String, Object?>);
-  }
-
-  @override
-  Future<void> deleteStoryEntry(String entryId) =>
-      frb.deleteStoryEntry(entryId: entryId);
-
-  @override
-  Future<List<EngineStoryProgression>> listStoryProgressions({
-    String? entryId,
-  }) async {
-    final decoded = jsonDecode(
-      await frb.listStoryProgressionsJson(entryId: entryId),
-    );
-    if (decoded is! List<Object?>) return const <EngineStoryProgression>[];
-    return decoded
-        .whereType<Map<String, Object?>>()
-        .map(EngineStoryProgression.fromJson)
-        .toList(growable: false);
-  }
-
-  @override
-  Future<EngineStoryProgression> addStoryProgression(
-    EngineStoryProgression progression,
-  ) async {
-    final raw = await frb.addStoryProgressionJson(
-      progJson: jsonEncode(progression.toJson()),
-    );
-    return EngineStoryProgression.fromJson(
-      jsonDecode(raw) as Map<String, Object?>,
-    );
-  }
-
-  @override
-  Future<List<EngineStoryChapter>> listStoryChapters(String threadId) async {
-    final decoded = jsonDecode(
-      await frb.listStoryChaptersJson(threadId: threadId),
-    );
-    if (decoded is! List<Object?>) return const <EngineStoryChapter>[];
-    return decoded
-        .whereType<Map<String, Object?>>()
-        .map(EngineStoryChapter.fromJson)
-        .toList(growable: false);
-  }
-
-  @override
-  Future<EngineStoryChapter> upsertStoryChapter(
-    EngineStoryChapter chapter,
-  ) async {
-    final raw = await frb.upsertStoryChapterJson(
-      chapterJson: jsonEncode(chapter.toJson()),
-    );
-    return EngineStoryChapter.fromJson(jsonDecode(raw) as Map<String, Object?>);
-  }
-
-  @override
-  Future<List<EngineStoryScene>> listStoryScenes(String chapterId) async {
-    final decoded = jsonDecode(
-      await frb.listStoryScenesJson(chapterId: chapterId),
-    );
-    if (decoded is! List<Object?>) return const <EngineStoryScene>[];
-    return decoded
-        .whereType<Map<String, Object?>>()
-        .map(EngineStoryScene.fromJson)
-        .toList(growable: false);
-  }
-
-  @override
-  Future<EngineStoryScene> upsertStoryScene(EngineStoryScene scene) async {
-    final raw = await frb.upsertStorySceneJson(
-      sceneJson: jsonEncode(scene.toJson()),
-    );
-    return EngineStoryScene.fromJson(jsonDecode(raw) as Map<String, Object?>);
-  }
-
-  @override
-  Future<EngineStoryThreadState> loadStoryThreadState(String threadId) async {
-    final raw = await frb.loadStoryThreadStateJson(threadId: threadId);
-    return EngineStoryThreadState.fromJson(
-      jsonDecode(raw) as Map<String, Object?>,
-    );
-  }
-
-  @override
-  Future<EngineStoryThreadState> saveStoryThreadState(
-    EngineStoryThreadState state,
-  ) async {
-    final raw = await frb.saveStoryThreadStateJson(
-      stateJson: jsonEncode(state.toJson()),
-    );
-    return EngineStoryThreadState.fromJson(
-      jsonDecode(raw) as Map<String, Object?>,
-    );
-  }
-
-  @override
-  Future<List<EngineRegexRule>> listRegexRules() async {
-    final decoded = jsonDecode(await frb.listRegexRulesJson());
-    if (decoded is! List<Object?>) return const <EngineRegexRule>[];
-    return decoded
-        .whereType<Map<String, Object?>>()
-        .map(EngineRegexRule.fromJson)
-        .toList(growable: false);
-  }
-
-  @override
-  Future<EngineRegexRule> upsertRegexRule(EngineRegexRule rule) async {
-    final raw = await frb.upsertRegexRuleJson(
-      ruleJson: jsonEncode(rule.toJson()),
-    );
-    return EngineRegexRule.fromJson(jsonDecode(raw) as Map<String, Object?>);
-  }
-
-  @override
-  Future<List<EngineStorySnapshot>> listStorySnapshots({
-    required String entityType,
-    required String entityId,
-    int limit = 10,
-  }) async {
-    final decoded = jsonDecode(
-      await frb.listStorySnapshotsJson(
-        entityType: entityType,
-        entityId: entityId,
-        limit: limit,
-      ),
-    );
-    if (decoded is! List<Object?>) return const <EngineStorySnapshot>[];
-    return decoded
-        .whereType<Map<String, Object?>>()
-        .map(EngineStorySnapshot.fromJson)
-        .toList(growable: false);
-  }
-
-  @override
-  Future<EnginePromptReport> inspectStoryPrompt({
-    required String threadId,
-    String? activeSceneBeats,
-  }) async {
-    final raw = await frb.inspectStoryPromptJson(
-      threadId: threadId,
-      activeSceneBeats: activeSceneBeats,
-    );
-    return EnginePromptReport.fromJson(jsonDecode(raw) as Map<String, Object?>);
-  }
-
-  @override
   Future<List<String>> getProviderApiKeys(String providerId) =>
       frb.getProviderApiKeys(providerId: providerId);
 
   @override
-  Future<EngineModelCatalogInfo?> lookupModelCatalogInfo(String modelId) async {
-    final info = await frb.lookupModelCatalogInfo(modelId: modelId);
+  Future<EngineModelCatalogInfo?> lookupModelCatalogInfo(
+    String providerId,
+    String modelId,
+  ) async {
+    final info = await frb.lookupModelCatalogInfo(
+      providerId: providerId,
+      modelId: modelId,
+    );
     if (info == null) return null;
     return EngineModelCatalogInfo(
       contextWindow: info.contextWindow,
@@ -1351,7 +792,13 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
       inputPerMtokMicros: info.inputPerMtokMicros,
       outputPerMtokMicros: info.outputPerMtokMicros,
       cachedInputPerMtokMicros: info.cachedInputPerMtokMicros,
+      cacheWritePerMtokMicros: info.cacheWritePerMtokMicros,
+      cacheWrite1hPerMtokMicros: info.cacheWrite1HPerMtokMicros,
       reasoning: info.reasoning,
+      writesText: info.writesText,
+      aspectRatios: info.aspectRatios,
+      resolutions: info.resolutions,
+      durationsS: info.durationsS,
     );
   }
 
@@ -1386,8 +833,6 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
   );
 
   @override
-  Future<String> exportAllThreadsJson() => frb.exportAllThreadsJson();
-
   @override
   Future<int> importThreadsJson(String rawJson) =>
       frb.importThreadsJson(rawJson: rawJson);
@@ -1428,48 +873,6 @@ class FrbBistreEngineGateway implements BistreEngineGateway {
   @override
   Future<int> cleanUnusedStorageFiles() async =>
       (await frb.cleanUnusedStorageFiles()).toInt();
-
-  @override
-  Future<List<int>> synthesizeSpeech({
-    required String providerId,
-    required String modelId,
-    required String text,
-    String? voice,
-  }) => frb.synthesizeSpeech(
-    providerId: providerId,
-    modelId: modelId,
-    text: text,
-    voice: voice,
-  );
-
-  @override
-  Future<String> startLiveVoiceSession({
-    required String providerId,
-    required String modelId,
-    required String voice,
-    required String systemPrompt,
-  }) => frb.startLiveVoiceSession(
-    providerId: providerId,
-    modelId: modelId,
-    voice: voice,
-    systemPrompt: systemPrompt,
-  );
-
-  @override
-  Future<void> sendLiveVoicePcmChunk({
-    required String sessionId,
-    required String pcmBase64,
-  }) => frb.sendLiveVoicePcmChunk(sessionId: sessionId, pcmBase64: pcmBase64);
-
-  @override
-  Future<void> sendLiveVoiceText({
-    required String sessionId,
-    required String text,
-  }) => frb.sendLiveVoiceText(sessionId: sessionId, text: text);
-
-  @override
-  Future<void> stopLiveVoiceSession(String sessionId) =>
-      frb.stopLiveVoiceSession(sessionId: sessionId);
 
   @override
   Stream<BistreEvent> subscribeEvents() => frb.subscribeEvents().map(_mapEvent);

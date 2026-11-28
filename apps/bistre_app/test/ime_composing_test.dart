@@ -29,7 +29,7 @@ Future<void> _commitComposition(WidgetTester tester, String text) async {
 }
 
 void main() {
-  testWidgets('Enter while composing in the / menu picks nothing (U18)', (
+  testWidgets('Enter while composing in the / menu picks nothing', (
     tester,
   ) async {
     final shell = await ShellHarness.pump(tester);
@@ -47,7 +47,7 @@ void main() {
   });
 
   testWidgets(
-    'a message sent mid-composition is cleared when the IME commits (U17)',
+    'a message sent mid-composition is cleared when the IME commits',
     (tester) async {
       final shell = await ShellHarness.pump(tester);
       final field = find.byType(EditableText).last;
@@ -72,7 +72,7 @@ void main() {
     },
   );
 
-  testWidgets('arrows while composing in the palette stay with the IME (U18)', (
+  testWidgets('arrows while composing in the palette stay with the IME', (
     tester,
   ) async {
     final shell = await ShellHarness.pump(tester);

@@ -116,11 +116,9 @@ class _BudgetSafetySettingsViewState extends State<BudgetSafetySettingsView> {
     final ratio = (capMicros != null && capMicros > 0)
         ? (dailySpend / capMicros).clamp(0.0, 1.0)
         : 0.0;
-    final spendBadgeLabel = isUnlimited
-        ? l10n.t(L10nKey.settingsBudgetUnlimited)
-        : '$spentStr / $capStr';
-    final unlimitedSummary =
-        '${l10n.t(L10nKey.settingsBudgetUnlimitedBadge)} ($spentStr)';
+    // One statement of today's spend: the amount (and the cap when there is one) on the
+    // badge; whether a cap applies is the switch below.
+    final spendBadgeLabel = isUnlimited ? spentStr : '$spentStr / $capStr';
 
     return SmoothScrollable(
       builder: (_, scroll) => SingleChildScrollView(
@@ -162,14 +160,8 @@ class _BudgetSafetySettingsViewState extends State<BudgetSafetySettingsView> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  if (isUnlimited)
-                    InkText(
-                      unlimitedSummary,
-                      role: InkTextRole.bodyCompact,
-                      color: theme.inkSecondary,
-                    )
-                  else ...[
+                  if (!isUnlimited) ...[
+                    const SizedBox(height: 12),
                     SizedBox(
                       height: 6,
                       child: ClipRRect(
@@ -193,15 +185,6 @@ class _BudgetSafetySettingsViewState extends State<BudgetSafetySettingsView> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    InkText(
-                      l10n.t(L10nKey.settingsTrustSpendToday, <String, Object?>{
-                        'spent': spentStr,
-                        'limit': capStr,
-                      }),
-                      role: InkTextRole.captionMeta,
-                      color: theme.inkMuted,
-                    ),
                   ],
                 ],
               ),
@@ -214,7 +197,6 @@ class _BudgetSafetySettingsViewState extends State<BudgetSafetySettingsView> {
               children: [
                 BistreSettingRow(
                   label: l10n.t(L10nKey.settingsBudgetUnlimitedToggle),
-                  description: l10n.t(L10nKey.settingsBudgetUnlimitedBadge),
                   trailing: BistreSwitch(
                     value: isUnlimited,
                     semanticsLabel: l10n.t(
@@ -360,13 +342,49 @@ class _BudgetSafetySettingsViewState extends State<BudgetSafetySettingsView> {
                       ctrl.updateSettings(s.copyWith(pricingAutoRefresh: on)),
                     ),
                   ),
+                  bottom: Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: EngravedButton(
+                      label: l10n.t(L10nKey.settingsPricesRefreshNow),
+                      compact: true,
+                      onPressed: () => unawaited(ctrl.refreshPrices()),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: BistreSpacing.s24),
+
+            BistreSettingsSection(
+              children: [
+                BistreSettingRow(
+                  label: l10n.t(L10nKey.settingsTrustStateless),
+                  description: l10n.t(L10nKey.settingsTrustStatelessHint),
+                  trailing: BistreSwitch(
+                    value: s.providerStatelessDefault,
+                    semanticsLabel: l10n.t(L10nKey.settingsTrustStateless),
+                    reduceMotionOverride: ctrl.reduceMotionOverride,
+                    onChanged: (v) => unawaited(
+                      ctrl.updateSettings(
+                        s.copyWith(providerStatelessDefault: v),
+                        quiet: true,
+                      ),
+                    ),
+                  ),
                 ),
                 BistreSettingRow(
-                  label: l10n.t(L10nKey.settingsPricesRefreshNow),
-                  trailing: EngravedButton(
-                    label: l10n.t(L10nKey.settingsPricesRefreshNow),
-                    compact: true,
-                    onPressed: () => unawaited(ctrl.refreshPrices()),
+                  label: l10n.t(L10nKey.settingsBudgetLocalFirst),
+                  description: l10n.t(L10nKey.settingsBudgetLocalFirstHint),
+                  trailing: BistreSwitch(
+                    value: s.walletLocalFirst,
+                    semanticsLabel: l10n.t(L10nKey.settingsBudgetLocalFirst),
+                    reduceMotionOverride: ctrl.reduceMotionOverride,
+                    onChanged: (v) => unawaited(
+                      ctrl.updateSettings(
+                        s.copyWith(walletLocalFirst: v),
+                        quiet: true,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -378,7 +396,7 @@ class _BudgetSafetySettingsViewState extends State<BudgetSafetySettingsView> {
               title: l10n.t(L10nKey.settingsTrustPresetHeading),
               children: [
                 BistreSettingRow(
-                  label: l10n.t(L10nKey.settingsTrustPresetHeading),
+                  label: l10n.t(L10nKey.settingsTrustPresetRowLabel),
                   trailing: BistreSegmentedControl<String>(
                     selected:
                         s.trustPreset == 'parchment' ||

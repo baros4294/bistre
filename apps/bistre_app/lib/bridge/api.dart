@@ -7,11 +7,13 @@ import 'frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `blank`, `current_engine`, `delta`, `diagnostic`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These functions are ignored because they are not marked as `pub`: `blank`, `current_engine`, `delta`, `diagnostic`, `map_ffi_update_check`, `open_engine`, `retire_engine`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
-/// Initializes the in-process Rust core engine pointing at `data_dir`. `vault_key` is the
-/// 32-byte Android Keystore-unwrapped vault data key (Android only); pass `None` elsewhere.
+/// Initializes the Rust core engine for `data_dir`. On Windows and Linux that is the data
+/// folder's `bistre-daemon` (started when it is not running), or the engine in this process
+/// when no daemon is installed. `vault_key` is the 32-byte Android Keystore-unwrapped vault
+/// data key (Android only); pass `None` elsewhere.
 Future<FfiHealthSnapshot> initRuntime({
   required String dataDir,
   Uint8List? vaultKey,
@@ -24,169 +26,16 @@ Future<FfiHealthSnapshot> initRuntime({
 Future<FfiHealthSnapshot> getHealth() =>
     BistreRustLib.instance.api.crateApiGetHealth();
 
-/// Lists built-in (Big 3) and user-added custom provider profiles.
-Future<List<FfiProviderProfile>> listProviders() =>
-    BistreRustLib.instance.api.crateApiListProviders();
-
-/// Every API format with its default server URL and chat endpoint path.
-List<FfiDialectDescriptor> providerDialectDescriptors() =>
-    BistreRustLib.instance.api.crateApiProviderDialectDescriptors();
-
-/// Resolves a provider's URLs exactly as requests build them (empty server URL: the default).
-FfiResolvedEndpoint resolveProviderEndpoint({
-  required String dialect,
-  required String baseUrl,
-}) => BistreRustLib.instance.api.crateApiResolveProviderEndpoint(
-  dialect: dialect,
-  baseUrl: baseUrl,
-);
-
-/// Updates non-secret provider metadata (name, base URL, default model, enabled, cache toggle, icon).
-Future<FfiProviderProfile> updateProvider({
-  required String providerId,
-  String? name,
-  String? baseUrl,
-  String? defaultModel,
-  bool? isEnabled,
-  bool? useServerStateCache,
-  String? iconSlug,
-  String? customIconPath,
-}) => BistreRustLib.instance.api.crateApiUpdateProvider(
-  providerId: providerId,
-  name: name,
-  baseUrl: baseUrl,
-  defaultModel: defaultModel,
-  isEnabled: isEnabled,
-  useServerStateCache: useServerStateCache,
-  iconSlug: iconSlug,
-  customIconPath: customIconPath,
-);
-
-/// Stores an API key strictly in the node-local OS `SecretVault` (Windows DPAPI / OS vault).
-Future<FfiProviderProfile> setProviderApiKey({
-  required String providerId,
-  required String apiKey,
-}) => BistreRustLib.instance.api.crateApiSetProviderApiKey(
-  providerId: providerId,
-  apiKey: apiKey,
-);
-
-/// Removes a stored API key from the node-local `SecretVault`.
-Future<FfiProviderProfile> clearProviderApiKey({required String providerId}) =>
-    BistreRustLib.instance.api.crateApiClearProviderApiKey(
-      providerId: providerId,
-    );
-
-/// Creates a provider of any supported dialect (`openai`, `google_gemini`, `anthropic`, `custom_openai`).
-Future<FfiProviderProfile> createProvider({
-  required String name,
-  required String dialect,
-  required String baseUrl,
-  required String defaultModel,
-  required String iconSlug,
-  required String customIconPath,
-  String? apiKey,
-}) => BistreRustLib.instance.api.crateApiCreateProvider(
-  name: name,
-  dialect: dialect,
-  baseUrl: baseUrl,
-  defaultModel: defaultModel,
-  iconSlug: iconSlug,
-  customIconPath: customIconPath,
-  apiKey: apiKey,
-);
-
-/// Adds a user-defined Custom OpenAI-Compatible provider profile.
-Future<FfiProviderProfile> createCustomProvider({
-  required String name,
-  required String baseUrl,
-  required String defaultModel,
-  String? apiKey,
-}) => BistreRustLib.instance.api.crateApiCreateCustomProvider(
-  name: name,
-  baseUrl: baseUrl,
-  defaultModel: defaultModel,
-  apiKey: apiKey,
-);
-
-/// Removes any provider profile and deletes its key from `SecretVault`.
-Future<void> deleteProvider({required String providerId}) =>
-    BistreRustLib.instance.api.crateApiDeleteProvider(providerId: providerId);
-
-/// Queries live models from the provider's `/models` endpoint (zero hardcoded model list).
-Future<List<FfiProviderModelInfo>> fetchProviderModels({
-  required String providerId,
-}) => BistreRustLib.instance.api.crateApiFetchProviderModels(
-  providerId: providerId,
-);
-
-/// Lists built-in and custom assistants.
-Future<List<FfiAssistantRecord>> listAssistants() =>
-    BistreRustLib.instance.api.crateApiListAssistants();
-
-/// Creates a custom assistant persisted in local SQLite.
-Future<FfiAssistantRecord> createAssistant({
-  required String name,
-  required String roleSubtitle,
-  required String systemPrompt,
-  required String defaultMode,
-  required String badgeCode,
-}) => BistreRustLib.instance.api.crateApiCreateAssistant(
-  name: name,
-  roleSubtitle: roleSubtitle,
-  systemPrompt: systemPrompt,
-  defaultMode: defaultMode,
-  badgeCode: badgeCode,
-);
-
-/// Updates an assistant's profile, default provider/model, icon, and generation parameters in local SQLite.
-Future<FfiAssistantRecord> updateAssistant({
-  required String assistantId,
-  String? name,
-  String? roleSubtitle,
-  String? systemPrompt,
-  String? defaultMode,
-  String? badgeCode,
-  String? iconSlug,
-  String? defaultProviderId,
-  String? defaultModelId,
-  int? temperatureMilli,
-  required bool clearTemperature,
-  int? maxOutputTokens,
-  required bool clearMaxOutputTokens,
-  int? topPMilli,
-  required bool clearTopP,
-}) => BistreRustLib.instance.api.crateApiUpdateAssistant(
-  assistantId: assistantId,
-  name: name,
-  roleSubtitle: roleSubtitle,
-  systemPrompt: systemPrompt,
-  defaultMode: defaultMode,
-  badgeCode: badgeCode,
-  iconSlug: iconSlug,
-  defaultProviderId: defaultProviderId,
-  defaultModelId: defaultModelId,
-  temperatureMilli: temperatureMilli,
-  clearTemperature: clearTemperature,
-  maxOutputTokens: maxOutputTokens,
-  clearMaxOutputTokens: clearMaxOutputTokens,
-  topPMilli: topPMilli,
-  clearTopP: clearTopP,
-);
-
-/// Deletes an assistant (at least one assistant always remains; threads repoint cleanly).
-Future<void> deleteAssistant({required String assistantId}) => BistreRustLib
-    .instance
-    .api
-    .crateApiDeleteAssistant(assistantId: assistantId);
-
-/// Creates a new conversation thread with optional topic and assistant binding.
+/// Creates a new conversation thread, in `project_id` when given, with optional topic and
+/// assistant binding.
 Future<FfiThreadSummary> createThread({
+  String? projectId,
   required String title,
   required String mode,
   String? topic,
   String? assistantId,
 }) => BistreRustLib.instance.api.crateApiCreateThread(
+  projectId: projectId,
   title: title,
   mode: mode,
   topic: topic,
@@ -293,6 +142,28 @@ Future<void> deleteNode({required String threadId, required String nodeId}) =>
       nodeId: nodeId,
     );
 
+/// Copies the branch ending at `node_id` into a new chat and returns it.
+Future<FfiThreadSummary> forkThread({
+  required String threadId,
+  required String nodeId,
+}) => BistreRustLib.instance.api.crateApiForkThread(
+  threadId: threadId,
+  nodeId: nodeId,
+);
+
+/// Removes a message and every message after it.
+Future<void> deleteFromNode({
+  required String threadId,
+  required String nodeId,
+}) => BistreRustLib.instance.api.crateApiDeleteFromNode(
+  threadId: threadId,
+  nodeId: nodeId,
+);
+
+/// Removes every message of a chat and keeps the chat.
+Future<void> clearThreadMessages({required String threadId}) =>
+    BistreRustLib.instance.api.crateApiClearThreadMessages(threadId: threadId);
+
 /// Exports a thread cleanly as Markdown (`"markdown"`) or JSON (`"json"`).
 Future<String> exportThread({
   required String threadId,
@@ -319,6 +190,10 @@ Future<FfiUpdateCheckResult> checkForUpdates({String? feedUrlOverride}) =>
 /// Downloads, verifies SHA-256 offline, and stages an OTA payload without interrupting active runs.
 Future<String> stageUpdate({required FfiUpdateCheckResult check}) =>
     BistreRustLib.instance.api.crateApiStageUpdate(check: check);
+
+/// Re-downloads, verifies SHA-256 offline, and stages the currently running version for reinstall.
+Future<String> reinstallUpdate({required FfiUpdateCheckResult check}) =>
+    BistreRustLib.instance.api.crateApiReinstallUpdate(check: check);
 
 /// Cancels any active streaming reply for `thread_id`.
 Future<bool> cancelActiveRun({required String threadId}) =>
@@ -390,86 +265,12 @@ Future<String> verifyDataPack({
 Stream<FfiEngineEvent> subscribeEvents() =>
     BistreRustLib.instance.api.crateApiSubscribeEvents();
 
-/// Lists durable long-horizon agent runs stored in SQLite WAL.
-Future<List<FfiAgentRunRecord>> listAgentRuns({
-  String? threadId,
-  required bool onlyActive,
-  required int limit,
-}) => BistreRustLib.instance.api.crateApiListAgentRuns(
-  threadId: threadId,
-  onlyActive: onlyActive,
-  limit: limit,
-);
-
-/// Queues a mid-stream user steering message for injection at the next step boundary without cancelling.
-Future<FfiSteeringMessage> enqueueSteering({
-  required String threadId,
-  required String content,
-}) => BistreRustLib.instance.api.crateApiEnqueueSteering(
-  threadId: threadId,
-  content: content,
-);
-
-/// Lists pending steering messages queued for `thread_id`.
-Future<List<FfiSteeringMessage>> listPendingSteering({
-  required String threadId,
-}) =>
-    BistreRustLib.instance.api.crateApiListPendingSteering(threadId: threadId);
-
-/// Removes a queued steering message before injection.
-Future<void> deleteSteering({required String steeringId}) =>
-    BistreRustLib.instance.api.crateApiDeleteSteering(steeringId: steeringId);
-
-/// Returns live OS sleep-guard, daemon connection, and Android FGS status.
-Future<FfiPowerGuardStatus> powerGuardStatus() =>
-    BistreRustLib.instance.api.crateApiPowerGuardStatus();
-
-/// Delivers an OS suspend, resume, network, or timeout lifecycle event to the durable run reconciler.
-Future<int> notifyPowerEvent({required String eventKind, bool? onAc}) =>
-    BistreRustLib.instance.api.crateApiNotifyPowerEvent(
-      eventKind: eventKind,
-      onAc: onAc,
-    );
-
-/// Updates Android run-scoped `specialUse` FGS & battery exemption telemetry from Kotlin platform channel.
-Future<FfiPowerGuardStatus> setAndroidPowerState({
-  required bool fgsActive,
-  required bool batteryUnrestricted,
-}) => BistreRustLib.instance.api.crateApiSetAndroidPowerState(
-  fgsActive: fgsActive,
-  batteryUnrestricted: batteryUnrestricted,
-);
-
-/// Reconciles an `indeterminate_halt` Tier-2 run after explicit user choice (`confirm_completed` or retry).
-Future<FfiAgentRunRecord> resolveIndeterminateRun({
-  required String runId,
-  required bool confirmCompleted,
-}) => BistreRustLib.instance.api.crateApiResolveIndeterminateRun(
-  runId: runId,
-  confirmCompleted: confirmCompleted,
-);
-
-/// The model's conversation limit in tokens (`None` when no public list reports it).
-Future<int?> modelContextTokens({required String model}) =>
-    BistreRustLib.instance.api.crateApiModelContextTokens(model: model);
-
-/// The breakdown for the branch ending at `leaf_node_id`, with `draft` as the message about to
-/// be sent.
-Future<FfiContextBreakdown> contextBreakdown({
-  required String threadId,
-  required String leafNodeId,
-  required String draft,
-}) => BistreRustLib.instance.api.crateApiContextBreakdown(
-  threadId: threadId,
-  leafNodeId: leafNodeId,
-  draft: draft,
-);
-
 /// Starts a public price-list refresh now.
 Future<void> refreshPrices() =>
     BistreRustLib.instance.api.crateApiRefreshPrices();
 
-/// Cleanly shuts down the active engine and checkpoints SQLite WAL.
+/// Cleanly shuts down the active engine (in-process: checkpoints SQLite WAL; daemon: leaves
+/// it, so it keeps live work running and exits on its own once idle).
 Future<void> shutdownRuntime() =>
     BistreRustLib.instance.api.crateApiShutdownRuntime();
 
@@ -564,7 +365,6 @@ class FfiAppSettings {
   final PlatformInt64? walletDailyCeilingMicros;
   final bool walletLocalFirst;
   final bool providerStatelessDefault;
-  final int fontScaleBps;
   final int fontSizePx;
   final int lineHeightBps;
   final int readingWidthPx;
@@ -595,6 +395,7 @@ class FfiAppSettings {
   final String codeWrapMode;
   final bool pricingAutoRefresh;
   final String userDisplayName;
+  final int autoCompactAtPercent;
 
   const FfiAppSettings({
     required this.theme,
@@ -604,7 +405,6 @@ class FfiAppSettings {
     this.walletDailyCeilingMicros,
     required this.walletLocalFirst,
     required this.providerStatelessDefault,
-    required this.fontScaleBps,
     required this.fontSizePx,
     required this.lineHeightBps,
     required this.readingWidthPx,
@@ -635,6 +435,7 @@ class FfiAppSettings {
     required this.codeWrapMode,
     required this.pricingAutoRefresh,
     required this.userDisplayName,
+    required this.autoCompactAtPercent,
   });
 
   @override
@@ -646,7 +447,6 @@ class FfiAppSettings {
       walletDailyCeilingMicros.hashCode ^
       walletLocalFirst.hashCode ^
       providerStatelessDefault.hashCode ^
-      fontScaleBps.hashCode ^
       fontSizePx.hashCode ^
       lineHeightBps.hashCode ^
       readingWidthPx.hashCode ^
@@ -676,7 +476,8 @@ class FfiAppSettings {
       termuxBridgeEnabled.hashCode ^
       codeWrapMode.hashCode ^
       pricingAutoRefresh.hashCode ^
-      userDisplayName.hashCode;
+      userDisplayName.hashCode ^
+      autoCompactAtPercent.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -690,7 +491,6 @@ class FfiAppSettings {
           walletDailyCeilingMicros == other.walletDailyCeilingMicros &&
           walletLocalFirst == other.walletLocalFirst &&
           providerStatelessDefault == other.providerStatelessDefault &&
-          fontScaleBps == other.fontScaleBps &&
           fontSizePx == other.fontSizePx &&
           lineHeightBps == other.lineHeightBps &&
           readingWidthPx == other.readingWidthPx &&
@@ -720,7 +520,8 @@ class FfiAppSettings {
           termuxBridgeEnabled == other.termuxBridgeEnabled &&
           codeWrapMode == other.codeWrapMode &&
           pricingAutoRefresh == other.pricingAutoRefresh &&
-          userDisplayName == other.userDisplayName;
+          userDisplayName == other.userDisplayName &&
+          autoCompactAtPercent == other.autoCompactAtPercent;
 }
 
 /// Thin FFI DTO mirror of `AssistantRecord`.
@@ -793,107 +594,6 @@ class FfiAssistantRecord {
           topPMilli == other.topPMilli &&
           isBuiltin == other.isBuiltin &&
           createdAtMs == other.createdAtMs;
-}
-
-/// What fills the next request, by category, with the window and the kept-free reserve.
-class FfiContextBreakdown {
-  final List<FfiContextCategory> categories;
-  final BigInt totalSent;
-  final BigInt? limitTokens;
-  final BigInt reserveTokens;
-  final List<FfiMcpServerUsage> mcp;
-  final bool mcpTruncated;
-
-  const FfiContextBreakdown({
-    required this.categories,
-    required this.totalSent,
-    this.limitTokens,
-    required this.reserveTokens,
-    required this.mcp,
-    required this.mcpTruncated,
-  });
-
-  @override
-  int get hashCode =>
-      categories.hashCode ^
-      totalSent.hashCode ^
-      limitTokens.hashCode ^
-      reserveTokens.hashCode ^
-      mcp.hashCode ^
-      mcpTruncated.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is FfiContextBreakdown &&
-          runtimeType == other.runtimeType &&
-          categories == other.categories &&
-          totalSent == other.totalSent &&
-          limitTokens == other.limitTokens &&
-          reserveTokens == other.reserveTokens &&
-          mcp == other.mcp &&
-          mcpTruncated == other.mcpTruncated;
-}
-
-/// One row of the context breakdown (A-SE); `kind` is a fixed id the app maps to its words.
-class FfiContextCategory {
-  final String kind;
-  final BigInt tokens;
-  final int? count;
-  final bool sent;
-
-  const FfiContextCategory({
-    required this.kind,
-    required this.tokens,
-    this.count,
-    required this.sent,
-  });
-
-  @override
-  int get hashCode =>
-      kind.hashCode ^ tokens.hashCode ^ count.hashCode ^ sent.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is FfiContextCategory &&
-          runtimeType == other.runtimeType &&
-          kind == other.kind &&
-          tokens == other.tokens &&
-          count == other.count &&
-          sent == other.sent;
-}
-
-/// The facts the provider settings show for one API format (P7): one source, in core.
-class FfiDialectDescriptor {
-  final String id;
-  final String defaultBaseUrl;
-  final String endpointPath;
-  final bool requiresApiKey;
-
-  const FfiDialectDescriptor({
-    required this.id,
-    required this.defaultBaseUrl,
-    required this.endpointPath,
-    required this.requiresApiKey,
-  });
-
-  @override
-  int get hashCode =>
-      id.hashCode ^
-      defaultBaseUrl.hashCode ^
-      endpointPath.hashCode ^
-      requiresApiKey.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is FfiDialectDescriptor &&
-          runtimeType == other.runtimeType &&
-          id == other.id &&
-          defaultBaseUrl == other.defaultBaseUrl &&
-          endpointPath == other.endpointPath &&
-          requiresApiKey == other.requiresApiKey;
 }
 
 /// Thin FFI DTO mirror of `DraftRecord`.
@@ -1030,57 +730,7 @@ class FfiHealthSnapshot {
           statusKey == other.statusKey;
 }
 
-/// One MCP server and its tools in the breakdown.
-class FfiMcpServerUsage {
-  final String serverId;
-  final String label;
-  final List<FfiMcpToolUsage> tools;
-
-  const FfiMcpServerUsage({
-    required this.serverId,
-    required this.label,
-    required this.tools,
-  });
-
-  @override
-  int get hashCode => serverId.hashCode ^ label.hashCode ^ tools.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is FfiMcpServerUsage &&
-          runtimeType == other.runtimeType &&
-          serverId == other.serverId &&
-          label == other.label &&
-          tools == other.tools;
-}
-
-/// One MCP tool's schema in the breakdown.
-class FfiMcpToolUsage {
-  final String name;
-  final BigInt tokens;
-  final bool deferred_;
-
-  const FfiMcpToolUsage({
-    required this.name,
-    required this.tokens,
-    required this.deferred_,
-  });
-
-  @override
-  int get hashCode => name.hashCode ^ tokens.hashCode ^ deferred_.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is FfiMcpToolUsage &&
-          runtimeType == other.runtimeType &&
-          name == other.name &&
-          tokens == other.tokens &&
-          deferred_ == other.deferred_;
-}
-
-/// One file sent with a message (P1). `blob_rel_path` is relative to the data directory.
+/// One file sent with a message. `blob_rel_path` is relative to the data directory.
 class FfiNodeAttachment {
   final String name;
   final String mimeType;
@@ -1122,7 +772,7 @@ class FfiNodeRecord {
   final String? providerMetaJson;
   final PlatformInt64 createdAtMs;
 
-  /// Files sent with this message (P1), parsed once in core from its metadata.
+  /// Files sent with this message, parsed once in core from its metadata.
   final List<FfiNodeAttachment> attachments;
 
   const FfiNodeRecord({
@@ -1309,25 +959,6 @@ class FfiProviderProfile {
           createdAtMs == other.createdAtMs &&
           updatedAtMs == other.updatedAtMs &&
           isLocal == other.isLocal;
-}
-
-/// The chat and model-list URLs a provider with this format and server URL is called at (P8).
-class FfiResolvedEndpoint {
-  final String chatUrl;
-  final String modelsUrl;
-
-  const FfiResolvedEndpoint({required this.chatUrl, required this.modelsUrl});
-
-  @override
-  int get hashCode => chatUrl.hashCode ^ modelsUrl.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is FfiResolvedEndpoint &&
-          runtimeType == other.runtimeType &&
-          chatUrl == other.chatUrl &&
-          modelsUrl == other.modelsUrl;
 }
 
 /// Thin FFI DTO mirror of `SearchHit`.

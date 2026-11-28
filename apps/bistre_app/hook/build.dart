@@ -40,7 +40,7 @@ void main(List<String> args) async {
     }
 
     if (_isAndroidBuild(input)) {
-      // Activate `[profile.release-android]` size settings on Android release builds.
+      // Size-focused release profile overrides for Android arm64 APK builds (Spec 11).
       extraEnv['CARGO_PROFILE_RELEASE_OPT_LEVEL'] = 'z';
       extraEnv['CARGO_PROFILE_RELEASE_LTO'] = 'fat';
       extraEnv['CARGO_PROFILE_RELEASE_CODEGEN_UNITS'] = '1';
@@ -86,6 +86,8 @@ void main(List<String> args) async {
     await FlutterRustBridgeNativeAssetsBuilder(
       assetName: 'bridge/frb_generated.io.dart',
       cratePath: '../../crates/bistre-ffi',
+      // Same as every other Cargo command here: build exactly the reviewed Cargo.lock.
+      extraCargoBuildArgs: const <String>['--locked'],
       extraCargoEnvironmentVariables: extraEnv,
     ).run(input: input, output: output);
   });

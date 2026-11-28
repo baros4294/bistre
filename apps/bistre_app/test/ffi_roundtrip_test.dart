@@ -20,7 +20,12 @@ void main() {
       externalLibrary: _locateBuiltLibrary(),
     );
     final health = await gateway.init(tmpDir.path);
-    expect(health.coreVersion, '0.1.2');
+    // Core reports the one release version, kept equal to pubspec's by `just guard`.
+    final pubspecVersion = RegExp(
+      r'^version: (\d+\.\d+\.\d+)',
+      multiLine: true,
+    ).firstMatch(File('pubspec.yaml').readAsStringSync())?.group(1);
+    expect(health.coreVersion, pubspecVersion);
     expect(health.schemaVersion, greaterThanOrEqualTo(6));
     expect(health.walModeActive, isTrue);
     expect(health.statusKey, 'diag.ok');
@@ -48,16 +53,17 @@ void main() {
     await gateway.deleteAssistant(customAsst.id);
     expect((await gateway.listAssistants()).length, 1);
 
-    // Starter Big 3 seeded once; every provider (including Anthropic) is deletable.
+    // Starter Big 3 and OpenRouter seeded once; every provider (including Anthropic) is
+    // deletable.
     final providers = await gateway.listProviders();
-    expect(providers.length, 3);
     expect(providers.map((p) => p.id).toSet(), <String>{
       'openai',
       'google_gemini',
       'anthropic',
+      'openrouter',
     });
     await gateway.deleteProvider('anthropic');
-    expect((await gateway.listProviders()).length, 2);
+    expect((await gateway.listProviders()).length, 3);
 
     // Store and clear an API key in real Windows DPAPI / OS vault via Rust FFI.
     final withKey = await gateway.setProviderApiKey(
@@ -152,7 +158,7 @@ void main() {
 
     final userNode = await gateway.sendAndStreamReply(
       threadId: thread.id,
-      userContent: 'Tiếng Việt — مرحبا FTS5 native bridge',
+      userContent: 'Tiếng Việt: مرحبا FTS5 native bridge',
     );
     await finishCompleter.future.timeout(const Duration(seconds: 5));
     await sub.cancel();

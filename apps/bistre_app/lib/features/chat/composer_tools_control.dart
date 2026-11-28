@@ -8,10 +8,12 @@ import '../../design/bistre_motion_widgets.dart';
 import '../../design/bistre_theme.dart';
 import '../../design/hover_hint.dart';
 import '../../design/ink_primitives.dart';
+import '../../design/popover_placement.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
-import '../../platform/desktop_host.dart';
 import '../shell/folio_controller.dart';
+import 'composer_folder_button.dart';
+import 'content_direction.dart';
 
 /// Composer `Tools` chip opening an above-anchor popover for workspace status, web search,
 /// stateless privacy mode, and optional reply prefill.
@@ -65,9 +67,10 @@ class _ComposerToolsControlState extends State<ComposerToolsControl> {
       overlayBuilder: _buildPopover,
       child: CompositedTransformTarget(
         link: _link,
-        child: HoverHint(
-          message: l10n.t(L10nKey.chatToolsTitle),
-          child: EngravedButton(
+        // The hint names an icon-only button; a labelled one says it already.
+        child: _hintWhenCompact(
+          label,
+          EngravedButton(
             label: widget.compact ? '' : label,
             semanticsLabel: label,
             compact: true,
@@ -103,6 +106,9 @@ class _ComposerToolsControlState extends State<ComposerToolsControl> {
     );
   }
 
+  Widget _hintWhenCompact(String label, Widget button) =>
+      widget.compact ? HoverHint(message: label, child: button) : button;
+
   Widget _buildPopover(BuildContext context) {
     final theme = BistreTheme.of(context);
     final l10n = BistreLocalizations.of(context);
@@ -111,9 +117,13 @@ class _ComposerToolsControlState extends State<ComposerToolsControl> {
     final workspace = ctrl.workspaceRootPath;
     final webSearch = ctrl.webSearchEndpoint;
 
-    final viewportWidth = MediaQuery.sizeOf(context).width;
-    final maxPopoverWidth = (viewportWidth - 24).clamp(260.0, 392.0);
+    final maxPopoverWidth = PopoverPlacement.popoverWidthFor(context, 392);
     final minPopoverWidth = maxPopoverWidth < 340.0 ? maxPopoverWidth : 340.0;
+    final shift = PopoverPlacement.popoverShiftFor(
+      this.context,
+      width: maxPopoverWidth,
+      alignStart: true,
+    );
 
     return Stack(
       children: [
@@ -129,7 +139,8 @@ class _ComposerToolsControlState extends State<ComposerToolsControl> {
           showWhenUnlinked: false,
           targetAnchor: AlignmentDirectional.topStart.resolve(dir),
           followerAnchor: AlignmentDirectional.bottomStart.resolve(dir),
-          offset: const Offset(0, -8),
+          // Moved back inside the window on a narrow screen (never off its edge).
+          offset: Offset(shift, -8),
           child: FolioFadeSlide(
             beginOffset: const Offset(0, 0.06),
             reduceMotionOverride: ctrl.reduceMotionOverride,
@@ -169,7 +180,7 @@ class _ComposerToolsControlState extends State<ComposerToolsControl> {
                     const SizedBox(height: BistreSpacing.s8),
                     const FolioDivider(),
                     const SizedBox(height: BistreSpacing.s8),
-                    // 1. Conversation Mode (Chat / Plan / Build / Write — Option A)
+                    // 1. Conversation Mode (Chat / Plan / Build / Write: Option A)
                     if (ctrl.activeThread != null) ...[
                       InkText(
                         l10n.t(L10nKey.chatModeHeading),
@@ -254,9 +265,8 @@ class _ComposerToolsControlState extends State<ComposerToolsControl> {
                           child: _StatusRow(
                             icon: BistreUiIcon.folder,
                             label: l10n.t(L10nKey.chatToolsWorkspace),
-                            detail: workspace.isNotEmpty
-                                ? workspace
-                                : l10n.t(L10nKey.settingsAgentPermOff),
+                            // No "Off" caption; the empty detail and the button say it.
+                            detail: workspace.isNotEmpty ? workspace : null,
                             active: workspace.isNotEmpty,
                           ),
                         ),
@@ -264,16 +274,16 @@ class _ComposerToolsControlState extends State<ComposerToolsControl> {
                         EngravedButton(
                           label: l10n.t(L10nKey.settingsAgentChooseFolder),
                           compact: true,
-                          onPressed: () async {
-                            final picked =
-                                await BistreDesktopHost.pickLocalFolder(
-                                  title: l10n.t(
-                                    L10nKey.settingsAgentWorkspaceDir,
-                                  ),
-                                );
-                            if (picked != null && picked.isNotEmpty) {
-                              await ctrl.setWorkspaceRootPath(picked);
-                            }
+                          onPressed: () {
+                            // A project chat's pick opens Settings; the popover closes first.
+                            if (ctrl.folderProject != null) _popover.hide();
+                            unawaited(
+                              chooseChatFolder(
+                                ctrl,
+                                l10n.t(L10nKey.settingsAgentWorkspaceDir),
+                                add: false,
+                              ),
+                            );
                           },
                         ),
                       ],
@@ -290,7 +300,7 @@ class _ComposerToolsControlState extends State<ComposerToolsControl> {
                                 ? (webSearch == 'duckduckgo'
                                       ? l10n.t(L10nKey.settingsAgentWebDdg)
                                       : webSearch)
-                                : l10n.t(L10nKey.settingsAgentPermOff),
+                                : null,
                             active: webSearch.isNotEmpty,
                           ),
                         ),
@@ -345,7 +355,7 @@ class _StatusRow extends StatelessWidget {
 
   final BistreUiIcon icon;
   final String label;
-  final String detail;
+  final String? detail;
   final bool active;
 
   @override
@@ -370,13 +380,18 @@ class _StatusRow extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              InkText(
-                detail,
-                role: InkTextRole.captionMeta,
-                color: active ? theme.statusOk : theme.inkMuted,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+              // A folder path keeps its own order in RTL.
+              if (detail case final text?)
+                OwnDirection(
+                  text: text,
+                  child: InkText(
+                    text,
+                    role: InkTextRole.captionMeta,
+                    color: active ? theme.statusOk : theme.inkMuted,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
             ],
           ),
         ),

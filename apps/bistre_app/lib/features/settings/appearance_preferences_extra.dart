@@ -73,6 +73,14 @@ class _AppearancePreferencesExtraState
               ),
             ),
             _PrefToggle(
+              label: l10n.t(L10nKey.settingsPrefsShowModelIcon),
+              value: p.showModelIcon,
+              reduceMotion: ctrl.reduceMotionOverride,
+              onChanged: (v) => unawaited(
+                ctrl.saveUiPrefs(p.copyWith(showModelIcon: v), quiet: true),
+              ),
+            ),
+            _PrefToggle(
               label: l10n.t(L10nKey.settingsPrefsShowModelName),
               value: p.showModelName,
               reduceMotion: ctrl.reduceMotionOverride,
@@ -113,6 +121,30 @@ class _AppearancePreferencesExtraState
               reduceMotion: ctrl.reduceMotionOverride,
               onChanged: (v) => unawaited(
                 ctrl.saveUiPrefs(p.copyWith(showChatListDates: v), quiet: true),
+              ),
+            ),
+            _PrefToggle(
+              label: l10n.t(L10nKey.settingsPrefsShowTimestamps),
+              value: p.showUserTimestamp,
+              reduceMotion: ctrl.reduceMotionOverride,
+              onChanged: (v) => unawaited(
+                ctrl.saveUiPrefs(p.copyWith(showUserTimestamp: v), quiet: true),
+              ),
+            ),
+            _PrefToggle(
+              label: l10n.t(L10nKey.settingsPrefsShowUserName),
+              value: p.showUserName,
+              reduceMotion: ctrl.reduceMotionOverride,
+              onChanged: (v) => unawaited(
+                ctrl.saveUiPrefs(p.copyWith(showUserName: v), quiet: true),
+              ),
+            ),
+            _PrefToggle(
+              label: l10n.t(L10nKey.settingsPrefsShowSentFiles),
+              value: p.showSentFiles,
+              reduceMotion: ctrl.reduceMotionOverride,
+              onChanged: (v) => unawaited(
+                ctrl.saveUiPrefs(p.copyWith(showSentFiles: v), quiet: true),
               ),
             ),
           ],
@@ -239,6 +271,69 @@ class _AppearancePreferencesExtraState
               onChanged: (v) => unawaited(
                 ctrl.saveUiPrefs(
                   p.copyWith(autoCollapseThinking: v),
+                  quiet: true,
+                ),
+              ),
+            ),
+            _PrefToggle(
+              label: l10n.t(L10nKey.settingsPrefsConfirmRegenerate),
+              value: p.confirmBeforeRegenerating,
+              reduceMotion: ctrl.reduceMotionOverride,
+              onChanged: (v) => unawaited(
+                ctrl.saveUiPrefs(
+                  p.copyWith(confirmBeforeRegenerating: v),
+                  quiet: true,
+                ),
+              ),
+            ),
+            _PrefToggle(
+              label: l10n.t(L10nKey.settingsPrefsCollapseLong),
+              value: p.collapseLongMessages,
+              reduceMotion: ctrl.reduceMotionOverride,
+              onChanged: (v) => unawaited(
+                ctrl.saveUiPrefs(
+                  p.copyWith(collapseLongMessages: v),
+                  quiet: true,
+                ),
+              ),
+            ),
+            _PrefToggle(
+              label: l10n.t(L10nKey.settingsPrefsFollowReplies),
+              value: p.followWhileStreaming,
+              reduceMotion: ctrl.reduceMotionOverride,
+              onChanged: (v) => unawaited(
+                ctrl.saveUiPrefs(
+                  p.copyWith(followWhileStreaming: v),
+                  quiet: true,
+                ),
+              ),
+            ),
+            _PrefToggle(
+              label: l10n.t(L10nKey.settingsPrefsNewChatOnLaunch),
+              value: p.newChatOnLaunch,
+              reduceMotion: ctrl.reduceMotionOverride,
+              onChanged: (v) => unawaited(
+                ctrl.saveUiPrefs(p.copyWith(newChatOnLaunch: v), quiet: true),
+              ),
+            ),
+            _PrefToggle(
+              label: l10n.t(L10nKey.settingsPrefsNewChatOnAssistant),
+              value: p.newChatOnAssistantSwitch,
+              reduceMotion: ctrl.reduceMotionOverride,
+              onChanged: (v) => unawaited(
+                ctrl.saveUiPrefs(
+                  p.copyWith(newChatOnAssistantSwitch: v),
+                  quiet: true,
+                ),
+              ),
+            ),
+            _PrefToggle(
+              label: l10n.t(L10nKey.settingsPrefsNewChatAfterDelete),
+              value: p.newChatAfterDelete,
+              reduceMotion: ctrl.reduceMotionOverride,
+              onChanged: (v) => unawaited(
+                ctrl.saveUiPrefs(
+                  p.copyWith(newChatAfterDelete: v),
                   quiet: true,
                 ),
               ),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -10,11 +11,14 @@ import '../../design/press_feedback.dart';
 import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
+import '../../platform/desktop_host.dart';
 import '../shell/folio_controller.dart';
+import '../shell/shortcut_combo.dart';
 
-/// Interactive Keyboard Shortcuts Studio:
-/// Click any row to record a custom keybinding (`Ctrl+...`, `Alt+...`, `Shift+...`)
-/// and persist it directly into Rust SQLite settings, or reset cleanly to defaults.
+/// Settings > Shortcuts: click a row and press a new shortcut. A press that would take a key
+/// away from typing or editing, or that another action already uses, is refused with the
+/// reason, and recording goes on. On Windows a second section holds the quick entry
+/// shortcut, which works from any app and can be turned off.
 class ShortcutsSettingsView extends StatefulWidget {
   const ShortcutsSettingsView({super.key, required this.controller});
 
@@ -26,6 +30,9 @@ class ShortcutsSettingsView extends StatefulWidget {
 
 class _ShortcutsSettingsViewState extends State<ShortcutsSettingsView> {
   String? _recordingActionId;
+
+  /// Why the last press while recording was refused.
+  String? _refusal;
   final FocusNode _captureFocus = FocusNode();
 
   @override
@@ -35,7 +42,10 @@ class _ShortcutsSettingsViewState extends State<ShortcutsSettingsView> {
   }
 
   void _startRecording(String actionId) {
-    setState(() => _recordingActionId = actionId);
+    setState(() {
+      _recordingActionId = actionId;
+      _refusal = null;
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _captureFocus.requestFocus();
     });
@@ -50,47 +60,60 @@ class _ShortcutsSettingsViewState extends State<ShortcutsSettingsView> {
       setState(() => _recordingActionId = null);
       return KeyEventResult.handled;
     }
-    if (_isModifierOnly(key)) {
-      return KeyEventResult.handled;
-    }
-
     final hw = HardwareKeyboard.instance;
-    final parts = <String>[];
-    if (hw.isControlPressed) parts.add('Ctrl');
-    if (hw.isMetaPressed) parts.add('Meta');
-    if (hw.isAltPressed) parts.add('Alt');
-    if (hw.isShiftPressed) parts.add('Shift');
-    final keyLabel = _canonicalKeyName(key);
-    if (keyLabel == null || parts.isEmpty) {
+    final ctrl = widget.controller;
+    final targetId = _recordingActionId!;
+    final quickEntry = targetId == _kQuickEntryId;
+    final pressed = ShortcutCombo.record(
+      key,
+      control: hw.isControlPressed,
+      meta: hw.isMetaPressed,
+      alt: hw.isAltPressed,
+      shift: hw.isShiftPressed,
+    );
+    if (pressed == null) return KeyEventResult.handled;
+    final l10n = BistreLocalizations.of(context);
+    final combo = pressed.combo;
+    // A function key alone is fine inside Bistre, but from any app it would take the key
+    // from every other program.
+    final bareKey =
+        !hw.isControlPressed && !hw.isAltPressed && !hw.isMetaPressed;
+    final takenBy = combo == null
+        ? null
+        : ShortcutActionSpec.defaults
+                  .where(
+                    (s) =>
+                        s.id != targetId &&
+                        ShortcutCombo.same(ctrl.shortcutFor(s.id), combo),
+                  )
+                  .firstOrNull
+                  ?.labelKey ??
+              (!quickEntry &&
+                      Platform.isWindows &&
+                      ShortcutCombo.same(ctrl.uiPrefs.quickEntryShortcut, combo)
+                  ? L10nKey.shortcutsQuickEntry
+                  : null);
+    final refusal = switch (pressed.refusal) {
+      ShortcutRefusal.needsModifier => l10n.t(L10nKey.shortcutsNeedsModifier),
+      null when quickEntry && bareKey => l10n.t(L10nKey.shortcutsNeedsModifier),
+      ShortcutRefusal.editing => l10n.t(L10nKey.shortcutsKeptForEditing),
+      null when takenBy != null => l10n.t(
+        L10nKey.shortcutsTaken,
+        <String, Object?>{'action': l10n.t(takenBy)},
+      ),
+      null => null,
+    };
+    if (refusal != null || combo == null) {
+      setState(() => _refusal = refusal);
       return KeyEventResult.handled;
     }
-    parts.add(keyLabel);
-
-    final targetId = _recordingActionId!;
     setState(() => _recordingActionId = null);
-    unawaited(widget.controller.setShortcutBinding(targetId, parts.join('+')));
+    unawaited(
+      quickEntry
+          ? ctrl.setQuickEntryShortcut(combo)
+          : ctrl.setShortcutBinding(targetId, combo),
+    );
     return KeyEventResult.handled;
-  }
-
-  static bool _isModifierOnly(LogicalKeyboardKey key) =>
-      key == LogicalKeyboardKey.controlLeft ||
-      key == LogicalKeyboardKey.controlRight ||
-      key == LogicalKeyboardKey.shiftLeft ||
-      key == LogicalKeyboardKey.shiftRight ||
-      key == LogicalKeyboardKey.altLeft ||
-      key == LogicalKeyboardKey.altRight ||
-      key == LogicalKeyboardKey.metaLeft ||
-      key == LogicalKeyboardKey.metaRight;
-
-  static String? _canonicalKeyName(LogicalKeyboardKey key) {
-    if (key == LogicalKeyboardKey.comma) return ',';
-    if (key == LogicalKeyboardKey.slash) return '/';
-    if (key == LogicalKeyboardKey.period) return '.';
-    if (key == LogicalKeyboardKey.semicolon) return ';';
-    final label = key.keyLabel.trim();
-    if (label.length == 1) return label.toUpperCase();
-    if (label.startsWith('F') && label.length <= 3) return label;
-    return null;
   }
 
   @override
@@ -117,7 +140,8 @@ class _ShortcutsSettingsViewState extends State<ShortcutsSettingsView> {
                       label: l10n.t(spec.labelKey),
                       combo: ctrl.shortcutFor(spec.id),
                       recording: _recordingActionId == spec.id,
-                      recordHint: l10n.t(L10nKey.shortcutsRecordHint),
+                      recordHint:
+                          _refusal ?? l10n.t(L10nKey.shortcutsRecordHint),
                       onTap: () => _startRecording(spec.id),
                     ),
                   Padding(
@@ -127,11 +151,22 @@ class _ShortcutsSettingsViewState extends State<ShortcutsSettingsView> {
                     ),
                     child: Row(
                       children: [
+                        // The muted row says why it cannot be recorded.
                         Expanded(
-                          child: InkText(
-                            l10n.t(L10nKey.shortcutEscape),
-                            role: InkTextRole.bodyCompact,
-                            color: theme.inkSecondary,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              InkText(
+                                l10n.t(L10nKey.shortcutEscape),
+                                role: InkTextRole.bodyCompact,
+                                color: theme.inkSecondary,
+                              ),
+                              InkText(
+                                l10n.t(L10nKey.shortcutsEscapeFixed),
+                                role: InkTextRole.captionMeta,
+                                color: theme.inkMuted,
+                              ),
+                            ],
                           ),
                         ),
                         const _KeycapStrip(combo: _kEscCombo),
@@ -140,6 +175,10 @@ class _ShortcutsSettingsViewState extends State<ShortcutsSettingsView> {
                   ),
                 ],
               ),
+              if (Platform.isWindows) ...[
+                const SizedBox(height: BistreSpacing.s16),
+                _buildQuickEntry(theme, l10n, ctrl),
+              ],
               const SizedBox(height: BistreSpacing.s16),
               Align(
                 alignment: AlignmentDirectional.centerStart,
@@ -159,6 +198,70 @@ class _ShortcutsSettingsViewState extends State<ShortcutsSettingsView> {
   }
 
   static const String _kEscCombo = 'Esc';
+
+  /// The recording id of the quick entry row; no in-app action uses it.
+  static const String _kQuickEntryId = 'quick_entry';
+
+  Widget _buildQuickEntry(
+    BistreThemeData theme,
+    BistreLocalizationController l10n,
+    FolioController ctrl,
+  ) {
+    final combo = ctrl.uiPrefs.quickEntryShortcut;
+    return BistreSettingsSection(
+      title: l10n.t(L10nKey.shortcutsQuickEntryTitle),
+      children: [
+        _ShortcutRow(
+          label: l10n.t(L10nKey.shortcutsQuickEntry),
+          combo: combo,
+          emptyLabel: l10n.t(L10nKey.shortcutsOff),
+          recording: _recordingActionId == _kQuickEntryId,
+          recordHint: _refusal ?? l10n.t(L10nKey.shortcutsRecordHint),
+          onTap: () => _startRecording(_kQuickEntryId),
+        ),
+        Padding(
+          padding: const EdgeInsetsDirectional.symmetric(
+            horizontal: BistreSpacing.s16,
+            vertical: 12,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              InkText(
+                l10n.t(L10nKey.shortcutsQuickEntryHint),
+                role: InkTextRole.captionMeta,
+                color: theme.inkMuted,
+              ),
+              ValueListenableBuilder<bool>(
+                valueListenable: BistreDesktopHost.quickEntryRefused,
+                builder: (context, refused, _) => refused && combo.isNotEmpty
+                    ? Padding(
+                        padding: const EdgeInsetsDirectional.only(top: 6),
+                        child: InkText(
+                          l10n.t(L10nKey.shortcutsQuickEntryRefused),
+                          role: InkTextRole.captionMeta,
+                          color: theme.statusWarn,
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              if (combo.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                EngravedButton(
+                  label: l10n.t(L10nKey.shortcutsTurnOff),
+                  compact: true,
+                  onPressed: () {
+                    setState(() => _recordingActionId = null);
+                    unawaited(ctrl.setQuickEntryShortcut(''));
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _ShortcutRow extends StatefulWidget {
@@ -168,10 +271,14 @@ class _ShortcutRow extends StatefulWidget {
     required this.recording,
     required this.recordHint,
     required this.onTap,
+    this.emptyLabel = '',
   });
 
   final String label;
+
+  /// The keys in saved form; when empty the row shows [emptyLabel].
   final String combo;
+  final String emptyLabel;
   final bool recording;
   final String recordHint;
   final VoidCallback onTap;
@@ -182,46 +289,73 @@ class _ShortcutRow extends StatefulWidget {
 
 class _ShortcutRowState extends State<_ShortcutRow> {
   bool _hovered = false;
+  bool _focused = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: PressFeedback(
-        pressScale: kRowPressScale,
-        hoverScale: 1,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: ColoredBox(
-            color: widget.recording || _hovered
-                ? theme.hoverTint
-                : theme.bgElevated,
-            child: Padding(
-              padding: const EdgeInsetsDirectional.symmetric(
-                horizontal: BistreSpacing.s16,
-                vertical: 13,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: InkText(
-                      widget.label,
-                      role: InkTextRole.bodyCompact,
-                      color: theme.inkPrimary,
+    return Semantics(
+      button: true,
+      label: widget.label,
+      value: widget.recording
+          ? widget.recordHint
+          : (widget.combo.isEmpty ? widget.emptyLabel : widget.combo),
+      excludeSemantics: true,
+      child: FocusableActionDetector(
+        mouseCursor: SystemMouseCursors.click,
+        onShowHoverHighlight: (v) => setState(() => _hovered = v),
+        onShowFocusHighlight: (v) => setState(() => _focused = v),
+        shortcuts: const <ShortcutActivator, Intent>{
+          SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+          SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+        },
+        actions: <Type, Action<Intent>>{
+          ActivateIntent: CallbackAction<ActivateIntent>(
+            onInvoke: (_) {
+              widget.onTap();
+              return null;
+            },
+          ),
+        },
+        child: PressFeedback(
+          pressScale: kRowPressScale,
+          hoverScale: 1,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onTap,
+            child: ColoredBox(
+              color: widget.recording || _hovered || _focused
+                  ? theme.hoverTint
+                  : theme.bgElevated,
+              child: Padding(
+                padding: const EdgeInsetsDirectional.symmetric(
+                  horizontal: BistreSpacing.s16,
+                  vertical: 13,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: InkText(
+                        widget.label,
+                        role: InkTextRole.bodyCompact,
+                        color: theme.inkPrimary,
+                      ),
                     ),
-                  ),
-                  if (widget.recording)
-                    WaxSealBadge(
-                      label: widget.recordHint,
-                      status: WaxSealStatus.warn,
-                    )
-                  else
-                    _KeycapStrip(combo: widget.combo),
-                ],
+                    if (widget.recording)
+                      WaxSealBadge(
+                        label: widget.recordHint,
+                        status: WaxSealStatus.warn,
+                      )
+                    else if (widget.combo.isEmpty)
+                      InkText(
+                        widget.emptyLabel,
+                        role: InkTextRole.captionMeta,
+                        color: theme.inkMuted,
+                      )
+                    else
+                      _KeycapStrip(combo: widget.combo),
+                  ],
+                ),
               ),
             ),
           ),

@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/shell_harness.dart';
 
 void main() {
-  testWidgets('resizing saves once and never undoes a setting change (U22)', (
+  testWidgets('resizing saves once and never undoes a setting change', (
     tester,
   ) async {
     final shell = await ShellHarness.pump(tester);

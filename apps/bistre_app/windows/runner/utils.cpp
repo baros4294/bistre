@@ -67,3 +67,52 @@ std::string Utf8FromUtf16(const wchar_t* utf16_string) {
   }
   return utf8_string;
 }
+
+std::wstring Utf8ToWide(const std::string& utf8) {
+  if (utf8.empty()) {
+    return L"";
+  }
+  int len = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(),
+                                static_cast<int>(utf8.size()), nullptr, 0);
+  if (len <= 0) {
+    return L"";
+  }
+  std::wstring out(static_cast<size_t>(len), L'\0');
+  MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), static_cast<int>(utf8.size()),
+                      out.data(), len);
+  return out;
+}
+
+std::string WideToUtf8(const std::wstring& wide) {
+  if (wide.empty()) {
+    return "";
+  }
+  int len = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(),
+                                static_cast<int>(wide.size()), nullptr, 0,
+                                nullptr, nullptr);
+  if (len <= 0) {
+    return "";
+  }
+  std::string out(static_cast<size_t>(len), '\0');
+  WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()),
+                      out.data(), len, nullptr, nullptr);
+  return out;
+}
+
+std::string Base64EncodeBytes(const uint8_t* data, size_t len) {
+  static constexpr char kTable[] =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::string out;
+  out.reserve(((len + 2) / 3) * 4);
+  for (size_t i = 0; i < len; i += 3) {
+    const uint32_t b0 = data[i];
+    const uint32_t b1 = (i + 1 < len) ? data[i + 1] : 0;
+    const uint32_t b2 = (i + 2 < len) ? data[i + 2] : 0;
+    const uint32_t triple = (b0 << 16) | (b1 << 8) | b2;
+    out.push_back(kTable[(triple >> 18) & 0x3F]);
+    out.push_back(kTable[(triple >> 12) & 0x3F]);
+    out.push_back((i + 1 < len) ? kTable[(triple >> 6) & 0x3F] : '=');
+    out.push_back((i + 2 < len) ? kTable[triple & 0x3F] : '=');
+  }
+  return out;
+}

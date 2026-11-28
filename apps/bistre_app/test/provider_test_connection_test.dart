@@ -6,7 +6,7 @@ import 'support/fake_engine_gateway.dart';
 import 'support/shell_harness.dart';
 
 void main() {
-  testWidgets('a failed connection test names the URL it tried (P8)', (
+  testWidgets('a failed connection test names the URL it tried', (
     tester,
   ) async {
     final gateway = FakeEngineGateway(seedConnectedOpenAi: true)

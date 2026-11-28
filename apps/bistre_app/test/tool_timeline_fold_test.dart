@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/shell_harness.dart';
 
 void main() {
-  testWidgets('tool rows are folded once per change, not every frame (U14)', (
+  testWidgets('tool rows are folded once per change, not every frame', (
     tester,
   ) async {
     final shell = await ShellHarness.pump(tester);

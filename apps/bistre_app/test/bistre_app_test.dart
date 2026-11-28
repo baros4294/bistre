@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:bistre_app/bridge/bistre_engine.dart';
 import 'package:bistre_app/design/bistre_controls.dart';
+import 'package:bistre_app/design/bistre_icons.dart';
 import 'package:bistre_app/design/bistre_theme.dart';
 import 'package:bistre_app/design/ink_primitives.dart';
 import 'package:bistre_app/design/math_font_gate.dart';
@@ -172,7 +173,11 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byType(BistreSwitch).first);
       await tester.pumpAndSettle();
-      expect(find.text('Unlimited'), findsOneWidget);
+      expect(
+        tester.widget<BistreSwitch>(find.byType(BistreSwitch).first).value,
+        isTrue,
+        reason: 'the switch itself shows the unlimited state',
+      );
 
       // Verify real OTA Check for updates flow in Updates & Storage tab.
       controller.setSettingsTab(SettingsTab.updates);
@@ -180,7 +185,7 @@ void main() {
       await tester.tap(find.text('Check for updates'));
       await tester.pumpAndSettle();
       expect(find.text('Update available: v0.2.0'), findsOneWidget);
-      expect(find.text('Ed25519 signature verified'), findsOneWidget);
+      expect(find.text('Verified'), findsOneWidget);
 
       // Return cleanly to chat with Escape.
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
@@ -192,7 +197,7 @@ void main() {
           of: find.byKey(const Key('composer_input')),
           matching: find.byType(EditableText),
         ),
-        'Xin chào từ Bistre — مرحبا',
+        'Xin chào từ Bistre: مرحبا',
       );
       await tester.pump();
       await tester.tap(find.text('Send'));
@@ -424,7 +429,9 @@ void main() {
       await tester.tap(find.textContaining('3.8s'));
       await tester.pumpAndSettle();
       expect(find.textContaining('blake3'), findsOneWidget);
-      await tester.tap(find.text(l10n.t(L10nKey.chatQuoteThinking)));
+      await tester.tap(
+        find.bySemanticsLabel(l10n.t(L10nKey.chatQuoteThinking)),
+      );
       expect(quoted, 'Step 1: Verify blake3 hash anchor.');
 
       // Rewind checkpoint and approve Tier-2 tool call.
@@ -444,7 +451,7 @@ void main() {
         await MathFontGate.ensureLoaded(
           source: Future<ByteData>.value(
             ByteData.sublistView(
-              File('assets/fonts/NotoSansMath-Regular.ttf').readAsBytesSync(),
+              File('assets/fonts/noto-sans-math-regular.ttf').readAsBytesSync(),
             ),
           ),
         );
@@ -457,7 +464,7 @@ void main() {
       const sampleMarkdown = r'''
 ## Architecture Summary
 
-Inline math $\alpha + \beta = \gamma$ works seamlessly.
+Inline math $\alpha + \beta = \gamma$ renders inline.
 
 $$
 \frac{a + b}{\sqrt{c^2 + 1}}
@@ -499,7 +506,13 @@ flowchart LR
       expect(find.byType(CustomPaint), findsWidgets);
 
       // Copy CSV from GFM Table.
-      await tester.tap(find.text(l10n.t(L10nKey.chatTableCopyCsv)));
+      await tester.tap(
+        find.byWidgetPredicate(
+          (w) =>
+              w is BistreIconButton &&
+              w.semanticsLabel == l10n.t(L10nKey.chatTableCopyCsv),
+        ),
+      );
       await tester.pump();
       expect(lastCopied, contains('Layer,Runtime,Footprint'));
       expect(lastCopied, contains('Core,Pure Rust,30 MB'));

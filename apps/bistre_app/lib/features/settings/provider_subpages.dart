@@ -15,7 +15,7 @@ import '../shell/folio_controller.dart';
 /// Providers → Advanced sub-page:
 /// - API format / custom dialect, endpoint path override, auth header mode
 /// - Auto-fetch models toggle
-/// - Dialect-specific server storage, chaining, background polling, and legacy fallback toggles
+/// - Dialect-specific server storage, chaining, and legacy fallback toggles
 ///   (shown cleanly for OpenAI & Gemini; omitted for Anthropic)
 /// - Default thinking effort smooth VSYNC slider + Adaptive / Automatic
 /// - Custom headers & extra JSON body
@@ -79,10 +79,13 @@ class _ProviderAdvancedSubpageState extends State<ProviderAdvancedSubpage> {
     final l10n = BistreLocalizations.of(context);
     final ctrl = widget.controller;
     final p = widget.provider;
-    final isAnthropic = p.dialect == 'anthropic';
-    final isGemini = p.dialect == 'google_gemini';
+    // Rows follow the API format requests use, so a Custom provider speaking Chat
+    // Completions never shows a server-side feature that format lacks.
+    final wire = _cfg.wireFor(p.dialect);
+    final isAnthropic = wire == 'anthropic_messages';
+    final isGemini = wire == 'gemini_interactions';
+    final keepsState = isGemini || wire == 'openai_responses';
     final isCustom = p.dialect == 'custom_openai';
-    final effortIdx = thinkingStopIndex(_cfg.defaultThinkingEffort);
     final pageTitle = l10n.t(
       L10nKey.settingsProviderAdvancedPageTitle,
       <String, Object?>{'name': p.name},
@@ -223,47 +226,124 @@ class _ProviderAdvancedSubpageState extends State<ProviderAdvancedSubpage> {
                     unawaited(_persist(_cfg.copyWith(autoFetchModels: v))),
               ),
             ),
-          ],
-        ),
-        if (!isAnthropic) ...[
-          const SizedBox(height: BistreSpacing.s16),
-          BistreSettingsSection(
-            title: l10n.t(L10nKey.settingsTrustStateless),
-            children: [
+            if (isAnthropic) ...[
               BistreSettingRow(
-                label: l10n.t(L10nKey.settingsProviderStoreServer),
-                description: l10n.t(L10nKey.settingsProviderStoreServerHint),
+                label: l10n.t(L10nKey.settingsProviderCacheHour),
+                description: l10n.t(L10nKey.settingsProviderCacheHourHint),
                 trailing: BistreSwitch(
-                  value: _cfg.storeServerSide,
-                  semanticsLabel: l10n.t(L10nKey.settingsProviderStoreServer),
+                  value: _cfg.anthropicCache1h,
+                  semanticsLabel: l10n.t(L10nKey.settingsProviderCacheHour),
                   reduceMotionOverride: ctrl.reduceMotionOverride,
                   onChanged: (v) =>
-                      unawaited(_persist(_cfg.copyWith(storeServerSide: v))),
+                      unawaited(_persist(_cfg.copyWith(anthropicCache1h: v))),
                 ),
               ),
               BistreSettingRow(
-                label: l10n.t(L10nKey.settingsProviderStatefulChain),
+                label: l10n.t(L10nKey.settingsProviderServerCompaction),
+                description: l10n.t(
+                  L10nKey.settingsProviderServerCompactionHint,
+                ),
                 trailing: BistreSwitch(
-                  value: _cfg.useStatefulChaining,
-                  semanticsLabel: l10n.t(L10nKey.settingsProviderStatefulChain),
+                  value: _cfg.enableServerCompaction,
+                  semanticsLabel: l10n.t(
+                    L10nKey.settingsProviderServerCompaction,
+                  ),
                   reduceMotionOverride: ctrl.reduceMotionOverride,
                   onChanged: (v) => unawaited(
-                    _persist(_cfg.copyWith(useStatefulChaining: v)),
+                    _persist(_cfg.copyWith(enableServerCompaction: v)),
                   ),
                 ),
               ),
-              if (isGemini) ...[
+            ],
+            if (isAnthropic || isGemini)
+              BistreSettingRow(
+                label: l10n.t(
+                  L10nKey.settingsProviderOwnTools,
+                  <String, Object?>{'name': p.name},
+                ),
+                description: l10n.t(
+                  ctrl.settings.isWalletUnlimited
+                      ? L10nKey.settingsProviderOwnToolsHint
+                      : L10nKey.settingsProviderOwnToolsCapped,
+                  <String, Object?>{'name': p.name},
+                ),
+                trailing: BistreSwitch(
+                  value: _cfg.providerTools,
+                  semanticsLabel: l10n.t(
+                    L10nKey.settingsProviderOwnTools,
+                    <String, Object?>{'name': p.name},
+                  ),
+                  reduceMotionOverride: ctrl.reduceMotionOverride,
+                  onChanged: (v) =>
+                      unawaited(_persist(_cfg.copyWith(providerTools: v))),
+                ),
+              ),
+            if (isAnthropic || wire == 'openai_responses')
+              BistreSettingRow(
+                label: l10n.t(
+                  L10nKey.settingsProviderPaidTools,
+                  <String, Object?>{'name': p.name},
+                ),
+                description: l10n.t(
+                  L10nKey.settingsProviderPaidToolsHint,
+                  <String, Object?>{'name': p.name},
+                ),
+                trailing: BistreSwitch(
+                  value: _cfg.paidProviderTools,
+                  semanticsLabel: l10n.t(
+                    L10nKey.settingsProviderPaidTools,
+                    <String, Object?>{'name': p.name},
+                  ),
+                  reduceMotionOverride: ctrl.reduceMotionOverride,
+                  onChanged: (v) =>
+                      unawaited(_persist(_cfg.copyWith(paidProviderTools: v))),
+                ),
+              ),
+          ],
+        ),
+        if (keepsState) ...[
+          const SizedBox(height: BistreSpacing.s16),
+          BistreSettingsSection(
+            children: [
+              // Safety & Budget > Private requests wins over this switch.
+              BistreSettingRow(
+                label: l10n.t(L10nKey.settingsProviderStoreServer),
+                description: ctrl.settings.providerStatelessDefault
+                    ? l10n.t(L10nKey.settingsProviderStoreServerPrivate)
+                    : l10n.t(L10nKey.settingsProviderStoreServerHint),
+                trailing: ctrl.settings.providerStatelessDefault
+                    ? null
+                    : BistreSwitch(
+                        value: p.useServerStateCache,
+                        semanticsLabel: l10n.t(
+                          L10nKey.settingsProviderStoreServer,
+                        ),
+                        reduceMotionOverride: ctrl.reduceMotionOverride,
+                        onChanged: (v) => unawaited(
+                          ctrl.saveProviderConfig(
+                            providerId: p.id,
+                            useServerStateCache: v,
+                          ),
+                        ),
+                      ),
+              ),
+              // Chaining needs the server to keep the earlier replies.
+              if (!ctrl.settings.providerStatelessDefault &&
+                  p.useServerStateCache)
                 BistreSettingRow(
-                  label: l10n.t(L10nKey.settingsProviderBgPoll),
+                  label: l10n.t(L10nKey.settingsProviderStatefulChain),
                   trailing: BistreSwitch(
-                    value: _cfg.useBackgroundPolling,
-                    semanticsLabel: l10n.t(L10nKey.settingsProviderBgPoll),
+                    value: _cfg.useStatefulChaining,
+                    semanticsLabel: l10n.t(
+                      L10nKey.settingsProviderStatefulChain,
+                    ),
                     reduceMotionOverride: ctrl.reduceMotionOverride,
                     onChanged: (v) => unawaited(
-                      _persist(_cfg.copyWith(useBackgroundPolling: v)),
+                      _persist(_cfg.copyWith(useStatefulChaining: v)),
                     ),
                   ),
                 ),
+              if (isGemini) ...[
                 BistreSettingRow(
                   label: l10n.t(L10nKey.settingsProviderLegacyFallback),
                   trailing: BistreSwitch(
@@ -287,56 +367,19 @@ class _ProviderAdvancedSubpageState extends State<ProviderAdvancedSubpage> {
           children: [
             BistreSettingRow(
               label: l10n.t(L10nKey.chatReasoningEffort),
-              trailing: InkText(
-                l10n.t(kThinkingStops[effortIdx].$2),
-                role: InkTextRole.captionMeta,
-                color: theme.accentBrass,
-              ),
-              bottom: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  BistreSlider(
-                    value: effortIdx.toDouble(),
-                    min: 0,
-                    max: (kThinkingStops.length - 1).toDouble(),
-                    reduceMotionOverride: ctrl.reduceMotionOverride,
-                    semanticsLabel: l10n.t(L10nKey.chatReasoningEffort),
-                    onChanged: (v) {
-                      final idx = v.round().clamp(0, kThinkingStops.length - 1);
-                      unawaited(
-                        _persist(
-                          _cfg.copyWith(
-                            defaultThinkingEffort: kThinkingStops[idx].$1,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    children: [
-                      InkChip(
-                        label: l10n.t(L10nKey.chatEffortAdaptive),
-                        selected: _cfg.defaultThinkingEffort == 'adaptive',
-                        onSelected: () => unawaited(
-                          _persist(
-                            _cfg.copyWith(defaultThinkingEffort: 'adaptive'),
-                          ),
-                        ),
-                      ),
-                      InkChip(
-                        label: l10n.t(L10nKey.chatEffortAuto),
-                        selected: _cfg.defaultThinkingEffort == 'default',
-                        onSelected: () => unawaited(
-                          _persist(
-                            _cfg.copyWith(defaultThinkingEffort: 'default'),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+              trailing: isThinkingLevel(_cfg.defaultThinkingEffort)
+                  ? InkText(
+                      l10n.t(thinkingLabelKey(_cfg.defaultThinkingEffort)),
+                      role: InkTextRole.captionMeta,
+                      color: theme.accentBrass,
+                    )
+                  : null,
+              bottom: ThinkingEffortPicker(
+                value: _cfg.defaultThinkingEffort,
+                reduceMotionOverride: ctrl.reduceMotionOverride,
+                onChanged: (effort) => unawaited(
+                  _persist(_cfg.copyWith(defaultThinkingEffort: effort)),
+                ),
               ),
             ),
             BistreSettingRow(
@@ -478,14 +521,12 @@ class _ProviderModelConfigSubpageState
 
   bool _fillingCatalog = false;
 
-  String _formatMicrosUsd(int micros) =>
-      (micros / 1000000.0).toStringAsFixed(2);
-
   Future<void> _fillFromCatalog() async {
     if (_fillingCatalog) return;
     setState(() => _fillingCatalog = true);
     try {
       final info = await widget.controller.lookupModelCatalogInfo(
+        widget.provider.id,
         widget.modelId,
       );
       if (!mounted) return;
@@ -501,14 +542,20 @@ class _ProviderModelConfigSubpageState
           _outCtrl.text = '${info.maxOutputTokens}';
         }
         if (info.inputPerMtokMicros != null) {
-          _inPriceCtrl.text = _formatMicrosUsd(info.inputPerMtokMicros!);
+          _inPriceCtrl.text = microsAsDollars(info.inputPerMtokMicros!);
         }
         if (info.outputPerMtokMicros != null) {
-          _outPriceCtrl.text = _formatMicrosUsd(info.outputPerMtokMicros!);
+          _outPriceCtrl.text = microsAsDollars(info.outputPerMtokMicros!);
         }
         if (info.cachedInputPerMtokMicros != null) {
-          _cacheReadCtrl.text = _formatMicrosUsd(
-            info.cachedInputPerMtokMicros!,
+          _cacheReadCtrl.text = microsAsDollars(info.cachedInputPerMtokMicros!);
+        }
+        if (info.cacheWritePerMtokMicros != null) {
+          _cacheWriteCtrl.text = microsAsDollars(info.cacheWritePerMtokMicros!);
+        }
+        if (info.cacheWrite1hPerMtokMicros != null) {
+          _cacheLongCtrl.text = microsAsDollars(
+            info.cacheWrite1hPerMtokMicros!,
           );
         }
       });
@@ -679,4 +726,16 @@ class _FieldRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Exact dollars from micro-USD with at least two decimals: `75000` is `0.075`, never a
+/// rounded `0.07` that would be saved as the model's price.
+String microsAsDollars(int micros) {
+  final whole = micros ~/ 1000000;
+  final frac = (micros % 1000000)
+      .toString()
+      .padLeft(6, '0')
+      .replaceFirst(RegExp(r'0+$'), '')
+      .padRight(2, '0');
+  return '$whole.$frac';
 }

@@ -12,6 +12,29 @@ TextDirection? contentDirection(String text) {
   return null;
 }
 
+/// A one-line label such as a chat title, laid out in its own direction ([contentDirection])
+/// while staying at the start of the surrounding layout: its words keep their order and a
+/// cut-off ellipsis lands at the text's own end (an Arabic title in the English UI, an English
+/// title in the Arabic UI).
+class OwnDirection extends StatelessWidget {
+  const OwnDirection({super.key, required this.text, required this.child});
+
+  final String text;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final own = contentDirection(text);
+    if (own == null || own == Directionality.of(context)) return child;
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      widthFactor: 1,
+      heightFactor: 1,
+      child: Directionality(textDirection: own, child: child),
+    );
+  }
+}
+
 /// Hebrew, Arabic, Syriac, Thaana, NKo, Samaritan, Mandaic, their presentation forms, and the
 /// supplementary RTL blocks.
 bool _isStrongRtl(int r) =>

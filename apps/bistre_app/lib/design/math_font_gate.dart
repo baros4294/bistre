@@ -9,7 +9,7 @@ class MathFontGate {
   MathFontGate._();
 
   static const String family = 'NotoSansMath';
-  static const String asset = 'assets/fonts/NotoSansMath-Regular.ttf';
+  static const String asset = 'assets/fonts/noto-sans-math-regular.ttf';
 
   /// Flips to `true` once the face is registered; math widgets rebuild on it.
   static final ValueNotifier<bool> ready = ValueNotifier<bool>(false);

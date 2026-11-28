@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:bistre_app/design/bistre_icons.dart';
+import 'package:bistre_app/design/label_control_layout.dart';
 import 'package:bistre_app/design/math_font_gate.dart';
 import 'package:bistre_app/features/chat/reasoning_block.dart';
 import 'package:bistre_app/features/shell/folio_controller.dart';
@@ -15,8 +16,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/fake_engine_gateway.dart';
 import 'support/shell_harness.dart';
 
-/// W8 (Appendix Phase 3, Display): every Settings > Appearance display toggle changes what
-/// the chat and the chat list show. Before W8 each one was saved and never read.
+/// Every Settings > Appearance display toggle changes what
+/// the chat and the chat list show. Before each one was saved and never read.
 const _thinking = 'Plan the answer first';
 const _code = 'final area = side * side;';
 
@@ -34,7 +35,7 @@ Future<ShellHarness> _chat(
     await MathFontGate.ensureLoaded(
       source: Future<ByteData>.value(
         ByteData.sublistView(
-          File('assets/fonts/NotoSansMath-Regular.ttf').readAsBytesSync(),
+          File('assets/fonts/noto-sans-math-regular.ttf').readAsBytesSync(),
         ),
       ),
     );
@@ -123,14 +124,9 @@ void main() {
 
       // The reply's actions sit at the end of its header row, with no gap after them.
       final more = _iconButton(shell.t(L10nKey.chatActionMore)).last;
-      final header = find.ancestor(
-        of: more,
-        matching: find.byWidgetPredicate(
-          (w) =>
-              w is Row &&
-              w.children.any((c) => c is Expanded && c.child is Text),
-        ),
-      );
+      final header = find
+          .ancestor(of: more, matching: find.byType(LabelControlLayout))
+          .first;
       expect(
         tester.getTopRight(more).dx,
         closeTo(tester.getTopRight(header).dx, 1),

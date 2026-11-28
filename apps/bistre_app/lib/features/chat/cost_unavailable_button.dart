@@ -9,7 +9,7 @@ import '../../l10n/l10n_keys.g.dart';
 
 /// Quiet info button shown in place of a price when a reply's model has no published rate
 /// (`cost_known: false`). It opens a small breakdown popover instead of printing noisy
-/// "cost unavailable" text on every reply (`docs/design/DESIGN.md` §8, Spec 08 §3).
+/// "cost unavailable" text on every reply (`docs/design/design.md` §8, Spec 08 §3).
 class CostUnavailableButton extends StatefulWidget {
   const CostUnavailableButton({super.key, required this.usage});
 

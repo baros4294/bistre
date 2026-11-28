@@ -1,6 +1,5 @@
 import 'package:bistre_app/design/bistre_icons.dart';
 import 'package:bistre_app/l10n/l10n_keys.g.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -8,7 +7,7 @@ import 'support/fake_engine_gateway.dart';
 import 'support/shell_harness.dart';
 
 void main() {
-  testWidgets('an unsent inline edit survives scrolling it out of view (U30)', (
+  testWidgets('an unsent inline edit survives scrolling it out of view', (
     tester,
   ) async {
     final semantics = tester.ensureSemantics();
@@ -38,9 +37,8 @@ void main() {
     await tester.pumpAndSettle();
     final first = find.textContaining('question number 0', findRichText: true);
     expect(first, findsWidgets);
-    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-    await mouse.addPointer(location: tester.getCenter(first.first));
-    await mouse.moveTo(tester.getCenter(first.first));
+    // Touch has no hover: a tap on the message shows its actions.
+    await tester.tap(first.first);
     await tester.pumpAndSettle();
     final editLabel = shell.t(L10nKey.chatActionEdit);
     await tester.tap(
@@ -81,7 +79,6 @@ void main() {
       findsOneWidget,
       reason: 'the half-written edit is still open with its text',
     );
-    await mouse.removePointer();
     semantics.dispose();
   });
 }

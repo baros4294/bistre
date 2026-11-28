@@ -7,9 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/shell_harness.dart';
 
 void main() {
-  testWidgets('an image preview is decoded at a bounded size (U23)', (
-    tester,
-  ) async {
+  testWidgets('an image preview is decoded at a bounded size', (tester) async {
     final shell = await ShellHarness.pump(tester);
     shell.controller.openSentAttachment(
       const EngineNodeAttachment(

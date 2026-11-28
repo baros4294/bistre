@@ -53,40 +53,37 @@ void _mockClipboard(WidgetTester tester, String text) {
 }
 
 void main() {
-  testWidgets(
-    'the right-click menu offers Paste when the clipboard has text (A-W 1a)',
-    (tester) async {
-      _mockClipboard(tester, 'from clipboard');
-      final ctrl = TextEditingController(text: 'hello');
-      final focus = FocusNode();
-      await tester.pumpWidget(
-        _app(
-          QuillInput(
-            controller: ctrl,
-            focusNode: focus,
-            placeholder: 'Message',
-            onSubmitted: () {},
-          ),
-        ),
-      );
-      await tester.tap(find.byType(EditableText));
-      await tester.pump();
-      final mouse = await tester.startGesture(
-        tester.getCenter(find.byType(EditableText)),
-        kind: PointerDeviceKind.mouse,
-        buttons: kSecondaryButton,
-      );
-      await mouse.up();
-      await tester.pumpAndSettle();
-      expect(find.text(_l10n.t(L10nKey.shellSelectionPaste)), findsOneWidget);
-      ctrl.dispose();
-      focus.dispose();
-    },
-  );
-
-  testWidgets('Ctrl+V pastes into a field focused by a click (A-W 1b)', (
+  testWidgets('the right-click menu offers Paste when the clipboard has text', (
     tester,
   ) async {
+    _mockClipboard(tester, 'from clipboard');
+    final ctrl = TextEditingController(text: 'hello');
+    final focus = FocusNode();
+    await tester.pumpWidget(
+      _app(
+        QuillInput(
+          controller: ctrl,
+          focusNode: focus,
+          placeholder: 'Message',
+          onSubmitted: () {},
+        ),
+      ),
+    );
+    await tester.tap(find.byType(EditableText));
+    await tester.pump();
+    final mouse = await tester.startGesture(
+      tester.getCenter(find.byType(EditableText)),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryButton,
+    );
+    await mouse.up();
+    await tester.pumpAndSettle();
+    expect(find.text(_l10n.t(L10nKey.shellSelectionPaste)), findsOneWidget);
+    ctrl.dispose();
+    focus.dispose();
+  });
+
+  testWidgets('Ctrl+V pastes into a field focused by a click', (tester) async {
     _mockClipboard(tester, 'pasted');
     final ctrl = TextEditingController();
     final focus = FocusNode();
@@ -112,7 +109,7 @@ void main() {
     focus.dispose();
   });
 
-  testWidgets('Enter submits a one-line field (A-W 2a)', (tester) async {
+  testWidgets('Enter submits a one-line field', (tester) async {
     final ctrl = TextEditingController();
     final focus = FocusNode();
     var submitted = 0;
@@ -140,7 +137,7 @@ void main() {
     focus.dispose();
   });
 
-  testWidgets('a text field is named for screen readers (U27)', (tester) async {
+  testWidgets('a text field is named for screen readers', (tester) async {
     final semantics = tester.ensureSemantics();
     final ctrl = TextEditingController();
     final focus = FocusNode();

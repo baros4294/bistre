@@ -33,6 +33,10 @@ class _UpdatesStorageSettingsViewState
   final FocusNode _feedUrlFocus = FocusNode();
   bool _showOtaDetails = false;
 
+  /// First click on Delete all chats asks; the second deletes.
+  bool _confirmingDeleteAll = false;
+  bool _confirmingErase = false;
+
   @override
   void initState() {
     super.initState();
@@ -88,25 +92,30 @@ class _UpdatesStorageSettingsViewState
 
   Future<void> _exportAllChats() async {
     final l10n = BistreLocalizations.of(context);
+    // Every chat with the files its messages carry, as one zip import reads back.
     final chosen = await BistreDesktopHost.saveLocalFile(
       title: l10n.t(L10nKey.settingsStorageExportAll),
-      defaultName: 'bistre-chats-export.json',
-      filterLabel: 'JSON (*.json)',
-      filterSpec: '*.json',
+      defaultName: 'bistre-chats.zip',
+      filterLabel: 'Zip (*.zip)',
+      filterSpec: '*.zip',
     );
     if (chosen == null || chosen.isEmpty) return;
-    await widget.controller.exportAllThreadsToFile(chosen);
+    await widget.controller.exportChatsZip(chosen);
   }
 
   Future<void> _importChats() async {
     final l10n = BistreLocalizations.of(context);
     final chosen = await BistreDesktopHost.pickLocalFile(
       title: l10n.t(L10nKey.settingsStorageImportChats),
-      filterLabel: 'JSON (*.json)',
-      filterSpec: '*.json',
+      filterLabel: 'Chats (*.zip, *.json)',
+      filterSpec: '*.zip;*.json',
     );
     if (chosen == null || chosen.isEmpty) return;
-    await widget.controller.importThreadsFromFile(chosen);
+    if (chosen.toLowerCase().endsWith('.zip')) {
+      await widget.controller.importChatsZip(chosen);
+    } else {
+      await widget.controller.importThreadsFromFile(chosen);
+    }
   }
 
   Future<void> _exportSettings() async {
@@ -141,7 +150,7 @@ class _UpdatesStorageSettingsViewState
     final health = ctrl.health;
     final stats = ctrl.storageStats;
     final check = ctrl.updateCheck;
-    final installedVersion = health?.coreVersion ?? '0.1.0';
+    final installedVersion = health?.coreVersion;
 
     return SmoothScrollable(
       builder: (_, scroll) => SingleChildScrollView(
@@ -157,7 +166,9 @@ class _UpdatesStorageSettingsViewState
               children: [
                 BistreSettingRow(
                   label: l10n.t(L10nKey.settingsOtaCurrentVersion),
-                  description: 'v$installedVersion',
+                  description: installedVersion == null
+                      ? null
+                      : 'v$installedVersion',
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -168,7 +179,21 @@ class _UpdatesStorageSettingsViewState
                             <String, Object?>{'version': check.currentVersion},
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
+                        if (check.latestVersion == check.currentVersion &&
+                            ctrl.stagedUpdatePath == null) ...[
+                          EngravedButton(
+                            label: ctrl.stagingUpdate
+                                ? l10n.t(L10nKey.settingsOtaStaging)
+                                : l10n.t(L10nKey.settingsOtaReinstall),
+                            compact: true,
+                            onPressed: ctrl.stagingUpdate
+                                ? null
+                                : () =>
+                                      unawaited(ctrl.reinstallCurrentVersion()),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
                       ],
                       EngravedButton(
                         label: ctrl.checkingUpdates
@@ -329,6 +354,17 @@ class _UpdatesStorageSettingsViewState
                     ),
                   ),
                 BistreSettingRow(
+                  label: l10n.t(L10nKey.settingsOtaAutoCheck),
+                  trailing: BistreSwitch(
+                    value: s.otaAutoCheck,
+                    semanticsLabel: l10n.t(L10nKey.settingsOtaAutoCheck),
+                    reduceMotionOverride: ctrl.reduceMotionOverride,
+                    onChanged: (v) => unawaited(
+                      ctrl.updateSettings(s.copyWith(otaAutoCheck: v)),
+                    ),
+                  ),
+                ),
+                BistreSettingRow(
                   label: l10n.t(L10nKey.settingsOtaChannel),
                   trailing: BistreSegmentedControl<String>(
                     selected: s.otaChannel,
@@ -373,13 +409,6 @@ class _UpdatesStorageSettingsViewState
                         maxLines: 1,
                         submitOnEnter: false,
                         onSubmitted: () => unawaited(_saveFeedAndCheck()),
-                      ),
-                      const SizedBox(height: 4),
-                      // A-W 7a: a browser downloads the feed file instead of showing it.
-                      InkText(
-                        l10n.t(L10nKey.settingsOtaFeedDownloadsHint),
-                        role: InkTextRole.captionMeta,
-                        color: theme.inkMuted,
                       ),
                     ],
                   ),
@@ -498,7 +527,7 @@ class _UpdatesStorageSettingsViewState
                     children: [
                       if (stats != null)
                         WaxSealBadge(
-                          label: FolioController.formatBytes(stats.dbSizeBytes),
+                          label: l10n.fileSize(stats.dbSizeBytes),
                           status: WaxSealStatus.neutral,
                         ),
                       EngravedButton(
@@ -514,6 +543,75 @@ class _UpdatesStorageSettingsViewState
                       ),
                     ],
                   ),
+                ),
+                // Delete every chat: out of the everyday sidebar; the first click asks on the
+                // same button, the second deletes.
+                if (ctrl.threads.isNotEmpty)
+                  BistreSettingRow(
+                    label: l10n.t(L10nKey.settingsStorageDeleteAllChats),
+                    trailing: EngravedButton(
+                      label: _confirmingDeleteAll
+                          ? l10n.t(
+                              L10nKey.sidebarClearAllConfirm,
+                              <String, Object?>{'count': ctrl.threads.length},
+                            )
+                          : l10n.t(L10nKey.sidebarClearAll),
+                      compact: true,
+                      leading: BistreIcon(
+                        BistreUiIcon.trash,
+                        size: 13,
+                        color: _confirmingDeleteAll
+                            ? theme.statusErr
+                            : theme.inkMuted,
+                      ),
+                      onPressed: () {
+                        if (!_confirmingDeleteAll) {
+                          setState(() => _confirmingDeleteAll = true);
+                          return;
+                        }
+                        setState(() => _confirmingDeleteAll = false);
+                        unawaited(ctrl.clearAllThreads());
+                      },
+                    ),
+                  ),
+                // Erase everything: marked now, done when Bistre next starts (an open
+                // database cannot be erased); two presses, and it can be withdrawn until then.
+                BistreSettingRow(
+                  label: l10n.t(L10nKey.settingsStorageEraseAll),
+                  description: l10n.t(
+                    ctrl.dataWipePending
+                        ? L10nKey.settingsStorageErasePending
+                        : L10nKey.settingsStorageEraseHint,
+                  ),
+                  trailing: ctrl.dataWipePending
+                      ? EngravedButton(
+                          label: l10n.t(L10nKey.settingsStorageEraseCancel),
+                          compact: true,
+                          onPressed: () => unawaited(ctrl.cancelDataWipe()),
+                        )
+                      : EngravedButton(
+                          label: l10n.t(
+                            _confirmingErase
+                                ? L10nKey.settingsStorageEraseConfirm
+                                : L10nKey.settingsStorageEraseAction,
+                          ),
+                          compact: true,
+                          leading: BistreIcon(
+                            BistreUiIcon.trash,
+                            size: 13,
+                            color: _confirmingErase
+                                ? theme.statusErr
+                                : theme.inkMuted,
+                          ),
+                          onPressed: () {
+                            if (!_confirmingErase) {
+                              setState(() => _confirmingErase = true);
+                              return;
+                            }
+                            setState(() => _confirmingErase = false);
+                            unawaited(ctrl.requestDataWipe());
+                          },
+                        ),
                 ),
                 BistreSettingRow(
                   label: l10n.t(L10nKey.settingsStorageFileManagerTitle),
@@ -562,9 +660,7 @@ class _UpdatesStorageSettingsViewState
                                             ),
                                             const SizedBox(width: 8),
                                             InkText(
-                                              FolioController.formatBytes(
-                                                f.sizeBytes,
-                                              ),
+                                              l10n.fileSize(f.sizeBytes),
                                               role: InkTextRole.captionMeta,
                                               color: theme.inkMuted,
                                             ),

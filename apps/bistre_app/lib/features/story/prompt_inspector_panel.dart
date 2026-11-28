@@ -13,11 +13,50 @@ import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../shell/folio_controller.dart';
 
-String _formatTokenCount(int tokens) => '$tokens tok';
-String _formatPromptMeter(EnginePromptReport report) =>
-    '${report.staticPrefixTokens} cached + ${report.totalEstimatedTokens - report.staticPrefixTokens} dynamic = ${report.totalEstimatedTokens} tok';
-String _formatLoreBudget(EnginePromptReport report) =>
-    '${report.loreTokensUsed} / ${report.loreTokenBudgetCap} tok';
+String _tokens(BistreLocalizationController l10n, int tokens) =>
+    l10n.t(L10nKey.chatContextTokens, <String, Object?>{'tokens': tokens});
+
+/// A block's title in words. Core's block ids are stable (`prompt_assembler.rs`); its labels
+/// are written for the model, so only the name after "·" in a named block is shown.
+String promptBlockTitle(
+  BistreLocalizationController l10n,
+  EnginePromptBlock b,
+) {
+  final cut = b.label.lastIndexOf(' · ');
+  final name = l10n.isolate(cut < 0 ? b.label : b.label.substring(cut + 3));
+  final id = b.id;
+  if (id.startsWith('char_')) {
+    return l10n.t(L10nKey.storyBlockCharacter, <String, Object?>{'name': name});
+  }
+  if (id.startsWith('lore_')) {
+    return l10n.t(L10nKey.storyBlockLore, <String, Object?>{'name': name});
+  }
+  return switch (id) {
+    'system_base' => l10n.t(L10nKey.storyBlockSystem),
+    'user_persona' => l10n.t(L10nKey.storyBlockPersona, <String, Object?>{
+      'name': name,
+    }),
+    'story_memory' => l10n.t(L10nKey.storyBlockMemory),
+    'era_summaries' => l10n.t(L10nKey.storyBlockEras),
+    'author_note' => l10n.t(L10nKey.storyBlockAuthorNote),
+    'scene_beats' => l10n.t(L10nKey.storyBlockSceneBeats),
+    _ => name,
+  };
+}
+
+/// Why a lore entry was or was not added, in words (core's codes, `lorebook.rs`).
+String loreReason(BistreLocalizationController l10n, String code) {
+  if (code.startsWith('recursive_depth_')) {
+    return l10n.t(L10nKey.storyLoreReasonRecursive);
+  }
+  return switch (code) {
+    'constant' => l10n.t(L10nKey.storyLoreReasonConstant),
+    'sticky' => l10n.t(L10nKey.storyLoreReasonSticky),
+    'keyword_match' => l10n.t(L10nKey.storyLoreReasonKeyword),
+    'budget_exceeded' => l10n.t(L10nKey.storyLoreReasonBudget),
+    _ => l10n.t(L10nKey.storyLoreReasonNotTriggered),
+  };
+}
 
 /// Live Prompt & Lorebook V3 Activation Inspector mounted inside Studio Pane `[Prompt]` tab.
 /// Visualizes the exact compiled outbound prompt order, highlights the Prompt Cache Prefix
@@ -59,7 +98,7 @@ class PromptInspectorPanel extends StatelessWidget {
                   icon: BistreUiIcon.refresh,
                   size: 13,
                   dimension: 26,
-                  semanticsLabel: l10n.t(L10nKey.storyInspectorTitle),
+                  semanticsLabel: l10n.t(L10nKey.settingsStorageRefreshFiles),
                   onPressed: () =>
                       unawaited(controller.refreshPromptInspector()),
                 ),
@@ -73,7 +112,10 @@ class PromptInspectorPanel extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   InkText(
-                    _formatPromptMeter(report),
+                    l10n.t(L10nKey.storyInspectorMeter, <String, Object?>{
+                      'total': report.totalEstimatedTokens,
+                      'reused': report.staticPrefixTokens,
+                    }),
                     role: InkTextRole.captionMeta,
                     color: theme.inkPrimary,
                   ),
@@ -106,6 +148,10 @@ class PromptInspectorPanel extends StatelessWidget {
               const SizedBox(height: 8),
             ],
 
+            // --- Exact credential-free outbound request from core ---
+            const SizedBox(height: 12),
+            _RealRequestCard(controller: controller),
+
             // --- Lorebook V3 Activation & Skip Trace ---
             const SizedBox(height: 8),
             Row(
@@ -124,7 +170,10 @@ class PromptInspectorPanel extends StatelessWidget {
                   ),
                 ),
                 InkText(
-                  _formatLoreBudget(report),
+                  l10n.t(L10nKey.storyInspectorLoreBudget, <String, Object?>{
+                    'used': report.loreTokensUsed,
+                    'limit': report.loreTokenBudgetCap,
+                  }),
                   role: InkTextRole.captionMeta,
                   color: theme.inkMuted,
                 ),
@@ -136,7 +185,7 @@ class PromptInspectorPanel extends StatelessWidget {
                 tone: FolioTone.elevated,
                 borderRadius: 10,
                 child: InkText(
-                  l10n.t(L10nKey.storyCodexTitle),
+                  l10n.t(L10nKey.storyInspectorLoreEmpty),
                   role: InkTextRole.captionMeta,
                   color: theme.inkMuted,
                 ),
@@ -170,7 +219,7 @@ class PromptInspectorPanel extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                             InkText(
-                              item.reason,
+                              loreReason(l10n, item.reason),
                               role: InkTextRole.captionMeta,
                               color: theme.inkMuted,
                               maxLines: 1,
@@ -181,7 +230,7 @@ class PromptInspectorPanel extends StatelessWidget {
                       ),
                       const SizedBox(width: 6),
                       InkText(
-                        _formatTokenCount(item.estimatedTokens),
+                        _tokens(l10n, item.estimatedTokens),
                         role: InkTextRole.captionMeta,
                         color: theme.inkSecondary,
                       ),
@@ -236,15 +285,20 @@ class _CacheBoundaryDivider extends StatelessWidget {
     final theme = BistreTheme.of(context);
     return Row(
       children: [
-        Expanded(child: Container(height: 1, color: theme.accentBrass)),
+        Expanded(child: Container(height: 1, color: theme.borderHairline)),
         Flexible(
           flex: 6,
           child: Padding(
             padding: const EdgeInsetsDirectional.symmetric(horizontal: 6),
-            child: WaxSealBadge(label: label, status: WaxSealStatus.warn),
+            child: InkText(
+              label,
+              role: InkTextRole.captionMeta,
+              color: theme.inkMuted,
+              textAlign: TextAlign.center,
+            ),
           ),
         ),
-        Expanded(child: Container(height: 1, color: theme.accentBrass)),
+        Expanded(child: Container(height: 1, color: theme.borderHairline)),
       ],
     );
   }
@@ -265,6 +319,7 @@ class _PromptBlockCardState extends State<_PromptBlockCard> {
   @override
   Widget build(BuildContext context) {
     final theme = BistreTheme.of(context);
+    final l10n = BistreLocalizations.of(context);
     final b = widget.block;
 
     return PressFeedback(
@@ -292,7 +347,7 @@ class _PromptBlockCardState extends State<_PromptBlockCard> {
                   const SizedBox(width: 6),
                   Expanded(
                     child: InkText(
-                      b.label,
+                      promptBlockTitle(l10n, b),
                       role: InkTextRole.labelStrong,
                       color: theme.inkPrimary,
                       maxLines: 1,
@@ -301,7 +356,7 @@ class _PromptBlockCardState extends State<_PromptBlockCard> {
                   ),
                   const SizedBox(width: 6),
                   InkText(
-                    _formatTokenCount(b.estimatedTokens),
+                    _tokens(l10n, b.estimatedTokens),
                     role: InkTextRole.captionMeta,
                     color: b.isStaticPrefix
                         ? theme.statusOk
@@ -323,6 +378,125 @@ class _PromptBlockCardState extends State<_PromptBlockCard> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _RealRequestCard extends StatefulWidget {
+  const _RealRequestCard({required this.controller});
+
+  final FolioController controller;
+
+  @override
+  State<_RealRequestCard> createState() => _RealRequestCardState();
+}
+
+class _RealRequestCardState extends State<_RealRequestCard> {
+  bool _open = false;
+
+  static String _requestLine(EngineInspectedRequest req) =>
+      '${req.method} ${req.url}';
+
+  static String _headerLine((String, String) h) => '${h.$1}: ${h.$2}';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = BistreTheme.of(context);
+    final l10n = BistreLocalizations.of(context);
+    final req = widget.controller.inspectedRequest;
+    final errKey = widget.controller.inspectedRequestError;
+    if (req == null && errKey == null) return const SizedBox.shrink();
+
+    return FolioSurface(
+      tone: FolioTone.elevated,
+      borderRadius: 10,
+      padding: const EdgeInsetsDirectional.symmetric(
+        horizontal: 10,
+        vertical: 8,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: PressableArea(
+                  label: l10n.t(L10nKey.storyInspectorRealRequest),
+                  onPressed: () => setState(() => _open = !_open),
+                  child: Row(
+                    children: [
+                      BistreIcon(
+                        _open
+                            ? BistreUiIcon.chevronDown
+                            : BistreUiIcon.chevronEnd,
+                        size: 12,
+                        color: theme.inkMuted,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: InkText(
+                          l10n.t(L10nKey.storyInspectorRealRequest),
+                          role: InkTextRole.labelStrong,
+                          color: errKey != null
+                              ? theme.statusErr
+                              : theme.inkPrimary,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (req != null)
+                BistreIconButton(
+                  icon: BistreUiIcon.copy,
+                  size: 12,
+                  dimension: 24,
+                  semanticsLabel: l10n.t(L10nKey.chatActionCopy),
+                  onPressed: () =>
+                      unawaited(widget.controller.copyText(req.bodyJson)),
+                ),
+            ],
+          ),
+          if (errKey != null) ...[
+            const SizedBox(height: 6),
+            InkText(
+              l10n.tRawKey(errKey),
+              role: InkTextRole.captionMeta,
+              color: theme.statusErr,
+            ),
+          ] else if (req != null)
+            DisclosureReveal(
+              open: _open,
+              child: Padding(
+                padding: const EdgeInsetsDirectional.only(top: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    InkText(
+                      _requestLine(req),
+                      role: InkTextRole.codeBlock,
+                      color: theme.accentBrass,
+                    ),
+                    for (final h in req.headers)
+                      InkText(
+                        _headerLine(h),
+                        role: InkTextRole.captionMeta,
+                        color: theme.inkMuted,
+                      ),
+                    const SizedBox(height: 6),
+                    InkText(
+                      req.bodyJson,
+                      role: InkTextRole.codeBlock,
+                      color: theme.inkSecondary,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

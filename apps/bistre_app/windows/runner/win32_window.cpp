@@ -286,7 +286,12 @@ Win32Window::MessageHandler(HWND hwnd,
       return 0;
 
     case WM_DWMCOLORIZATIONCOLORCHANGED:
-      UpdateTheme(hwnd);
+      // Windows resets the frame on an accent change; keep the app's own colours.
+      if (has_app_theme_) {
+        ApplyBistreTheme(app_is_dark_, app_caption_, app_text_, app_border_);
+      } else {
+        UpdateTheme(hwnd);
+      }
       return 0;
   }
 
@@ -355,6 +360,11 @@ void Win32Window::ApplyBistreTheme(bool is_dark,
                                    COLORREF caption_bgr,
                                    COLORREF text_bgr,
                                    COLORREF border_bgr) {
+  has_app_theme_ = true;
+  app_is_dark_ = is_dark;
+  app_caption_ = caption_bgr;
+  app_text_ = text_bgr;
+  app_border_ = border_bgr;
   SetCanvasBackgroundColor(caption_bgr);
   if (!window_handle_) {
     return;

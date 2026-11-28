@@ -8,7 +8,8 @@ class BistreTypographyConfig {
     this.monoFontFamily = 'JetBrainsMono',
     this.baseFontSizePx = 15.0,
     this.lineHeightFactor = 1.6,
-    this.readingWidthPx = 760.0,
+    this.readingWidthPx = BistreSpacing.readingWidthDefault,
+    this.codeScale = 1.0,
   });
 
   final String proseFontFamily;
@@ -16,6 +17,9 @@ class BistreTypographyConfig {
   final double baseFontSizePx;
   final double lineHeightFactor;
   final double readingWidthPx;
+
+  /// Code blocks at this share of the code size that goes with [baseFontSizePx].
+  final double codeScale;
 
   static const BistreTypographyConfig defaults = BistreTypographyConfig();
 
@@ -25,12 +29,14 @@ class BistreTypographyConfig {
     double? baseFontSizePx,
     double? lineHeightFactor,
     double? readingWidthPx,
+    double? codeScale,
   }) => BistreTypographyConfig(
     proseFontFamily: proseFontFamily ?? this.proseFontFamily,
     monoFontFamily: monoFontFamily ?? this.monoFontFamily,
     baseFontSizePx: baseFontSizePx ?? this.baseFontSizePx,
     lineHeightFactor: lineHeightFactor ?? this.lineHeightFactor,
     readingWidthPx: readingWidthPx ?? this.readingWidthPx,
+    codeScale: codeScale ?? this.codeScale,
   );
 
   @override
@@ -40,7 +46,8 @@ class BistreTypographyConfig {
       other.monoFontFamily == monoFontFamily &&
       other.baseFontSizePx == baseFontSizePx &&
       other.lineHeightFactor == lineHeightFactor &&
-      other.readingWidthPx == readingWidthPx;
+      other.readingWidthPx == readingWidthPx &&
+      other.codeScale == codeScale;
 
   @override
   int get hashCode => Object.hash(
@@ -49,6 +56,7 @@ class BistreTypographyConfig {
     baseFontSizePx,
     lineHeightFactor,
     readingWidthPx,
+    codeScale,
   );
 }
 
@@ -143,7 +151,7 @@ class BistreAccentOption {
   }
 
   /// `readableInk`: nudges `ink` toward `toward` in small steps until it reaches `minRatio`
-  /// against EVERY surface in `surfaces` (`docs/design/DESIGN.md` §2, 4-surface auto-contrast).
+  /// against EVERY surface in `surfaces` (`docs/design/design.md` §2, 4-surface auto-contrast).
   static Color readableInk(
     Color ink,
     List<Color> surfaces,
@@ -209,7 +217,7 @@ class BistreThemeData {
   final Color windowBorder;
   final BistreTypographyConfig typography;
 
-  /// Low-memory mode: overlay drop shadows are skipped (`docs/design/DESIGN.md` §8).
+  /// Low-memory mode: overlay drop shadows are skipped (`docs/design/design.md` §8).
   final bool reducedEffects;
 
   /// Active code block syntax theme id (`sepia_warm`, `github_light`, `espresso_amber`, `slate_dark`).
@@ -430,7 +438,8 @@ class BistreThemePreset {
         inkMuted: Color(0xFF666A72),
         accentWax: Color(0xFF2A4A9E),
         onAccentWax: Color(0xFFFFFDF8),
-        accentBrass: Color(0xFF8F6A12),
+        // Blue, so this preset reads apart from Warm Sepia (amber stays for warnings).
+        accentBrass: Color(0xFF2E5AA8),
         statusOk: Color(0xFF245C42),
         statusWarn: Color(0xFF8F6A12),
         statusErr: Color(0xFFB3261E),
@@ -796,7 +805,10 @@ class BistreTypography {
     Color color, {
     BistreTypographyConfig config = BistreTypographyConfig.defaults,
   }) {
-    final sz = (config.baseFontSizePx - 1.5).clamp(11.0, 24.0);
+    final sz = ((config.baseFontSizePx - 1.5) * config.codeScale).clamp(
+      10.0,
+      32.0,
+    );
     return TextStyle(
       fontFamily: _monoFamily(config),
       fontFamilyFallback: _monoFallback,
@@ -828,7 +840,7 @@ class BistreMotion {
     return reduceMotion || disableAnimations || accessibleNav;
   }
 
-  /// Motion timings (`docs/design/DESIGN.md` §6): 150 ms arriving,
+  /// Motion timings (`docs/design/design.md` §6): 150 ms arriving,
   /// 110 ms leaving, 180 ms travelling. Overlays and drawers disappear instantly when closed, so
   /// closing never waits on an animation.
   static const Duration arriving = Duration(milliseconds: 150);
@@ -886,7 +898,12 @@ class BistreSpacing {
   static const double s32 = 32;
   static const double sidebarWidth = 268;
   static const double inspectorWidth = 312;
-  static const double maxReadingWidth = 760;
+
+  /// Reading-column bounds and default, in logical px; core's `save_settings` clamps to
+  /// the same bounds.
+  static const double readingWidthMin = 600;
+  static const double readingWidthDefault = 760;
+  static const double readingWidthMax = 1120;
   static const double maxBreakoutWidth = 1160;
 }
 

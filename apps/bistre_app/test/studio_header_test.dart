@@ -17,7 +17,7 @@ void main() {
       expect(
         find.bySemanticsLabel(RegExp('Chat notes|Ghi chú')),
         findsNothing,
-        reason: 'Chat notes were removed (A-W 4b)',
+        reason: 'Chat notes were removed',
       );
       await tester.tap(studio);
       await tester.pumpAndSettle();
@@ -26,9 +26,7 @@ void main() {
     });
   }
 
-  testWidgets('Studio has a Sources tab with an empty state (A-W 4a)', (
-    tester,
-  ) async {
+  testWidgets('Studio has a Sources tab with an empty state', (tester) async {
     final shell = await ShellHarness.pump(tester);
     shell.controller.toggleStudioPane();
     shell.controller.setStudioTab(StudioTab.sources);

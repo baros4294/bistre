@@ -85,6 +85,8 @@ class _FolioFadeSlideState extends State<FolioFadeSlide>
       opacity: _opacity,
       child: SlideTransition(
         position: _slide,
+        // A sideways start offset is measured from the reading start, so RTL mirrors it.
+        textDirection: Directionality.maybeOf(context),
         child: widget.beginScale == 1.0
             ? widget.child
             : ScaleTransition(scale: _scale, child: widget.child),
@@ -114,7 +116,7 @@ class FolioModalBackdrop extends StatefulWidget {
 
 class _FolioModalBackdropState extends State<FolioModalBackdrop>
     with SingleTickerProviderStateMixin {
-  /// U26: Tab cycles inside the modal, and focus goes back where it was when it closes.
+  /// Tab cycles inside the modal, and focus goes back where it was when it closes.
   final FocusScopeNode _scope = FocusScopeNode(debugLabel: 'modal');
   final FocusNode? _returnFocus = FocusManager.instance.primaryFocus;
   late final AnimationController _controller;
@@ -392,7 +394,6 @@ class FolioStreamingCursor extends StatefulWidget {
 class _FolioStreamingCursorState extends State<FolioStreamingCursor>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  bool _running = false;
 
   @override
   void initState() {
@@ -407,14 +408,25 @@ class _FolioStreamingCursorState extends State<FolioStreamingCursor>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_running) return;
-    _running = true;
+    _follow();
+  }
+
+  @override
+  void didUpdateWidget(FolioStreamingCursor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _follow();
+  }
+
+  /// Breathes, or holds still while Reduce motion is on, also when it changes mid-reply.
+  void _follow() {
     if (BistreMotion.shouldReduceMotion(
       context,
       reduceMotionOverride: widget.reduceMotionOverride,
     )) {
-      _controller.value = 1.0;
-    } else {
+      _controller
+        ..stop()
+        ..value = 1.0;
+    } else if (!_controller.isAnimating) {
       _controller.repeat(reverse: true).ignore();
     }
   }

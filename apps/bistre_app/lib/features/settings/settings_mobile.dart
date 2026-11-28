@@ -64,6 +64,10 @@ mixin _MobileSettings on State<SettingsWorkspace> {
         L10nKey.settingsSubAssistants,
         <String, Object?>{'count': ctrl.assistants.length},
       ),
+      SettingsTab.projects => l10n.t(
+        L10nKey.settingsSubProjects,
+        <String, Object?>{'count': ctrl.projects.length},
+      ),
       SettingsTab.appearance => l10n.t(L10nKey.settingsSubAppearance),
       SettingsTab.trust => l10n.t(L10nKey.settingsSubTrust),
       SettingsTab.agent => l10n.t(L10nKey.settingsSubAgent),
@@ -304,6 +308,7 @@ mixin _MobileSettings on State<SettingsWorkspace> {
       SettingsTab.providers => ProvidersSettingsView(controller: ctrl),
       SettingsTab.defaultModels => DefaultModelsSettingsView(controller: ctrl),
       SettingsTab.assistants => AssistantsSettingsView(controller: ctrl),
+      SettingsTab.projects => ProjectsSettingsView(controller: ctrl),
       SettingsTab.appearance => AppearanceSettingsView(controller: ctrl),
       SettingsTab.trust => BudgetSafetySettingsView(controller: ctrl),
       SettingsTab.agent => AgentToolsSettingsView(controller: ctrl),

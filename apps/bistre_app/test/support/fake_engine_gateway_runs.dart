@@ -1,7 +1,6 @@
 part of 'fake_engine_gateway.dart';
 
-/// Agent runs, steering, and power state of [FakeEngineGateway] (split by responsibility to
-/// keep each file under 1,500 lines).
+/// Agent runs, steering, and power state of [FakeEngineGateway] (split by responsibility).
 mixin _FakeRunsAndPower implements BistreEngineGateway {
   abstract int _clock;
   StreamController<BistreEvent> get _events;
@@ -10,7 +9,11 @@ mixin _FakeRunsAndPower implements BistreEngineGateway {
   final List<EngineAgentRun> _runs = <EngineAgentRun>[];
 
   /// Records a run in core's run list (as `listAgentRuns` returns it).
-  void seedAgentRun({required String threadId, required String status}) {
+  void seedAgentRun({
+    required String threadId,
+    required String status,
+    String? errorKey,
+  }) {
     _clock++;
     _runs.insert(
       0,
@@ -24,6 +27,7 @@ mixin _FakeRunsAndPower implements BistreEngineGateway {
         unattendedPolicy: 'pause_and_notify',
         lastHeartbeatMs: _clock,
         costMicros: 0,
+        errorKey: errorKey,
         createdAtMs: _clock,
         updatedAtMs: _clock,
       ),
@@ -81,6 +85,9 @@ mixin _FakeRunsAndPower implements BistreEngineGateway {
     _steering.removeWhere((s) => s.id == steeringId);
   }
 
+  /// Sets what `powerGuardStatus` reports (for example a connected desktop daemon).
+  void seedPowerStatus(EnginePowerGuardStatus status) => _powerStatus = status;
+
   @override
   Future<EnginePowerGuardStatus> powerGuardStatus() async => _powerStatus;
 
@@ -127,5 +134,75 @@ mixin _FakeRunsAndPower implements BistreEngineGateway {
     );
     _runs[idx] = next;
     return next;
+  }
+
+  /// When set, checking for updates fails with this diagnostic.
+  String? updateCheckFailure;
+
+  /// When set, staging the update fails with this diagnostic.
+  String? stageUpdateFailure;
+
+  /// Optional override for [checkForUpdates] (defaults to available update `0.2.0`).
+  EngineUpdateCheck? updateCheckOverride;
+
+  @override
+  Future<EngineUpdateCheck> checkForUpdates({String? feedUrlOverride}) async {
+    await _record('checkForUpdates', <String, Object?>{
+      'feedUrlOverride': feedUrlOverride,
+    });
+    final failure = updateCheckFailure;
+    if (failure != null) throw Exception(failure);
+    return updateCheckOverride ?? _availableUpdateFixture;
+  }
+
+  static const EngineUpdateCheck _availableUpdateFixture = EngineUpdateCheck(
+    currentVersion: '0.1.0',
+    latestVersion: '0.2.0',
+    updateAvailable: true,
+    track: 'track_b',
+    ownershipMode: 'self_managed',
+    signatureVerified: true,
+    activeRunsBlocking: false,
+    releaseNotes: 'Silent Track-B update ready.',
+    downloadUrl: 'https://example.invalid/bistre-0.2.0.zip',
+    sha256Hex: '0000',
+    downloadSizeBytes: 12400000,
+    checkedAtMs: 1700000000000,
+  );
+
+  @override
+  Future<String> stageUpdate(EngineUpdateCheck check) async {
+    await _record('stageUpdate', <String, Object?>{
+      'version': check.latestVersion,
+    });
+    final failure = stageUpdateFailure;
+    if (failure != null) throw Exception(failure);
+    return '.bistre-dev/updates/bistre-${check.latestVersion}.zip';
+  }
+
+  @override
+  Future<String> reinstallUpdate(EngineUpdateCheck check) async {
+    await _record('reinstallUpdate', <String, Object?>{
+      'version': check.latestVersion,
+    });
+    final failure = stageUpdateFailure;
+    if (failure != null) throw Exception(failure);
+    return '.bistre-dev/updates/bistre-${check.latestVersion}.zip';
+  }
+
+  @override
+  Future<bool> respondHostAction({
+    required String requestId,
+    required bool ok,
+    required String outputText,
+    String? imageBase64,
+  }) async {
+    await _record('respondHostAction', <String, Object?>{
+      'requestId': requestId,
+      'ok': ok,
+      'outputText': outputText,
+      'hasImage': imageBase64 != null && imageBase64.isNotEmpty,
+    });
+    return true;
   }
 }
