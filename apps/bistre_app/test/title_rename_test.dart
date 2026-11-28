@@ -47,7 +47,7 @@ Future<String> _storedTitle(ShellHarness shell, String id) async =>
 
 void main() {
   for (final layout in ShellLayout.values) {
-    testWidgets('Enter saves the new title (A-W 2a, $layout)', (tester) async {
+    testWidgets('Enter saves the new title ($layout)', (tester) async {
       final (shell, a, _) = await _open(tester, layout: layout);
       await tester.enterText(_titleEditor(), 'Trip to Hue');
       await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -66,7 +66,7 @@ void main() {
   });
 
   testWidgets(
-    'Esc cancels the rename only and never stops a reply (A-W 2b, U6)',
+    'Esc cancels the rename only and never stops a reply',
     (tester) async {
       final (shell, a, _) = await _open(tester);
       shell.gateway.emit(RunStartedEvent(threadId: a.id, nodeId: 'live'));

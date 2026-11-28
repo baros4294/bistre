@@ -2,7 +2,7 @@ import 'package:bistre_app/features/shell/folio_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('the Android service follows the number of live runs (P13, P15)', () {
+  test('the Android service follows the number of live runs', () {
     // One of two runs finished: the service stays for the other (it used to stop).
     expect(
       androidServicePlan(liveRuns: 1, waitingForApproval: 0, keepAwake: true),
