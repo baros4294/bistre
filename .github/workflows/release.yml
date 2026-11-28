@@ -13,6 +13,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  # A run started by hand from a branch (a dry run) names its files `dry-run`: a branch name
+  # may hold a slash, which file names cannot.
+  RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || 'dry-run' }}
   RUST_VERSION: "1.100.0"
   FLUTTER_VERSION: "3.50.1"
   ANDROID_NDK_VERSION: "30.0.16248370"
@@ -112,8 +115,6 @@ jobs:
       - name: Smoke-check Windows executable ProductVersion and embedded icon resource
         if: runner.os == 'Windows' && github.ref_type == 'tag'
         shell: pwsh
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           $ErrorActionPreference = 'Stop'
           $exe = (Resolve-Path 'apps/bistre_app/build/windows/x64/runner/Release/bistre_app.exe').Path
@@ -130,7 +131,6 @@ jobs:
         shell: bash
         env:
           RUNNER_OS_NAME: ${{ runner.os }}
-          RELEASE_TAG: ${{ github.ref_name }}
           TARGET_NAME: ${{ matrix.target }}
         run: |
           set -euo pipefail
@@ -221,8 +221,6 @@ jobs:
           bash ../../.github/scripts/with-download-retry.sh flutter build apk --release --target-platform android-arm64 --split-debug-info=build/debug-info
       - name: Verify 16KB ELF alignment, permissions, and budgets of the intermediate
         shell: bash
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           mkdir -p unsigned
@@ -306,7 +304,6 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           for var in ANDROID_KEYSTORE_B64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
@@ -363,8 +360,6 @@ jobs:
           tool: cargo-cyclonedx@0.5.10
       - name: Generate and validate CycloneDX SBOMs for every shipped Rust binary
         shell: bash
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           cargo cyclonedx --format json --all --override-filename bistre-sbom
@@ -500,7 +495,6 @@ jobs:
         env:
           MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
           MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
-          RELEASE_TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -531,7 +525,6 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
