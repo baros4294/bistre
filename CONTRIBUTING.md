@@ -19,10 +19,11 @@ Bistre is an MIT open-source project built around strict layer boundaries, zero 
 
 ## Known Pitfalls
 Each one cost a session time before it was written here. Add the next one you find in the same change.
-- Windows: run Cargo builds and tests from PowerShell or `cmd`, never Git Bash. Git Bash puts GNU coreutils `link` ahead of MSVC `link.exe` on `PATH`, so every Rust link step fails with `link: missing operand` and `link.exe returned an unexpected error`, which looks like a broken Visual Studio install. `cargo check` and `cargo clippy` do not link, so they still pass there.
+- Windows: run Cargo builds and tests, and `flutter test` or `flutter build` (their build hook compiles the Rust library), from PowerShell or `cmd`, never Git Bash. Git Bash puts GNU coreutils `link` ahead of MSVC `link.exe` on `PATH`, so every Rust link step fails with `link: missing operand` and `link.exe returned an unexpected error`, which looks like a broken Visual Studio install; under Flutter it shows only as `Building native assets failed`. `cargo check` and `cargo clippy` do not link, so they still pass there.
+- Windows without Visual Studio (portable MSVC only): `flutter build windows` cannot find a toolchain, so compile a changed runner file directly from `apps/bistre_app/windows`: `cl.exe /nologo /c /std:c++17 /EHsc /W4 /WX /DUNICODE /D_UNICODE /DNOMINMAX /I runner /I . /I flutter\ephemeral /I flutter\ephemeral\cpp_client_wrapper\include runner\<file>.cpp`; CI links it.
 - Linux release container: git refuses a checkout or SDK owned by another user (`detected dubious ownership`); `release.yml` marks both safe.
 - Linux packages: the `.deb` and `.rpm` must list every library Flutter opens at start; a missing one aborts the app before its first frame (`libEGL.so.1`).
-- Flutter tests: a mocked method channel must reply or throw (`MissingPluginException`); a handler that returns nothing leaves the test waiting until it times out.
+- Flutter tests: a mocked method channel must reply or throw (`MissingPluginException`); a handler that returns nothing leaves the test waiting until it times out. A test that shows an error notice pumps 9 s at its end so the notice's timer does not outlive the test.
 - Case-only renames on Windows: use `git mv -f`; a `git reset` drops staged case renames.
 
 ## Translating Bistre in One Pass (Human or AI Agent)

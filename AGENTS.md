@@ -45,7 +45,7 @@ Prompts the app sends are code.
 - A prompt change names the failure it fixes and ships with a test on recorded output.
 
 ## 6. Documentation and hygiene
-- Update all affected documentation in the same change as the code, schema, FFI, token, lint, CI, or dependency change. Record each pitfall you hit (tool, environment, CI, test harness) in CONTRIBUTING Known Pitfalls that session; read it before building.
+- Update all affected documentation in the same change as the code, schema, FFI, token, lint, CI, or dependency change. Record each pitfall (tool, environment, CI, test harness) in CONTRIBUTING Known Pitfalls that session; read it before building.
 - Owners: architecture and deps: ADR, Spec 00, README, AGENTS. Domain: its spec. UI: `docs/design/design.md`, Spec 08. Strings and `DiagnosticKey`: `l10n/catalog/`, Spec 09. Commands and CI: `justfile`, README, CONTRIBUTING. Security: `SECURITY.md`. Notices: `third-party-notices.md`.
 - No `TODO`, `FIXME`, `HACK`, `XXX`, dead code, generator boilerplate, BOM, or CRLF (except `.bat`, `.cmd`, `.iss`, `.rc`); `.ps1` stays ASCII.
 - Budgets: non-generated code files at most 1,000 lines, split by responsibility (Spec 00 §5); `AGENTS.md` and `tasks.md` at most 10,000 characters; `tasks.md` lists open work only.
@@ -53,7 +53,7 @@ Prompts the app sends are code.
 - Lint exceptions: Rust `#[expect(.., reason)]` only when unavoidable, never for `unsafe_code`, `unwrap_used`, `expect_used`, `panic`; Dart never suppresses `bistre_*`.
 
 ## 7. Build, disk, and git
-- Batch edits, iterate with `cargo check -p <crate>`, never overlap heavy builds or wait idle (start CI or `gh workflow run release.yml --ref <branch>`, keep working); release builds once, at task end. On Windows, Cargo runs in PowerShell: Git Bash's `link` shadows MSVC `link.exe`.
+- Batch edits, iterate with `cargo check -p <crate>`, never overlap heavy builds or wait idle (start CI or `gh workflow run release.yml --ref <branch>`, keep working); release builds once, at task end. On Windows, Cargo and Flutter run in PowerShell: Git Bash's `link` shadows MSVC `link.exe`.
 - `target/` at most 4 GiB, `apps/bistre_app/build/` at most 1 GiB (`just disk`); `just prune` keeps the debug and Android caches.
 - Never touch `%LOCALAPPDATA%\Bistre` or an installed build. Debug uses `<repo>/.bistre-dev/`; tests use temp dirs.
 - Never commit, push, open or merge a PR, tag, or release unless the owner asks for that step. Then: Conventional Commits in reviewable layers, `gh pr merge --rebase`.
