@@ -478,7 +478,7 @@ jobs:
     needs: [build-desktop-and-attest, packaging-smoke, sign-android, sbom-cyclonedx]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    # Required reviewers on this environment gate every signed release.
+    # The release environment holds the signing secrets and deploys only from v*.*.* tags.
     environment: release
     permissions:
       contents: write # create the GitHub Release and upload signed assets
