@@ -30,7 +30,7 @@ pub struct KillOnCloseJob {
 )]
 impl KillOnCloseJob {
     /// Creates a job configured with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` and
-    /// `JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION` (G5: a crashing child dies instead of
+    /// `JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION` (a crashing child dies instead of
     /// showing the Windows fault dialog and hanging the run until its timeout).
     pub fn new() -> Option<Self> {
         use windows_sys::Win32::System::JobObjects::{
@@ -180,7 +180,7 @@ pub fn kill_with_parent(cmd: &mut std::process::Command) {
 
 #[cfg(test)]
 mod tests {
-    /// G5 (codex #63645): a child that crashes must not show the Windows fault dialog and hang
+    /// A child that crashes must not show the Windows fault dialog and hang
     /// the bounded run until its timeout; the job makes every process in it die instead.
     #[cfg(windows)]
     #[test]

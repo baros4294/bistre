@@ -53,7 +53,7 @@ pub struct WorkspaceHooks {
 }
 
 /// A workspace's hooks as shown to the user for approval.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceHooksStatus {
     pub hooks: Vec<WorkspaceHookConfig>,
     pub digest: String,
@@ -98,7 +98,7 @@ pub fn hooks_approval_key(workspace_root: &Path) -> String {
 pub enum HookRun {
     /// No hook matches this event and tool.
     None,
-    /// Matching hooks exist, but the user has not approved this exact hooks file (A-S5).
+    /// Matching hooks exist, but the user has not approved this exact hooks file.
     NotApproved,
     /// Every matching hook ran (in order); each result says whether it succeeded.
     Ran(Vec<HookExecutionResult>),
@@ -211,7 +211,7 @@ mod tests {
         Ok(())
     }
 
-    /// A-S5: hooks run only when the user approved this exact file; any edit needs a new
+    /// Hooks run only when the user approved this exact file; any edit needs a new
     /// approval.
     #[tokio::test]
     async fn hooks_run_only_for_the_approved_file() -> TestResult {

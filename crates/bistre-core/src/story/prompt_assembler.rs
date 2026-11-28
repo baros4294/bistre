@@ -252,6 +252,84 @@ fn make_block(
     }
 }
 
+/// A locked/frozen story canon fragment pinned by ordinal position and `blake3` digest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FrozenFragment {
+    pub block_id: String,
+    pub position: usize,
+    pub blake3_hex: String,
+}
+
+impl FrozenFragment {
+    /// Seals a prompt block at `position` with its current `blake3` content hash.
+    #[must_use]
+    pub fn seal(block: &PromptBlock, position: usize) -> Self {
+        Self {
+            block_id: block.id.clone(),
+            position,
+            blake3_hex: blake3::hash(block.content.as_bytes()).to_hex().to_string(),
+        }
+    }
+}
+
+/// Verifies that every locked [`FrozenFragment`] still sits at its exact ordinal position with an
+/// unchanged `blake3` digest; returns the first drifted `block_id` on mismatch (fail closed).
+pub fn verify_frozen_fragments<'a>(
+    blocks: &[PromptBlock],
+    frozen: &'a [FrozenFragment],
+) -> Result<(), &'a str> {
+    for lock in frozen {
+        let Some(block) = blocks.get(lock.position) else {
+            return Err(&lock.block_id);
+        };
+        if block.id != lock.block_id {
+            return Err(&lock.block_id);
+        }
+        let actual = blake3::hash(block.content.as_bytes()).to_hex();
+        if actual.as_str() != lock.blake3_hex {
+            return Err(&lock.block_id);
+        }
+    }
+    Ok(())
+}
+
+/// Incremental hierarchical summary watermark preventing already-summarized chapters/nodes from
+/// being re-summarized on later turns.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HierarchicalSummaryWatermark {
+    pub summarized_up_to_node_id: Option<String>,
+    pub chapter_summaries: Vec<(u32, String)>,
+    pub era_summary: String,
+}
+
+impl HierarchicalSummaryWatermark {
+    /// Returns the slice of `nodes` strictly after `summarized_up_to_node_id` (or all nodes if
+    /// no watermark exists or the watermark is not on this branch).
+    #[must_use]
+    pub fn unsummarized_tail<'a>(&self, nodes: &'a [NodeRecord]) -> &'a [NodeRecord] {
+        let Some(ref wm) = self.summarized_up_to_node_id else {
+            return nodes;
+        };
+        match nodes.iter().position(|n| &n.id == wm) {
+            Some(idx) => &nodes[idx + 1..],
+            None => nodes,
+        }
+    }
+}
+
+/// Resolves a Story Studio role's model (`prewriter`, `librarian`, `writer`), falling back to the
+/// thread/default model when no per-role override is configured.
+#[must_use]
+pub fn resolve_story_role_model<'a>(
+    role_override: Option<&'a str>,
+    fallback_model: &'a str,
+) -> &'a str {
+    role_override
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(fallback_model)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -322,5 +400,29 @@ mod tests {
         );
         assert!(report.blocks[1].content.contains("Lyra guides Rowan"));
         assert_eq!(report.lore_result.activated.len(), 1);
+
+        // Frozen fragment verification detects both content drift and position shifts.
+        let frozen = vec![FrozenFragment::seal(&report.blocks[0], 0)];
+        assert!(verify_frozen_fragments(&report.blocks, &frozen).is_ok());
+        let mut drifted = report.blocks.clone();
+        drifted[0].content.push_str(" tampered");
+        assert_eq!(
+            verify_frozen_fragments(&drifted, &frozen),
+            Err(report.blocks[0].id.as_str())
+        );
+
+        // Hierarchical summary watermark returns only nodes strictly after the watermark.
+        let mut wm = HierarchicalSummaryWatermark::default();
+        assert_eq!(wm.unsummarized_tail(&nodes).len(), 1);
+        wm.summarized_up_to_node_id = Some("n1".to_owned());
+        assert_eq!(wm.unsummarized_tail(&nodes), []);
+
+        // Per-role model fallback picks explicit override, else fallback.
+        assert_eq!(
+            resolve_story_role_model(Some("writer-pro"), "base"),
+            "writer-pro"
+        );
+        assert_eq!(resolve_story_role_model(Some("  "), "base"), "base");
+        assert_eq!(resolve_story_role_model(None, "base"), "base");
     }
 }

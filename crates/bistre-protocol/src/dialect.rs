@@ -1,4 +1,4 @@
-//! The provider wire dialects and the facts every caller shares about them (Spec 02, P7).
+//! The provider wire dialects and the facts every caller shares about them (Spec 02).
 
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +18,33 @@ pub const ANTHROPIC_API_VERSION: &str = "2023-06-01";
 pub const ANTHROPIC_BETA_FILES: &str = "files-api-2025-04-14";
 /// Anthropic beta flag for server-side context management (`anthropic-beta`).
 pub const ANTHROPIC_BETA_CONTEXT_MANAGEMENT: &str = "context-management-2025-06-27";
+
+/// `OpenRouter`'s `OpenAI`-compatible API root, the base URL of its starter provider.
+pub const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
+/// `OpenRouter`'s host; its regional hosts are subdomains (`eu.openrouter.ai`).
+const OPENROUTER_HOST: &str = "openrouter.ai";
+/// `OpenRouter`'s model list filtered by the account's privacy and provider settings; needs a key.
+pub const OPENROUTER_KEYED_MODELS_PATH: &str = "/models/user";
+
+/// Whether `base_url` is `OpenRouter` (HTTPS on its host or a subdomain), the only target that
+/// gets `OpenRouter`-only request fields.
+pub fn is_openrouter_base(base_url: &str) -> bool {
+    let Some(rest) = base_url.trim().strip_prefix("https://") else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let host_port = authority.rsplit('@').next().unwrap_or_default();
+    let host = host_port
+        .split(':')
+        .next()
+        .unwrap_or_default()
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    host == OPENROUTER_HOST
+        || host
+            .strip_suffix(OPENROUTER_HOST)
+            .is_some_and(|sub| sub.ends_with('.'))
+}
 
 impl ProviderDialect {
     /// Every dialect, in the order the app lists them.
@@ -56,7 +83,7 @@ impl ProviderDialect {
         }
     }
 
-    /// The main chat endpoint, relative to [`Self::api_root`] (P7: one source for every caller).
+    /// The main chat endpoint, relative to [`Self::api_root`] (one source for every caller).
     pub const fn default_endpoint_path(self) -> &'static str {
         match self {
             Self::OpenAi => "/responses",
@@ -102,5 +129,33 @@ impl ProviderDialect {
     /// Big 3 cloud providers always require an API key; custom endpoints may run locally without one.
     pub const fn requires_api_key(self) -> bool {
         !matches!(self, Self::CustomOpenAi)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_openrouter_base;
+
+    #[test]
+    fn only_https_on_the_openrouter_host_or_a_subdomain_is_openrouter() {
+        for yes in [
+            "https://openrouter.ai/api/v1",
+            "https://OpenRouter.ai/api/v1/",
+            "https://eu.openrouter.ai/api/v1",
+            "https://openrouter.ai:443/api/v1",
+        ] {
+            assert!(is_openrouter_base(yes), "{yes}");
+        }
+        for no in [
+            "http://openrouter.ai/api/v1",
+            "https://notopenrouter.ai/api/v1",
+            "https://openrouter.ai.evil.example/api/v1",
+            "https://evil.example/openrouter.ai",
+            "https://openrouter.ai@evil.example/v1",
+            "http://127.0.0.1:11434/v1",
+            "",
+        ] {
+            assert!(!is_openrouter_base(no), "{no}");
+        }
     }
 }

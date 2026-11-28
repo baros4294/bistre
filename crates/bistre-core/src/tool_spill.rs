@@ -1,6 +1,6 @@
 //! Tool outputs larger than `TOOL_OUTPUT_SPILL_BYTES` (`64 KiB`) spill to
 //! `<data_dir>/tool_blobs/` (atomic write, off the async workers) and the model gets a
-//! `16 KiB` preview naming the blob (AGENTS section 7, R21).
+//! `16 KiB` preview naming the blob (AGENTS section 7).
 
 use std::path::Path;
 
@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::agent_tools::TOOL_OUTPUT_SPILL_BYTES;
 
-/// [`spill_large_output`] on the blocking pool (R21). Small outputs return inline at once.
+/// [`spill_large_output`] on the blocking pool. Small outputs return inline at once.
 pub(crate) async fn spill_off_worker(data_dir: &Path, call_id: &str, text: &str) -> String {
     if text.len() <= TOOL_OUTPUT_SPILL_BYTES {
         return text.to_owned();
@@ -24,8 +24,12 @@ pub(crate) async fn spill_off_worker(data_dir: &Path, call_id: &str, text: &str)
 }
 
 /// Writes `bytes` to `dir/filename` atomically: a unique temp file, `sync_all`, then rename,
-/// so a reader never sees a partial blob (R21).
-fn write_blob_atomically(dir: &Path, filename: &str, bytes: &[u8]) -> std::io::Result<()> {
+/// so a reader never sees a partial blob.
+pub(crate) fn write_blob_atomically(
+    dir: &Path,
+    filename: &str,
+    bytes: &[u8],
+) -> std::io::Result<()> {
     use std::io::Write as _;
     std::fs::create_dir_all(dir)?;
     let tmp = dir.join(format!(".{filename}.{}.tmp", Uuid::now_v7().simple()));
@@ -68,10 +72,7 @@ fn spill_large_output(data_dir: &Path, call_id: &str, text: &str) -> String {
 
 /// The first `16 KiB` of `text` plus a footer naming the saved blob, or saying it was cut.
 fn spill_preview(text: &str, saved_as: Option<&str>) -> String {
-    let mut cut = 16 * 1024;
-    while cut > 0 && !text.is_char_boundary(cut) {
-        cut -= 1;
-    }
+    let cut = text.floor_char_boundary(16 * 1024);
     let preview = &text[..cut];
     match saved_as {
         Some(filename) => format!(

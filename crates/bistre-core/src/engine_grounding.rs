@@ -1,4 +1,4 @@
-//! Web sources of a chat's replies (B2), read back from the stored node metadata.
+//! Web sources of a chat's replies, read back from the stored node metadata.
 
 use bistre_protocol::{BistreResult, NodeRole};
 
@@ -6,7 +6,7 @@ use crate::InProcessEngine;
 use crate::grounding::{GroundingSource, parse_grounding_meta};
 
 /// The sources one reply used.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NodeGrounding {
     pub node_id: String,
     pub sources: Vec<GroundingSource>,

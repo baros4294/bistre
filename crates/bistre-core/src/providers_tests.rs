@@ -1,8 +1,10 @@
 //! Unit tests for `providers.rs`.
 use super::*;
 use bistre_protocol::NodeRole;
+use serde_json::json;
+use std::collections::HashMap;
 
-type TestResult = Result<(), Box<dyn std::error::Error>>;
+pub(crate) type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 #[test]
 fn terminal_events_per_dialect() {
@@ -481,7 +483,7 @@ fn gemini_generate_content_thoughts_never_leak_into_full_text_and_plain_json_wor
     );
 }
 
-/// R6: a provider that redirects to another host never receives a second, keyed request
+/// A provider that redirects to another host never receives a second, keyed request
 /// there. reqwest strips `Authorization` across hosts but not `x-api-key` / `x-goog-api-key`,
 /// and a 307 re-sends the body, so the provider client follows no redirects at all.
 #[tokio::test]
@@ -530,7 +532,7 @@ async fn a_cross_host_redirect_never_forwards_the_key_or_the_body() -> TestResul
     Ok(())
 }
 
-/// R8: when the stream buffer cap trips after text was already shown, the reply keeps that
+/// When the stream buffer cap trips after text was already shown, the reply keeps that
 /// text and is marked interrupted. It is never retried (that would show and bill it twice).
 #[tokio::test]
 async fn a_buffer_cap_after_output_marks_the_reply_interrupted_instead_of_retrying() -> TestResult {
@@ -564,7 +566,7 @@ async fn a_buffer_cap_after_output_marks_the_reply_interrupted_instead_of_retryi
     Ok(())
 }
 
-/// R12: a provider file uploaded for one request under `store: false` is deleted even when
+/// A provider file uploaded for one request under `store: false` is deleted even when
 /// the stream then fails, not only on success.
 #[tokio::test]
 async fn an_ephemeral_upload_is_deleted_when_the_stream_fails() -> TestResult {
@@ -628,7 +630,7 @@ async fn an_ephemeral_upload_is_deleted_when_the_stream_fails() -> TestResult {
     Ok(())
 }
 
-/// S4 / P7: a Gemini base URL that already ends in `/v1beta` (the old preset) never produces
+/// A Gemini base URL that already ends in `/v1beta` (the old preset) never produces
 /// `/v1beta/v1beta/...`; every dialect's endpoint comes from one descriptor.
 #[test]
 fn gemini_base_with_version_never_doubles_the_path() {
@@ -678,7 +680,7 @@ fn gemini_base_with_version_never_doubles_the_path() {
     );
 }
 
-/// P8: the URLs shown for a provider are the ones it is called at.
+/// The URLs shown for a provider are the ones it is called at.
 #[test]
 fn resolved_endpoints_match_the_urls_that_are_called() {
     use crate::credentials::resolve_endpoint;
@@ -730,7 +732,7 @@ async fn stream_once(
     Ok((res, seen))
 }
 
-/// R42 + P4: an HTTP 200 whose body is a plain JSON error fails at once with the provider's
+/// An HTTP 200 whose body is a plain JSON error fails at once with the provider's
 /// reason; it is never classified as a dropped stream and retried for minutes.
 #[tokio::test]
 async fn a_plain_json_error_body_fails_with_the_providers_reason() -> TestResult {
@@ -752,7 +754,7 @@ async fn a_plain_json_error_body_fails_with_the_providers_reason() -> TestResult
     Ok(())
 }
 
-/// R10: a reply cut by the output limit says so (it is not a silent "complete").
+/// A reply cut by the output limit says so (it is not a silent "complete").
 #[tokio::test]
 async fn a_reply_cut_by_the_output_limit_reports_length() -> TestResult {
     use crate::test_support::Scripted;
@@ -766,7 +768,7 @@ async fn a_reply_cut_by_the_output_limit_reports_length() -> TestResult {
     Ok(())
 }
 
-/// P4: an HTTP error keeps the provider's own reason in the diagnostic detail.
+/// An HTTP error keeps the provider's own reason in the diagnostic detail.
 #[tokio::test]
 async fn an_http_error_keeps_the_providers_reason() -> TestResult {
     use crate::test_support::Scripted;
@@ -783,9 +785,9 @@ async fn an_http_error_keeps_the_providers_reason() -> TestResult {
     Ok(())
 }
 
-/// G1 (`OpenAI` prompt-caching guide, read 2026-11-26): newer models append top-level
+/// Newer models append top-level
 /// `instructions` after `input`, so the system prompt goes first in `input` as a `developer`
-/// message, keeping the cached prefix stable. G2: replayed `function_call` items carry the
+/// message, keeping the cached prefix stable. Replayed `function_call` items carry the
 /// documented `status: "completed"` they had when the API returned them.
 #[test]
 fn openai_responses_put_the_system_prompt_first_and_replay_call_status() {
@@ -829,7 +831,7 @@ fn openai_responses_put_the_system_prompt_first_and_replay_call_status() {
     assert_eq!(call["status"], "completed", "{body}");
 }
 
-/// R7: a chained `OpenAI` request does not resend the system prompt (it stays in the stored
+/// A chained `OpenAI` request does not resend the system prompt (it stays in the stored
 /// conversation, per the prompt-caching guide) and carries `previous_response_id`.
 #[test]
 fn a_chained_openai_request_does_not_resend_the_system_prompt() {
@@ -864,7 +866,7 @@ fn a_chained_openai_request_does_not_resend_the_system_prompt() {
     assert_eq!(body["input"][0]["role"], "user");
 }
 
-/// R7: chaining right after a tool call still sends the tool's result (its call is in the
+/// Chaining right after a tool call still sends the tool's result (its call is in the
 /// stored reply, before the chain point).
 #[test]
 fn a_chained_request_after_a_tool_call_sends_the_result() {
@@ -910,7 +912,7 @@ fn a_chained_request_after_a_tool_call_sends_the_result() {
     assert_eq!(body["input"][0]["call_id"], "c1");
 }
 
-/// A wrong URL (404) is never retried (opencode #52330): it fails at once.
+/// A wrong URL (404) is never retried: it fails at once.
 #[tokio::test]
 async fn a_not_found_endpoint_is_never_retried() -> TestResult {
     use crate::test_support::Scripted;
@@ -921,7 +923,7 @@ async fn a_not_found_endpoint_is_never_retried() -> TestResult {
     Ok(())
 }
 
-/// P19: a stream that went silent while the app was in the background ends when the app comes
+/// A stream that went silent while the app was in the background ends when the app comes
 /// back (kept as an interrupted reply), instead of waiting out the 90 s idle timeout.
 #[tokio::test]
 async fn a_stream_stalled_across_a_resume_ends_when_the_app_comes_back() -> TestResult {
@@ -940,5 +942,51 @@ async fn a_stream_stalled_across_a_resume_ends_when_the_app_comes_back() -> Test
     let out = res?;
     assert_eq!(out.full_text, "half");
     assert!(out.interrupted);
+    Ok(())
+}
+
+/// Advanced > Endpoint path replaces the request path, and Advanced > Authentication picks
+/// how the key travels: a Bearer header for any dialect, or a `key` query parameter added
+/// to the sent URL only.
+#[tokio::test]
+async fn the_advanced_endpoint_path_and_authentication_are_used() -> TestResult {
+    use crate::test_support::{MockServer, Scripted, keys};
+    let reply = "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+    let server = MockServer::start(vec![Scripted::sse(reply), Scripted::sse(reply)]).await?;
+    let http = build_http_client()?;
+    let base = format!("{}/v1", server.base());
+    let request = |auth| {
+        let opts = StreamRequestOptions {
+            endpoint_path: Some("/gateway/chat"),
+            auth_mode: auth,
+            ..StreamRequestOptions::default()
+        };
+        build_stream_request_full(
+            ProviderDialect::Anthropic,
+            &base,
+            "m",
+            "",
+            &crate::test_support::user_turn("hello"),
+            GenerationParams::default(),
+            false,
+            None,
+            &HashMap::<String, String>::new(),
+            &opts,
+        )
+    };
+    let ring = keys(&["k1"]);
+    let mut notices = Vec::new();
+    let bearer = request(AuthMode::Bearer);
+    dispatch(&http, bearer, &ring, &mut notices).await?;
+    let query = request(AuthMode::Query);
+    assert!(!query.url.contains("k1"), "the stored URL holds no key");
+    dispatch(&http, query, &ring, &mut notices).await?;
+    let seen = server.finish().await;
+    assert_eq!(seen[0].path, "/v1/gateway/chat");
+    assert_eq!(seen[0].header("authorization"), Some("Bearer k1"));
+    assert_eq!(seen[0].header("x-api-key"), None);
+    assert_eq!(seen[1].path, "/v1/gateway/chat?key=k1");
+    assert_eq!(seen[1].header("authorization"), None);
+    assert_eq!(seen[1].header("x-api-key"), None);
     Ok(())
 }

@@ -10,7 +10,6 @@
 //! instant `401`/`403`/`429` failover, the ordered HTTP 400 heal ladder, the Gemini downgrade,
 //! and typed failure classification with server retry hints (`error_policy`).
 
-use std::collections::HashMap;
 use std::path::Path;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -18,10 +17,10 @@ use std::time::{Duration, SystemTime};
 
 use bistre_protocol::{
     BistreError, BistreResult, DiagnosticKey, GenerationParams, MoneyMicros, NodeRecord,
-    ProviderDialect, ProviderModelInfo, ProviderProfile, ReasoningEffort, UsageMetrics,
+    ProviderDialect, ProviderModelInfo, ProviderProfile, UsageMetrics,
 };
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::credentials::{KeyRing, is_key_failover_status};
 use crate::error_policy::{
@@ -36,24 +35,47 @@ use crate::wire_stream::StreamState;
 
 /// Optional per-request extensions: replay policy context, active wire tools, stateful chaining
 /// ID, Anthropic cache TTL, server compaction, reply prefill, and custom overrides.
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "Independent per-request wire flags forwarded from provider advanced settings."
+)]
 #[derive(Debug, Default, Clone)]
 pub struct StreamRequestOptions<'a> {
     pub replay_ctx: Option<&'a ReplayContext>,
     pub tools_wire: Option<&'a [Value]>,
     pub previous_server_id: Option<&'a str>,
-    /// R7: where the items after the chained reply begin in `history` (only they are sent
+    /// Where the items after the chained reply begin in `history` (only they are sent
     /// when chaining); ignored without `previous_server_id`.
     pub chain_first_new_index: usize,
-    /// The run's decision whether the provider stores this request (R7: one decision shared
-    /// with chaining); `None` takes it from the provider profile.
-    pub store: Option<bool>,
+    /// Whether the provider stores this request, decided once by
+    /// [`crate::provider_prefs::stores_on_server`]; requests outside a chat run never do.
+    pub store: bool,
     pub anthropic_cache_1h: bool,
     pub anthropic_server_compaction: bool,
+    /// Advanced > Endpoint path, replacing the dialect's own request path.
+    pub endpoint_path: Option<&'a str>,
+    pub auth_mode: AuthMode,
     pub disable_legacy_fallback: bool,
     pub reply_prefill: Option<String>,
     pub anthropic_beta_headers: Vec<String>,
     pub extra_headers: Vec<crate::custom_headers::CustomHeader>,
     pub extra_body_fields: Option<serde_json::Map<String, Value>>,
+    /// What the model writes besides text, from the catalog; Chat Completions asks for it
+    /// (`modalities`) and every dialect's reply media is kept (`media_wire`).
+    pub media_out: crate::registry::ModalitySet,
+    /// What the model reads, from the catalog (`None` when unknown).
+    pub reads: Option<crate::registry::ModalitySet>,
+    /// The voice of a spoken reply (the user's choice, else the catalog's first voice).
+    pub voice: Option<&'a str>,
+    /// The media settings the model offers (`media_wire::MediaPick::for_model`).
+    pub(crate) media_pick: crate::media_wire::MediaPick,
+    /// Sends the provider's own free tools with Bistre's (`request_body::provider_tools`);
+    /// set only when Bistre's tools are sent and no spending limit applies.
+    pub provider_tools: bool,
+    /// The provider's tools billed per call (`turn_context::paid_tools`).
+    pub paid_tools: crate::paid_tools::PaidTools,
+    /// A chat request's `request_id`: its body and response are kept in `raw_exchange`.
+    pub raw_request_id: Option<&'a str>,
 }
 
 /// Exact integer micro-USD cost from live registry rates (zero floats, zero hardcoded rates).
@@ -94,6 +116,18 @@ pub fn build_http_client() -> BistreResult<reqwest::Client> {
     crate::http_clients::provider_client()
 }
 
+/// How the API key travels (Advanced > Authentication).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum AuthMode {
+    /// The dialect's own header (`Authorization: Bearer`, `x-api-key`, `x-goog-api-key`).
+    #[default]
+    Native,
+    /// `Authorization: Bearer <key>` whatever the dialect (most gateways).
+    Bearer,
+    /// A `key` query parameter, added at send time so stored URLs stay credential-free.
+    Query,
+}
+
 /// One credential-free outbound request; auth is attached per attempt by [`dispatch`].
 #[derive(Debug, Clone)]
 pub struct WireRequest {
@@ -102,6 +136,7 @@ pub struct WireRequest {
     pub url: String,
     pub headers: HeaderMap,
     pub body: Option<Value>,
+    pub auth: AuthMode,
     /// Downgrade request sent once when the primary answers `400`/`404` (Gemini Interactions).
     pub fallback: Option<Box<WireRequest>>,
 }
@@ -154,12 +189,21 @@ pub async fn dispatch(
     let mut heals = 0_usize;
     loop {
         let mut headers = wire.headers.clone();
-        if let Some(key) = order.get(key_idx) {
-            attach_key(&mut headers, wire.dialect, key)?;
+        let key = order.get(key_idx).copied();
+        match (wire.auth, key) {
+            (AuthMode::Native, Some(key)) => attach_key(&mut headers, wire.dialect, key)?,
+            (AuthMode::Bearer, Some(key)) => {
+                attach_key(&mut headers, ProviderDialect::CustomOpenAi, key)?;
+            }
+            (AuthMode::Query, _) | (_, None) => {}
         }
-        let mut req = client
-            .request(wire.method.clone(), &wire.url)
-            .headers(headers);
+        // A query key is added to this attempt's URL only; `wire.url` stays credential-free.
+        let mut url = reqwest::Url::parse(&wire.url)
+            .map_err(|_| BistreError::with_detail(DiagnosticKey::InvalidInput, "provider_url"))?;
+        if let (AuthMode::Query, Some(key)) = (wire.auth, key) {
+            url.query_pairs_mut().append_pair("key", key);
+        }
+        let mut req = client.request(wire.method.clone(), url).headers(headers);
         if let Some(body) = &wire.body {
             req = req.json(body);
         }
@@ -197,7 +241,7 @@ pub async fn dispatch(
                 wire.headers.remove("anthropic-beta");
             }
             heals += 1;
-            // R14: dropping reasoning for one request only marks the model "no reasoning"
+            // Dropping reasoning for one request only marks the model "no reasoning"
             // when the provider said reasoning is unsupported.
             let code = if heal == crate::error_policy::Http400Heal::DropReasoning
                 && !crate::error_policy::says_reasoning_unsupported(&body_text)
@@ -226,6 +270,16 @@ pub async fn dispatch(
     }
 }
 
+/// The model list path: with a key, `OpenRouter` lists only the models the account's privacy
+/// and provider settings allow, so the picker never offers one its requests would be refused.
+fn models_path(provider: &ProviderProfile, keys: &KeyRing) -> &'static str {
+    if !keys.is_empty() && bistre_protocol::dialect::is_openrouter_base(&provider.base_url) {
+        bistre_protocol::dialect::OPENROUTER_KEYED_MODELS_PATH
+    } else {
+        provider.dialect.models_path()
+    }
+}
+
 /// Fetches live models directly from the configured provider endpoint (zero hardcoded model tables),
 /// rotating keys with instant failover exactly like chat requests.
 pub async fn fetch_models(
@@ -233,7 +287,17 @@ pub async fn fetch_models(
     provider: &ProviderProfile,
     keys: &KeyRing,
 ) -> BistreResult<Vec<ProviderModelInfo>> {
-    if provider.dialect.requires_api_key() && keys.is_empty() {
+    fetch_models_with_auth(client, provider, keys, AuthMode::Native).await
+}
+
+/// [`fetch_models`] using the provider's chosen [`AuthMode`] (Advanced > Authentication).
+pub async fn fetch_models_with_auth(
+    client: &reqwest::Client,
+    provider: &ProviderProfile,
+    keys: &KeyRing,
+    auth_mode: AuthMode,
+) -> BistreResult<Vec<ProviderModelInfo>> {
+    if provider.requires_api_key() && keys.is_empty() {
         return Err(BistreError::new(DiagnosticKey::ProviderNotConfigured));
     }
     let base = provider.dialect.api_root(&provider.base_url);
@@ -245,13 +309,14 @@ pub async fn fetch_models(
             HeaderValue::from_static(bistre_protocol::dialect::ANTHROPIC_API_VERSION),
         );
     }
-    let url = format!("{base}{}", provider.dialect.models_path());
+    let url = format!("{base}{}", models_path(provider, keys));
     let wire = WireRequest {
         dialect: provider.dialect,
         method: reqwest::Method::GET,
         url,
         headers,
         body: None,
+        auth: auth_mode,
         fallback: None,
     };
     let mut notices = Vec::new();
@@ -301,7 +366,7 @@ where
 
 /// Streams a real completion across all Big 3 + Custom dialects with separate `on_delta` and
 /// `on_thinking` callbacks. A stream that ends without the dialect's terminal event is
-/// `ProviderStreamInterrupted` (an error when nothing arrived, `interrupted` otherwise) — never
+/// `ProviderStreamInterrupted` (an error when nothing arrived, `interrupted` otherwise): never
 /// a silently "complete" truncation.
 #[expect(
     clippy::too_many_arguments,
@@ -365,7 +430,13 @@ where
     F: FnMut(&str) + Send,
     T: FnMut(&str) + Send,
 {
-    let opts = StreamRequestOptions::default();
+    let opts = StreamRequestOptions {
+        store: crate::provider_prefs::stores_on_server(
+            stateless_default,
+            provider.use_server_state_cache,
+        ),
+        ..StreamRequestOptions::default()
+    };
     stream_completion_with_options(
         client,
         provider,
@@ -374,7 +445,6 @@ where
         system_prompt,
         history,
         gen_params,
-        stateless_default,
         data_dir,
         &opts,
         cancel_flag,
@@ -401,7 +471,6 @@ pub async fn stream_completion_with_options<F, T>(
     system_prompt: &str,
     history: &[NodeRecord],
     gen_params: GenerationParams,
-    stateless_default: bool,
     data_dir: Option<&Path>,
     options: &StreamRequestOptions<'_>,
     cancel_flag: &AtomicBool,
@@ -416,14 +485,11 @@ where
     if clean_model.is_empty() {
         return Err(BistreError::new(DiagnosticKey::ProviderModelRequired));
     }
-    if provider.dialect.requires_api_key() && keys.is_empty() {
+    if provider.requires_api_key() && keys.is_empty() {
         return Err(BistreError::new(DiagnosticKey::ProviderNotConfigured));
     }
 
-    let store_server_state = match options.store {
-        Some(store) => store,
-        None => !stateless_default && provider.use_server_state_cache,
-    };
+    let store_server_state = options.store;
     let base = provider.base_url.trim_end_matches('/');
     let primary_key = keys.primary().unwrap_or("");
     let uploaded = tokio::select! {
@@ -445,7 +511,7 @@ where
             ..StreamOutcome::default()
         });
     };
-    // R11: uploaded files belong to the key that uploaded them (the primary).
+    // Uploaded files belong to the key that uploaded them (the primary).
     let pinned_keys;
     let request_keys = if uploaded.refs.is_empty() {
         keys
@@ -453,7 +519,7 @@ where
         pinned_keys = keys.primary_only();
         &pinned_keys
     };
-    // R24: say which attachments the model will not get (each is replaced by a note).
+    // Say which attachments the model will not get (each is replaced by a note).
     let unsent = data_dir.map_or_else(Vec::new, |dir| {
         crate::attachments::unsent_attachment_names_with_refs(dir, history, &uploaded.refs)
     });
@@ -485,18 +551,24 @@ where
                     .push(bistre_protocol::dialect::ANTHROPIC_BETA_CONTEXT_MANAGEMENT.to_owned());
             }
         }
-        let wire = build_stream_request_full(
-            provider.dialect,
-            base,
-            clean_model,
-            system_prompt,
-            history,
-            gen_params,
-            store_server_state,
-            data_dir,
-            &uploaded.refs,
-            &effective_opts,
-        );
+        // The build reads attachment files from disk.
+        let wire = crate::off_worker::in_place(|| {
+            build_stream_request_full(
+                provider.dialect,
+                base,
+                clean_model,
+                system_prompt,
+                history,
+                gen_params,
+                store_server_state,
+                data_dir,
+                &uploaded.refs,
+                &effective_opts,
+            )
+        });
+        if let (Some(id), Some(body)) = (options.raw_request_id, &wire.body) {
+            crate::raw_exchange::record_request(id, &wire.url, body);
+        }
         let mut state = StreamState::default();
         state.started_at = Some(std::time::Instant::now());
         // Stop must take effect while connecting and while waiting for the first token, not only
@@ -583,6 +655,9 @@ where
             };
             last_byte = std::time::Instant::now();
             received_any = true;
+            if let Some(id) = options.raw_request_id {
+                crate::raw_exchange::append_response(id, &bytes);
+            }
             if cancel_flag.load(Ordering::SeqCst) {
                 state.out.cancelled = true;
                 break;
@@ -590,7 +665,7 @@ where
             let payloads = match sse.push_bytes(&bytes) {
                 Ok(payloads) => payloads,
                 Err(err) => {
-                    // R8: the buffer cap follows the dropped-stream rule. Retry only when nothing
+                    // The buffer cap follows the dropped-stream rule. Retry only when nothing
                     // was shown; otherwise keep the paid, visible output and mark it interrupted.
                     if crate::error_policy::may_retry_stream(
                         &state.out.full_text,
@@ -622,7 +697,7 @@ where
         }
         state.finalize(provider.dialect);
 
-        // R10/R42: an error frame (or a plain JSON error body) is the real ending. Without
+        // An error frame (or a plain JSON error body) is the real ending. Without
         // output, a retryable one (overload, server error) takes the retry path and anything
         // else fails at once with the provider's reason; after output, the reply is kept and
         // marked interrupted.
@@ -663,7 +738,7 @@ where
         Ok(state.out)
     }
     .await;
-    // R12: files uploaded for this request alone (`store: false`) are deleted on every path
+    // Files uploaded for this request alone (`store: false`) are deleted on every path
     // (success, error, and Stop), never only after a clean finish.
     for (d, fid) in &uploaded.ephemeral_ids {
         crate::attachments::delete_remote_file(client, *d, base, primary_key, fid).await;
@@ -682,17 +757,17 @@ where
 pub const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Resolves once `flag` is set. Only awaited while a request is in flight, never while idle.
-/// Bumped each time the app comes back to the foreground or the system wakes (P19).
+/// Bumped each time the app comes back to the foreground or the system wakes.
 static RESUME_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// How long a stream may have been silent before a resume ends it (P19). A live stream sends
+/// How long a stream may have been silent before a resume ends it. A live stream sends
 /// something well within this; one that died while the app was away never will.
 #[cfg(not(test))]
 const RESUME_STALL_AFTER: Duration = Duration::from_secs(15);
 #[cfg(test)]
 const RESUME_STALL_AFTER: Duration = Duration::from_millis(500);
 
-/// P19: the app came back (or the system woke); streams silent for longer than
+/// The app came back (or the system woke); streams silent for longer than
 /// [`RESUME_STALL_AFTER`] end now instead of waiting out their idle timeout.
 pub fn note_app_resumed() {
     RESUME_EPOCH.fetch_add(1, Ordering::SeqCst);
@@ -717,631 +792,6 @@ pub async fn until_cancelled(flag: &AtomicBool) {
     }
 }
 
-fn milli_to_json_number(milli: u32) -> Value {
-    let whole = milli / 1000;
-    let frac = milli % 1000;
-    let text = format!("{whole}.{frac:03}");
-    serde_json::from_str::<Value>(&text).unwrap_or_else(|_| Value::from(whole))
-}
-
-fn stream_headers(dialect: ProviderDialect, options: &StreamRequestOptions<'_>) -> HeaderMap {
-    let mut headers = HeaderMap::new();
-    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    headers.insert(ACCEPT, HeaderValue::from_static("text/event-stream"));
-    if dialect == ProviderDialect::Anthropic {
-        headers.insert(
-            "anthropic-version",
-            HeaderValue::from_static(bistre_protocol::dialect::ANTHROPIC_API_VERSION),
-        );
-        if !options.anthropic_beta_headers.is_empty()
-            && let Ok(val) = HeaderValue::from_str(&options.anthropic_beta_headers.join(","))
-        {
-            headers.insert("anthropic-beta", val);
-        }
-    }
-    // Already validated at the boundary (`custom_headers::parse_custom_headers`): never a
-    // reserved, credential, or malformed header.
-    for h in &options.extra_headers {
-        headers.insert(h.name().clone(), h.value().clone());
-    }
-    headers
-}
-
-/// Wraps a JSON body as a credential-free streaming POST. Bodies serialize with `tools` first
-/// (when active) for deterministic prompt-cache prefix stability (Spec 02).
-fn wire(
-    dialect: ProviderDialect,
-    url: String,
-    mut body: Value,
-    options: &StreamRequestOptions<'_>,
-    fallback: Option<Box<WireRequest>>,
-) -> WireRequest {
-    if let (Some(extra), Some(obj)) = (&options.extra_body_fields, body.as_object_mut()) {
-        for (k, v) in extra {
-            if !matches!(k.as_str(), "stream" | "messages" | "input" | "contents") {
-                obj.insert(k.clone(), v.clone());
-            }
-        }
-    }
-    WireRequest {
-        dialect,
-        method: reqwest::Method::POST,
-        url,
-        headers: stream_headers(dialect, options),
-        body: Some(body),
-        fallback,
-    }
-}
-
-/// Dialect-specific streaming request (credential-free).
-pub fn build_stream_request(
-    dialect: ProviderDialect,
-    base: &str,
-    model: &str,
-    system_prompt: &str,
-    history: &[NodeRecord],
-    gen_params: GenerationParams,
-    store: bool,
-) -> WireRequest {
-    build_stream_request_with_attachments(
-        dialect,
-        base,
-        model,
-        system_prompt,
-        history,
-        gen_params,
-        store,
-        None,
-        &HashMap::new(),
-    )
-}
-
-/// Dialect-specific streaming request (credential-free) with multimodal attachment blocks.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Explicit immutable parameters keep wire serialization pure and testable."
-)]
-pub fn build_stream_request_with_attachments<S: std::hash::BuildHasher>(
-    dialect: ProviderDialect,
-    base: &str,
-    model: &str,
-    system_prompt: &str,
-    history: &[NodeRecord],
-    gen_params: GenerationParams,
-    store: bool,
-    data_dir: Option<&Path>,
-    gemini_uris: &HashMap<String, String, S>,
-) -> WireRequest {
-    let opts = StreamRequestOptions::default();
-    build_stream_request_full(
-        dialect,
-        base,
-        model,
-        system_prompt,
-        history,
-        gen_params,
-        store,
-        data_dir,
-        gemini_uris,
-        &opts,
-    )
-}
-
-/// Full dialect-specific streaming request builder with replay context, tools, caching, and options.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Explicit immutable parameters keep wire serialization pure and testable."
-)]
-pub fn build_stream_request_full<S: std::hash::BuildHasher>(
-    dialect: ProviderDialect,
-    base: &str,
-    model: &str,
-    system_prompt: &str,
-    history: &[NodeRecord],
-    gen_params: GenerationParams,
-    store: bool,
-    data_dir: Option<&Path>,
-    gemini_uris: &HashMap<String, String, S>,
-    options: &StreamRequestOptions<'_>,
-) -> WireRequest {
-    let base = dialect.api_root(base);
-    let endpoint = format!("{base}{}", dialect.default_endpoint_path());
-    match dialect {
-        ProviderDialect::OpenAi => wire(
-            dialect,
-            endpoint,
-            openai_responses_body(
-                model,
-                system_prompt,
-                history,
-                gen_params,
-                store,
-                data_dir,
-                gemini_uris,
-                options,
-            ),
-            options,
-            None,
-        ),
-        ProviderDialect::GoogleGemini => {
-            let clean_model = model.strip_prefix("models/").unwrap_or(model);
-            let fallback = (!options.disable_legacy_fallback).then(|| {
-                Box::new(wire(
-                    dialect,
-                    format!("{base}/v1beta/models/{clean_model}:streamGenerateContent?alt=sse"),
-                    gemini_generate_content_body(
-                        system_prompt,
-                        history,
-                        gen_params,
-                        data_dir,
-                        gemini_uris,
-                        options,
-                    ),
-                    options,
-                    None,
-                ))
-            });
-            wire(
-                dialect,
-                endpoint,
-                gemini_interactions_body(
-                    model,
-                    system_prompt,
-                    history,
-                    gen_params,
-                    store,
-                    data_dir,
-                    gemini_uris,
-                    options,
-                ),
-                options,
-                fallback,
-            )
-        }
-        ProviderDialect::Anthropic => wire(
-            dialect,
-            endpoint,
-            anthropic_messages_body(
-                model,
-                system_prompt,
-                history,
-                gen_params,
-                data_dir,
-                gemini_uris,
-                options,
-            ),
-            options,
-            None,
-        ),
-        ProviderDialect::CustomOpenAi => wire(
-            dialect,
-            endpoint,
-            openai_compat_chat_body(model, system_prompt, history, gen_params, data_dir, options),
-            options,
-            None,
-        ),
-    }
-}
-
-/// R7: how many history nodes a chained request leaves out (the server holds them).
-const fn chain_skip(store: bool, options: &StreamRequestOptions<'_>) -> usize {
-    if store && options.previous_server_id.is_some() {
-        options.chain_first_new_index
-    } else {
-        0
-    }
-}
-
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Explicit immutable parameters keep wire serialization pure and testable."
-)]
-fn openai_responses_body<S: std::hash::BuildHasher>(
-    model: &str,
-    system_prompt: &str,
-    history: &[NodeRecord],
-    gen_params: GenerationParams,
-    store: bool,
-    data_dir: Option<&Path>,
-    remote_refs: &HashMap<String, String, S>,
-    options: &StreamRequestOptions<'_>,
-) -> Value {
-    let mut input = crate::wire_history::build_openai_responses_input_with_refs(
-        history,
-        data_dir,
-        remote_refs,
-        options.replay_ctx,
-        chain_skip(store, options),
-    );
-    // G1 (`OpenAI` prompt-caching guide, read 2026-11-26): newer models append top-level
-    // `instructions` after `input`; a `developer` message first in `input` keeps the system
-    // prompt inside the cached prefix.
-    // A chained request already has it in the stored conversation (prompt-caching guide).
-    let chained = store && options.previous_server_id.is_some();
-    if !system_prompt.trim().is_empty() && !chained {
-        input.insert(
-            0,
-            serde_json::json!({ "role": "developer", "content": system_prompt }),
-        );
-    }
-    let mut obj = serde_json::Map::new();
-    // Serialize `tools` FIRST for prompt-cache prefix stability (Spec 02).
-    if let Some(tools) = options.tools_wire
-        && !tools.is_empty()
-    {
-        obj.insert("tools".to_owned(), Value::Array(tools.to_vec()));
-    }
-    obj.insert("model".to_owned(), Value::String(model.to_owned()));
-    obj.insert("input".to_owned(), Value::Array(input));
-    obj.insert("stream".to_owned(), Value::Bool(true));
-    obj.insert("store".to_owned(), Value::Bool(store));
-    if store && let Some(prev_id) = options.previous_server_id {
-        obj.insert(
-            "previous_response_id".to_owned(),
-            Value::String(prev_id.to_owned()),
-        );
-    }
-    if let Some(ctx) = options.replay_ctx {
-        obj.insert(
-            "prompt_cache_key".to_owned(),
-            Value::String(ctx.openai_prompt_cache_key()),
-        );
-    }
-    if let Some(t) = gen_params.temperature_milli {
-        obj.insert("temperature".to_owned(), milli_to_json_number(t));
-    }
-    if let Some(max_tok) = gen_params.max_output_tokens {
-        obj.insert("max_output_tokens".to_owned(), Value::from(max_tok));
-    }
-    if let Some(p) = gen_params.top_p_milli {
-        obj.insert("top_p".to_owned(), milli_to_json_number(p));
-    }
-    if let Some(effort) = openai_effort(ProviderDialect::OpenAi, gen_params.reasoning_effort) {
-        obj.insert(
-            "reasoning".to_owned(),
-            json!({ "effort": effort, "summary": "auto" }),
-        );
-    }
-    // Under stateless `store: false`, request encrypted reasoning blobs when reasoning is enabled
-    // so subsequent turns can replay verified thought continuity without server-side retention.
-    if !store
-        && !matches!(
-            gen_params.reasoning_effort,
-            ReasoningEffort::ModelDefault | ReasoningEffort::Off
-        )
-    {
-        obj.insert("include".to_owned(), json!(["reasoning.encrypted_content"]));
-    }
-    Value::Object(obj)
-}
-
-/// `OpenAI` `reasoning.effort` / `reasoning_effort` value (`none` turns thinking off).
-fn openai_effort(dialect: ProviderDialect, effort: ReasoningEffort) -> Option<&'static str> {
-    match effort {
-        ReasoningEffort::ModelDefault => None,
-        ReasoningEffort::Adaptive => Some("medium"),
-        ReasoningEffort::Off => Some("none"),
-        ReasoningEffort::Max if dialect == ProviderDialect::OpenAi => Some("xhigh"),
-        other => Some(other.as_str()),
-    }
-}
-
-/// Gemini thinking level (lowercase; Gemini has no `max`, and Off asks for minimal thoughts).
-fn gemini_level(effort: ReasoningEffort) -> Option<&'static str> {
-    match effort {
-        ReasoningEffort::ModelDefault => None,
-        ReasoningEffort::Off => Some("minimal"),
-        ReasoningEffort::Low => Some("low"),
-        ReasoningEffort::Adaptive | ReasoningEffort::Medium => Some("medium"),
-        ReasoningEffort::High => Some("high"),
-        ReasoningEffort::ExtraHigh | ReasoningEffort::Max => Some("xhigh"),
-    }
-}
-
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Explicit immutable parameters keep wire serialization pure and testable."
-)]
-fn gemini_interactions_body<S: std::hash::BuildHasher>(
-    model: &str,
-    system_prompt: &str,
-    history: &[NodeRecord],
-    gen_params: GenerationParams,
-    store: bool,
-    data_dir: Option<&Path>,
-    gemini_uris: &HashMap<String, String, S>,
-    options: &StreamRequestOptions<'_>,
-) -> Value {
-    let turns = crate::wire_history::build_gemini_interactions_input_with_ctx(
-        history,
-        data_dir,
-        gemini_uris,
-        options.replay_ctx,
-        chain_skip(store, options),
-    );
-    let mut obj = serde_json::Map::new();
-    if let Some(tools) = options.tools_wire
-        && !tools.is_empty()
-    {
-        obj.insert("tools".to_owned(), Value::Array(tools.to_vec()));
-    }
-    obj.insert("model".to_owned(), Value::String(model.to_owned()));
-    if !system_prompt.trim().is_empty() {
-        obj.insert(
-            "system_instruction".to_owned(),
-            Value::String(system_prompt.to_owned()),
-        );
-    }
-    obj.insert("input".to_owned(), Value::Array(turns));
-    obj.insert("stream".to_owned(), Value::Bool(true));
-    obj.insert("store".to_owned(), Value::Bool(store));
-    if store && let Some(prev_id) = options.previous_server_id {
-        obj.insert(
-            "previous_interaction_id".to_owned(),
-            Value::String(prev_id.to_owned()),
-        );
-    }
-    let mut gen_cfg = serde_json::Map::new();
-    if let Some(t) = gen_params.temperature_milli {
-        gen_cfg.insert("temperature".to_owned(), milli_to_json_number(t));
-    }
-    if let Some(max_tok) = gen_params.max_output_tokens {
-        gen_cfg.insert("max_output_tokens".to_owned(), Value::from(max_tok));
-    }
-    if let Some(p) = gen_params.top_p_milli {
-        gen_cfg.insert("top_p".to_owned(), milli_to_json_number(p));
-    }
-    if let Some(level) = gemini_level(gen_params.reasoning_effort) {
-        gen_cfg.insert("thinking_level".to_owned(), Value::from(level));
-        let summaries = if gen_params.reasoning_effort == ReasoningEffort::Off {
-            "none"
-        } else {
-            "auto"
-        };
-        gen_cfg.insert("thinking_summaries".to_owned(), Value::from(summaries));
-    }
-    if !gen_cfg.is_empty() {
-        obj.insert("generation_config".to_owned(), Value::Object(gen_cfg));
-    }
-    Value::Object(obj)
-}
-
-fn gemini_generate_content_body<S: std::hash::BuildHasher>(
-    system_prompt: &str,
-    history: &[NodeRecord],
-    gen_params: GenerationParams,
-    data_dir: Option<&Path>,
-    gemini_uris: &HashMap<String, String, S>,
-    options: &StreamRequestOptions<'_>,
-) -> Value {
-    let contents = crate::wire_history::build_gemini_generate_contents_with_ctx(
-        history,
-        data_dir,
-        gemini_uris,
-        options.replay_ctx,
-    );
-    let mut obj = serde_json::Map::new();
-    if let Some(tools) = options.tools_wire
-        && !tools.is_empty()
-    {
-        let decls: Vec<Value> = tools
-            .iter()
-            .filter_map(|t| {
-                let name = t.get("name")?.as_str()?;
-                let description = t
-                    .get("description")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                let parameters = t
-                    .get("parameters")
-                    .cloned()
-                    .unwrap_or_else(|| json!({ "type": "object", "properties": {} }));
-                Some(json!({
-                    "name": name,
-                    "description": description,
-                    "parameters": parameters,
-                }))
-            })
-            .collect();
-        if !decls.is_empty() {
-            obj.insert(
-                "tools".to_owned(),
-                json!([{ "functionDeclarations": decls }]),
-            );
-        }
-    }
-    if !system_prompt.trim().is_empty() {
-        obj.insert(
-            "systemInstruction".to_owned(),
-            json!({ "parts": [{ "text": system_prompt }] }),
-        );
-    }
-    obj.insert("contents".to_owned(), Value::Array(contents));
-    let mut gen_cfg = serde_json::Map::new();
-    if let Some(t) = gen_params.temperature_milli {
-        gen_cfg.insert("temperature".to_owned(), milli_to_json_number(t));
-    }
-    if let Some(max_tok) = gen_params.max_output_tokens {
-        gen_cfg.insert("maxOutputTokens".to_owned(), Value::from(max_tok));
-    }
-    if let Some(p) = gen_params.top_p_milli {
-        gen_cfg.insert("topP".to_owned(), milli_to_json_number(p));
-    }
-    if let Some(level) = gemini_level(gen_params.reasoning_effort) {
-        gen_cfg.insert(
-            "thinkingConfig".to_owned(),
-            json!({
-                "includeThoughts": gen_params.reasoning_effort != ReasoningEffort::Off,
-                "thinkingLevel": level.to_ascii_uppercase(),
-            }),
-        );
-    }
-    if !gen_cfg.is_empty() {
-        obj.insert("generationConfig".to_owned(), Value::Object(gen_cfg));
-    }
-    Value::Object(obj)
-}
-
-fn anthropic_cache_control(cache_1h: bool) -> Value {
-    if cache_1h {
-        json!({ "type": "ephemeral", "ttl": "1h" })
-    } else {
-        json!({ "type": "ephemeral" })
-    }
-}
-
-fn anthropic_messages_body<S: std::hash::BuildHasher>(
-    model: &str,
-    system_prompt: &str,
-    history: &[NodeRecord],
-    gen_params: GenerationParams,
-    data_dir: Option<&Path>,
-    remote_refs: &HashMap<String, String, S>,
-    options: &StreamRequestOptions<'_>,
-) -> Value {
-    let mut messages = crate::wire_history::build_anthropic_messages_with_refs(
-        history,
-        data_dir,
-        remote_refs,
-        options.replay_ctx,
-    );
-    if let Some(prefill) = options.reply_prefill.as_deref().map(str::trim)
-        && !prefill.is_empty()
-    {
-        messages.push(json!({ "role": "assistant", "content": prefill }));
-    }
-    let thinking_active = !matches!(
-        gen_params.reasoning_effort,
-        ReasoningEffort::ModelDefault | ReasoningEffort::Off
-    );
-    let default_max_tokens = if thinking_active { 16_384 } else { 4_096 };
-    let max_tokens = gen_params.max_output_tokens.unwrap_or(default_max_tokens);
-    let cc = anthropic_cache_control(options.anthropic_cache_1h);
-
-    let mut obj = serde_json::Map::new();
-    if let Some(tools) = options.tools_wire
-        && !tools.is_empty()
-    {
-        let mut t_arr = tools.to_vec();
-        if let Some(last) = t_arr.last_mut().and_then(Value::as_object_mut) {
-            last.insert("cache_control".to_owned(), cc.clone());
-        }
-        obj.insert("tools".to_owned(), Value::Array(t_arr));
-    }
-    obj.insert("model".to_owned(), Value::String(model.to_owned()));
-    obj.insert("max_tokens".to_owned(), Value::from(max_tokens));
-    // Default 5-minute ephemeral prompt caching (1.25x write / 0.1x read); automatically
-    // stripped by `Http400Heal::StripPromptCacheControl` if a proxy rejects `cache_control`.
-    obj.insert("cache_control".to_owned(), cc.clone());
-    if !system_prompt.trim().is_empty() {
-        obj.insert(
-            "system".to_owned(),
-            json!([{
-                "type": "text",
-                "text": system_prompt,
-                "cache_control": cc,
-            }]),
-        );
-    }
-    obj.insert("messages".to_owned(), Value::Array(messages));
-    obj.insert("stream".to_owned(), Value::Bool(true));
-    if options.anthropic_server_compaction
-        && history.len() >= 8
-        && history
-            .iter()
-            .any(|n| n.role == bistre_protocol::NodeRole::Tool)
-    {
-        obj.insert(
-            "context_management".to_owned(),
-            json!({
-                "edits": [
-                    { "type": "clear_tool_uses_20250919" }
-                ]
-            }),
-        );
-    }
-    if let Some(t) = gen_params.temperature_milli {
-        obj.insert("temperature".to_owned(), milli_to_json_number(t));
-    }
-    if let Some(p) = gen_params.top_p_milli {
-        obj.insert("top_p".to_owned(), milli_to_json_number(p));
-    }
-    match gen_params.reasoning_effort {
-        ReasoningEffort::ModelDefault => {}
-        ReasoningEffort::Off => {
-            obj.insert("thinking".to_owned(), json!({ "type": "disabled" }));
-        }
-        ReasoningEffort::Adaptive => {
-            obj.insert(
-                "thinking".to_owned(),
-                json!({ "type": "adaptive", "display": "summarized" }),
-            );
-        }
-        effort => {
-            obj.insert(
-                "thinking".to_owned(),
-                json!({ "type": "adaptive", "display": "summarized" }),
-            );
-            obj.insert(
-                "output_config".to_owned(),
-                json!({ "effort": effort.as_str() }),
-            );
-        }
-    }
-    Value::Object(obj)
-}
-
-fn openai_compat_chat_body(
-    model: &str,
-    system_prompt: &str,
-    history: &[NodeRecord],
-    gen_params: GenerationParams,
-    data_dir: Option<&Path>,
-    options: &StreamRequestOptions<'_>,
-) -> Value {
-    let mut messages = Vec::new();
-    if !system_prompt.trim().is_empty() {
-        messages.push(json!({ "role": "system", "content": system_prompt }));
-    }
-    messages.extend(crate::wire_history::build_openai_compat_messages_with_ctx(
-        history,
-        data_dir,
-        options.replay_ctx,
-    ));
-    if let Some(prefill) = options.reply_prefill.as_deref().map(str::trim)
-        && !prefill.is_empty()
-    {
-        messages.push(json!({ "role": "assistant", "content": prefill }));
-    }
-    let mut obj = serde_json::Map::new();
-    if let Some(tools) = options.tools_wire
-        && !tools.is_empty()
-    {
-        obj.insert("tools".to_owned(), Value::Array(tools.to_vec()));
-    }
-    obj.insert("model".to_owned(), Value::String(model.to_owned()));
-    obj.insert("messages".to_owned(), Value::Array(messages));
-    obj.insert("stream".to_owned(), Value::Bool(true));
-    obj.insert(
-        "stream_options".to_owned(),
-        json!({ "include_usage": true }),
-    );
-    if let Some(effort) = openai_effort(ProviderDialect::CustomOpenAi, gen_params.reasoning_effort)
-    {
-        obj.insert("reasoning_effort".to_owned(), Value::from(effort));
-    }
-    if let Some(t) = gen_params.temperature_milli {
-        obj.insert("temperature".to_owned(), milli_to_json_number(t));
-    }
-    if let Some(max_tok) = gen_params.max_output_tokens {
-        obj.insert("max_tokens".to_owned(), Value::from(max_tok));
-    }
-    if let Some(p) = gen_params.top_p_milli {
-        obj.insert("top_p".to_owned(), milli_to_json_number(p));
-    }
-    Value::Object(obj)
-}
-
 fn check_captive_portal(resp: &reqwest::Response) -> BistreResult<()> {
     if resp.status().is_success()
         && let Some(ct) = resp
@@ -1355,6 +805,9 @@ fn check_captive_portal(resp: &reqwest::Response) -> BistreResult<()> {
     Ok(())
 }
 
+pub use crate::request_body::{
+    build_stream_request, build_stream_request_full, build_stream_request_with_attachments,
+};
 pub use crate::wire_parse::{
     extract_sse_delta, extract_sse_thinking_delta, is_terminal_event, merge_sse_usage,
     parse_models_payload,

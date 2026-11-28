@@ -1,4 +1,4 @@
-//! One backoff per provider shared by every run (opencode #55075): when one run is told to
+//! One backoff per provider shared by every run: when one run is told to
 //! wait, the others sending to the same provider wait too instead of each retrying it on its
 //! own. Bounded: one entry per provider id, expired entries dropped on each note.
 

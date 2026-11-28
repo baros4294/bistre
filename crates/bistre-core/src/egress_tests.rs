@@ -1,18 +1,17 @@
-//! Engine-level egress tests (A-S8 custom headers, R19 pinned provider).
+//! Engine-level egress tests (custom headers pinned to the provider).
 
 use std::time::Duration;
 
 use bistre_protocol::{DiagnosticKey, EngineEvent, ProviderDialect, ThreadMode, ThreadPatch};
 use tokio::sync::broadcast;
 
-use crate::EngineClient;
 use crate::test_support::{MockServer, Scripted};
 
-type TestResult = Result<(), Box<dyn std::error::Error>>;
+pub(crate) type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 const EVENT_WAIT: Duration = Duration::from_secs(15);
 
-fn chat_reply(text: &str) -> Scripted {
+pub(crate) fn chat_reply(text: &str) -> Scripted {
     let chunk = serde_json::json!({
         "choices": [{ "delta": { "content": text }, "finish_reason": "stop" }],
         "usage": { "prompt_tokens": 3, "completion_tokens": 1 }
@@ -20,7 +19,7 @@ fn chat_reply(text: &str) -> Scripted {
     Scripted::sse(format!("data: {chunk}\n\ndata: [DONE]\n\n"))
 }
 
-async fn diagnostics_until_finished(
+pub(crate) async fn diagnostics_until_finished(
     rx: &mut broadcast::Receiver<EngineEvent>,
     thread_id: &str,
 ) -> Result<Vec<(DiagnosticKey, Option<String>)>, Box<dyn std::error::Error>> {
@@ -35,14 +34,16 @@ async fn diagnostics_until_finished(
     }
 }
 
-struct LocalChat {
+pub(crate) struct LocalChat {
     dir: tempfile::TempDir,
-    engine: std::sync::Arc<crate::InProcessEngine>,
-    provider_id: String,
-    thread_id: String,
+    pub(crate) engine: std::sync::Arc<crate::InProcessEngine>,
+    pub(crate) provider_id: String,
+    pub(crate) thread_id: String,
 }
 
-async fn local_chat(server: &MockServer) -> Result<LocalChat, Box<dyn std::error::Error>> {
+pub(crate) async fn local_chat(
+    server: &MockServer,
+) -> Result<LocalChat, Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let engine =
         crate::InProcessEngine::open_for_test(dir.path(), crate::http_clients::provider_client()?)?;
@@ -78,7 +79,7 @@ async fn local_chat(server: &MockServer) -> Result<LocalChat, Box<dyn std::error
     })
 }
 
-/// A-S8: a stored custom header that is not a valid header stops the request with a
+/// A stored custom header that is not a valid header stops the request with a
 /// diagnostic instead of being dropped silently.
 #[tokio::test]
 async fn an_invalid_stored_header_stops_the_request_instead_of_being_dropped() -> TestResult {
@@ -106,7 +107,7 @@ async fn an_invalid_stored_header_stops_the_request_instead_of_being_dropped() -
     Ok(())
 }
 
-/// A-S8: headers are validated when saved, and a new provider origin clears them.
+/// Headers are validated when saved, and a new provider origin clears them.
 #[tokio::test]
 async fn headers_are_validated_on_save_and_cleared_when_the_origin_changes() -> TestResult {
     let server = MockServer::start(Vec::new()).await?;
@@ -154,7 +155,7 @@ async fn headers_are_validated_on_save_and_cleared_when_the_origin_changes() -> 
     Ok(())
 }
 
-/// R19: a chat pinned to a provider that is turned off fails with a clear notice; it never
+/// A chat pinned to a provider that is turned off fails with a clear notice; it never
 /// falls back to another (possibly paid) provider.
 #[tokio::test]
 async fn a_pinned_provider_that_is_off_never_falls_back_to_another() -> TestResult {
@@ -197,7 +198,7 @@ async fn a_pinned_provider_that_is_off_never_falls_back_to_another() -> TestResu
     Ok(())
 }
 
-/// A-S11: shutdown wakes a run waiting in backoff, so it records its final state before
+/// Shutdown wakes a run waiting in backoff, so it records its final state before
 /// storage closes instead of being aborted mid-wait.
 #[tokio::test]
 async fn shutdown_wakes_a_run_waiting_in_backoff() -> TestResult {
@@ -219,7 +220,7 @@ async fn shutdown_wakes_a_run_waiting_in_backoff() -> TestResult {
             tokio::time::timeout_at(deadline, rx.recv()).await??
             && key == DiagnosticKey::RunBackoffWaiting
         {
-            // P20: the notice says which try this is.
+            // The notice says which try this is.
             let detail = detail_code.unwrap_or_default();
             assert!(detail.contains(";attempt=1;"), "{detail}");
             break;
@@ -239,7 +240,7 @@ async fn shutdown_wakes_a_run_waiting_in_backoff() -> TestResult {
     Ok(())
 }
 
-/// R30: Regenerate during a stream stops the old run completely before the new one starts,
+/// Regenerate during a stream stops the old run completely before the new one starts,
 /// so the old run can never commit after (or over) the new reply.
 #[tokio::test]
 async fn regenerate_mid_stream_finishes_the_old_run_before_starting_the_new() -> TestResult {
@@ -256,7 +257,7 @@ async fn regenerate_mid_stream_finishes_the_old_run_before_starting_the_new() ->
         .send_and_stream_reply(chat.thread_id.clone(), None, "hello".to_owned())
         .await?;
     // Wait for the first run to start; then give it time to send its request and read the
-    // stalled partial stream (the last delta of a stalled stream is not flushed yet: R34).
+    // stalled partial stream (the last delta of a stalled stream is not flushed yet).
     let deadline = tokio::time::Instant::now() + EVENT_WAIT;
     let mut order: Vec<String> = Vec::new();
     loop {
@@ -305,7 +306,7 @@ async fn regenerate_mid_stream_finishes_the_old_run_before_starting_the_new() ->
     Ok(())
 }
 
-/// B2: web sources in a reply are stored with it, listed for the chat, and never sent back to
+/// Web sources in a reply are stored with it, listed for the chat, and never sent back to
 /// a model when the history is replayed.
 #[tokio::test]
 async fn reply_sources_are_kept_for_the_chat_and_never_replayed() -> TestResult {
@@ -364,7 +365,7 @@ async fn reply_sources_are_kept_for_the_chat_and_never_replayed() -> TestResult 
     Ok(())
 }
 
-/// R10/P3: a reply cut by the output limit is kept and says so (the app offers Continue).
+/// A reply cut by the output limit is kept and says so (the app offers Continue).
 #[tokio::test]
 async fn a_truncated_reply_raises_the_truncated_notice() -> TestResult {
     let chunk = serde_json::json!({
@@ -454,7 +455,7 @@ async fn anthropic_chat(
     Ok((dir, engine, thread.id))
 }
 
-/// R10/P3: Anthropic `pause_turn` resumes by itself: the paused reply goes back as the last
+/// Anthropic `pause_turn` resumes by itself: the paused reply goes back as the last
 /// assistant turn and the model continues it.
 #[tokio::test]
 async fn a_paused_anthropic_turn_resumes_by_itself() -> TestResult {
@@ -480,7 +481,7 @@ async fn a_paused_anthropic_turn_resumes_by_itself() -> TestResult {
     Ok(())
 }
 
-/// R18: a run stopped by the step limit says so; it never ends as a silent "complete".
+/// A run stopped by the step limit says so; it never ends as a silent "complete".
 #[tokio::test]
 async fn a_run_stopped_by_the_step_limit_says_so() -> TestResult {
     let steps = usize::try_from(crate::engine_runs::MAX_RUN_STEPS)? + 1;
@@ -504,7 +505,7 @@ async fn a_run_stopped_by_the_step_limit_says_so() -> TestResult {
     Ok(())
 }
 
-/// R34: the last text of a burst is shown within a frame even when the provider then pauses;
+/// The last text of a burst is shown within a frame even when the provider then pauses;
 /// it never waits for the next chunk (or the 90 s idle timeout).
 #[tokio::test]
 async fn the_last_text_before_a_pause_is_shown_at_once() -> TestResult {
@@ -543,7 +544,7 @@ async fn the_last_text_before_a_pause_is_shown_at_once() -> TestResult {
     Ok(())
 }
 
-/// W7: a due scheduled job starts a real run: a chat named after the job, sent its prompt.
+/// A due scheduled job starts a real run: a chat named after the job, sent its prompt.
 #[tokio::test]
 async fn a_due_scheduled_job_starts_a_run_with_its_prompt() -> TestResult {
     let server = MockServer::start(vec![chat_reply("digest ready")]).await?;
@@ -564,7 +565,7 @@ async fn a_due_scheduled_job_starts_a_run_with_its_prompt() -> TestResult {
         last_status: "idle".to_owned(),
     };
     let mut rx = chat.engine.subscribe_events();
-    let thread_id = crate::cron::start_job_run(chat.engine.as_ref(), &job).await?;
+    let thread_id = chat.engine.start_scheduled_run(job.clone()).await?;
     diagnostics_until_finished(&mut rx, &thread_id).await?;
     let threads = chat.engine.list_threads(None).await?;
     assert!(
@@ -578,7 +579,7 @@ async fn a_due_scheduled_job_starts_a_run_with_its_prompt() -> TestResult {
     Ok(())
 }
 
-/// Owner decision 2026-11-26: for a chat whose own settings and assistant name no model, the
+/// for a chat whose own settings and assistant name no model, the
 /// model under Settings > Default models wins over the model last picked in the picker.
 #[tokio::test]
 async fn the_default_model_setting_wins_over_the_last_pick() -> TestResult {
@@ -621,5 +622,109 @@ async fn the_default_model_setting_wins_over_the_last_pick() -> TestResult {
     assert_eq!(seen.len(), 1, "the default provider got the request");
     assert!(String::from_utf8_lossy(&seen[0].body).contains("\"model\":\"d\""));
     assert_eq!(picked.finish().await.len(), 0);
+    Ok(())
+}
+
+/// Per-model overrides feed the context breakdown limit and the wire reply limit.
+#[tokio::test]
+async fn provider_advanced_model_overrides_feed_limits() -> TestResult {
+    let server = MockServer::start(vec![chat_reply("ok")]).await?;
+    let chat = local_chat(&server).await?;
+    chat.engine
+        .set_kv_meta(
+            format!("provider.adv:{}", chat.provider_id),
+            serde_json::json!({
+                "modelOverrides": {
+                    "m": {
+                        "contextLimit": 64_000,
+                        "maxOutputTokens": 1234,
+                        "inputPerMillion": "10.00",
+                        "outputPerMillion": "20.00"
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .await?;
+    let mut rx = chat.engine.subscribe_events();
+    let user_node = chat
+        .engine
+        .send_and_stream_reply(chat.thread_id.clone(), None, "hello".to_owned())
+        .await?;
+    diagnostics_until_finished(&mut rx, &chat.thread_id).await?;
+    let seen = server.finish().await;
+    let body: serde_json::Value = serde_json::from_slice(&seen.first().ok_or("no request")?.body)?;
+    assert_eq!(body["max_tokens"], 1234, "{body}");
+    let breakdown = chat
+        .engine
+        .context_breakdown(chat.thread_id.clone(), user_node.id.clone(), String::new())
+        .await?;
+    assert_eq!(breakdown.limit_tokens, Some(64_000));
+    assert_eq!(breakdown.reserve_tokens, 9_600, "the default point is 85 %");
+
+    // The user's auto-shorten point sets what stays free; out-of-range values clamp.
+    for (at_percent, reserve) in [(60, 25_600), (5, 32_000), (100, 3_200)] {
+        let mut settings = chat.engine.load_settings().await?;
+        settings.auto_compact_at_percent = at_percent;
+        chat.engine.save_settings(settings).await?;
+        let breakdown = chat
+            .engine
+            .context_breakdown(chat.thread_id.clone(), user_node.id.clone(), String::new())
+            .await?;
+        assert_eq!(breakdown.reserve_tokens, reserve, "at {at_percent} %");
+    }
+    Ok(())
+}
+
+/// A provider's default thinking effort applies when the global effort is left at Auto.
+#[tokio::test]
+async fn provider_advanced_default_thinking_effort_reaches_the_wire() -> TestResult {
+    let server = MockServer::start(vec![chat_reply("ok")]).await?;
+    let chat = local_chat(&server).await?;
+    chat.engine
+        .set_kv_meta(
+            format!("provider.adv:{}", chat.provider_id),
+            serde_json::json!({ "defaultThinkingEffort": "high" }).to_string(),
+        )
+        .await?;
+    let mut rx = chat.engine.subscribe_events();
+    chat.engine
+        .send_and_stream_reply(chat.thread_id.clone(), None, "think".to_owned())
+        .await?;
+    diagnostics_until_finished(&mut rx, &chat.thread_id).await?;
+    let seen = server.finish().await;
+    let body: serde_json::Value = serde_json::from_slice(&seen.first().ok_or("no request")?.body)?;
+    assert_eq!(body["reasoning_effort"], "high", "{body}");
+    Ok(())
+}
+
+/// Fetching models honors Advanced > Authentication (and a Custom provider's API format).
+#[tokio::test]
+async fn provider_advanced_fetch_models_uses_auth_mode_and_custom_dialect() -> TestResult {
+    let server = MockServer::start(vec![Scripted::json(
+        200,
+        &serde_json::json!({ "data": [{ "id": "m1", "display_name": "Model One" }] }),
+    )])
+    .await?;
+    let chat = local_chat(&server).await?;
+    chat.engine
+        .set_kv_meta(
+            format!("provider.adv:{}", chat.provider_id),
+            serde_json::json!({
+                "customDialect": "anthropic_messages",
+                "authHeaderMode": "query_param"
+            })
+            .to_string(),
+        )
+        .await?;
+    let models = chat.engine.fetch_provider_models(chat.provider_id).await?;
+    assert_eq!(models.len(), 1);
+    assert_eq!(models[0].id, "m1");
+    let seen = server.finish().await;
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0].path, "/v1/models?key=k");
+    assert_eq!(seen[0].header("authorization"), None);
+    assert_eq!(seen[0].header("x-api-key"), None);
+    assert!(seen[0].header("anthropic-version").is_some());
     Ok(())
 }

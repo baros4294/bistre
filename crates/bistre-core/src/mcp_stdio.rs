@@ -4,13 +4,17 @@
 //!   (Windows `CREATE_NO_WINDOW` + `KILL_ON_JOB_CLOSE`; Unix process group + `PR_SET_PDEATHSIG`).
 //! - Quarantines noisy non-JSON stdout banner lines (bounded at 64 lines).
 //! - Drains `stderr` into a bounded 64 KiB ring buffer so children never deadlock on pipe pressure.
-//! - Keeps ONE long-lived session (process) per server (R15; MCP 2026-07-28 stdio: clients
+//! - Keeps ONE long-lived session (process) per server (MCP 2026-07-28 stdio: clients
 //!   "SHOULD NOT use an individual task, thread, or conversation as the lifetime boundary").
 //!   A broken session (crash, timeout, endless line) is dropped, killing its tree, and the next
 //!   call starts a new one; a config change closes the old client before replacing it.
-//! - Reads stdout lines bounded at [`MAX_STDIO_LINE_BYTES`] (R16) and answers server requests
+//! - Probes with `server/discover` (MCP 2026-07-28 stdio backward compatibility): a modern
+//!   server gets `_meta` on every request and no handshake, a legacy one gets `initialize`.
+//! - A call whose caller stops waiting sends `notifications/cancelled`; closing a session
+//!   closes stdin and waits [`STDIO_SHUTDOWN_GRACE`] before killing the tree.
+//! - Reads stdout lines bounded at [`MAX_STDIO_LINE_BYTES`] and answers server requests
 //!   by method (`ping` -> `{}`, anything not negotiated -> `-32601`), never taking one as our
-//!   response (R43).
+//!   response.
 //! - Enforces a strict `3 starts / 10 min` restart budget per server and never resends a crashed call.
 //! - Parses rich MCP `content[]` (`text`, `image`, `audio`, `resource`, `resource_link`) + `isError`,
 //!   persisting binary media into `<data_dir>/attachments/` so multimodal models see tool screenshots.
@@ -18,6 +22,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::path::Path;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
@@ -28,11 +33,13 @@ use bistre_protocol::{
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex as AsyncMutex;
-use uuid::Uuid;
 
 use crate::mcp::{
     MAX_MCP_HTTP_RESPONSE_BYTES, MAX_MCP_TOOL_RESULT_BYTES, MCP_CALL_TIMEOUT, MCP_PROTOCOL_2025,
     MCP_PROTOCOL_2026, McpDiscoveryReport, McpServerConfig, normalize_and_sort_tools,
+};
+use crate::mcp_era::{
+    MCP_DISCOVER_PROBE_TIMEOUT, ProbeVerdict, complete_result, probe_verdict, with_modern_meta,
 };
 use crate::process_util::{ChildContainment, no_window_command, spawn_contained};
 
@@ -44,10 +51,15 @@ pub const STDERR_RING_CAP_BYTES: usize = 64 * 1024;
 pub const MAX_STDIO_STARTS_PER_WINDOW: usize = 3;
 pub const STDIO_RESTART_WINDOW: Duration = Duration::from_secs(600);
 
-/// Longest stdout line (one JSON-RPC message) accepted from a stdio server (R16).
+/// Longest stdout line (one JSON-RPC message) accepted from a stdio server.
 pub const MAX_STDIO_LINE_BYTES: usize = MAX_MCP_HTTP_RESPONSE_BYTES;
 /// Most stdio servers holding a live session at once.
 const MAX_STDIO_SESSIONS: usize = 64;
+/// How long a closed session's server may take to exit after its stdin closes.
+pub const STDIO_SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
+
+/// Names each started process, so a late cancel never reaches a replacement process.
+static NEXT_PROCESS_TOKEN: AtomicU64 = AtomicU64::new(1);
 
 static RESTART_BUDGET: LazyLock<Mutex<HashMap<String, VecDeque<Instant>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -177,10 +189,7 @@ pub fn parse_mcp_call_result(result: &Value, data_dir: Option<&Path>) -> McpTool
         text_parts.join("\n")
     };
     if rendered.len() > MAX_MCP_TOOL_RESULT_BYTES {
-        let mut cut = MAX_MCP_TOOL_RESULT_BYTES;
-        while cut > 0 && !rendered.is_char_boundary(cut) {
-            cut -= 1;
-        }
+        let cut = rendered.floor_char_boundary(MAX_MCP_TOOL_RESULT_BYTES);
         rendered.truncate(cut);
         rendered.push_str("...[truncated_256kib]");
     }
@@ -203,57 +212,58 @@ fn persist_mcp_media_blob(
     if bytes.is_empty() || bytes.len() > 16 * 1024 * 1024 {
         return None;
     }
-    let ext = match mime.to_ascii_lowercase().as_str() {
-        "image/jpeg" | "image/jpg" => "jpg",
-        "image/webp" => "webp",
-        "image/gif" => "gif",
-        "image/png" => "png",
-        "audio/mpeg" | "audio/mp3" => "mp3",
-        "audio/ogg" => "ogg",
-        "audio/wav" | "audio/x-wav" => "wav",
-        _ if kind == "image" => "png",
-        _ => "bin",
+    let ext = match crate::media_wire::extension_for(mime) {
+        "bin" if kind == "image" => "png",
+        ext => ext,
     };
-    let hash = blake3::hash(&bytes).to_hex().to_string();
-    let dest_dir = data_dir.join("attachments");
-    std::fs::create_dir_all(&dest_dir).ok()?;
-    let dest = dest_dir.join(format!("{hash}.{ext}"));
-    if !dest.exists() {
-        let tmp = dest_dir.join(format!(".tmp-mcp-{}-{hash}.{ext}", Uuid::now_v7().simple()));
-        std::fs::write(&tmp, &bytes).ok()?;
-        if std::fs::rename(&tmp, &dest).is_err() {
-            if let Err(err) = std::fs::remove_file(&tmp) {
-                tracing::debug!(error = %err, "cleanup temp mcp media blob failed");
-            }
-            return None;
+    let name = format!("mcp_{kind}.{ext}");
+    match crate::attachments::store_attachment_bytes(data_dir, name, mime.to_owned(), &bytes) {
+        Ok(stored) => Some(stored),
+        Err(err) => {
+            tracing::warn!(key = err.key.as_key(), "mcp media result not saved");
+            None
         }
     }
-    Some(StoredAttachment {
-        id: format!("mcp_{}", Uuid::now_v7()),
-        name: format!("mcp_{kind}.{ext}"),
-        mime_type: mime.to_owned(),
-        blob_rel_path: format!("attachments/{hash}.{ext}"),
-        size_bytes: u64::try_from(bytes.len()).unwrap_or(u64::MAX),
-        blake3_hex: hash,
-    })
 }
 
-/// RAII stdio MCP child process handle; kills the entire process tree on drop.
+/// RAII stdio MCP child process handle. Dropping it kills the whole tree at once (a broken
+/// session); a closed one ([`Self::graceful`]) first gets [`STDIO_SHUTDOWN_GRACE`] to exit.
 struct StdioMcpProcess {
     /// Held for the session's life: the command sets `kill_on_drop`, so dropping it kills the
-    /// server (the old code dropped it right after spawning, killing every server at once).
-    child: tokio::process::Child,
+    /// server. `None` only inside `drop`.
+    child: Option<tokio::process::Child>,
     stdin: tokio::process::ChildStdin,
     stdout: BufReader<tokio::process::ChildStdout>,
     _stderr_ring: Arc<Mutex<StderrRing>>,
-    containment: ChildContainment,
+    containment: Option<ChildContainment>,
     quarantined_stdout: Vec<String>,
     next_id: u64,
+    token: u64,
+    graceful: bool,
+    server_id: String,
 }
 
 impl Drop for StdioMcpProcess {
     fn drop(&mut self) {
-        self.containment.kill_tree();
+        let (Some(mut child), Some(containment)) = (self.child.take(), self.containment.take())
+        else {
+            return;
+        };
+        let runtime = tokio::runtime::Handle::try_current();
+        let Some(runtime) = runtime.ok().filter(|_| self.graceful) else {
+            containment.kill_tree();
+            return;
+        };
+        // `stdin` closes when this drop returns: the server's signal to exit.
+        runtime.spawn(async move {
+            match tokio::time::timeout(STDIO_SHUTDOWN_GRACE, child.wait()).await {
+                Ok(Ok(_)) => {}
+                Ok(Err(err)) => tracing::debug!(%err, "mcp stdio wait failed"),
+                Err(_) => tracing::debug!("mcp stdio server ignored stdin close; killing"),
+            }
+            // Also ends anything the server left running in its tree.
+            containment.kill_tree();
+        });
     }
 }
 
@@ -295,23 +305,28 @@ impl StdioMcpProcess {
             });
         }
         Ok(Self {
-            child,
+            child: Some(child),
             stdin,
             stdout: BufReader::new(stdout),
             _stderr_ring: stderr_ring,
-            containment,
+            containment: Some(containment),
             quarantined_stdout: Vec::new(),
             next_id: 1,
+            token: NEXT_PROCESS_TOKEN.fetch_add(1, Ordering::Relaxed),
+            graceful: false,
+            server_id: server.id.clone(),
         })
     }
 
     /// Whether the server process is still running.
     fn is_alive(&mut self) -> bool {
-        matches!(self.child.try_wait(), Ok(None))
+        self.child
+            .as_mut()
+            .is_some_and(|c| matches!(c.try_wait(), Ok(None)))
     }
 
     /// Reads one line (without its newline) into `out`, never holding more than
-    /// [`MAX_STDIO_LINE_BYTES`] (R16). Returns `false` at end of stream.
+    /// [`MAX_STDIO_LINE_BYTES`]. Returns `false` at end of stream.
     async fn read_bounded_line(&mut self, out: &mut Vec<u8>) -> BistreResult<bool> {
         let read_err =
             || BistreError::with_detail(DiagnosticKey::ProviderRequestFailed, "mcp_stdio_read");
@@ -339,7 +354,7 @@ impl StdioMcpProcess {
         }
     }
 
-    /// R43: answers a request the server sent us, by method.
+    /// Answers a request the server sent us, by method.
     async fn answer_server_request(&mut self, id: &Value, method: &str) -> BistreResult<()> {
         let reply = if method == "ping" {
             json!({ "jsonrpc": "2.0", "id": id, "result": {} })
@@ -365,7 +380,32 @@ impl StdioMcpProcess {
         Ok(())
     }
 
-    async fn rpc(&mut self, method: &str, params: Value) -> BistreResult<Value> {
+    /// Tells the server to stop request `id`; its late answer is ignored by [`Self::rpc`].
+    /// Sends `subscriptions/listen` for `toolsListChanged` without waiting: the session shares
+    /// one channel, so its acknowledgement and change notices arrive among later answers, and
+    /// [`Self::rpc`] notes each change. A refusal answers an id nothing waits for.
+    async fn open_listen(&mut self) -> BistreResult<()> {
+        let id = self.next_id;
+        self.next_id = self.next_id.saturating_add(1);
+        self.send_line(&json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "subscriptions/listen",
+            "params": with_modern_meta(json!({ "notifications": { "toolsListChanged": true } })),
+        }))
+        .await
+    }
+
+    async fn send_cancel(&mut self, id: u64) -> BistreResult<()> {
+        self.send_line(&json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/cancelled",
+            "params": { "requestId": id, "reason": "The caller stopped waiting." },
+        }))
+        .await
+    }
+
+    async fn rpc(&mut self, method: &str, params: Value, timeout: Duration) -> BistreResult<Value> {
         let id = self.next_id;
         self.next_id = self.next_id.saturating_add(1);
         let req = json!({
@@ -376,7 +416,7 @@ impl StdioMcpProcess {
         });
         self.send_line(&req).await?;
 
-        let deadline = Instant::now() + MCP_CALL_TIMEOUT;
+        let deadline = Instant::now() + timeout;
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
@@ -408,9 +448,12 @@ impl StdioMcpProcess {
                 continue;
             }
             match serde_json::from_str::<Value>(trimmed) {
-                // R43: a message with a `method` is the server's request or notification, never
+                // A message with a `method` is the server's request or notification, never
                 // our response, even when it reuses our id.
                 Ok(val) if val.get("method").is_some() => {
+                    if val["method"] == "notifications/tools/list_changed" {
+                        crate::mcp_refresh::note_list_changed(&self.server_id);
+                    }
                     if let (Some(req_id), Some(m)) =
                         (val.get("id"), val.get("method").and_then(Value::as_str))
                     {
@@ -434,26 +477,38 @@ impl StdioMcpProcess {
         }
     }
 
+    /// Probes the server's era with `server/discover` (MCP 2026-07-28 stdio backward
+    /// compatibility) and, for a legacy server only, runs the `initialize` handshake.
+    /// Returns the protocol revision every later request uses.
     async fn handshake(&mut self) -> BistreResult<String> {
+        let probe = self
+            .rpc(
+                "server/discover",
+                with_modern_meta(json!({})),
+                MCP_DISCOVER_PROBE_TIMEOUT,
+            )
+            .await;
+        if probe_verdict(probe)? == ProbeVerdict::Modern {
+            return Ok(MCP_PROTOCOL_2026.to_owned());
+        }
         let init_params = json!({
-            "protocolVersion": MCP_PROTOCOL_2026,
+            "protocolVersion": MCP_PROTOCOL_2025,
             "capabilities": {},
             "clientInfo": { "name": "Bistre", "version": crate::CORE_VERSION }
         });
-        let resp = if let Ok(v) = self.rpc("initialize", init_params).await {
-            v
-        } else {
-            let fallback = json!({
-                "protocolVersion": MCP_PROTOCOL_2025,
-                "capabilities": {},
-                "clientInfo": { "name": "Bistre", "version": crate::CORE_VERSION }
-            });
-            self.rpc("initialize", fallback).await?
-        };
-        let negotiated = resp
-            .pointer("/result/protocolVersion")
+        let resp = self
+            .rpc("initialize", init_params, MCP_CALL_TIMEOUT)
+            .await?;
+        let negotiated = complete_result(&resp)?
+            .get("protocolVersion")
             .and_then(Value::as_str)
-            .unwrap_or(MCP_PROTOCOL_2025)
+            .filter(|v| !v.is_empty())
+            .ok_or_else(|| {
+                BistreError::with_detail(
+                    DiagnosticKey::ProviderRequestFailed,
+                    "mcp_initialize_no_version",
+                )
+            })?
             .to_owned();
         self.send_line(&json!({
             "jsonrpc": "2.0",
@@ -461,6 +516,41 @@ impl StdioMcpProcess {
         }))
         .await?;
         Ok(negotiated)
+    }
+}
+
+/// Sends `notifications/cancelled` when the caller drops a call before its answer (a cancelled
+/// run), so the server stops work nobody will read (MCP 2026-07-28 stdio: the client MUST).
+struct CancelOnDrop {
+    slot: SessionSlot,
+    token: u64,
+    request_id: u64,
+    armed: bool,
+}
+
+impl Drop for CancelOnDrop {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+            tracing::debug!("mcp cancel not sent: no runtime");
+            return;
+        };
+        let (slot, token, id) = (Arc::clone(&self.slot), self.token, self.request_id);
+        runtime.spawn(async move {
+            let mut guard = slot.lock().await;
+            let Some(session) = guard.as_mut().filter(|s| s.proc.token == token) else {
+                return;
+            };
+            if let Err(err) = session.proc.send_cancel(id).await {
+                tracing::debug!(
+                    key = err.key.as_key(),
+                    "mcp cancel not sent; dropping session"
+                );
+                *guard = None;
+            }
+        });
     }
 }
 
@@ -492,14 +582,22 @@ fn session_slot(server_id: &str) -> BistreResult<SessionSlot> {
     Ok(slot)
 }
 
-/// Closes (kills) the live session of `server_id`, if any. A call still using it finishes
-/// first; the process dies when that call lets go.
+/// Closes `slot`'s session gracefully when no call holds it; a call still using it finishes
+/// first, and the process dies when that call lets go.
+fn close_slot(slot: &SessionSlot) {
+    if let Ok(mut guard) = slot.try_lock()
+        && let Some(mut session) = guard.take()
+    {
+        session.proc.graceful = true;
+    }
+}
+
+/// Closes the live session of `server_id`, if any: stdin closes, then the tree is killed
+/// after [`STDIO_SHUTDOWN_GRACE`].
 pub fn close_stdio_session(server_id: &str) {
     let slot = lock_or_recover(&SESSIONS, "mcp_stdio_sessions").remove(server_id);
-    if let Some(slot) = slot
-        && let Ok(mut guard) = slot.try_lock()
-    {
-        *guard = None;
+    if let Some(slot) = slot {
+        close_slot(&slot);
     }
 }
 
@@ -512,9 +610,7 @@ pub fn close_all_stdio_sessions() {
         .collect();
     for (id, slot) in slots {
         reset_stdio_restart_budget(&id);
-        if let Ok(mut guard) = slot.try_lock() {
-            *guard = None;
-        }
+        close_slot(&slot);
     }
 }
 
@@ -523,8 +619,9 @@ fn session_fingerprint(server: &McpServerConfig) -> String {
     json!([server.command, server.args]).to_string()
 }
 
-/// Sends one request on the server's live session, starting one if needed. Returns the
-/// response, the negotiated protocol, and any quarantined stdout lines.
+/// Sends one request on the server's live session, starting one if needed (a modern session
+/// adds `_meta` to `params`). Returns the response, the negotiated protocol, and any
+/// quarantined stdout lines.
 async fn session_rpc(
     server: &McpServerConfig,
     method: &str,
@@ -541,6 +638,9 @@ async fn session_rpc(
         *guard = None;
         let mut proc = StdioMcpProcess::spawn(server)?;
         let negotiated = proc.handshake().await?;
+        if negotiated == MCP_PROTOCOL_2026 {
+            proc.open_listen().await?;
+        }
         *guard = Some(StdioSession {
             proc,
             fingerprint,
@@ -553,7 +653,20 @@ async fn session_rpc(
             "mcp_stdio_session",
         ));
     };
-    match session.proc.rpc(method, params).await {
+    let params = if session.negotiated == MCP_PROTOCOL_2026 {
+        with_modern_meta(params)
+    } else {
+        params
+    };
+    let mut cancel = CancelOnDrop {
+        slot: Arc::clone(&slot),
+        token: session.proc.token,
+        request_id: session.proc.next_id,
+        armed: true,
+    };
+    let answer = session.proc.rpc(method, params, MCP_CALL_TIMEOUT).await;
+    cancel.armed = false;
+    match answer {
         Ok(resp) => Ok((
             resp,
             session.negotiated.clone(),
@@ -578,14 +691,29 @@ async fn session_rpc(
 pub async fn discover_stdio_mcp_server(
     server: &McpServerConfig,
 ) -> BistreResult<McpDiscoveryReport> {
-    let (list_resp, negotiated, quarantined) = session_rpc(server, "tools/list", json!({})).await?;
-    let raw_tools = list_resp
-        .pointer("/result/tools")
-        .and_then(Value::as_array)
-        .map_or(&[][..], Vec::as_slice);
+    let mut raw_tools = Vec::new();
+    let mut quarantined = Vec::new();
+    let mut negotiated = String::new();
+    let mut cache = crate::mcp_era::ListCache::default();
+    let mut cursor: Option<String> = None;
+    for _ in 0..crate::mcp_era::MAX_TOOL_LIST_PAGES {
+        let params = crate::mcp_era::tools_list_params(cursor.as_deref());
+        let (list_resp, era, noise) = session_rpc(server, "tools/list", params).await?;
+        negotiated = era;
+        quarantined.extend(noise);
+        let result = complete_result(&list_resp)?;
+        cursor =
+            crate::mcp_era::take_tools_page(result, cursor.as_deref(), &mut raw_tools, &mut cache);
+        if cursor.is_none() {
+            break;
+        }
+    }
+    if cursor.is_some() {
+        tracing::warn!(server = %server.id, "tools/list page limit reached; later tools unlisted");
+    }
     Ok(McpDiscoveryReport {
         negotiated_protocol: negotiated,
-        tools: normalize_and_sort_tools(&server.id, raw_tools),
+        tools: normalize_and_sort_tools(&server.id, &raw_tools, cache),
         quarantined_stdout_lines: quarantined,
     })
 }
@@ -607,8 +735,7 @@ pub async fn call_stdio_mcp_tool(
         }),
     )
     .await?;
-    let result = resp.get("result").unwrap_or(&resp);
-    Ok(parse_mcp_call_result(result, data_dir))
+    Ok(parse_mcp_call_result(complete_result(&resp)?, data_dir))
 }
 
 #[cfg(test)]

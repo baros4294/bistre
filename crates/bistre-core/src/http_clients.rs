@@ -3,7 +3,7 @@
 //! Four policies exist, each built once per engine:
 //! - **provider**: the shared provider client (OS verifier, keepalive, 300 s first-token read).
 //!   It follows **no** redirects: a cross-host redirect would carry `x-api-key` /
-//!   `x-goog-api-key` and, for 307/308, the request body (R6).
+//!   `x-goog-api-key` and, for 307/308, the request body.
 //! - **OTA**: update feeds and artifacts; credential-free, so it follows at most
 //!   [`MAX_OTA_REDIRECTS`] redirects, each to `https` (or a loopback test host).
 //! - **loopback**: local MCP servers and local-server discovery (no proxy, no redirects).
@@ -93,10 +93,9 @@ pub fn loopback_client(connect: Duration, timeout: Duration) -> BistreResult<req
         .map_err(|_| BistreError::with_detail(DiagnosticKey::InternalError, "loopback_client_init"))
 }
 
-/// Builds the public-web client around a DNS resolver that admits only public addresses.
-pub fn public_web_client(
-    resolver: Arc<dyn reqwest::dns::Resolve>,
-) -> Result<reqwest::Client, reqwest::Error> {
+/// The public-web rules: a DNS resolver that admits only public addresses, no proxy, no
+/// redirects, and a 10 s connect timeout.
+fn public_builder(resolver: Arc<dyn reqwest::dns::Resolve>) -> reqwest::ClientBuilder {
     ensure_tls_provider();
     reqwest::Client::builder()
         .user_agent(USER_AGENT)
@@ -104,9 +103,50 @@ pub fn public_web_client(
         .redirect(reqwest::redirect::Policy::none())
         .dns_resolver(resolver)
         .connect_timeout(Duration::from_secs(10))
+}
+
+/// Builds the public-web client: 30 s per read and 60 s per request.
+pub fn public_web_client(
+    resolver: Arc<dyn reqwest::dns::Resolve>,
+) -> Result<reqwest::Client, reqwest::Error> {
+    public_builder(resolver)
         .read_timeout(Duration::from_secs(30))
         .timeout(Duration::from_secs(60))
         .build()
+}
+
+/// Builds the public-web client for streams that may stay silent: no read timeout, so each
+/// request sets its own total timeout.
+pub fn public_stream_client(
+    resolver: Arc<dyn reqwest::dns::Resolve>,
+) -> Result<reqwest::Client, reqwest::Error> {
+    public_builder(resolver).build()
+}
+
+/// Reads the whole body of `resp`, at most `max_bytes`: `broken` when the stream fails,
+/// `too_large` as soon as the body would pass the cap.
+pub(crate) async fn read_body_capped(
+    mut resp: reqwest::Response,
+    max_bytes: usize,
+    broken: BistreError,
+    too_large: BistreError,
+) -> BistreResult<Vec<u8>> {
+    let mut body = Vec::new();
+    loop {
+        match resp.chunk().await {
+            Ok(Some(chunk)) => {
+                if body.len().saturating_add(chunk.len()) > max_bytes {
+                    return Err(too_large);
+                }
+                body.extend_from_slice(&chunk);
+            }
+            Ok(None) => return Ok(body),
+            Err(err) => {
+                tracing::debug!(%err, "response body broke off");
+                return Err(broken);
+            }
+        }
+    }
 }
 
 #[cfg(test)]

@@ -2,9 +2,9 @@
 
 use super::{
     BistreError, BistreResult, CheckpointStats, Connection, DEFAULT_ASSISTANT_ID,
-    DEFAULT_WORKSPACE_ID, DEFAULT_WORKSPACE_NAME, DiagnosticKey, KV_PROVIDERS_SEEDED_KEY,
-    OpenFlags, OptionalExtension, Path, PathBuf, ProviderDialect, harness, map_sqlite_err,
-    now_unix_ms, params, story,
+    DEFAULT_WORKSPACE_ID, DEFAULT_WORKSPACE_NAME, DiagnosticKey, KV_OPENROUTER_SEEDED_KEY,
+    KV_PROVIDERS_SEEDED_KEY, OpenFlags, OptionalExtension, Path, PathBuf, ProviderDialect, harness,
+    map_sqlite_err, now_unix_ms, params, story,
 };
 
 pub(crate) fn open_writer_connection(db_path: &Path) -> BistreResult<Connection> {
@@ -132,6 +132,14 @@ pub(crate) fn run_migrations(conn: &mut Connection, db_path: &Path) -> BistreRes
         verify_db_integrity(conn)?;
     }
 
+    if version < 12 {
+        if version == 11 {
+            backup_before_migration(conn, db_path, 11)?;
+        }
+        apply_v12_project_instructions(conn)?;
+        verify_db_integrity(conn)?;
+    }
+
     Ok(())
 }
 
@@ -204,7 +212,7 @@ pub(crate) fn add_column_if_missing(
 }
 
 pub(crate) fn apply_v5_expand_migration(conn: &mut Connection) -> BistreResult<()> {
-    let alters: [(&str, &str, &str); 16] = [
+    let alters: [(&str, &str, &str); 17] = [
         (
             "providers",
             "icon_slug",
@@ -285,6 +293,11 @@ pub(crate) fn apply_v5_expand_migration(conn: &mut Connection) -> BistreResult<(
             "output_tokens",
             "ALTER TABLE wallet_ledger ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0",
         ),
+        (
+            "wallet_ledger",
+            "purpose",
+            "ALTER TABLE wallet_ledger ADD COLUMN purpose TEXT NOT NULL DEFAULT 'chat'",
+        ),
     ];
 
     let tx = conn
@@ -300,6 +313,23 @@ pub(crate) fn apply_v5_expand_migration(conn: &mut Connection) -> BistreResult<(
     )
     .map_err(map_sqlite_err)?;
     tx.pragma_update(None, "user_version", 5_u32)
+        .map_err(map_sqlite_err)?;
+    tx.commit().map_err(map_sqlite_err)
+}
+
+/// v11 -> v12 (additive, N-1 readable): a project's instructions live on its `workspaces`
+/// row; an older app ignores the column.
+fn apply_v12_project_instructions(conn: &mut Connection) -> BistreResult<()> {
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(map_sqlite_err)?;
+    add_column_if_missing(
+        &tx,
+        "workspaces",
+        "instructions",
+        "ALTER TABLE workspaces ADD COLUMN instructions TEXT NOT NULL DEFAULT ''",
+    )?;
+    tx.pragma_update(None, "user_version", 12_u32)
         .map_err(map_sqlite_err)?;
     tx.commit().map_err(map_sqlite_err)
 }
@@ -371,23 +401,60 @@ pub(crate) fn ensure_default_assistant_if_empty(conn: &Connection) -> BistreResu
     Ok(())
 }
 
-/// Seeds initial Big 3 starter templates strictly once on a brand-new database.
-/// Once seeded, users may freely delete any provider and it will never be forced back on restart.
+/// One starter provider: id, name, API format, base URL, icon.
+type StarterProvider = (
+    &'static str,
+    &'static str,
+    ProviderDialect,
+    &'static str,
+    &'static str,
+);
+
+/// Seeds the starter providers, each group strictly once per database: a group added in a later
+/// version (`OpenRouter`) arrives once on an existing database too. Once seeded, users may freely
+/// delete any provider and it is never forced back on restart.
 pub(crate) fn seed_builtin_providers_once(conn: &Connection) -> BistreResult<()> {
-    const STARTER_PROVIDERS: [(&str, &str, ProviderDialect); 3] = [
-        ("openai", "OpenAI", ProviderDialect::OpenAi),
-        (
+    const fn native(id: &'static str, name: &'static str, d: ProviderDialect) -> StarterProvider {
+        (id, name, d, d.default_base_url(), d.default_icon_slug())
+    }
+    const BIG_THREE: [StarterProvider; 3] = [
+        native("openai", "OpenAI", ProviderDialect::OpenAi),
+        native(
             "google_gemini",
             "Google Gemini",
             ProviderDialect::GoogleGemini,
         ),
-        ("anthropic", "Anthropic", ProviderDialect::Anthropic),
+        native("anthropic", "Anthropic", ProviderDialect::Anthropic),
     ];
+    const OPENROUTER: [StarterProvider; 1] = [(
+        "openrouter",
+        "OpenRouter",
+        ProviderDialect::CustomOpenAi,
+        bistre_protocol::dialect::OPENROUTER_BASE_URL,
+        "openrouter",
+    )];
+    seed_group_once(conn, KV_PROVIDERS_SEEDED_KEY, 1, &BIG_THREE)?;
+    seed_group_once(
+        conn,
+        KV_OPENROUTER_SEEDED_KEY,
+        i64::try_from(BIG_THREE.len())
+            .unwrap_or(i64::MAX)
+            .saturating_add(1),
+        &OPENROUTER,
+    )
+}
 
+/// Inserts `group` unless `seeded_key` says it was seeded before; `first_ts` orders the rows.
+fn seed_group_once(
+    conn: &Connection,
+    seeded_key: &str,
+    first_ts: i64,
+    group: &[StarterProvider],
+) -> BistreResult<()> {
     let already_seeded: Option<String> = conn
         .query_row(
             "SELECT value FROM kv_meta WHERE key = ?1",
-            [KV_PROVIDERS_SEEDED_KEY],
+            [seeded_key],
             |r| r.get(0),
         )
         .optional()
@@ -395,28 +462,19 @@ pub(crate) fn seed_builtin_providers_once(conn: &Connection) -> BistreResult<()>
     if already_seeded.is_some() {
         return Ok(());
     }
-
-    for (idx, (id, name, dialect)) in STARTER_PROVIDERS.iter().enumerate() {
-        let ts = i64::try_from(idx).unwrap_or(0) + 1;
+    for (ts, (id, name, dialect, base_url, icon)) in (first_ts..).zip(group) {
         conn.execute(
             "INSERT OR IGNORE INTO providers (id, name, dialect, base_url, default_model, key_hint,
                                               is_enabled, is_builtin, use_server_state_cache,
                                               icon_slug, custom_icon_path, created_at_ms, updated_at_ms)
              VALUES (?1, ?2, ?3, ?4, '', '', 1, 1, 0, ?5, '', ?6, ?6)",
-            params![
-                id,
-                name,
-                dialect.as_str(),
-                dialect.default_base_url(),
-                dialect.default_icon_slug(),
-                ts
-            ],
+            params![id, name, dialect.as_str(), base_url, icon, ts],
         )
         .map_err(map_sqlite_err)?;
     }
     conn.execute(
         "INSERT OR REPLACE INTO kv_meta (key, value) VALUES (?1, '1')",
-        [KV_PROVIDERS_SEEDED_KEY],
+        [seeded_key],
     )
     .map_err(map_sqlite_err)?;
     Ok(())
@@ -621,9 +679,9 @@ CREATE INDEX IF NOT EXISTS idx_wallet_ledger_reserved
 ";
 
 /// v9 -> v10 (N-1 readable: only derived data is removed, one index is added).
-/// - R31: the event log is a replay buffer and v0.1.2 rows held message bodies; it is cleared
+/// - The event log is a replay buffer and v0.1.2 rows held message bodies; it is cleared
 ///   once (new rows keep ids only), with the run journals of chats deleted before v10.
-/// - R38: `nodes(parent_id)` serves the foreign-key child lookup every node delete runs, so a
+/// - `nodes(parent_id)` serves the foreign-key child lookup every node delete runs, so a
 ///   long chat deletes in linear time; `agent_runs(thread_id)` serves the chat delete cascade.
 pub(crate) const SCHEMA_V10_PRIVACY_AND_PARENT_SQL: &str = r"
 DELETE FROM engine_events_log;
@@ -641,7 +699,7 @@ CREATE INDEX IF NOT EXISTS idx_agent_runs_thread
 ";
 
 /// Every FTS trigger (word and trigram index). Dropped together when an index is corrupt and
-/// recreated together by `rebuild_search_index` (G3).
+/// recreated together by `rebuild_search_index`.
 pub(crate) const SEARCH_TRIGGERS_SQL: &str = r"
 CREATE TRIGGER IF NOT EXISTS nodes_ai AFTER INSERT ON nodes BEGIN
     INSERT INTO nodes_fts(rowid, content) VALUES (new.rowid, new.content);
@@ -665,7 +723,7 @@ CREATE TRIGGER IF NOT EXISTS nodes_tri_au AFTER UPDATE OF content ON nodes BEGIN
 END;
 ";
 
-/// Drops every FTS trigger (G3 corruption recovery).
+/// Drops every FTS trigger (corruption recovery).
 pub(crate) const DROP_SEARCH_TRIGGERS_SQL: &str = r"
 DROP TRIGGER IF EXISTS nodes_ai;
 DROP TRIGGER IF EXISTS nodes_ad;
@@ -675,9 +733,9 @@ DROP TRIGGER IF EXISTS nodes_tri_ad;
 DROP TRIGGER IF EXISTS nodes_tri_au;
 ";
 
-/// v10 -> v11 (D6, additive): a trigram index beside the word index, so CJK text (no spaces
+/// v10 -> v11 (additive): a trigram index beside the word index, so CJK text (no spaces
 /// between words) and mid-word substrings are searchable. Built once from `nodes`; a stale
-/// word index (G3) leaves its triggers dropped until `rebuild_search_index`.
+/// word index leaves its triggers dropped until `rebuild_search_index`.
 pub(crate) const SCHEMA_V11_TRIGRAM_SQL: &str = r"
 CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts_tri USING fts5(
     content,

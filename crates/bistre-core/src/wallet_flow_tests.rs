@@ -1,4 +1,4 @@
-//! Engine-level Wallet Shield tests through a paid (non-loopback) provider (A-S1, A-S6, R5).
+//! Engine-level Wallet Shield tests through a paid (non-loopback) provider.
 //!
 //! The provider URL uses the `paid.test` host, which the test client resolves to a loopback
 //! `MockServer`, so the engine treats every request as metered.
@@ -7,27 +7,26 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bistre_protocol::{
-    DiagnosticKey, EngineEvent, MoneyMicros, ProviderDialect, ThreadMode, ThreadPatch,
+    DiagnosticKey, EngineEvent, MoneyMicros, ProviderDialect, SpendPurpose, ThreadMode, ThreadPatch,
 };
 use tokio::sync::broadcast;
 
-use crate::EngineClient;
 use crate::registry::ModelRates;
 use crate::test_support::{MockServer, Scripted};
 
-type TestResult = Result<(), Box<dyn std::error::Error>>;
+pub(crate) type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 const EVENT_WAIT: Duration = Duration::from_secs(15);
 const PAID_HOST: &str = "paid.test";
 
-struct PaidChat {
-    _dir: tempfile::TempDir,
-    engine: Arc<crate::InProcessEngine>,
-    provider_id: String,
-    thread_id: String,
+pub(crate) struct PaidChat {
+    pub(crate) dir: tempfile::TempDir,
+    pub(crate) engine: Arc<crate::InProcessEngine>,
+    pub(crate) provider_id: String,
+    pub(crate) thread_id: String,
 }
 
-async fn paid_chat(
+pub(crate) async fn paid_chat(
     server: &MockServer,
     model: &str,
 ) -> Result<PaidChat, Box<dyn std::error::Error>> {
@@ -60,7 +59,7 @@ async fn paid_chat(
         )
         .await?;
     Ok(PaidChat {
-        _dir: dir,
+        dir,
         engine,
         provider_id: provider.id,
         thread_id: thread.id,
@@ -68,7 +67,7 @@ async fn paid_chat(
 }
 
 /// Collects diagnostics until the run of `thread_id` finishes.
-async fn run_diagnostics(
+pub(crate) async fn run_diagnostics(
     rx: &mut broadcast::Receiver<EngineEvent>,
     thread_id: &str,
 ) -> Result<Vec<(DiagnosticKey, Option<String>)>, Box<dyn std::error::Error>> {
@@ -90,14 +89,14 @@ fn chat_completion_without_usage(text: &str) -> Scripted {
     Scripted::sse(format!("data: {chunk}\n\ndata: [DONE]\n\n"))
 }
 
-async fn set_daily_ceiling(engine: &crate::InProcessEngine, micros: i64) -> TestResult {
+pub(crate) async fn set_daily_ceiling(engine: &crate::InProcessEngine, micros: i64) -> TestResult {
     let mut settings = engine.load_settings().await?;
     settings.wallet_daily_ceiling_micros = Some(MoneyMicros::from_micros(micros));
     engine.save_settings(settings).await?;
     Ok(())
 }
 
-/// A-S6: while a cap is active, a model with no known price is not sent; "Allow once" lets the
+/// While a cap is active, a model with no known price is not sent; "Allow once" lets the
 /// chat's next run through.
 #[tokio::test]
 async fn an_unpriced_request_is_blocked_under_a_cap_until_allowed_once() -> TestResult {
@@ -139,19 +138,23 @@ async fn an_unpriced_request_is_blocked_under_a_cap_until_allowed_once() -> Test
     Ok(())
 }
 
-/// A-S1: a malformed per-chat cap denies the request instead of meaning "no cap".
+/// A malformed per-chat cap denies the request instead of meaning "no cap".
 #[tokio::test]
 async fn a_malformed_chat_cap_denies_the_request() -> TestResult {
     let server = MockServer::start(vec![chat_completion_without_usage("hi")]).await?;
     let chat = paid_chat(&server, "priced-model").await?;
-    chat.engine.pricing.publish(vec![(
-        "priced-model".to_owned(),
-        ModelRates {
-            input_per_mtok: 1_000_000,
-            output_per_mtok: 2_000_000,
-            ..ModelRates::default()
-        },
-    )]);
+    chat.engine
+        .pricing
+        .publish(vec![crate::registry::CatalogEntry {
+            namespace: None,
+            id: "priced-model".to_owned(),
+            rates: ModelRates {
+                input_per_mtok: 1_000_000,
+                output_per_mtok: 2_000_000,
+                ..ModelRates::default()
+            },
+            extras: crate::registry::ModelExtras::default(),
+        }]);
     chat.engine
         .set_kv_meta(
             format!("thread_spend_limit:{}", chat.thread_id),
@@ -173,7 +176,7 @@ async fn a_malformed_chat_cap_denies_the_request() -> TestResult {
     Ok(())
 }
 
-/// R5: a reply whose stream carried no usage is billed from the estimate, never at $0.
+/// A reply whose stream carried no usage is billed from the estimate, never at $0.
 #[tokio::test]
 async fn a_reply_without_usage_is_billed_from_the_estimate() -> TestResult {
     let server = MockServer::start(vec![chat_completion_without_usage(
@@ -181,14 +184,18 @@ async fn a_reply_without_usage_is_billed_from_the_estimate() -> TestResult {
     )])
     .await?;
     let chat = paid_chat(&server, "priced-model").await?;
-    chat.engine.pricing.publish(vec![(
-        "priced-model".to_owned(),
-        ModelRates {
-            input_per_mtok: 1_000_000_000,
-            output_per_mtok: 2_000_000_000,
-            ..ModelRates::default()
-        },
-    )]);
+    chat.engine
+        .pricing
+        .publish(vec![crate::registry::CatalogEntry {
+            namespace: None,
+            id: "priced-model".to_owned(),
+            rates: ModelRates {
+                input_per_mtok: 1_000_000_000,
+                output_per_mtok: 2_000_000_000,
+                ..ModelRates::default()
+            },
+            extras: crate::registry::ModelExtras::default(),
+        }]);
     let mut rx = chat.engine.subscribe_events();
     chat.engine
         .send_and_stream_reply(chat.thread_id.clone(), None, "hello there".to_owned())
@@ -205,19 +212,23 @@ async fn a_reply_without_usage_is_billed_from_the_estimate() -> TestResult {
     Ok(())
 }
 
-/// A-S4: read aloud passes the Wallet Shield: a reached cap blocks it before any request.
+/// Read aloud passes the Wallet Shield: a reached cap blocks it before any request.
 #[tokio::test]
 async fn read_aloud_is_blocked_when_the_daily_cap_is_reached() -> TestResult {
     let server = MockServer::start(vec![Scripted::status(200)]).await?;
     let chat = paid_chat(&server, "tts-model").await?;
-    chat.engine.pricing.publish(vec![(
-        "tts-model".to_owned(),
-        ModelRates {
-            input_per_mtok: 1_000_000,
-            output_per_mtok: 1_000_000,
-            ..ModelRates::default()
-        },
-    )]);
+    chat.engine
+        .pricing
+        .publish(vec![crate::registry::CatalogEntry {
+            namespace: None,
+            id: "tts-model".to_owned(),
+            rates: ModelRates {
+                input_per_mtok: 1_000_000,
+                output_per_mtok: 1_000_000,
+                ..ModelRates::default()
+            },
+            extras: crate::registry::ModelExtras::default(),
+        }]);
     set_daily_ceiling(&chat.engine, 1_000).await?;
     chat.engine.storage.record_wallet_entry(
         None,
@@ -244,7 +255,7 @@ async fn read_aloud_is_blocked_when_the_daily_cap_is_reached() -> TestResult {
     Ok(())
 }
 
-/// A-S4 + A-S6: under a cap, an unpriced speech model is blocked until "Allow once".
+/// Under a cap, an unpriced speech model is blocked until "Allow once".
 #[tokio::test]
 async fn unpriced_read_aloud_under_a_cap_needs_allow_once() -> TestResult {
     let server = MockServer::start(vec![Scripted::status(200)]).await?;
@@ -275,5 +286,74 @@ async fn unpriced_read_aloud_under_a_cap_needs_allow_once() -> TestResult {
     );
     let seen = server.finish().await;
     assert_eq!(seen.len(), 1, "{second:?}");
+    Ok(())
+}
+
+fn chat_completion(delta: &serde_json::Value, finish: &str) -> Scripted {
+    let chunk = serde_json::json!({ "choices": [{ "delta": delta, "finish_reason": finish }] });
+    let usage = serde_json::json!({
+        "choices": [],
+        "usage": { "prompt_tokens": 10, "completion_tokens": 5 }
+    });
+    Scripted::sse(format!(
+        "data: {chunk}\n\ndata: {usage}\n\ndata: [DONE]\n\n"
+    ))
+}
+
+/// A chat run and the helpers it starts are booked apart, so background use can be shown.
+#[tokio::test]
+async fn a_run_and_its_helpers_are_booked_under_their_own_purpose() -> TestResult {
+    let delegate = serde_json::json!({ "tool_calls": [{
+        "index": 0,
+        "id": "call_1",
+        "type": "function",
+        "function": {
+            "name": "agent_delegate",
+            "arguments": serde_json::json!({ "tasks": ["look around"] }).to_string(),
+        }
+    }]});
+    let server = MockServer::start(vec![
+        chat_completion(&delegate, "tool_calls"),
+        chat_completion(&serde_json::json!({ "content": "nothing here" }), "stop"),
+        chat_completion(&serde_json::json!({ "content": "done" }), "stop"),
+    ])
+    .await?;
+    let chat = paid_chat(&server, "priced-model").await?;
+    chat.engine
+        .pricing
+        .publish(vec![crate::registry::CatalogEntry {
+            namespace: None,
+            id: "priced-model".to_owned(),
+            rates: ModelRates {
+                input_per_mtok: 1_000_000_000,
+                output_per_mtok: 2_000_000_000,
+                ..ModelRates::default()
+            },
+            extras: crate::registry::ModelExtras::default(),
+        }]);
+    let root = chat.dir.path().join("workspace");
+    std::fs::create_dir_all(&root)?;
+    for (key, value) in [
+        ("agent.workspace_root", root.to_string_lossy().into_owned()),
+        (
+            "agent.tool_permissions",
+            r#"{"agent_delegate":"allow"}"#.to_owned(),
+        ),
+    ] {
+        chat.engine.set_kv_meta(key.to_owned(), value).await?;
+    }
+    let mut rx = chat.engine.subscribe_events();
+    chat.engine
+        .send_and_stream_reply(chat.thread_id.clone(), None, "hello".to_owned())
+        .await?;
+    run_diagnostics(&mut rx, &chat.thread_id).await?;
+    assert_eq!(server.finish().await.len(), 3);
+    let usage = chat.engine.wallet_usage_by_purpose(0).await?;
+    let booked: Vec<_> = usage.iter().map(|u| (u.purpose, u.requests)).collect();
+    assert_eq!(
+        booked,
+        vec![(SpendPurpose::Chat, 2), (SpendPurpose::Helper, 1)]
+    );
+    assert!(usage.iter().all(|u| u.cost.as_micros() > 0), "{usage:?}");
     Ok(())
 }

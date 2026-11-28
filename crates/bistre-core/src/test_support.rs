@@ -84,6 +84,18 @@ impl Scripted {
         }
     }
 
+    /// `200` with a binary body.
+    pub(crate) fn bytes(body: &[u8]) -> Self {
+        Self {
+            status: 200,
+            headers: vec![(
+                "Content-Type".to_owned(),
+                "application/octet-stream".to_owned(),
+            )],
+            body: ScriptedBody::Full(body.to_vec()),
+        }
+    }
+
     /// Any status with an empty body.
     pub(crate) fn status(status: u16) -> Self {
         Self {
@@ -136,8 +148,16 @@ pub(crate) struct MockServer {
 impl MockServer {
     /// Binds `127.0.0.1:0` and serves `responses`, one per connection.
     pub(crate) async fn start(responses: Vec<Scripted>) -> std::io::Result<Self> {
+        Self::start_with(|_| responses).await
+    }
+
+    /// [`Self::start`] with responses that name the server's own port.
+    pub(crate) async fn start_with(
+        script: impl FnOnce(u16) -> Vec<Scripted>,
+    ) -> std::io::Result<Self> {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let addr = listener.local_addr()?;
+        let responses = script(addr.port());
         let expected = responses.len();
         let (tx, records) = mpsc::channel(expected.max(1));
         let task = tokio::spawn(async move {
@@ -338,6 +358,32 @@ pub(crate) fn user_turn(text: &str) -> Vec<NodeRecord> {
         provider_meta_json: None,
         created_at_ms: 0,
     }]
+}
+
+/// Where a built-in model prompt breaks the prompt rules (`AGENTS.md` section 5): a word in
+/// capitals for emphasis, or a vague trigger the model cannot check.
+pub(crate) fn prompt_rule_breaks(prompt: &str) -> Vec<String> {
+    const VAGUE: [&str; 6] = [
+        "naturally",
+        "when relevant",
+        "if relevant",
+        "if needed",
+        "as needed",
+        "appropriate",
+    ];
+    let mut breaks: Vec<String> = prompt
+        .split(|c: char| !c.is_ascii_alphabetic())
+        .filter(|w| w.len() >= 3 && w.chars().all(|c| c.is_ascii_uppercase()))
+        .map(|w| format!("capitals: {w}"))
+        .collect();
+    let lower = prompt.to_lowercase();
+    breaks.extend(
+        VAGUE
+            .iter()
+            .filter(|v| lower.contains(*v))
+            .map(|v| format!("vague: {v}")),
+    );
+    breaks
 }
 
 #[cfg(test)]

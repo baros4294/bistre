@@ -1,4 +1,4 @@
-//! Live shell output for the tool timeline (P21): while a `shell` call runs, its output so far
+//! Live shell output for the tool timeline: while a `shell` call runs, its output so far
 //! reaches the app as `ToolExecutionUpdated { status: "running" }`, coalesced to at most one
 //! event per [`SHELL_PROGRESS_INTERVAL`] and holding only the last [`SHELL_PROGRESS_TAIL`]
 //! bytes. The finished call's own event replaces it.
@@ -67,7 +67,7 @@ pub(crate) async fn forward_shell_progress(
 mod tests {
     use super::*;
 
-    /// P21: output reaches the timeline while the command runs, coalesced and bounded.
+    /// Output reaches the timeline while the command runs, coalesced and bounded.
     #[tokio::test]
     async fn progress_is_coalesced_and_bounded() -> Result<(), Box<dyn std::error::Error>> {
         let (events_tx, mut events_rx) = broadcast::channel(64);

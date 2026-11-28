@@ -121,7 +121,7 @@ impl KeyRing {
         self.keys.iter().map(|k| k.as_str().to_owned()).collect()
     }
 
-    /// A ring of the primary key alone (R11): a request that refers to files uploaded with
+    /// A ring of the primary key alone: a request that refers to files uploaded with
     /// the primary key must be sent with it (another key gets 403/404 for those files).
     #[must_use]
     pub fn primary_only(&self) -> Self {
@@ -172,7 +172,7 @@ pub fn apply_auth_header(
     }
 }
 
-/// The exact URLs a provider is called at (P8): shown in settings and in a failed connection
+/// The exact URLs a provider is called at: shown in settings and in a failed connection
 /// test, so the user sees what was tried.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedEndpoint {

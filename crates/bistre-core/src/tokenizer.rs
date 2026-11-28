@@ -34,7 +34,7 @@ pub fn count_tokens_with(text: &str, encoding: BpeEncoding) -> u64 {
     if text.is_empty() {
         return 0;
     }
-    // R36: every step re-counts the whole branch; long texts are counted once and cached by
+    // Every step re-counts the whole branch; long texts are counted once and cached by
     // content hash (blake3 is far cheaper than a BPE pass).
     let key = (text.len() >= CACHE_MIN_BYTES)
         .then(|| (encoding, *blake3::hash(text.as_bytes()).as_bytes()));
@@ -92,7 +92,7 @@ pub fn count_tokens_for_model(text: &str, model_id: Option<&str>) -> u64 {
 mod tests {
     use super::*;
 
-    /// R36: a long text counted again (every step re-counts the whole branch) comes from the
+    /// A long text counted again (every step re-counts the whole branch) comes from the
     /// cache, not another BPE pass; the result is the same.
     #[test]
     fn a_long_text_is_counted_once() {
@@ -118,7 +118,7 @@ mod tests {
         let vi = "Xin chào thế giới! Hệ thống đang hoạt động bình thường.";
         let ar = "مرحباً بالعالم! هذا اختبار دقيق لعد الرموز.";
         let cjk = "こんにちは世界、今日は良い天気ですね。";
-        let emoji = "🚀✨📚🦀";
+        let emoji = "\u{1F680}\u{2728}\u{1F4DA}\u{1F980}";
 
         assert!(count_tokens(vi) > 10, "vi={}", count_tokens(vi));
         assert!(count_tokens(ar) > 10, "ar={}", count_tokens(ar));

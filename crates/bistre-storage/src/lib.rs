@@ -10,18 +10,22 @@
 
 mod catalog_repo;
 pub mod harness;
+mod project_repo;
 mod schema;
 mod search;
 pub mod story;
 #[cfg(test)]
 mod tests;
+mod thread_repo;
+#[cfg(test)]
+mod thread_tests;
+mod wallet_repo;
 
 use bistre_protocol::lock_or_recover;
 use catalog_repo::normalize_topic;
 use schema::{
     configure_connection, ensure_default_assistant_if_empty, ensure_default_workspace,
-    open_writer_connection, run_checkpoint_truncate, run_migrations, run_reclaim_storage,
-    seed_builtin_providers_once,
+    open_writer_connection, run_migrations, run_reclaim_storage, seed_builtin_providers_once,
 };
 
 use std::path::{Path, PathBuf};
@@ -31,8 +35,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use bistre_protocol::{
     AppSettings, AssistantPatch, AssistantRecord, BistreError, BistreResult, DiagnosticKey,
-    DraftRecord, MoneyMicros, NodeRecord, NodeRole, ProviderDialect, ProviderPatch,
-    ProviderProfile, ThreadMode, ThreadPatch, ThreadSummary, WorkspaceSummary,
+    DraftRecord, MoneyMicros, NodeRecord, NodeRole, ProjectRecord, ProviderDialect, ProviderPatch,
+    ProviderProfile, ThreadMode, ThreadPatch, ThreadSummary,
 };
 use rusqlite::{Connection, ErrorCode, OpenFlags, OptionalExtension, params};
 use uuid::Uuid;
@@ -40,7 +44,7 @@ use uuid::Uuid;
 pub use harness::{AgentRunUpdate, CreateAgentRunParams};
 
 /// Current canonical SQLite schema version (`PRAGMA user_version`).
-pub const CURRENT_SCHEMA_VERSION: u32 = 11;
+pub const CURRENT_SCHEMA_VERSION: u32 = 12;
 
 /// Default assistant identifier seeded strictly when a fresh install has zero assistants.
 pub const DEFAULT_ASSISTANT_ID: &str = "default_assistant";
@@ -48,10 +52,12 @@ pub const DEFAULT_ASSISTANT_ID: &str = "default_assistant";
 pub const DEFAULT_TOPIC: &str = "general";
 
 const WRITER_QUEUE_CAP: usize = 256;
-const DEFAULT_WORKSPACE_ID: &str = "00000000-0000-7000-8000-000000000001";
+/// The workspace that holds every chat outside a project.
+pub const DEFAULT_WORKSPACE_ID: &str = "00000000-0000-7000-8000-000000000001";
 const DEFAULT_WORKSPACE_NAME: &str = "Default Workspace";
 const KV_APP_SETTINGS_KEY: &str = "app_settings_v1";
 const KV_PROVIDERS_SEEDED_KEY: &str = "providers_seeded_v1";
+const KV_OPENROUTER_SEEDED_KEY: &str = "providers_seeded_openrouter";
 
 /// Result of a `PRAGMA wal_checkpoint(TRUNCATE)` invocation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,15 +91,6 @@ pub struct StorageHandle {
     db_path: PathBuf,
     writer_tx: mpsc::SyncSender<WriterMessage>,
     writer_thread: Mutex<Option<JoinHandle<()>>>,
-}
-
-/// Whether `spent + estimate` stays within `cap` (and `spent` has not already reached it).
-/// An overflowing sum never fits.
-fn fits_under(spent: i64, estimate: MoneyMicros, cap: MoneyMicros) -> bool {
-    spent < cap.as_micros()
-        && spent
-            .checked_add(estimate.as_micros())
-            .is_some_and(|after| after <= cap.as_micros())
 }
 
 impl StorageHandle {
@@ -208,27 +205,6 @@ impl StorageHandle {
         })
     }
 
-    /// Lists all workspaces ordered by creation timestamp.
-    pub fn list_workspaces(&self) -> BistreResult<Vec<WorkspaceSummary>> {
-        let conn = self.open_reader()?;
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, name, root_path, created_at_ms FROM workspaces ORDER BY created_at_ms ASC",
-            )
-            .map_err(map_sqlite_err)?;
-        let rows = stmt
-            .query_map([], |row| {
-                Ok(WorkspaceSummary {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    root_path: row.get(2)?,
-                    created_at_ms: row.get(3)?,
-                })
-            })
-            .map_err(map_sqlite_err)?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(map_sqlite_err)
-    }
-
     /// Returns the filesystem path of the SQLite database file.
     pub fn db_path(&self) -> &Path {
         &self.db_path
@@ -242,486 +218,6 @@ impl StorageHandle {
         total = total.saturating_add(std::fs::metadata(wal).map_or(0, |m| m.len()));
         total = total.saturating_add(std::fs::metadata(shm).map_or(0, |m| m.len()));
         total
-    }
-
-    /// Creates a new thread inside `workspace_id` (or the default workspace when `None`).
-    pub fn create_thread(
-        &self,
-        workspace_id: Option<String>,
-        title: &str,
-        mode: ThreadMode,
-        topic: Option<&str>,
-        assistant_id: Option<&str>,
-    ) -> BistreResult<ThreadSummary> {
-        let trimmed = title.trim().to_owned();
-        if trimmed.is_empty() {
-            return Err(BistreError::with_detail(
-                DiagnosticKey::InvalidInput,
-                "empty_thread_title",
-            ));
-        }
-        let ws_id = workspace_id.unwrap_or_else(|| DEFAULT_WORKSPACE_ID.to_owned());
-        let resolved_topic = normalize_topic(topic);
-        let resolved_assistant = assistant_id
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .unwrap_or(DEFAULT_ASSISTANT_ID)
-            .to_owned();
-        let id = Uuid::now_v7().to_string();
-        let now = now_unix_ms();
-
-        self.write(move |conn| {
-            conn.execute(
-                "INSERT INTO threads (id, workspace_id, title, mode, topic, assistant_id, is_pinned, active_head_node_id, created_at_ms, updated_at_ms)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, NULL, ?7, ?7)",
-                params![
-                    id,
-                    ws_id,
-                    trimmed,
-                    mode.as_str(),
-                    resolved_topic,
-                    resolved_assistant,
-                    now
-                ],
-            )
-            .map_err(map_sqlite_err)?;
-
-            Ok(ThreadSummary {
-                id,
-                workspace_id: ws_id,
-                title: trimmed,
-                mode,
-                topic: resolved_topic,
-                assistant_id: resolved_assistant,
-                is_pinned: false,
-                active_head_node_id: None,
-                provider_id_override: None,
-                model_id_override: None,
-                system_prompt_override: None,
-                temperature_milli: None,
-                max_output_tokens: None,
-                top_p_milli: None,
-                created_at_ms: now,
-                updated_at_ms: now,
-            })
-        })
-    }
-
-    /// Fetches a single thread by ID.
-    pub fn get_thread(&self, thread_id: &str) -> BistreResult<Option<ThreadSummary>> {
-        let conn = self.open_reader()?;
-        conn.query_row(
-            "SELECT id, workspace_id, title, mode, topic, assistant_id, is_pinned, active_head_node_id,
-                    provider_id_override, model_id_override, system_prompt_override,
-                    temperature_milli, max_output_tokens, top_p_milli,
-                    created_at_ms, updated_at_ms
-             FROM threads WHERE id = ?1",
-            [thread_id],
-            map_thread_row,
-        )
-        .optional()
-        .map_err(map_sqlite_err)
-    }
-
-    /// Updates mutable thread metadata (title, pin, topic, assistant, and per-chat overrides) atomically.
-    pub fn update_thread(
-        &self,
-        thread_id: String,
-        patch: ThreadPatch,
-    ) -> BistreResult<ThreadSummary> {
-        let now = now_unix_ms();
-        self.write(move |conn| {
-            let existing = conn
-                .query_row(
-                    "SELECT id, workspace_id, title, mode, topic, assistant_id, is_pinned, active_head_node_id,
-                            provider_id_override, model_id_override, system_prompt_override,
-                            temperature_milli, max_output_tokens, top_p_milli,
-                            created_at_ms, updated_at_ms
-                     FROM threads WHERE id = ?1",
-                    [&thread_id],
-                    map_thread_row,
-                )
-                .optional()
-                .map_err(map_sqlite_err)?
-                .ok_or_else(|| BistreError::new(DiagnosticKey::StorageNotFound))?;
-
-            let next_title = match patch.title {
-                Some(raw) => {
-                    let t = raw.trim().to_owned();
-                    if t.is_empty() {
-                        return Err(BistreError::with_detail(
-                            DiagnosticKey::InvalidInput,
-                            "empty_thread_title",
-                        ));
-                    }
-                    t
-                }
-                None => existing.title,
-            };
-            let next_pinned = patch.is_pinned.unwrap_or(existing.is_pinned);
-            let next_topic = patch
-                .topic
-                .as_deref()
-                .map(|t| normalize_topic(Some(t)))
-                .unwrap_or(existing.topic);
-            let next_mode = patch.mode.unwrap_or(existing.mode);
-            let next_assistant = patch
-                .assistant_id
-                .as_deref()
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map_or(existing.assistant_id, ToOwned::to_owned);
-            let next_provider_ov = patch
-                .provider_id_override
-                .map_or(existing.provider_id_override, clean_opt_string);
-            let next_model_ov = patch
-                .model_id_override
-                .map_or(existing.model_id_override, clean_opt_string);
-            let next_prompt_ov = patch
-                .system_prompt_override
-                .map_or(existing.system_prompt_override, clean_opt_string);
-            let next_temp = patch
-                .temperature_milli
-                .unwrap_or(existing.temperature_milli)
-                .map(|v| v.clamp(0, 2000));
-            let next_max_tokens = patch
-                .max_output_tokens
-                .unwrap_or(existing.max_output_tokens)
-                .map(|v| v.clamp(1, 1_000_000));
-            let next_top_p = patch
-                .top_p_milli
-                .unwrap_or(existing.top_p_milli)
-                .map(|v| v.clamp(0, 1000));
-
-            conn.execute(
-                "UPDATE threads
-                 SET title = ?1, is_pinned = ?2, topic = ?3, mode = ?4, assistant_id = ?5,
-                     provider_id_override = ?6, model_id_override = ?7, system_prompt_override = ?8,
-                     temperature_milli = ?9, max_output_tokens = ?10, top_p_milli = ?11,
-                     updated_at_ms = ?12
-                 WHERE id = ?13",
-                params![
-                    next_title,
-                    i64::from(next_pinned),
-                    next_topic,
-                    next_mode.as_str(),
-                    next_assistant,
-                    next_provider_ov,
-                    next_model_ov,
-                    next_prompt_ov,
-                    next_temp.map(i64::from),
-                    next_max_tokens.map(i64::from),
-                    next_top_p.map(i64::from),
-                    now,
-                    thread_id
-                ],
-            )
-            .map_err(map_sqlite_err)?;
-
-            Ok(ThreadSummary {
-                id: existing.id,
-                workspace_id: existing.workspace_id,
-                title: next_title,
-                mode: next_mode,
-                topic: next_topic,
-                assistant_id: next_assistant,
-                is_pinned: next_pinned,
-                active_head_node_id: existing.active_head_node_id,
-                provider_id_override: next_provider_ov,
-                model_id_override: next_model_ov,
-                system_prompt_override: next_prompt_ov,
-                temperature_milli: next_temp,
-                max_output_tokens: next_max_tokens,
-                top_p_milli: next_top_p,
-                created_at_ms: existing.created_at_ms,
-                updated_at_ms: now,
-            })
-        })
-    }
-
-    /// Deletes a thread (and cascades its nodes and draft via FK constraints).
-    /// Runs a write that changes `nodes` (and so fires the FTS triggers). If the full-text index
-    /// is corrupt (G3), the search triggers are dropped and the index marked stale in one
-    /// transaction, and the write is retried once: saving messages never depends on search.
-    /// The index is never rebuilt live; search falls back to a plain scan meanwhile.
-    fn write_node_change<T, F>(&self, mut op: F) -> BistreResult<T>
-    where
-        T: Send + 'static,
-        F: FnMut(&mut Connection) -> BistreResult<T> + Send + 'static,
-    {
-        self.write(move |conn| match op(conn) {
-            Err(err) if err.key == DiagnosticKey::StorageSearchIndexCorrupt => {
-                tracing::error!(
-                    key = err.key.as_key(),
-                    "search index corrupt: search triggers dropped and index marked stale"
-                );
-                let tx = conn.transaction().map_err(map_sqlite_err)?;
-                tx.execute_batch(schema::DROP_SEARCH_TRIGGERS_SQL)
-                    .map_err(map_sqlite_err)?;
-                tx.execute(
-                    "INSERT OR REPLACE INTO kv_meta (key, value) VALUES ('search.fts_stale', '1')",
-                    [],
-                )
-                .map_err(map_sqlite_err)?;
-                tx.commit().map_err(map_sqlite_err)?;
-                op(conn)
-            }
-            other => other,
-        })
-    }
-    /// Deletes a chat and everything derived from it: nodes (cascade), its event-log rows, and
-    /// its run journal with steps (R31), in one transaction.
-    pub fn delete_thread(&self, thread_id: String) -> BistreResult<()> {
-        self.write_node_change(move |conn| {
-            let tx = conn.transaction().map_err(map_sqlite_err)?;
-            tx.execute(
-                "DELETE FROM run_steps WHERE run_id IN (SELECT id FROM agent_runs WHERE thread_id = ?1)",
-                [&thread_id],
-            )
-            .map_err(map_sqlite_err)?;
-            tx.execute("DELETE FROM agent_runs WHERE thread_id = ?1", [&thread_id])
-                .map_err(map_sqlite_err)?;
-            tx.execute(
-                "DELETE FROM engine_events_log WHERE thread_id = ?1",
-                [&thread_id],
-            )
-            .map_err(map_sqlite_err)?;
-            let deleted = tx
-                .execute("DELETE FROM threads WHERE id = ?1", [&thread_id])
-                .map_err(map_sqlite_err)?;
-            if deleted == 0 {
-                return Err(BistreError::new(DiagnosticKey::StorageNotFound));
-            }
-            tx.commit().map_err(map_sqlite_err)
-        })
-    }
-
-    /// Lists threads ordered pinned first, then newest-updated first.
-    pub fn list_threads(&self, workspace_id: Option<&str>) -> BistreResult<Vec<ThreadSummary>> {
-        let conn = self.open_reader()?;
-        if let Some(ws_id) = workspace_id {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT id, workspace_id, title, mode, topic, assistant_id, is_pinned, active_head_node_id,
-                            provider_id_override, model_id_override, system_prompt_override,
-                            temperature_milli, max_output_tokens, top_p_milli,
-                            created_at_ms, updated_at_ms
-                     FROM threads WHERE workspace_id = ?1
-                     ORDER BY is_pinned DESC, updated_at_ms DESC",
-                )
-                .map_err(map_sqlite_err)?;
-            let rows = stmt
-                .query_map([ws_id], map_thread_row)
-                .map_err(map_sqlite_err)?;
-            rows.collect::<Result<Vec<_>, _>>().map_err(map_sqlite_err)
-        } else {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT id, workspace_id, title, mode, topic, assistant_id, is_pinned, active_head_node_id,
-                            provider_id_override, model_id_override, system_prompt_override,
-                            temperature_milli, max_output_tokens, top_p_milli,
-                            created_at_ms, updated_at_ms
-                     FROM threads
-                     ORDER BY is_pinned DESC, updated_at_ms DESC",
-                )
-                .map_err(map_sqlite_err)?;
-            let rows = stmt.query_map([], map_thread_row).map_err(map_sqlite_err)?;
-            rows.collect::<Result<Vec<_>, _>>().map_err(map_sqlite_err)
-        }
-    }
-
-    /// Appends a new canonical DAG node to `thread_id`, updating `active_head_node_id` and `updated_at_ms` atomically.
-    pub fn append_node(
-        &self,
-        thread_id: String,
-        parent_id: Option<String>,
-        role: NodeRole,
-        content: String,
-        provider_meta_json: Option<String>,
-    ) -> BistreResult<NodeRecord> {
-        let id = Uuid::now_v7().to_string();
-        let now = now_unix_ms();
-
-        self.write_node_change(move |conn| {
-            let tx = conn.transaction().map_err(map_sqlite_err)?;
-            // U1: a parent from another thread (or a missing one) would graft one chat onto
-            // another; refuse it in the same transaction as the insert.
-            if let Some(pid) = parent_id.as_deref() {
-                let parent_thread: Option<String> = tx
-                    .query_row("SELECT thread_id FROM nodes WHERE id = ?1", [pid], |row| row.get(0))
-                    .optional()
-                    .map_err(map_sqlite_err)?;
-                if parent_thread.as_deref() != Some(thread_id.as_str()) {
-                    return Err(BistreError::new(DiagnosticKey::StorageParentThreadMismatch));
-                }
-            }
-            tx.execute(
-                "INSERT INTO nodes (id, thread_id, parent_id, role, content, provider_meta_json, created_at_ms)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                params![
-                    id,
-                    thread_id,
-                    parent_id,
-                    role.as_str(),
-                    content,
-                    provider_meta_json,
-                    now
-                ],
-            )
-            .map_err(map_sqlite_err)?;
-            let updated = tx
-                .execute(
-                    "UPDATE threads SET active_head_node_id = ?1, updated_at_ms = ?2 WHERE id = ?3",
-                    params![id, now, thread_id],
-                )
-                .map_err(map_sqlite_err)?;
-            if updated == 0 {
-                return Err(BistreError::new(DiagnosticKey::StorageNotFound));
-            }
-            tx.commit().map_err(map_sqlite_err)?;
-
-            Ok(NodeRecord {
-                id: id.clone(),
-                thread_id: thread_id.clone(),
-                parent_id: parent_id.clone(),
-                role,
-                content: content.clone(),
-                provider_meta_json: provider_meta_json.clone(),
-                created_at_ms: now,
-            })
-        })
-    }
-
-    /// Lists all DAG nodes belonging to `thread_id` ordered chronologically by insertion (`rowid ASC`).
-    pub fn list_nodes(&self, thread_id: &str) -> BistreResult<Vec<NodeRecord>> {
-        let conn = self.open_reader()?;
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, thread_id, parent_id, role, content, provider_meta_json, created_at_ms
-                 FROM nodes WHERE thread_id = ?1 ORDER BY rowid ASC",
-            )
-            .map_err(map_sqlite_err)?;
-        let rows = stmt
-            .query_map([thread_id], |row| {
-                let role_raw: String = row.get(3)?;
-                Ok(NodeRecord {
-                    id: row.get(0)?,
-                    thread_id: row.get(1)?,
-                    parent_id: row.get(2)?,
-                    role: NodeRole::parse(&role_raw),
-                    content: row.get(4)?,
-                    provider_meta_json: row.get(5)?,
-                    created_at_ms: row.get(6)?,
-                })
-            })
-            .map_err(map_sqlite_err)?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(map_sqlite_err)
-    }
-
-    /// The branch that ends at `leaf_id`, root first (R37): a recursive walk up the parent
-    /// links in SQLite, so a step reads only its own branch, not every node of the thread.
-    /// Bounded by [`MAX_BRANCH_DEPTH`]; a cycle stops at the depth cap.
-    pub fn list_branch(&self, thread_id: &str, leaf_id: &str) -> BistreResult<Vec<NodeRecord>> {
-        let conn = self.open_reader()?;
-        let mut stmt = conn
-            .prepare(
-                "WITH RECURSIVE branch(id, depth) AS (
-                     SELECT id, 0 FROM nodes WHERE id = ?2 AND thread_id = ?1
-                     UNION ALL
-                     SELECT n.parent_id, b.depth + 1
-                     FROM branch b JOIN nodes n ON n.id = b.id
-                     WHERE n.parent_id IS NOT NULL AND b.depth < ?3
-                 )
-                 SELECT n.id, n.thread_id, n.parent_id, n.role, n.content,
-                        n.provider_meta_json, n.created_at_ms
-                 FROM branch b JOIN nodes n ON n.id = b.id AND n.thread_id = ?1
-                 ORDER BY b.depth DESC",
-            )
-            .map_err(map_sqlite_err)?;
-        let rows = stmt
-            .query_map(
-                rusqlite::params![thread_id, leaf_id, MAX_BRANCH_DEPTH],
-                |row| {
-                    let role_raw: String = row.get(3)?;
-                    Ok(NodeRecord {
-                        id: row.get(0)?,
-                        thread_id: row.get(1)?,
-                        parent_id: row.get(2)?,
-                        role: NodeRole::parse(&role_raw),
-                        content: row.get(4)?,
-                        provider_meta_json: row.get(5)?,
-                        created_at_ms: row.get(6)?,
-                    })
-                },
-            )
-            .map_err(map_sqlite_err)?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(map_sqlite_err)
-    }
-
-    /// Deletes a single DAG node cleanly, reparenting direct children and updating `active_head_node_id`.
-    pub fn delete_node(&self, thread_id: String, node_id: String) -> BistreResult<()> {
-        let now = now_unix_ms();
-        self.write_node_change(move |conn| {
-            let tx = conn
-                .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
-                .map_err(map_sqlite_err)?;
-            let parent_id: Option<String> = tx
-                .query_row(
-                    "SELECT parent_id FROM nodes WHERE id = ?1 AND thread_id = ?2",
-                    params![&node_id, &thread_id],
-                    |row| row.get(0),
-                )
-                .optional()
-                .map_err(map_sqlite_err)?
-                .ok_or_else(|| BistreError::new(DiagnosticKey::StorageNotFound))?;
-
-            let current_head: Option<String> = tx
-                .query_row(
-                    "SELECT active_head_node_id FROM threads WHERE id = ?1",
-                    [&thread_id],
-                    |row| row.get(0),
-                )
-                .optional()
-                .map_err(map_sqlite_err)?
-                .flatten();
-
-            tx.execute(
-                "UPDATE nodes SET parent_id = ?1 WHERE parent_id = ?2 AND thread_id = ?3",
-                params![&parent_id, &node_id, &thread_id],
-            )
-            .map_err(map_sqlite_err)?;
-
-            tx.execute(
-                "DELETE FROM nodes WHERE id = ?1 AND thread_id = ?2",
-                params![&node_id, &thread_id],
-            )
-            .map_err(map_sqlite_err)?;
-
-            // Preserve the user's current branch whenever another branch was NOT deleted.
-            // Only move `active_head_node_id` if the deleted node itself was the active head.
-            let next_head = if current_head.as_deref() == Some(node_id.as_str()) {
-                if parent_id.is_some() {
-                    parent_id
-                } else {
-                    tx.query_row(
-                        "SELECT id FROM nodes WHERE thread_id = ?1 ORDER BY rowid DESC LIMIT 1",
-                        [&thread_id],
-                        |row| row.get(0),
-                    )
-                    .optional()
-                    .map_err(map_sqlite_err)?
-                }
-            } else {
-                current_head
-            };
-
-            tx.execute(
-                "UPDATE threads SET active_head_node_id = ?1, updated_at_ms = ?2 WHERE id = ?3",
-                params![next_head, now, &thread_id],
-            )
-            .map_err(map_sqlite_err)?;
-            tx.commit().map_err(map_sqlite_err)
-        })
     }
 
     /// Upserts a persistent unsent draft for `thread_id`.
@@ -784,7 +280,6 @@ impl StorageHandle {
 
     /// Saves validated application settings atomically in `kv_meta`.
     pub fn save_settings(&self, mut settings: AppSettings) -> BistreResult<AppSettings> {
-        settings.font_scale_bps = settings.font_scale_bps.clamp(7_000, 19_000);
         settings.font_size_px = settings.font_size_px.clamp(12, 28);
         settings.line_height_bps = settings.line_height_bps.clamp(13_000, 20_000);
         settings.reading_width_px = settings.reading_width_px.clamp(600, 1120);
@@ -842,283 +337,6 @@ impl StorageHandle {
         })
     }
 
-    /// Records an exact `MoneyMicros` ledger entry with token counts in `wallet_ledger`.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "Explicit atomic ledger fields keep financial audit writes self-contained."
-    )]
-    pub fn record_wallet_entry_with_usage(
-        &self,
-        thread_id: Option<String>,
-        provider_id: String,
-        model_id: String,
-        cost: MoneyMicros,
-        input_tokens: u64,
-        output_tokens: u64,
-        status: String,
-    ) -> BistreResult<()> {
-        let id = Uuid::now_v7().to_string();
-        let now = now_unix_ms();
-        let in_tok = i64::try_from(input_tokens).unwrap_or(i64::MAX);
-        let out_tok = i64::try_from(output_tokens).unwrap_or(i64::MAX);
-        self.write(move |conn| {
-            conn.execute(
-                "INSERT INTO wallet_ledger (id, thread_id, job_id, provider_id, model_id, cost_micros,
-                                            input_tokens, output_tokens, status, created_at_ms)
-                 VALUES (?1, ?2, NULL, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![
-                    id,
-                    thread_id,
-                    provider_id,
-                    model_id,
-                    cost.as_micros(),
-                    in_tok,
-                    out_tok,
-                    status,
-                    now
-                ],
-            )
-            .map_err(map_sqlite_err)?;
-            Ok(())
-        })
-    }
-
-    /// Records an exact `MoneyMicros` ledger entry in `wallet_ledger`.
-    pub fn record_wallet_entry(
-        &self,
-        thread_id: Option<String>,
-        provider_id: String,
-        model_id: String,
-        cost: MoneyMicros,
-        status: String,
-    ) -> BistreResult<()> {
-        self.record_wallet_entry_with_usage(thread_id, provider_id, model_id, cost, 0, 0, status)
-    }
-
-    /// Atomically checks the daily ceiling and reserves `estimate` before a paid request.
-    ///
-    /// Runs on the single writer, so concurrent runs serialize: each sees every settled entry
-    /// *and* every outstanding reservation. Returns the reservation id, or
-    /// `WalletCeilingExceeded` when today's settled + reserved spend already meets `ceiling` or
-    /// adding `estimate` would pass it (checked addition: an overflow is refused too). A negative
-    /// estimate is never a reservation.
-    pub fn reserve_wallet_spend(
-        &self,
-        thread_id: Option<String>,
-        provider_id: String,
-        model_id: String,
-        estimate: MoneyMicros,
-        ceiling: Option<MoneyMicros>,
-        since_unix_ms: i64,
-    ) -> BistreResult<String> {
-        self.reserve_wallet_spend_with_chat_cap(
-            thread_id,
-            provider_id,
-            model_id,
-            estimate,
-            ceiling,
-            since_unix_ms,
-            None,
-        )
-    }
-
-    /// [`Self::reserve_wallet_spend`] plus the per-chat cap: in the same writer transaction,
-    /// the chat's whole ledger spend (settled + reserved, all time) plus `estimate` must fit
-    /// `chat_cap`, else `WalletCeilingExceeded` with detail `thread_spend_limit`.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "one reservation needs every ledger dimension at once"
-    )]
-    pub fn reserve_wallet_spend_with_chat_cap(
-        &self,
-        thread_id: Option<String>,
-        provider_id: String,
-        model_id: String,
-        estimate: MoneyMicros,
-        ceiling: Option<MoneyMicros>,
-        since_unix_ms: i64,
-        chat_cap: Option<MoneyMicros>,
-    ) -> BistreResult<String> {
-        if estimate.as_micros() < 0 {
-            return Err(BistreError::with_detail(
-                DiagnosticKey::WalletCeilingExceeded,
-                "negative_estimate",
-            ));
-        }
-        let id = Uuid::now_v7().to_string();
-        let now = now_unix_ms();
-        self.write(move |conn| {
-            let tx = conn.transaction().map_err(map_sqlite_err)?;
-            let spent: i64 = tx
-                .query_row(
-                    "SELECT COALESCE(SUM(cost_micros), 0) FROM wallet_ledger WHERE created_at_ms >= ?1",
-                    [since_unix_ms],
-                    |row| row.get(0),
-                )
-                .map_err(map_sqlite_err)?;
-            if let Some(c) = ceiling
-                && !fits_under(spent, estimate, c)
-            {
-                return Err(BistreError::new(DiagnosticKey::WalletCeilingExceeded));
-            }
-            if let Some(cap) = chat_cap {
-                let Some(tid) = thread_id.as_deref() else {
-                    return Err(BistreError::with_detail(
-                        DiagnosticKey::WalletCeilingExceeded,
-                        "thread_spend_limit",
-                    ));
-                };
-                let chat_spent: i64 = tx
-                    .query_row(
-                        "SELECT COALESCE(SUM(cost_micros), 0) FROM wallet_ledger WHERE thread_id = ?1",
-                        [tid],
-                        |row| row.get(0),
-                    )
-                    .map_err(map_sqlite_err)?;
-                if !fits_under(chat_spent, estimate, cap) {
-                    return Err(BistreError::with_detail(
-                        DiagnosticKey::WalletCeilingExceeded,
-                        "thread_spend_limit",
-                    ));
-                }
-            }
-            tx.execute(
-                "INSERT INTO wallet_ledger (id, thread_id, job_id, provider_id, model_id, cost_micros,
-                                            input_tokens, output_tokens, status, created_at_ms)
-                 VALUES (?1, ?2, NULL, ?3, ?4, ?5, 0, 0, 'reserved', ?6)",
-                params![id, thread_id, provider_id, model_id, estimate.as_micros(), now],
-            )
-            .map_err(map_sqlite_err)?;
-            tx.commit().map_err(map_sqlite_err)?;
-            Ok(id)
-        })
-    }
-
-    /// Replaces a reservation with the exact settled cost and token counts.
-    pub fn settle_wallet_reservation(
-        &self,
-        reservation_id: String,
-        cost: MoneyMicros,
-        input_tokens: u64,
-        output_tokens: u64,
-        status: String,
-    ) -> BistreResult<()> {
-        self.settle_wallet_reservation_for_request(
-            reservation_id,
-            None,
-            cost,
-            input_tokens,
-            output_tokens,
-            status,
-        )
-    }
-
-    /// Replaces a reservation with the exact settled cost and deduplicates by `request_id`
-    /// (`wallet_ledger.job_id`) so retried usage webhooks/callbacks never double-charge.
-    pub fn settle_wallet_reservation_for_request(
-        &self,
-        reservation_id: String,
-        request_id: Option<String>,
-        cost: MoneyMicros,
-        input_tokens: u64,
-        output_tokens: u64,
-        status: String,
-    ) -> BistreResult<()> {
-        let in_tok = i64::try_from(input_tokens).unwrap_or(i64::MAX);
-        let out_tok = i64::try_from(output_tokens).unwrap_or(i64::MAX);
-        let clean_req = request_id
-            .map(|r| r.trim().to_owned())
-            .filter(|r| !r.is_empty());
-        self.write(move |conn| {
-            let tx = conn.transaction().map_err(map_sqlite_err)?;
-            if let Some(ref req_id) = clean_req {
-                let already_settled: i64 = tx
-                    .query_row(
-                        "SELECT COUNT(*) FROM wallet_ledger WHERE job_id = ?1 AND status != 'reserved'",
-                        [req_id],
-                        |row| row.get(0),
-                    )
-                    .map_err(map_sqlite_err)?;
-                if already_settled > 0 {
-                    tx.execute(
-                        "DELETE FROM wallet_ledger WHERE id = ?1 AND status = 'reserved'",
-                        [&reservation_id],
-                    )
-                    .map_err(map_sqlite_err)?;
-                    tx.commit().map_err(map_sqlite_err)?;
-                    return Ok(());
-                }
-            }
-            let changed = tx
-                .execute(
-                    "UPDATE wallet_ledger SET job_id = COALESCE(?2, job_id), cost_micros = ?3,
-                                              input_tokens = ?4, output_tokens = ?5, status = ?6
-                     WHERE id = ?1 AND status = 'reserved'",
-                    params![
-                        reservation_id,
-                        clean_req,
-                        cost.as_micros(),
-                        in_tok,
-                        out_tok,
-                        status
-                    ],
-                )
-                .map_err(map_sqlite_err)?;
-            tx.commit().map_err(map_sqlite_err)?;
-            if changed == 1 {
-                Ok(())
-            } else {
-                Err(BistreError::with_detail(DiagnosticKey::StorageNotFound, "wallet_reservation"))
-            }
-        })
-    }
-
-    /// Drops an unsettled reservation (request failed, was cancelled before output, or retried).
-    pub fn release_wallet_reservation(&self, reservation_id: String) -> BistreResult<()> {
-        self.write(move |conn| {
-            conn.execute(
-                "DELETE FROM wallet_ledger WHERE id = ?1 AND status = 'reserved'",
-                [reservation_id],
-            )
-            .map_err(map_sqlite_err)?;
-            Ok(())
-        })
-    }
-
-    /// Drops every outstanding reservation; called at engine start, when no run can own one.
-    pub fn release_all_wallet_reservations(&self) -> BistreResult<usize> {
-        self.write(|conn| {
-            conn.execute("DELETE FROM wallet_ledger WHERE status = 'reserved'", [])
-                .map_err(map_sqlite_err)
-        })
-    }
-
-    /// Returns total recorded spend across all time in exact `MoneyMicros`.
-    pub fn sum_wallet_spend_micros(&self) -> BistreResult<MoneyMicros> {
-        let conn = self.open_reader()?;
-        let total: i64 = conn
-            .query_row(
-                "SELECT COALESCE(SUM(cost_micros), 0) FROM wallet_ledger",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(map_sqlite_err)?;
-        Ok(MoneyMicros::from_micros(total))
-    }
-
-    /// Returns recorded spend since `since_unix_ms` (e.g., start of current day) in exact `MoneyMicros`.
-    pub fn sum_wallet_spend_since_micros(&self, since_unix_ms: i64) -> BistreResult<MoneyMicros> {
-        let conn = self.open_reader()?;
-        let total: i64 = conn
-            .query_row(
-                "SELECT COALESCE(SUM(cost_micros), 0) FROM wallet_ledger WHERE created_at_ms >= ?1",
-                [since_unix_ms],
-                |row| row.get(0),
-            )
-            .map_err(map_sqlite_err)?;
-        Ok(MoneyMicros::from_micros(total))
-    }
-
     /// Exports a conversation thread cleanly as Markdown or JSON.
     pub fn export_thread(&self, thread_id: &str, format: &str) -> BistreResult<String> {
         let thread = self
@@ -1173,7 +391,7 @@ impl StorageHandle {
             Uuid::now_v7()
         ));
         let tmp_str = tmp.to_string_lossy().into_owned();
-        // R20: the snapshot comes from its own read-only connection (a consistent WAL read),
+        // The snapshot comes from its own read-only connection (a consistent WAL read),
         // never the single writer, so runs keep saving while a large backup copies.
         // `query_only` stays off: it would refuse `VACUUM INTO`'s write to the new file.
         let snapshot = Connection::open_with_flags(
@@ -1207,11 +425,6 @@ impl StorageHandle {
             tracing::debug!("could not remove partial backup temp file");
         }
         finished
-    }
-
-    /// Runs `PRAGMA wal_checkpoint(TRUNCATE)` on the writer thread to reclaim WAL space.
-    pub fn checkpoint_truncate(&self) -> BistreResult<CheckpointStats> {
-        self.write(|conn| run_checkpoint_truncate(conn))
     }
 
     /// `reclaim_storage()`: `wal_checkpoint(TRUNCATE)` + `PRAGMA optimize` (also run at shutdown).

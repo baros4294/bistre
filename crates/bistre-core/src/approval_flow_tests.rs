@@ -1,4 +1,4 @@
-//! Regression tests for live tool approvals (R2, P9, P10, P11; decisions D1, D2).
+//! Regression tests for live tool approvals.
 //!
 //! Each test runs a real `InProcessEngine` against `test_support::MockServer` providers that
 //! answer with scripted `OpenAI` Responses tool calls.
@@ -7,14 +7,14 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use bistre_protocol::{
-    EngineEvent, ProviderDialect, ThreadMode, ThreadPatch, ToolApprovalDecision,
+    CronJobRecord, EngineEvent, ProviderDialect, ThreadMode, ThreadPatch, ToolApprovalDecision,
+    UnattendedPolicy,
 };
 use tokio::sync::broadcast;
 
-use crate::EngineClient;
 use crate::test_support::{MockServer, Scripted};
 
-type TestResult = Result<(), Box<dyn std::error::Error>>;
+pub(crate) type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 /// Upper bound for any single wait on engine events.
 const EVENT_WAIT: Duration = Duration::from_secs(15);
@@ -184,7 +184,7 @@ async fn respond(
         .await?)
 }
 
-/// R2: two chats paused on the same provider call id. Approving chat A releases only chat A.
+/// Two chats paused on the same provider call id. Approving chat A releases only chat A.
 #[tokio::test]
 async fn approving_one_chat_never_releases_another_chat_with_the_same_call_id() -> TestResult {
     let ws = Workspace::open()?;
@@ -239,7 +239,7 @@ async fn approving_one_chat_never_releases_another_chat_with_the_same_call_id() 
     Ok(())
 }
 
-/// P9 + D1: "Approve for this chat" covers the exact call only; other arguments ask again.
+/// "Approve for this chat" covers the exact call only; other arguments ask again.
 #[tokio::test]
 async fn approve_for_chat_covers_the_exact_call_only() -> TestResult {
     let ws = Workspace::open()?;
@@ -270,7 +270,7 @@ async fn approve_for_chat_covers_the_exact_call_only() -> TestResult {
     Ok(())
 }
 
-/// P10: a denied call is not asked again in the same run.
+/// A denied call is not asked again in the same run.
 #[tokio::test]
 async fn a_denied_call_is_not_asked_again_in_the_same_run() -> TestResult {
     let ws = Workspace::open()?;
@@ -302,7 +302,7 @@ async fn a_denied_call_is_not_asked_again_in_the_same_run() -> TestResult {
     Ok(())
 }
 
-/// P10: Stop refuses the call and ends the run; nothing more is sent to the provider.
+/// Stop refuses the call and ends the run; nothing more is sent to the provider.
 #[tokio::test]
 async fn stop_ends_the_run_without_another_request() -> TestResult {
     let ws = Workspace::open()?;
@@ -330,7 +330,7 @@ async fn stop_ends_the_run_without_another_request() -> TestResult {
     Ok(())
 }
 
-/// D2 / P11: an approval waits as long as the user needs (a virtual day here), never
+/// An approval waits as long as the user needs (a virtual day here), never
 /// auto-denies, and costs no polling; cancel still ends it at once.
 #[tokio::test(start_paused = true)]
 async fn an_approval_waits_without_a_time_limit_and_ends_on_cancel() {
@@ -365,7 +365,7 @@ async fn an_approval_waits_without_a_time_limit_and_ends_on_cancel() {
     assert_eq!(wait.await, (ToolApprovalDecision::Deny, true));
 }
 
-/// D2: while a run waits for the user, its keep-awake lease is given back, then taken again.
+/// While a run waits for the user, its keep-awake lease is given back, then taken again.
 #[test]
 fn waiting_for_the_user_releases_keep_awake() {
     use std::sync::Arc;
@@ -401,7 +401,7 @@ fn raw_edit_call(call_id: &str, arguments_json: &str) -> Scripted {
     ))
 }
 
-/// A-S2: an unreadable tool-permission map blocks every tool except Tier-0 reads, without
+/// An unreadable tool-permission map blocks every tool except Tier-0 reads, without
 /// even asking (a user's "Off" must never silently turn back on).
 #[tokio::test]
 async fn an_unreadable_permission_map_blocks_everything_but_reads() -> TestResult {
@@ -432,7 +432,7 @@ async fn an_unreadable_permission_map_blocks_everything_but_reads() -> TestResul
     Ok(())
 }
 
-/// A-S7: tool arguments that are not valid JSON become an error result with no permit,
+/// Tool arguments that are not valid JSON become an error result with no permit,
 /// never an empty `{}` call.
 #[tokio::test]
 async fn malformed_tool_arguments_are_an_error_not_an_empty_call() -> TestResult {
@@ -456,7 +456,7 @@ async fn malformed_tool_arguments_are_an_error_not_an_empty_call() -> TestResult
     Ok(())
 }
 
-/// A-S5: workspace hooks never run until the user approves this exact file, and a pre-tool
+/// Workspace hooks never run until the user approves this exact file, and a pre-tool
 /// hook that is unapproved or fails blocks the call.
 #[tokio::test]
 async fn pre_tool_hooks_need_approval_and_a_failing_one_blocks_the_call() -> TestResult {
@@ -551,5 +551,318 @@ async fn plan_mode_refuses_every_write_even_when_the_model_calls_one() -> TestRe
     let seen = server.finish().await;
     let replay = String::from_utf8_lossy(&seen[1].body).into_owned();
     assert!(replay.contains("read-only"), "{replay}");
+    Ok(())
+}
+
+/// Deleting a file asks every time, even with Edit files set to Allow; editing does not.
+#[tokio::test]
+async fn deleting_a_file_asks_even_when_edits_are_allowed() -> TestResult {
+    let ws = Workspace::open()?;
+    let delete = serde_json::json!({
+        "type": "response.output_item.added",
+        "item": {
+            "id": "fc_call_2",
+            "type": "function_call",
+            "call_id": "call_2",
+            "name": "fs_delete",
+            "arguments": serde_json::json!({ "path": "note.txt" }).to_string(),
+        }
+    });
+    let server = MockServer::start(vec![
+        edit_call("call_1", "hello", "hi"),
+        Scripted::sse(format!(
+            "data: {delete}\n\ndata: {{\"type\":\"response.completed\",\"response\":{{\"id\":\"resp_call_2\",\"usage\":{{\"input_tokens\":10,\"output_tokens\":5}}}}}}\n\n"
+        )),
+        text_turn("kept"),
+    ])
+    .await?;
+    let (thread, dir) = ws.thread("delete", &server).await?;
+    ws.set_workspace(&dir).await?;
+    ws.engine
+        .set_kv_meta(
+            "agent.tool_permissions".to_owned(),
+            r#"{"edit_file":"allow"}"#.to_owned(),
+        )
+        .await?;
+    let mut rx = ws.engine.subscribe_events();
+    ws.engine
+        .send_and_stream_reply(thread.clone(), None, "tidy up".to_owned())
+        .await?;
+    let req = next_request(&mut rx, &thread)
+        .await?
+        .ok_or("the delete was never offered for approval")?;
+    assert_eq!(req.call, "call_2", "the edit ran without asking");
+    assert_eq!(std::fs::read_to_string(dir.join("note.txt"))?, "hi\n");
+    respond(&ws, &req, ToolApprovalDecision::Deny).await?;
+    assert_eq!(finish(&mut rx, &thread).await?, 0);
+    assert!(dir.join("note.txt").exists());
+    drop(server.finish().await);
+    Ok(())
+}
+
+/// One `OpenAI` Responses turn that asks for a single call of `name`.
+fn tool_turn(call_id: &str, name: &str, args: &serde_json::Value) -> Scripted {
+    let item = serde_json::json!({
+        "type": "response.output_item.added",
+        "item": {
+            "id": format!("fc_{call_id}"),
+            "type": "function_call",
+            "call_id": call_id,
+            "name": name,
+            "arguments": args.to_string(),
+        }
+    });
+    Scripted::sse(format!(
+        "data: {item}\n\ndata: {{\"type\":\"response.completed\",\"response\":{{\"id\":\"resp_{call_id}\",\"usage\":{{\"input_tokens\":10,\"output_tokens\":5}}}}}}\n\n"
+    ))
+}
+
+/// A helper reads the workspace with read tools only, and the run gets its summary back.
+#[tokio::test]
+async fn a_helper_reads_with_read_tools_only_and_reports_back() -> TestResult {
+    let ws = Workspace::open()?;
+    let server = MockServer::start(vec![
+        tool_turn(
+            "call_1",
+            "agent_delegate",
+            &serde_json::json!({ "tasks": ["what does note.txt say?"] }),
+        ),
+        tool_turn("h_1", "read", &serde_json::json!({ "path": "note.txt" })),
+        text_turn("note.txt says hello"),
+        text_turn("done"),
+    ])
+    .await?;
+    let (thread, dir) = ws.thread("delegate", &server).await?;
+    ws.set_workspace(&dir).await?;
+    ws.engine
+        .set_kv_meta(
+            "agent.tool_permissions".to_owned(),
+            r#"{"agent_delegate":"allow","edit_file":"allow"}"#.to_owned(),
+        )
+        .await?;
+    let mut rx = ws.engine.subscribe_events();
+    ws.engine
+        .send_and_stream_reply(thread.clone(), None, "look around".to_owned())
+        .await?;
+    assert_eq!(finish(&mut rx, &thread).await?, 0);
+    let requests = server.finish().await;
+    assert_eq!(requests.len(), 4);
+    let tool_names = |i: usize| -> Result<Vec<String>, Box<dyn std::error::Error>> {
+        let body = requests.get(i).ok_or("missing request")?.body_json()?;
+        Ok(body
+            .get("tools")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|t| t.get("name").and_then(serde_json::Value::as_str))
+            .map(str::to_owned)
+            .collect())
+    };
+    assert!(tool_names(0)?.contains(&"agent_delegate".to_owned()));
+    let mut helper_tools = tool_names(1)?;
+    helper_tools.sort();
+    assert_eq!(helper_tools, ["fs_list", "glob", "grep", "read"]);
+    let helper_answer = requests
+        .get(2)
+        .ok_or("missing request")?
+        .body_json()?
+        .to_string();
+    assert!(
+        helper_answer.contains("hello"),
+        "the helper never saw the file"
+    );
+    let parent_follow_up = requests
+        .get(3)
+        .ok_or("missing request")?
+        .body_json()?
+        .to_string();
+    assert!(parent_follow_up.contains("note.txt says hello"));
+    Ok(())
+}
+
+/// `ask_user` ends the run without another request, skips the calls after it, and the user's
+/// next message reaches the model as the answer.
+#[tokio::test]
+async fn asking_the_user_ends_the_run_and_the_next_message_answers() -> TestResult {
+    let ws = Workspace::open()?;
+    let ask = serde_json::json!({
+        "type": "response.output_item.added",
+        "item": {
+            "id": "fc_ask",
+            "type": "function_call",
+            "call_id": "ask",
+            "name": "ask_user",
+            "arguments": serde_json::json!({
+                "question": "Which file?",
+                "options": ["note.txt", "other.txt"],
+            })
+            .to_string(),
+        }
+    });
+    let read = serde_json::json!({
+        "type": "response.output_item.added",
+        "item": {
+            "id": "fc_read",
+            "type": "function_call",
+            "call_id": "read",
+            "name": "read",
+            "arguments": serde_json::json!({ "path": "note.txt" }).to_string(),
+        }
+    });
+    let server = MockServer::start(vec![
+        Scripted::sse(format!(
+            "data: {ask}\n\ndata: {read}\n\ndata: {{\"type\":\"response.completed\",\"response\":{{\"id\":\"resp_ask\",\"usage\":{{\"input_tokens\":10,\"output_tokens\":5}}}}}}\n\n"
+        )),
+        text_turn("thanks"),
+    ])
+    .await?;
+    let (thread, dir) = ws.thread("ask", &server).await?;
+    ws.set_workspace(&dir).await?;
+    let mut rx = ws.engine.subscribe_events();
+    ws.engine
+        .send_and_stream_reply(thread.clone(), None, "fix it".to_owned())
+        .await?;
+    assert_eq!(
+        finish(&mut rx, &thread).await?,
+        0,
+        "asking needs no approval"
+    );
+    let nodes = ws.engine.list_nodes(thread.clone()).await?;
+    let tool_texts: Vec<&str> = nodes
+        .iter()
+        .filter(|n| n.role == bistre_protocol::NodeRole::Tool)
+        .map(|n| n.content.as_str())
+        .collect();
+    assert_eq!(tool_texts.len(), 2);
+    assert_eq!(
+        tool_texts.first().copied(),
+        Some(crate::utility_tools::ASK_USER_RESULT)
+    );
+    assert!(tool_texts.get(1).is_some_and(|t| t.starts_with("Not run")));
+    let leaf = nodes.last().map(|n| n.id.clone());
+    ws.engine
+        .send_and_stream_reply(thread.clone(), leaf, "note.txt".to_owned())
+        .await?;
+    finish(&mut rx, &thread).await?;
+    let requests = server.finish().await;
+    assert_eq!(
+        requests.len(),
+        2,
+        "the run asked the model again before the answer"
+    );
+    let answer = requests
+        .get(1)
+        .ok_or("missing request")?
+        .body_json()?
+        .to_string();
+    assert!(
+        answer.contains(crate::utility_tools::ASK_USER_RESULT),
+        "{answer}"
+    );
+    assert!(answer.contains("note.txt"));
+    Ok(())
+}
+
+/// A job that runs in the code workspace under `policy`, sending one edit request.
+fn scheduled_job(policy: UnattendedPolicy, use_worktree: bool) -> CronJobRecord {
+    CronJobRecord {
+        id: "job".to_owned(),
+        name: "Nightly fix".to_owned(),
+        workspace_id: "default".to_owned(),
+        assistant_id: String::new(),
+        schedule_expr: "every 1d".to_owned(),
+        prompt: "edit the note".to_owned(),
+        mode: ThreadMode::Code,
+        unattended_policy: policy,
+        use_worktree,
+        enabled: true,
+        next_run_ms: 0,
+        last_run_id: None,
+        last_status: "triggered".to_owned(),
+    }
+}
+
+/// Skip & continue: a scheduled run refuses a call that needs approval, never asks, and the
+/// model hears why and answers.
+#[tokio::test]
+async fn a_scheduled_run_under_skip_refuses_approvals_and_goes_on() -> TestResult {
+    let ws = Workspace::open()?;
+    let server = MockServer::start(vec![
+        edit_call("call_1", "hello", "hi"),
+        text_turn("left it"),
+    ])
+    .await?;
+    let (_, dir) = ws.thread("skip", &server).await?;
+    ws.set_workspace(&dir).await?;
+    let mut rx = ws.engine.subscribe_events();
+    let job = scheduled_job(UnattendedPolicy::DenyTier2AndContinue, false);
+    let thread = ws.engine.start_scheduled_run(job).await?;
+    assert_eq!(
+        finish(&mut rx, &thread).await?,
+        0,
+        "nothing waits for the user"
+    );
+    assert_eq!(std::fs::read_to_string(dir.join("note.txt"))?, "hello\n");
+    let seen = server.finish().await;
+    assert_eq!(seen.len(), 2);
+    let replay = String::from_utf8_lossy(&seen[1].body).into_owned();
+    assert!(
+        replay.contains("skips actions that need approval"),
+        "{replay}"
+    );
+    Ok(())
+}
+
+/// Sandbox auto: a scheduled run with its own worktree edits the worktree copy without asking,
+/// and the folder the app has open stays as it was.
+#[tokio::test]
+async fn a_scheduled_sandbox_run_edits_its_worktree_without_asking() -> TestResult {
+    let ws = Workspace::open()?;
+    let server =
+        MockServer::start(vec![edit_call("call_1", "hello", "hi"), text_turn("done")]).await?;
+    let (_, dir) = ws.thread("sandbox", &server).await?;
+    ws.set_workspace(&dir).await?;
+    let mut rx = ws.engine.subscribe_events();
+    let job = scheduled_job(UnattendedPolicy::SandboxWorktreeAuto, true);
+    let thread = ws.engine.start_scheduled_run(job).await?;
+    assert_eq!(
+        finish(&mut rx, &thread).await?,
+        0,
+        "the worktree edit needs no approval"
+    );
+    assert_eq!(std::fs::read_to_string(dir.join("note.txt"))?, "hello\n");
+    let runs = ws
+        .engine
+        .list_agent_runs(Some(thread.clone()), false, 10)
+        .await?;
+    let worktree = runs
+        .first()
+        .and_then(|r| r.worktree_path.clone())
+        .ok_or("the run records its worktree")?;
+    assert!(worktree.contains("scheduled_worktrees"), "{worktree}");
+    assert_eq!(
+        std::fs::read_to_string(Path::new(&worktree).join("note.txt"))?,
+        "hi\n"
+    );
+    drop(server.finish().await);
+    Ok(())
+}
+
+/// Sandbox auto without a worktree is not a sandbox: the edit waits for the user (fail closed).
+#[tokio::test]
+async fn sandbox_auto_without_a_worktree_waits_for_the_user() -> TestResult {
+    let ws = Workspace::open()?;
+    let server =
+        MockServer::start(vec![edit_call("call_1", "hello", "hi"), text_turn("ok")]).await?;
+    let (_, dir) = ws.thread("no_tree", &server).await?;
+    ws.set_workspace(&dir).await?;
+    let mut rx = ws.engine.subscribe_events();
+    let job = scheduled_job(UnattendedPolicy::SandboxWorktreeAuto, false);
+    let thread = ws.engine.start_scheduled_run(job).await?;
+    let asked = next_request(&mut rx, &thread).await?.ok_or("never asked")?;
+    assert!(respond(&ws, &asked, ToolApprovalDecision::Deny).await?);
+    finish(&mut rx, &thread).await?;
+    assert_eq!(std::fs::read_to_string(dir.join("note.txt"))?, "hello\n");
+    drop(server.finish().await);
     Ok(())
 }

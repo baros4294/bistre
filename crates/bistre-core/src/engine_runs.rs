@@ -2,39 +2,21 @@
 
 use super::{
     AgentRunUpdate, Arc, AtomicBool, BistreError, DiagnosticKey, EngineEvent, GenerationParams,
-    HashMap, KeyRing, MoneyMicros, NodeRecord, NodeRole, Notify, Ordering, ProviderProfile,
-    RunStatus, RunStepKind, StorageHandle, StreamChunk, SystemTime, ThreadMode, ToolRiskTier,
-    UNIX_EPOCH, Uuid, agent, approval, broadcast, compaction, error_policy, providers, registry,
-    story,
+    KeyRing, MoneyMicros, NodeRole, Ordering, ProviderProfile, RunStepKind, StorageHandle,
+    ThreadMode, ToolRiskTier, Uuid, agent, approval, broadcast, compaction, error_policy,
+    providers, registry, story,
 };
 use crate::events::{emit, emit_logged, note_write};
+use crate::turn_context::{
+    CHECKPOINT_INTERVAL, CHECKPOINT_MIN_BYTES, DELTA_FRAME, Steering, compact_before_send,
+    emit_delta, finish_run, near_context_limit, take_steering,
+};
+pub(crate) use crate::turn_context::{
+    MAX_RUN_STEPS, StreamServices, UnpricedAllowances, collect_branch_ancestry, load_turn_context,
+    load_turn_context_with, reserve_paid_request, utc_day_start_unix_ms, utc_now_unix_ms,
+    with_user_name,
+};
 use crate::wallet;
-use bistre_protocol::{BistreResult, UsageMetrics};
-
-/// Shared network and tool-execution services for one streaming run.
-pub(crate) struct StreamServices {
-    pub(crate) http: reqwest::Client,
-    pub(crate) web: crate::ssrf::PublicWebTransport,
-    pub(crate) mcp_http: crate::mcp::McpHttpTransport,
-    pub(crate) vault: Arc<dyn bistre_crypto::SecretVault>,
-    pub(crate) pricing: Arc<registry::PricingRegistry>,
-    pub(crate) wake: Arc<Notify>,
-    pub(crate) data_dir: std::path::PathBuf,
-    pub(crate) reasoning_unsupported:
-        Arc<std::sync::Mutex<std::collections::HashSet<(String, String)>>>,
-    pub(crate) provider_backoff: Arc<crate::provider_backoff::ProviderBackoff>,
-    pub(crate) read_ledger: Arc<crate::tools::ReadLedger>,
-    pub(crate) broker: Arc<approval::ToolApprovalBroker>,
-    pub(crate) pending_approvals: crate::agent_tools::PendingApprovalMap,
-    pub(crate) thread_auto_approvals: crate::agent_tools::ThreadAutoApprovals,
-    /// Released while the run waits for the user (`PowerCoordinator::pause_for_user`).
-    pub(crate) power: Arc<crate::power::PowerCoordinator>,
-    /// Chats whose next run may send unpriced requests while a cap is active (A-S6).
-    pub(crate) unpriced_allowed: UnpricedAllowances,
-}
-
-/// Chat ids allowed one run of unpriced requests (`allow_unpriced_once`); cleared when the run ends.
-pub(crate) type UnpricedAllowances = Arc<std::sync::Mutex<std::collections::HashSet<String>>>;
 
 /// Rate limits, transient server failures (including transient HTTP 400), and streams that died
 /// before any output retry automatically; auth, quota/billing, spend caps, and bad requests never do.
@@ -55,11 +37,8 @@ pub(crate) fn is_auto_retryable(err: &BistreError) -> bool {
 
 #[expect(
     clippy::too_many_arguments,
-    reason = "Dedicated async streaming and mid-stream steering loop decoupled from spawn setup."
-)]
-#[expect(
     clippy::too_many_lines,
-    reason = "Single linear state loop governing stream commit, Wallet Shield re-check, and steering injection."
+    reason = "One linear state loop: stream commit, Wallet Shield re-check, and steering."
 )]
 pub(crate) async fn execute_durable_stream_loop(
     storage: &Arc<StorageHandle>,
@@ -87,10 +66,56 @@ pub(crate) async fn execute_durable_stream_loop(
     let mut overflow_compacted = false;
     let mut consecutive_tool_failures: u32 = 0;
     let is_local = crate::net::is_loopback_url(&provider.base_url);
+    // A Custom provider speaks the API format chosen in its Advanced settings.
+    let initial_adv = crate::provider_prefs::load_provider_advanced(storage, &provider.id);
+    let wired = initial_adv.speaking(provider);
+    let scope = registry::CatalogScope::of(&wired);
+    let model_rates = services.pricing.rates_for(&scope, model).await;
+    let wired = crate::media_gen::chat_wire_for(wired, model_rates.as_ref());
+    let provider = &wired;
+    // A model that writes no text answers through its media API instead of chat.
+    if let Some(rates) = model_rates
+        && let Some(route) = crate::media_gen::MediaRoute::of(provider.dialect, Some(&rates))
+    {
+        let turn = crate::media_gen::MediaTurn {
+            storage,
+            services,
+            events_tx,
+            cancel_flag,
+            thread_id,
+            run_id,
+            parent_id: &current_parent_id,
+            provider,
+            keys,
+            model,
+            rates,
+        };
+        let (cancelled, failed_key, cost) = crate::media_gen::run(&turn, route).await;
+        finish_run(
+            storage, events_tx, thread_id, run_id, cancelled, failed_key, 0, cost,
+        );
+        return (current_stream_node_id, cancelled);
+    }
+    let media_out = model_rates
+        .and_then(|r| r.output_modalities)
+        .unwrap_or_default();
+    let reads = model_rates.and_then(|r| r.input_modalities);
+    let catalog_voice = services
+        .pricing
+        .snapshot()
+        .voice(model)
+        .map(ToOwned::to_owned);
+    let media_pick = crate::media_gen::load_media_pick(storage)
+        .for_model(services.pricing.snapshot().extras(model));
 
-    // R10/P3: set when the next step resumes a paused turn (its reply is sent back as-is).
+    let run_policy = agent::RunApprovalPolicy::load(storage, run_id);
+    // Set when the next step resumes a paused turn (its reply is sent back as-is).
     let mut resume_paused = false;
     loop {
+        let prov_adv = crate::provider_prefs::load_provider_advanced(storage, &provider.id);
+        let ctx_window = prov_adv
+            .context_tokens(model, services.pricing.snapshot().lookup(&scope, model))
+            .map(u64::from);
         // A storage failure here stops the run before any request: never send a paid request
         // with a silently empty or partial history.
         let (history, thread_mode, effective_system_prompt) = match load_turn_context_with(
@@ -99,12 +124,7 @@ pub(crate) async fn execute_durable_stream_loop(
             &current_parent_id,
             system_prompt,
             core::mem::take(&mut resume_paused),
-            services
-                .pricing
-                .snapshot()
-                .lookup(model)
-                .and_then(|r| r.context_tokens)
-                .map(u64::from),
+            ctx_window,
         ) {
             Ok(ctx) => ctx,
             Err(err) => {
@@ -119,21 +139,38 @@ pub(crate) async fn execute_durable_stream_loop(
                 break;
             }
         };
+        let mut history = history;
+        crate::media_wire::carry_generated_media(&mut history, reads);
         let is_write_mode = thread_mode == ThreadMode::Write;
-        let tool_catalog =
-            match crate::agent_tools::resolve_active_tool_catalog(storage, thread_mode) {
-                Ok(cat) => cat,
-                Err(err) => {
-                    tracing::warn!(
-                        key = err.key.as_key(),
-                        "active tool catalog unavailable; continuing without tools"
-                    );
-                    crate::agent_tools::ActiveToolCatalog::default()
-                }
-            };
+        let mut tool_catalog = match crate::agent_tools::resolve_active_tool_catalog(
+            storage,
+            Some(thread_id),
+            thread_mode,
+        ) {
+            Ok(cat) => cat,
+            Err(err) => {
+                tracing::warn!(
+                    key = err.key.as_key(),
+                    "active tool catalog unavailable; continuing without tools"
+                );
+                crate::agent_tools::ActiveToolCatalog::default()
+            }
+        };
+        // A run in its own worktree works there, never in the folders the app has open.
+        if let Some(root) = &run_policy.sandbox {
+            tool_catalog.workspace_root = Some(root.clone());
+            tool_catalog.workspace_roots = vec![root.clone()];
+        }
+        crate::agent_tools::offer_turn_tools(
+            &mut tool_catalog,
+            storage,
+            thread_id,
+            thread_mode,
+            &history,
+        );
         let tools_wire = tool_catalog.wire_tools_for_dialect(provider.dialect);
         let tools_canonical = tool_catalog.canonical_json();
-        // Custom headers/body are validated before anything is reserved or sent (A-S8).
+        // Custom headers/body are validated before anything is reserved or sent.
         let prov_overrides =
             match crate::provider_prefs::load_provider_overrides(storage, &provider.id) {
                 Ok(o) => o,
@@ -159,9 +196,11 @@ pub(crate) async fn execute_durable_stream_loop(
                 services,
                 thread_id,
                 provider,
+                &prov_adv,
                 model,
                 &effective_system_prompt,
                 &history,
+                bistre_protocol::SpendPurpose::Chat,
             )
             .await
             {
@@ -215,7 +254,7 @@ pub(crate) async fn execute_durable_stream_loop(
         // Coalesce text and thinking deltas to one event each per frame (DELTA_FRAME) so a fast
         // stream cannot overrun the bounded event bus. A frame ticker beside the stream flushes
         // them, so the last text of a burst is shown within a frame even when the provider then
-        // pauses (R33, R34).
+        // pauses.
         let pending_delta = std::sync::Mutex::new(String::new());
         let pending_thinking = std::sync::Mutex::new(String::new());
 
@@ -227,62 +266,33 @@ pub(crate) async fn execute_durable_stream_loop(
             &tools_canonical,
             Some(thread_id),
         );
-        let prov_adv = crate::provider_prefs::load_provider_advanced(storage, &provider.id);
         let reply_prefill = crate::provider_prefs::load_thread_reply_prefill(storage, thread_id);
-        let store_enabled =
-            !stateless_default && (provider.use_server_state_cache || prov_adv.store_server_side);
-        // R7: chain only when this request stores, and then send only the new items.
+        let store_enabled = crate::provider_prefs::stores_on_server(
+            stateless_default,
+            provider.use_server_state_cache,
+        );
+        // Chain only when this request stores, and then send only the new items.
         let chain = if prov_adv.use_stateful_chaining {
             crate::replay_policy::chain_plan(&history, &replay_ctx, store_enabled)
         } else {
             None
         };
         // Proactive auto-compaction before sending when context approaches the model's window.
-        if !overflow_compacted
-            && let Some(ctx_limit) = services
-                .pricing
-                .snapshot()
-                .lookup(model)
-                .and_then(|r| r.context_tokens)
-        {
-            // R26: the tool schemas are part of every request too.
+        if !overflow_compacted && let Some(ctx_limit) = ctx_window {
+            // The tool schemas are part of every request too.
             let est_tokens = compaction::estimate_branch_tokens_for_model(
                 &effective_system_prompt,
                 &history,
                 Some(model),
             )
             .saturating_add(tool_catalog.schema_tokens(Some(model)));
-            if compaction::should_auto_compact(
-                est_tokens,
-                u64::from(ctx_limit),
-                compaction::AUTO_COMPACT_RESERVE_PERCENT,
-            ) {
+            if near_context_limit(storage, est_tokens, ctx_limit) {
                 overflow_compacted = true;
-                match storage.list_branch(thread_id, &current_parent_id) {
-                    Ok(branch) => {
-                        match compaction::create_reversible_compaction(
-                            storage, thread_id, &branch, 4, None,
-                        ) {
-                            Ok(summary) => {
-                                current_parent_id.clone_from(&summary.id);
-                                let ev = EngineEvent::NodeCommitted { node: summary };
-                                emit_logged(storage, events_tx, Some(thread_id.to_owned()), ev);
-                                continue;
-                            }
-                            Err(err) => {
-                                tracing::warn!(
-                                    key = err.key.as_key(),
-                                    "proactive compaction skipped"
-                                );
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        tracing::warn!(
-                            key = err.key.as_key(),
-                            "proactive compaction list_nodes failed"
-                        );
-                    }
+                if let Some(summary_id) =
+                    compact_before_send(storage, events_tx, thread_id, &current_parent_id)
+                {
+                    current_parent_id = summary_id;
+                    continue;
                 }
             }
         }
@@ -301,19 +311,39 @@ pub(crate) async fn execute_durable_stream_loop(
                 break;
             }
         }
+        let request_id = format!("{run_id}:llm:{step_index}");
         let stream_opts = providers::StreamRequestOptions {
             replay_ctx: Some(&replay_ctx),
             tools_wire: (!tools_wire.is_empty()).then_some(tools_wire.as_slice()),
             previous_server_id: chain.as_ref().map(|c| c.previous_id.as_str()),
             chain_first_new_index: chain.as_ref().map_or(0, |c| c.first_new_index),
-            store: Some(store_enabled),
+            store: store_enabled,
             anthropic_cache_1h: prov_adv.anthropic_cache_1h,
             anthropic_server_compaction: prov_adv.enable_server_compaction,
+            endpoint_path: prov_adv.endpoint_path.as_deref(),
+            auth_mode: prov_adv.auth_mode,
             disable_legacy_fallback: !prov_adv.use_legacy_fallback,
             reply_prefill,
             anthropic_beta_headers: Vec::new(),
             extra_headers: prov_overrides.headers,
             extra_body_fields: prov_overrides.body_fields,
+            media_out,
+            reads,
+            voice: catalog_voice.as_deref(),
+            media_pick: media_pick.clone(),
+            provider_tools: crate::turn_context::provider_tools_on(
+                storage,
+                thread_id,
+                &prov_adv,
+                !tools_wire.is_empty(),
+            ),
+            paid_tools: crate::paid_tools::paid_tools(
+                &prov_adv,
+                provider.dialect,
+                model_rates.as_ref(),
+                !tools_wire.is_empty(),
+            ),
+            raw_request_id: Some(&request_id),
         };
         let flush_frame = || {
             let text = core::mem::take(&mut *bistre_protocol::lock_or_recover(
@@ -345,7 +375,6 @@ pub(crate) async fn execute_durable_stream_loop(
                 &effective_system_prompt,
                 &history,
                 gen_params,
-                stateless_default,
                 Some(&services.data_dir),
                 &stream_opts,
                 cancel_flag,
@@ -420,7 +449,10 @@ pub(crate) async fn execute_durable_stream_loop(
                     }
                     res.usage = billable;
                 }
-                let rates = services.pricing.rates_for(model).await;
+                // The run already waited once for an in-flight price sync (`model_rates`);
+                // each step reads the newest table without waiting again.
+                let rates = prov_adv
+                    .resolve_rates(model, services.pricing.snapshot().lookup(&scope, model));
                 let cost = providers::estimate_cost_micros(provider, rates, &res.usage);
                 res.usage.estimated_cost_micros = cost.unwrap_or(MoneyMicros::ZERO);
                 for (key, detail) in core::mem::take(&mut res.notices) {
@@ -448,7 +480,7 @@ pub(crate) async fn execute_durable_stream_loop(
                     };
                     emit_logged(storage, events_tx, Some(thread_id.to_owned()), ev);
                 }
-                // R10/P3: how the reply ended is never a silent "complete".
+                // How the reply ended is never a silent "complete".
                 let finish_notice = match res.finish {
                     Some(crate::finish::FinishKind::Length) => {
                         Some(DiagnosticKey::ProviderReplyTruncated)
@@ -490,7 +522,6 @@ pub(crate) async fn execute_durable_stream_loop(
                         ),
                     );
                 }
-                let request_id = format!("{run_id}:llm:{step_index}");
                 let has_billed_usage = res.usage.input_tokens > 0
                     || res.usage.output_tokens > 0
                     || res.usage.reasoning_tokens > 0
@@ -504,6 +535,7 @@ pub(crate) async fn execute_durable_stream_loop(
                 if !res.full_text.trim().is_empty()
                     || !res.thinking_text.trim().is_empty()
                     || !res.tool_calls.is_empty()
+                    || !res.media.is_empty()
                 {
                     let origin = crate::replay_policy::TurnOriginMeta {
                         dialect: provider.dialect,
@@ -512,7 +544,6 @@ pub(crate) async fn execute_durable_stream_loop(
                         system_hash: replay_ctx.system_hash.clone(),
                         tools_hash: replay_ctx.tools_hash.clone(),
                     };
-                    let store_enabled = !stateless_default && provider.use_server_state_cache;
                     let server_state = res.provider_response_id.as_ref().map(|rid| {
                         crate::replay_policy::ServerStateMeta {
                             response_id: (provider.dialect
@@ -560,7 +591,23 @@ pub(crate) async fn execute_durable_stream_loop(
                         {
                             map.insert("tool_calls".to_owned(), v);
                         }
-                        // B2: web sources stay with the reply (UI only, never replayed).
+                        // Images and audio the reply carried become its attachments.
+                        let media = core::mem::take(&mut res.media);
+                        if !media.is_empty() {
+                            match crate::media_gen::store_generated(&services.data_dir, media) {
+                                Ok(atts) => {
+                                    map.insert("attachments".to_owned(), serde_json::json!(atts));
+                                }
+                                Err(err) => emit(
+                                    events_tx,
+                                    EngineEvent::DiagnosticRaised {
+                                        key: err.key,
+                                        detail_code: err.detail_code,
+                                    },
+                                ),
+                            }
+                        }
+                        // Web sources stay with the reply (UI only, never replayed).
                         if !res.grounding.is_empty() {
                             map.insert(
                                 "grounding".to_owned(),
@@ -646,6 +693,7 @@ pub(crate) async fn execute_durable_stream_loop(
                             res.usage.input_tokens,
                             res.usage.output_tokens,
                             settle_status,
+                            bistre_protocol::SpendPurpose::Chat,
                         ),
                     };
                     if let Err(err) = recorded {
@@ -804,7 +852,7 @@ pub(crate) async fn execute_durable_stream_loop(
             break;
         }
         if step_index >= MAX_RUN_STEPS {
-            // R18: the model still wanted to go on; the run says why it stopped.
+            // The model still wanted to go on; the run says why it stopped.
             if !pending_tool_calls.is_empty() || paused_turn {
                 failed_key = Some(DiagnosticKey::RunStepLimitReached.as_key().to_owned());
                 let ev = EngineEvent::DiagnosticRaised {
@@ -816,7 +864,7 @@ pub(crate) async fn execute_durable_stream_loop(
             break;
         }
 
-        // R10/P3: a paused server-side turn (Anthropic `pause_turn`) continues by itself: the
+        // A paused server-side turn (Anthropic `pause_turn`) continues by itself: the
         // paused reply goes back as the last assistant turn, bounded by the step limit.
         if pending_tool_calls.is_empty()
             && paused_turn
@@ -851,6 +899,13 @@ pub(crate) async fn execute_durable_stream_loop(
                 asst_id,
                 &mut step_index,
                 &pending_tool_calls,
+                &crate::delegate::HelperContext {
+                    provider,
+                    keys,
+                    model,
+                    cancel_flag,
+                },
+                &run_policy,
             )
             .await;
             current_parent_id = batch.last_node_id;
@@ -861,6 +916,7 @@ pub(crate) async fn execute_durable_stream_loop(
                 consecutive_tool_failures = consecutive_tool_failures.saturating_add(1);
             }
             if cancelled
+                || batch.waiting_for_user
                 || step_index >= MAX_RUN_STEPS
                 || consecutive_tool_failures >= crate::agent_tools::MAX_CONSECUTIVE_TOOL_FAILURES
             {
@@ -873,8 +929,8 @@ pub(crate) async fn execute_durable_stream_loop(
                             detail_code: Some("tool_failure_breaker".to_owned()),
                         },
                     );
-                } else if !cancelled && step_index >= MAX_RUN_STEPS {
-                    // R18: tools ran but no step is left for the model to use their results.
+                } else if !cancelled && !batch.waiting_for_user && step_index >= MAX_RUN_STEPS {
+                    // Tools ran but no step is left for the model to use their results.
                     failed_key = Some(DiagnosticKey::RunStepLimitReached.as_key().to_owned());
                     let ev = EngineEvent::DiagnosticRaised {
                         key: DiagnosticKey::RunStepLimitReached,
@@ -907,433 +963,32 @@ pub(crate) async fn execute_durable_stream_loop(
             continue;
         }
 
-        let pending_steers = match storage.drain_pending_steering(thread_id.to_owned()) {
-            Ok(steers) => steers,
-            Err(err) => {
-                // The reply is committed; the queued follow-up could not be read. Surface it.
-                emit(
-                    events_tx,
-                    EngineEvent::DiagnosticRaised {
-                        key: err.key,
-                        detail_code: Some("steering_queue_unavailable".to_owned()),
-                    },
-                );
-                break;
-            }
-        };
-        if pending_steers.is_empty() {
-            break;
-        }
-
-        let steer_text = pending_steers
-            .iter()
-            .map(|m| m.content.as_str())
-            .collect::<Vec<_>>()
-            .join("\n\n");
-        emit(
-            events_tx,
-            EngineEvent::SteeringQueueChanged {
-                thread_id: thread_id.to_owned(),
-                pending_count: 0,
-            },
-        );
-        let appended = storage.append_node(
-            thread_id.to_owned(),
-            committed_assistant_id.or(Some(current_parent_id.clone())),
-            NodeRole::User,
-            steer_text.clone(),
-            Some(serde_json::json!({ "steered_mid_run": true, "run_id": run_id }).to_string()),
-        );
-        let steer_user_node = match appended {
-            Ok(node) => node,
-            Err(err) => {
-                // The queued message was drained but could not be saved: stop and say so.
-                failed_key = Some(err.key.as_key().to_owned());
-                emit(
-                    events_tx,
-                    EngineEvent::DiagnosticRaised {
-                        key: err.key,
-                        detail_code: Some("steering_append_failed".to_owned()),
-                    },
-                );
-                break;
-            }
-        };
-        {
-            step_index = step_index.saturating_add(1);
-            note_write(
-                "run_step_record",
-                storage.record_run_step(
-                    run_id.to_owned(),
-                    step_index,
-                    RunStepKind::SteeringInjected,
-                    "steering".to_owned(),
-                    ToolRiskTier::Tier0ReadOnly,
-                    format!("{run_id}:steer:{step_index}"),
-                    "completed".to_owned(),
-                    serde_json::json!({ "content": steer_text }).to_string(),
-                    "{}".to_owned(),
-                    0,
-                    Some(utc_now_unix_ms()),
-                ),
-            );
-            current_parent_id.clone_from(&steer_user_node.id);
-            current_stream_node_id = Uuid::now_v7().to_string();
-            let ev = EngineEvent::NodeCommitted {
-                node: steer_user_node,
-            };
-            emit_logged(storage, events_tx, Some(thread_id.to_owned()), ev);
-            // Reset the UI's leaf streaming buffer for the new turn so Turn 2 deltas never
-            // concatenate onto Turn 1's already-committed text.
-            let next_start = EngineEvent::RunStarted {
-                thread_id: thread_id.to_owned(),
-                node_id: current_stream_node_id.clone(),
-            };
-            emit_logged(storage, events_tx, Some(thread_id.to_owned()), next_start);
-            note_write(
-                "agent_run_update",
-                storage.update_agent_run(
-                    run_id.to_owned(),
-                    AgentRunUpdate {
-                        step_index: Some(step_index),
-                        partial_text_buffer: Some(String::new()),
-                        cost_micros: Some(total_cost),
-                        ..AgentRunUpdate::default()
-                    },
-                ),
-            );
-        }
-    }
-
-    let final_status = if cancelled {
-        RunStatus::Cancelled
-    } else if failed_key.is_some() {
-        RunStatus::Failed
-    } else {
-        RunStatus::Completed
-    };
-    let final_update = storage.update_agent_run(
-        run_id.to_owned(),
-        AgentRunUpdate {
-            status: Some(final_status),
-            step_index: Some(step_index),
-            partial_text_buffer: Some(String::new()),
-            cost_micros: Some(total_cost),
-            error_key: Some(failed_key),
-            ..AgentRunUpdate::default()
-        },
-    );
-    match final_update {
-        Ok(final_run) => {
-            let ev = EngineEvent::RunStateChanged { run: final_run };
-            emit_logged(storage, events_tx, Some(thread_id.to_owned()), ev);
-        }
-        Err(err) => {
-            // The run's final state was not saved; startup reconciliation will repair it.
-            tracing::error!(key = err.key.as_key(), "final run state write failed");
-            emit(
-                events_tx,
-                EngineEvent::DiagnosticRaised {
-                    key: err.key,
-                    detail_code: Some("run_final_state_write_failed".to_owned()),
-                },
-            );
-        }
-    }
-
-    (current_stream_node_id, cancelled)
-}
-
-pub(crate) fn compile_write_mode_system_prompt(
-    storage: &StorageHandle,
-    thread_id: &str,
-    base_system_prompt: &str,
-    history: &[NodeRecord],
-    context_window: Option<u64>,
-) -> BistreResult<String> {
-    let report = crate::engine_story::story_prompt_report(
-        storage,
-        thread_id,
-        base_system_prompt,
-        history,
-        None,
-        context_window,
-    )?;
-    let combined = report
-        .blocks
-        .iter()
-        .map(|b| format!("[{}]\n{}", b.label, b.content))
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    let rules = storage.list_regex_rules()?;
-    Ok(if combined.trim().is_empty() {
-        base_system_prompt.to_owned()
-    } else {
-        story::regex_pipeline::apply_regex_pipeline(&combined, &rules, "prompt_outgoing")
-    })
-}
-
-/// Returns the current Unix timestamp in milliseconds.
-pub(crate) fn utc_now_unix_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .ok()
-        .and_then(|d| i64::try_from(d.as_millis()).ok())
-        .unwrap_or(0)
-}
-
-/// Returns the Unix timestamp in milliseconds for `00:00:00 UTC` of the current day.
-pub(crate) fn utc_day_start_unix_ms() -> i64 {
-    const MS_PER_DAY: i64 = 86_400_000;
-    let now_ms = utc_now_unix_ms();
-    now_ms - now_ms.rem_euclid(MS_PER_DAY)
-}
-
-/// Walks parent pointers backward from `leaf_id` to root so branching threads send
-/// only the active conversation branch (never sibling branches) to the LLM provider.
-/// Upper bound on model and steering steps in one run (also stored as the run's `max_steps`).
-pub(crate) const MAX_RUN_STEPS: u32 = 24;
-
-/// Minimum interval between partial-text checkpoints of a streaming reply.
-const CHECKPOINT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
-/// Minimum new text before a checkpoint is written.
-const CHECKPOINT_MIN_BYTES: usize = 4 * 1024;
-/// One display frame: deltas inside it are sent as one event.
-const DELTA_FRAME: std::time::Duration = std::time::Duration::from_millis(16);
-
-fn emit_delta(tx: &broadcast::Sender<EngineEvent>, thread_id: &str, node_id: &str, text: String) {
-    if text.is_empty() {
-        return;
-    }
-    emit(
-        tx,
-        EngineEvent::DeltaBatch {
-            thread_id: thread_id.to_owned(),
-            chunks: vec![StreamChunk {
-                node_id: node_id.to_owned(),
-                text_delta: text,
-            }],
-        },
-    );
-}
-
-/// Loads everything one model turn needs: the branch history (respecting the context pin),
-/// the thread's `ThreadMode`, and the effective system prompt (including workspace `AGENTS.md`
-/// in `Code` / `Plan` modes).
-pub(crate) fn load_turn_context(
-    storage: &StorageHandle,
-    thread_id: &str,
-    parent_id: &str,
-    system_prompt: &str,
-    context_window: Option<u64>,
-) -> BistreResult<(Vec<NodeRecord>, ThreadMode, String)> {
-    load_turn_context_with(
-        storage,
-        thread_id,
-        parent_id,
-        system_prompt,
-        false,
-        context_window,
-    )
-}
-
-/// [`load_turn_context`]; `resume_paused` keeps the trailing assistant turn (R10/P3).
-pub(crate) fn load_turn_context_with(
-    storage: &StorageHandle,
-    thread_id: &str,
-    parent_id: &str,
-    system_prompt: &str,
-    resume_paused: bool,
-    context_window: Option<u64>,
-) -> BistreResult<(Vec<NodeRecord>, ThreadMode, String)> {
-    let history = project_turn_history(storage, thread_id, parent_id, resume_paused)?;
-    let mode = storage
-        .get_thread(thread_id)?
-        .map_or(ThreadMode::Chat, |t| t.mode);
-    let mut prompt = if mode == ThreadMode::Write {
-        compile_write_mode_system_prompt(
+        match take_steering(
             storage,
+            events_tx,
             thread_id,
-            system_prompt,
-            &history,
-            context_window,
-        )?
-    } else {
-        system_prompt.to_owned()
-    };
-    if matches!(mode, ThreadMode::Code | ThreadMode::Plan)
-        && let Ok(Some(ws_root)) = storage.get_kv_meta("agent.workspace_root")
-        && !ws_root.trim().is_empty()
-        && let Some((agents_path, agents_text)) =
-            crate::skills::discover_agents_md(std::path::Path::new(ws_root.trim()))
-    {
-        const MAX_AGENTS_MD_BYTES: usize = 16 * 1024;
-        let mut bounded = agents_text;
-        if bounded.len() > MAX_AGENTS_MD_BYTES {
-            let mut cut = MAX_AGENTS_MD_BYTES;
-            while cut > 0 && !bounded.is_char_boundary(cut) {
-                cut -= 1;
+            run_id,
+            committed_assistant_id.unwrap_or_else(|| current_parent_id.clone()),
+            &mut step_index,
+            total_cost,
+        ) {
+            Steering::Continue {
+                parent_id,
+                stream_node_id,
+            } => {
+                current_parent_id = parent_id;
+                current_stream_node_id = stream_node_id;
             }
-            bounded.truncate(cut);
-            bounded.push_str("\n[...truncated...]");
-        }
-        let fname = agents_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("AGENTS.md");
-        if !prompt.trim().is_empty() {
-            prompt.push_str("\n\n");
-        }
-        prompt.push_str("[Workspace instructions from ");
-        prompt.push_str(fname);
-        prompt.push_str("]\n");
-        prompt.push_str(&bounded);
-    }
-    Ok((history, mode, prompt))
-}
-
-/// The history the next request sends for the branch ending at `leaf_id`: its ancestry from
-/// the context-start pin or the latest compaction summary onward, with roles alternating.
-fn project_turn_history(
-    storage: &StorageHandle,
-    thread_id: &str,
-    leaf_id: &str,
-    keep_assistant_tail: bool,
-) -> BistreResult<Vec<NodeRecord>> {
-    // R37: only this branch is read, not every node of the thread.
-    let raw_history = storage.list_branch(thread_id, leaf_id)?;
-    let pinned_start = storage.get_kv_meta(&format!("thread_context_start:{thread_id}"))?;
-    let effective = compaction::project_effective_history(&raw_history, pinned_start.as_deref());
-    let quantized = compaction::compact_tool_outputs_quantized(&effective, 2_000);
-    // R13: an assistant turn with no text and no tool call (a stopped reply that only
-    // thought) is never sent back: providers reject an empty assistant message.
-    let sendable: Vec<NodeRecord> = crate::replay_policy::answer_dangling_tool_calls(quantized)
-        .into_iter()
-        .filter(|n| {
-            n.role != NodeRole::Assistant
-                || !n.content.trim().is_empty()
-                || !crate::replay_policy::parse_turn_wire_meta(n.provider_meta_json.as_deref())
-                    .tool_calls
-                    .is_empty()
-        })
-        .collect();
-    Ok(compaction::enforce_role_alternation_with(
-        sendable,
-        keep_assistant_tail,
-    ))
-}
-
-/// Longest user name told to the model, in characters.
-const MAX_USER_NAME_CHARS: usize = 64;
-
-/// Tells the model the user's name (Settings > Profile) in chats without their own persona:
-/// Write mode brings a persona, so it is left alone. Control characters are dropped and the
-/// name is capped, so a pasted name cannot inject prompt structure.
-pub(crate) fn with_user_name(system_prompt: String, name: &str, mode: ThreadMode) -> String {
-    let clean: String = name
-        .chars()
-        .filter(|c| !c.is_control())
-        .take(MAX_USER_NAME_CHARS)
-        .collect();
-    let clean = clean.trim();
-    if clean.is_empty() || mode == ThreadMode::Write {
-        return system_prompt;
-    }
-    let line = format!("The user's name is {clean}.");
-    if system_prompt.trim().is_empty() {
-        line
-    } else {
-        format!("{system_prompt}\n\n{line}")
-    }
-}
-
-/// Reserves Wallet Shield spend for one paid request. Prices the prompt's model-matched BPE
-/// input tokens when live rates are known; output is settled afterwards.
-async fn reserve_paid_request(
-    storage: &Arc<StorageHandle>,
-    services: &StreamServices,
-    thread_id: &str,
-    provider: &ProviderProfile,
-    model: &str,
-    system_prompt: &str,
-    history: &[NodeRecord],
-) -> BistreResult<(wallet::SpendReservation, u64)> {
-    let settings = storage.load_settings().map_err(|err| {
-        BistreError::with_detail(DiagnosticKey::WalletCheckUnavailable, err.key.as_key())
-    })?;
-    // Per-chat cap: fails closed on a storage error or a malformed value (A-S1); checked in the
-    // reservation transaction against the chat's ledger spend.
-    let chat_cap = crate::provider_prefs::load_thread_spend_limit(storage, thread_id)?;
-    let mut attachment_tokens = 0_u64;
-    for node in history {
-        for att in crate::attachments::parse_node_attachments(node.provider_meta_json.as_deref()) {
-            attachment_tokens = attachment_tokens.saturating_add(
-                crate::attachments::estimate_attachment_tokens(&services.data_dir, &att),
-            );
+            Steering::Done => break,
+            Steering::Failed(key) => {
+                failed_key = key;
+                break;
+            }
         }
     }
-    let estimate_usage = UsageMetrics {
-        input_tokens: compaction::estimate_branch_tokens_for_model(
-            system_prompt,
-            history,
-            Some(model),
-        )
-        .saturating_add(attachment_tokens),
-        ..UsageMetrics::default()
-    };
-    let rates = services.pricing.rates_for(model).await;
-    let capped = settings.wallet_daily_ceiling_micros.is_some() || chat_cap.is_some();
-    let estimate = match providers::estimate_cost_micros(provider, rates, &estimate_usage) {
-        Some(cost) => cost,
-        // A-S6: an unpriced request cannot be checked against a cap, so it is blocked while
-        // any cap is active, unless the user allowed this chat's next run once.
-        None if capped && !unpriced_allowed(services, thread_id) => {
-            return Err(BistreError::with_detail(
-                DiagnosticKey::WalletPriceUnknown,
-                "price_unknown",
-            ));
-        }
-        None => MoneyMicros::ZERO,
-    };
-    wallet::SpendReservation::reserve_with_chat_cap(
-        storage,
-        Some(thread_id.to_owned()),
-        provider.id.clone(),
-        model.to_owned(),
-        estimate,
-        settings.wallet_daily_ceiling_micros,
-        utc_day_start_unix_ms(),
-        chat_cap,
-    )
-    .map(|r| (r, estimate_usage.input_tokens))
-    .map_err(|err| match err.key {
-        DiagnosticKey::WalletCeilingExceeded => err,
-        other => BistreError::with_detail(DiagnosticKey::WalletCheckUnavailable, other.as_key()),
-    })
-}
 
-/// Whether the user allowed this chat's current run to send requests whose price is unknown.
-fn unpriced_allowed(services: &StreamServices, thread_id: &str) -> bool {
-    bistre_protocol::lock_or_recover(&services.unpriced_allowed, "unpriced_allowed")
-        .contains(thread_id)
-}
-
-pub(crate) fn collect_branch_ancestry(nodes: &[NodeRecord], leaf_id: &str) -> Vec<NodeRecord> {
-    let by_id: HashMap<&str, &NodeRecord> = nodes.iter().map(|n| (n.id.as_str(), n)).collect();
-    let mut chain = Vec::new();
-    let mut cursor = Some(leaf_id);
-    let mut guard = 0_usize;
-    while let Some(id) = cursor {
-        if guard > nodes.len() {
-            break;
-        }
-        guard += 1;
-        let Some(node) = by_id.get(id) else {
-            break;
-        };
-        chain.push((*node).clone());
-        cursor = node.parent_id.as_deref();
-    }
-    chain.reverse();
-    chain
+    finish_run(
+        storage, events_tx, thread_id, run_id, cancelled, failed_key, step_index, total_cost,
+    );
+    (current_stream_node_id, cancelled)
 }

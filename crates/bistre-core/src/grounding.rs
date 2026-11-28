@@ -1,5 +1,5 @@
-//! Web sources a reply used (A-W 4c / B2): parsed once at the protocol boundary into typed,
-//! bounded values and stored with the reply. Wire shapes checked 2026-11-25 against the
+//! Web sources a reply used: parsed once at the protocol boundary into typed,
+//! bounded values and stored with the reply. Wire shapes against the
 //! official docs:
 //! - Gemini `generateContent`: `candidates[].groundingMetadata.groundingChunks[].web.{uri,title}`;
 //!   a streamed chunk carries only chunks not sent before, so they accumulate.

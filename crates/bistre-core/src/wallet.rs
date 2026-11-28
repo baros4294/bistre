@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use bistre_protocol::{BistreResult, MoneyMicros, UsageMetrics};
+use bistre_protocol::{BistreResult, MoneyMicros, SpendPurpose, UsageMetrics};
 use bistre_storage::StorageHandle;
 
 /// An outstanding spend reservation for one paid request.
@@ -19,7 +19,7 @@ pub struct SpendReservation {
 impl SpendReservation {
     /// Checks the daily ceiling (settled + reserved spend since `since_unix_ms`) and the
     /// per-chat cap (the chat's whole ledger spend), then reserves `estimate`. Fails closed: any
-    /// storage error denies the request.
+    /// storage error denies the request. Books the spend as chat use.
     pub fn reserve(
         storage: &Arc<StorageHandle>,
         thread_id: Option<String>,
@@ -38,10 +38,12 @@ impl SpendReservation {
             ceiling,
             since_unix_ms,
             None,
+            SpendPurpose::Chat,
         )
     }
 
-    /// [`Self::reserve`] with the chat's own cap checked in the same transaction.
+    /// [`Self::reserve`] with the chat's own cap checked in the same transaction, booked under
+    /// `purpose`.
     #[expect(
         clippy::too_many_arguments,
         reason = "one reservation needs every ledger dimension at once"
@@ -55,6 +57,7 @@ impl SpendReservation {
         ceiling: Option<MoneyMicros>,
         since_unix_ms: i64,
         chat_cap: Option<MoneyMicros>,
+        purpose: SpendPurpose,
     ) -> BistreResult<Self> {
         let id = storage.reserve_wallet_spend_with_chat_cap(
             thread_id,
@@ -64,6 +67,7 @@ impl SpendReservation {
             ceiling,
             since_unix_ms,
             chat_cap,
+            purpose,
         )?;
         Ok(Self {
             storage: Arc::clone(storage),
@@ -116,7 +120,7 @@ impl Drop for SpendReservation {
     }
 }
 
-/// The usage a sent request is billed for (R5).
+/// The usage a sent request is billed for.
 ///
 /// Some providers send usage only in their final frame (`OpenAI` Responses `response.completed`,
 /// the Chat Completions usage chunk), so a stopped or broken stream carries none. A sent request
@@ -265,7 +269,7 @@ mod tests {
         Ok(())
     }
 
-    /// R5: a stream stopped before its usage frame is billed as sent, not at $0.
+    /// A stream stopped before its usage frame is billed as sent, not at $0.
     #[test]
     fn a_request_without_reported_usage_is_billed_from_the_estimate() {
         let (usage, estimated) = billable_usage(&UsageMetrics::default(), 1_200, 340);

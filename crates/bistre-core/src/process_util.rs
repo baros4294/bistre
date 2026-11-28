@@ -130,6 +130,75 @@ pub fn spawn_contained(cmd: &mut Command) -> std::io::Result<(Child, ChildContai
     }
 }
 
+/// Win32 `CREATE_NEW_PROCESS_GROUP`: a console Ctrl+C in the app never reaches the child.
+#[cfg(windows)]
+const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+/// Win32 `CREATE_BREAKAWAY_FROM_JOB`: the child leaves a job the app itself was started in.
+#[cfg(windows)]
+const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+
+/// The one child that is NOT contained: `bistre-daemon --active-scoped --data-dir <dir>`, which
+/// must outlive the window so runs survive closing it (ADR-0003). It gets no window, its own
+/// process group, no parent-death signal, and no kill-on-close job; it bounds its own life
+/// by exiting once no app is attached and no work is live.
+pub fn spawn_detached_daemon(exe: &Path, data_dir: &Path) -> std::io::Result<()> {
+    let build = || {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Audited: the daemon must outlive the app, so it skips the contained helpers."
+        )]
+        let mut cmd = Command::new(exe);
+        cmd.arg("--active-scoped")
+            .arg("--data-dir")
+            .arg(data_dir)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .kill_on_drop(false);
+        for var in SCRUBBED_ENV_VARS {
+            cmd.env_remove(var);
+        }
+        #[cfg(unix)]
+        {
+            cmd.process_group(0);
+        }
+        cmd
+    };
+    #[cfg(windows)]
+    {
+        // Breaking away is refused inside a job that does not allow it; then start it plainly.
+        let mut cmd = build();
+        cmd.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB);
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Audited detached daemon spawn; containment would kill it with the window."
+        )]
+        let first = cmd.spawn();
+        if first.is_ok() {
+            return first.map(drop);
+        }
+        let mut cmd = build();
+        cmd.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Audited detached daemon spawn; containment would kill it with the window."
+        )]
+        let child = cmd.spawn();
+        child.map(drop)
+    }
+    #[cfg(not(windows))]
+    {
+        // tokio reaps the exited child in the background, so it never lingers as a zombie.
+        let mut cmd = build();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Audited detached daemon spawn; containment would kill it with the window."
+        )]
+        let child = cmd.spawn();
+        child.map(drop)
+    }
+}
+
 /// Returns the first `PATH` entry containing `exe` (checked once per process for the shell probe).
 pub fn find_on_path(exe: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
@@ -281,7 +350,7 @@ where
         }
         let take = n.min(cap - buf.len());
         buf.extend_from_slice(&chunk[..take]);
-        // P21: a full channel drops a progress copy, never the captured output itself.
+        // A full channel drops a progress copy, never the captured output itself.
         if let Some(tx) = &progress
             && tx.try_send(chunk[..take].to_vec()).is_err()
         {
@@ -299,7 +368,7 @@ pub async fn run_bounded(cmd: Command, timeout: Duration) -> BistreResult<Output
 }
 
 /// [`run_bounded`], also sending each piece of stdout and stderr to `progress` as it arrives
-/// (P21: a long shell command shows its output while it runs). A slow reader loses progress
+/// (a long shell command shows its output while it runs). A slow reader loses progress
 /// copies, never output.
 pub async fn run_bounded_with_progress(
     mut cmd: Command,
@@ -439,7 +508,7 @@ mod tests {
         assert!(validate_web_link("ms-settings:privacy").is_err());
     }
 
-    /// P21: a running command's output reaches the progress channel while it runs, not only
+    /// A running command's output reaches the progress channel while it runs, not only
     /// when it ends.
     #[tokio::test]
     async fn output_arrives_while_the_command_still_runs() -> Result<(), Box<dyn std::error::Error>>

@@ -1,6 +1,5 @@
 //! Gemini `thoughtSignature` capture and replay, ported from kelivo's
-//! `test/gemini_thought_signature_artifact_test.dart` and `..._repro_test.dart` (read
-//! 2026-11-26). Bistre stores typed parts, so kelivo's raw-part cases (unknown future parts,
+//! `test/gemini_thought_signature_artifact_test.dart` and `..._repro_test.dart`. Bistre stores typed parts, so kelivo's raw-part cases (unknown future parts,
 //! built-in `toolCall` parts) have no counterpart here.
 
 use bistre_protocol::{NodeRecord, NodeRole, ProviderDialect};
@@ -153,4 +152,87 @@ fn a_detached_signature_stays_a_separate_part() {
         parts[1],
         json!({ "text": "", "thoughtSignature": "sig-detached" })
     );
+}
+
+/// A picture part's signature is kept, one per picture in order, empty for an unsigned one.
+#[test]
+fn each_picture_part_keeps_its_signature() {
+    let st = stream(&[parts(&json!([
+        { "text": "Here it is.", "thoughtSignature": "sig-text" },
+        { "inlineData": { "mimeType": "image/png", "data": "iVBORw0K" }, "thoughtSignature": "sig-pic" },
+        { "inlineData": { "mimeType": "image/png", "data": "iVBORw0K" } }
+    ]))]);
+    assert!(
+        st.out.reasoning_blocks.iter().any(|b| matches!(
+            b,
+            ReasoningBlock::GeminiPictureSignatures { signatures }
+                if *signatures == ["sig-pic".to_owned(), String::new()]
+        )),
+        "{:?}",
+        st.out.reasoning_blocks
+    );
+}
+
+/// A signed picture goes back as the model's own part, once: the next user message, which
+/// carries the reply's pictures for other models, leaves it out. For another model, or with
+/// an unsigned picture, the picture stays on the user message.
+#[test]
+fn a_signed_picture_is_replayed_as_the_models_own_part() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let picture = crate::attachments::store_attachment_bytes(
+        dir.path(),
+        "p.png".to_owned(),
+        "image/png".to_owned(),
+        b"\x89PNG\r\n\x1a\npicture",
+    )?;
+    let rec = |id: &str, role, meta: Value| NodeRecord {
+        id: id.to_owned(),
+        thread_id: "t".to_owned(),
+        parent_id: None,
+        role,
+        content: "x".to_owned(),
+        provider_meta_json: Some(meta.to_string()),
+        created_at_ms: 1,
+    };
+    let contents = |signature: &str, model: &str| {
+        let history = vec![
+            rec("u", NodeRole::User, json!({})),
+            rec(
+                "a",
+                NodeRole::Assistant,
+                json!({
+                    "origin": origin(),
+                    "attachments": [picture],
+                    "reasoning_blocks": [{ "kind": "gemini_picture_signatures", "signatures": [signature] }]
+                }),
+            ),
+            rec("u2", NodeRole::User, json!({ "attachments": [picture] })),
+        ];
+        let ctx = ReplayContext::new(ProviderDialect::GoogleGemini, "g", model, "", "", Some("t"));
+        crate::wire_history::build_gemini_generate_contents_with_ctx(
+            &history,
+            Some(dir.path()),
+            &std::collections::HashMap::<String, String>::new(),
+            Some(&ctx),
+        )
+    };
+    let inline = |turn: &Value| {
+        turn["parts"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|p| p.get("inline_data").is_some())
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    let own = contents("sig-pic", "m");
+    let model_pictures = inline(&own[1]);
+    assert_eq!(model_pictures.len(), 1, "{own:?}");
+    assert_eq!(model_pictures[0]["thoughtSignature"], "sig-pic");
+    assert!(inline(&own[2]).is_empty(), "sent once: {own:?}");
+    for other in [contents("sig-pic", "other-model"), contents("", "m")] {
+        assert!(inline(&other[1]).is_empty(), "{other:?}");
+        assert_eq!(inline(&other[2]).len(), 1, "{other:?}");
+    }
+    Ok(())
 }

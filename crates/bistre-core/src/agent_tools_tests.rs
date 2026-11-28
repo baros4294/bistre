@@ -1,4 +1,6 @@
 use super::*;
+use crate::tool_spill::spill_off_worker;
+use bistre_protocol::ToolApprovalDecision;
 use std::time::Duration;
 use tempfile::tempdir;
 
@@ -26,6 +28,7 @@ fn mcp_schema_deferral_activates_past_six_tools() -> Result<(), Box<dyn std::err
             description: format!("Desc {i}"),
             input_schema: json!({"type": "object", "properties": {}}),
             cache_ttl_ms: None,
+            cache_private: false,
         })
         .collect();
     storage.set_kv_meta(
@@ -33,7 +36,7 @@ fn mcp_schema_deferral_activates_past_six_tools() -> Result<(), Box<dyn std::err
         serde_json::to_string(&defs)?,
     )?;
 
-    let catalog = resolve_active_tool_catalog(&storage, ThreadMode::Chat)?;
+    let catalog = resolve_active_tool_catalog(&storage, None, ThreadMode::Chat)?;
     assert_eq!(catalog.deferred_mcp_schemas.len(), 3);
     assert!(
         catalog
@@ -77,7 +80,6 @@ fn wire_tool_formatting_matches_all_four_dialects() {
 #[tokio::test]
 async fn end_to_end_agentic_tool_loop_reads_file_and_handles_approval_deny()
 -> Result<(), Box<dyn std::error::Error>> {
-    use crate::EngineClient;
     use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrd};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -225,7 +227,7 @@ async fn end_to_end_agentic_tool_loop_reads_file_and_handles_approval_deny()
     Ok(())
 }
 
-/// R21: a large tool output is saved whole (atomic temp file + rename, no temp file left
+/// A large tool output is saved whole (atomic temp file + rename, no temp file left
 /// behind) and the preview names the saved blob.
 #[tokio::test]
 async fn a_large_tool_output_is_saved_whole_without_leftover_temp_files()

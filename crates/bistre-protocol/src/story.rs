@@ -243,6 +243,14 @@ pub struct CreativeSamplerConfig {
     pub banned_phrases: Vec<String>,
 }
 
+/// The continuity librarian's answer for one chapter: the era summary to save and the
+/// statements that conflict with earlier chapters (shown to the author, never saved).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChapterSummary {
+    pub era_summary: String,
+    pub contradictions: Vec<String>,
+}
+
 /// Per-thread Story & Roleplay binding (`story_thread_state`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoryThreadStateRecord {

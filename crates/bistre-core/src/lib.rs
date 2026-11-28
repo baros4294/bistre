@@ -8,38 +8,70 @@
 
 pub mod agent;
 pub mod agent_approvals;
+pub mod agent_context;
 pub mod agent_tools;
 pub mod approval;
+pub mod attachment_upload;
 pub mod attachments;
+mod chat_extras;
+pub mod chat_files;
 pub mod compaction;
+pub mod computer_use;
 pub mod context_breakdown;
+pub mod context_exclusion;
 pub mod credentials;
 pub mod cron;
 pub mod custom_headers;
+pub mod daemon_launch;
+pub mod daemon_serve;
+mod data_wipe;
+pub mod delegate;
+pub mod desktop_helpers;
+pub mod durability;
 mod engine_grounding;
 pub mod error_policy;
 mod events;
 pub mod finish;
+pub mod fs_tools;
+pub mod goal;
 pub mod grounding;
+pub mod history_limit;
+pub mod history_recall;
 pub mod hooks;
 pub mod http_clients;
 pub mod import_policy;
 pub mod ipc_client;
+pub mod live_voice;
 pub mod mcp;
+pub mod mcp_era;
+mod mcp_listen;
+mod mcp_refresh;
+pub mod mcp_registry;
 pub mod mcp_stdio;
+mod media_gen;
+mod media_jobs;
+pub(crate) mod media_wire;
 pub mod mime_sniff;
 pub mod net;
 mod off_worker;
+pub mod office_text;
 pub mod ota;
 pub mod ota_manifest;
+mod paid_tools;
 pub mod power;
 pub mod process_util;
+pub mod projects;
 pub mod provider_backoff;
 pub mod provider_prefs;
 pub mod providers;
+pub mod raw_exchange;
+pub(crate) mod reasoning_details;
 pub mod registry;
+mod registry_parse;
 pub mod replay_policy;
+pub mod request_body;
 mod shell_progress;
+pub mod skill_install;
 pub mod skills;
 pub mod sse;
 pub mod ssrf;
@@ -47,28 +79,42 @@ pub mod storage_files;
 pub mod story;
 pub mod subagents;
 pub mod tokenizer;
+pub mod tool_batch;
+pub mod tool_call_ids;
 mod tool_spill;
 pub mod tools;
+pub mod utility;
+mod utility_chat;
+pub mod utility_tools;
 pub mod vault_key;
 pub mod voice;
 pub mod wallet;
+pub mod web_tools;
 pub mod wire_history;
+mod wire_history_gemini;
 pub mod wire_parse;
 pub mod wire_stream;
 
+#[cfg(test)]
+mod daemon_ipc_tests;
 #[cfg(test)]
 mod egress_tests;
 mod engine_client;
 mod engine_extras;
 mod engine_impl;
+mod engine_impl_agent;
+pub mod engine_rpc;
 mod engine_runs;
 mod engine_story;
 #[cfg(test)]
 mod gemini_signature_tests;
 #[cfg(test)]
+mod slot_and_agent_tests;
+#[cfg(test)]
 pub(crate) mod test_support;
 #[cfg(test)]
 mod tests;
+mod turn_context;
 #[cfg(test)]
 mod wallet_flow_tests;
 
@@ -93,12 +139,12 @@ use bistre_protocol::{
     AttachmentInput, BistreError, BistreResult, CharacterCardRecord, CronJobRecord,
     CursorEventRecord, DiagnosticKey, DraftRecord, EngineEvent, GenerationParams,
     MemoryEntryRecord, ModelCatalogInfo, MoneyMicros, NodeRecord, NodeRole, PowerGuardStatus,
-    ProviderDialect, ProviderModelInfo, ProviderPatch, ProviderProfile, ReasoningEffort,
-    RegexRuleRecord, RunStatus, RunStepKind, RunStepRecord, SearchHit, SignedPackManifest,
-    SteeringMessage, StorageFileEntry, StorageStats, StoryChapterRecord, StoryEntryRecord,
-    StoryProgressionRecord, StorySceneRecord, StorySnapshotRecord, StoryThreadStateRecord,
-    StreamChunk, SystemPowerEvent, ThreadMode, ThreadPatch, ThreadSummary, ToolRiskTier,
-    UpdateCheckResult, UserPersonaRecord, WorkspaceCheckpointRecord, WorkspaceSummary,
+    ProjectRecord, ProviderDialect, ProviderModelInfo, ProviderPatch, ProviderProfile,
+    ReasoningEffort, RegexRuleRecord, RunStatus, RunStepKind, RunStepRecord, SearchHit,
+    SignedPackManifest, SteeringMessage, StorageFileEntry, StorageStats, StoryChapterRecord,
+    StoryEntryRecord, StoryProgressionRecord, StorySceneRecord, StorySnapshotRecord,
+    StoryThreadStateRecord, StreamChunk, SystemPowerEvent, ThreadMode, ThreadPatch, ThreadSummary,
+    ToolRiskTier, UpdateCheckResult, UserPersonaRecord, WorkspaceCheckpointRecord,
 };
 use bistre_storage::{AgentRunUpdate, CreateAgentRunParams, StorageHandle};
 use credentials::KeyRing;
@@ -110,7 +156,7 @@ use zeroize::Zeroizing;
 /// Crate semver exposed in health diagnostics.
 pub const CORE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Longest a new run waits for the previous run in the same chat to stop (R30).
+/// Longest a new run waits for the previous run in the same chat to stop.
 pub(crate) const PREVIOUS_RUN_STOP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 const EVENT_BUS_CAPACITY: usize = 256;
@@ -136,7 +182,7 @@ pub struct InProcessEngine {
     reasoning_unsupported: Arc<Mutex<std::collections::HashSet<(String, String)>>>,
     /// Per-thread backoff wakers (`Retry now` and cancel wake a waiting run instantly).
     wakers: Arc<Mutex<HashMap<String, Arc<Notify>>>>,
-    /// One backoff per provider shared by every run (opencode #55075).
+    /// One backoff per provider shared by every run.
     provider_backoff: Arc<provider_backoff::ProviderBackoff>,
     /// Run-scoped stale-read guard for workspace edits.
     read_ledger: Arc<tools::ReadLedger>,
@@ -151,7 +197,7 @@ pub struct InProcessEngine {
     events_tx: broadcast::Sender<EngineEvent>,
     active_runs: Arc<AtomicU32>,
     cancellations: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
-    /// Per-chat completion signal of the latest run; a new run waits on it (R30).
+    /// Per-chat completion signal of the latest run; a new run waits on it.
     run_done: Arc<Mutex<HashMap<String, tokio::sync::watch::Receiver<bool>>>>,
     /// The last signature-verified OTA manifest; `stage_update` acts only on this, never on
     /// fields round-tripped through the UI.
@@ -162,6 +208,8 @@ pub struct InProcessEngine {
     ota_release_key: std::sync::OnceLock<String>,
     /// Active bidirectional Live Voice WebSocket sessions.
     live_voice: Arc<voice::LiveVoiceManager>,
+    /// Native host-bridge coordinator and ephemeral screenshot buffer (`computer_use`).
+    host_actions: Arc<computer_use::HostActionBroker>,
 }
 
 impl std::fmt::Debug for InProcessEngine {
@@ -223,10 +271,15 @@ impl InProcessEngine {
         http: reqwest::Client,
     ) -> BistreResult<Arc<Self>> {
         let dir = data_dir.as_ref().to_path_buf();
+        data_wipe::run_pending(&dir)?;
         let db_path = dir.join("bistre.sqlite");
         let storage = StorageHandle::open(db_path)?;
         // No run exists yet, so any outstanding reservation is from a crash; release it.
         storage.release_all_wallet_reservations()?;
+        // A video job a crash cut off is still billed: book its cost.
+        if let Err(err) = media_jobs::book_cut_off(&storage, turn_context::utc_now_unix_ms()) {
+            tracing::warn!(key = err.key.as_key(), "cut-off video jobs not booked");
+        }
         let vault: Arc<dyn SecretVault> = Arc::new(LocalSecretVault::open(&dir, vault_key)?);
         let power = PowerCoordinator::new(power_backend);
         // Unreadable settings must not block opening (the user can fix them in Settings); keep
@@ -260,6 +313,12 @@ impl InProcessEngine {
             pricing.ensure_fresh(&web);
         }
         let (events_tx, _) = broadcast::channel(EVENT_BUS_CAPACITY);
+        if let Err(err) = durability::recover_interrupted_runs(&storage, &events_tx) {
+            tracing::warn!(
+                key = err.key.as_key(),
+                "boot recovery of interrupted agent runs failed"
+            );
+        }
         Ok(Arc::new(Self {
             data_dir: dir,
             storage,
@@ -286,6 +345,7 @@ impl InProcessEngine {
             run_tasks: Arc::new(Mutex::new(tokio::task::JoinSet::new())),
             ota_release_key: std::sync::OnceLock::new(),
             live_voice: Arc::new(voice::LiveVoiceManager::new()),
+            host_actions: Arc::new(computer_use::HostActionBroker::new()),
         }))
     }
 
@@ -322,7 +382,7 @@ impl InProcessEngine {
     }
 
     fn load_mcp_bearer(&self, server_id: &str) -> Option<String> {
-        let raw = match self.vault.get(&format!("mcp_bearer:{server_id}")) {
+        let raw = match self.vault.get(&mcp::bearer_vault_key(server_id)) {
             Ok(v) => v,
             Err(err) => {
                 tracing::warn!(
@@ -399,7 +459,7 @@ impl InProcessEngine {
             .collect();
 
         let default_models = provider_prefs::load_default_models(&self.storage);
-        // A provider pinned by the chat or its assistant is used or the request fails (R19):
+        // A provider pinned by the chat or its assistant is used or the request fails:
         // falling back could send the chat to another, possibly paid, vendor.
         let pinned_provider_id = thread
             .provider_id_override
@@ -412,14 +472,14 @@ impl InProcessEngine {
                     .filter(|s| !s.is_empty())
             });
         if let Some(pid) = pinned_provider_id {
-            let usable = profiles.iter().find(|p| {
-                p.id == pid && p.is_enabled && (!p.dialect.requires_api_key() || p.has_api_key)
-            });
+            let usable = profiles
+                .iter()
+                .find(|p| p.id == pid && p.is_enabled && (!p.requires_api_key() || p.has_api_key));
             if usable.is_none() {
                 return Err(BistreError::new(DiagnosticKey::ProviderPinnedUnavailable));
             }
         }
-        // Owner decision 2026-11-26: Settings > Default models is the default for a chat that
+        // Settings > Default models is the default for a chat that
         // names no provider or model itself; the picker's last pick only fills in when it is
         // unset (the picker sets the open chat's own model).
         let requested_provider_id = pinned_provider_id
@@ -443,13 +503,13 @@ impl InProcessEngine {
             .or_else(|| {
                 profiles
                     .iter()
-                    .find(|p| p.is_enabled && (!p.dialect.requires_api_key() || p.has_api_key))
+                    .find(|p| p.is_enabled && (!p.requires_api_key() || p.has_api_key))
                     .cloned()
             })
             .ok_or_else(|| BistreError::new(DiagnosticKey::ProviderNotConfigured))?;
 
         let api_key = self.load_key_ring(&selected.id)?;
-        if selected.dialect.requires_api_key() && api_key.is_empty() {
+        if selected.requires_api_key() && api_key.is_empty() {
             return Err(BistreError::new(DiagnosticKey::ProviderNotConfigured));
         }
 
@@ -492,21 +552,16 @@ impl InProcessEngine {
             return Err(BistreError::new(DiagnosticKey::ProviderModelRequired));
         }
 
-        // Honor the user's explicit reasoning effort unless the catalog explicitly marks the model
-        // non-reasoning (`Some(false)`) OR a prior 400 heal recorded it as unsupported at runtime.
-        let catalog_says_no = self
-            .pricing
-            .snapshot()
-            .lookup(&model)
-            .and_then(|r| r.reasoning)
-            == Some(false);
-        let runtime_says_no = lock_or_recover(&self.reasoning_unsupported, "reasoning_unsupported")
-            .contains(&(selected.id.clone(), model.clone()));
-        let reasoning_effort = if catalog_says_no || runtime_says_no {
-            ReasoningEffort::ModelDefault
-        } else {
-            ReasoningEffort::parse(&settings.reasoning_effort)
-        };
+        let prov_adv = provider_prefs::load_provider_advanced(&self.storage, &selected.id);
+        let wired_dialect = prov_adv.speaking(&selected).dialect;
+        let scope = registry::CatalogScope::of(&selected);
+        let reasoning_effort = self.resolve_reasoning_effort(
+            &scope,
+            &selected.id,
+            &model,
+            &settings.reasoning_effort,
+            prov_adv.default_thinking_effort,
+        );
         let gen_params = GenerationParams {
             temperature_milli: thread
                 .temperature_milli
@@ -514,7 +569,8 @@ impl InProcessEngine {
             max_output_tokens: thread
                 .max_output_tokens
                 .or_else(|| assistant.and_then(|a| a.max_output_tokens))
-                .or_else(|| self.anthropic_output_limit(selected.dialect, &model)),
+                .or_else(|| prov_adv.max_output_tokens(&model))
+                .or_else(|| self.anthropic_output_limit(&scope, wired_dialect, &model)),
             top_p_milli: thread
                 .top_p_milli
                 .or_else(|| assistant.and_then(|a| a.top_p_milli)),
@@ -524,20 +580,53 @@ impl InProcessEngine {
         Ok((selected, api_key, model, gen_params))
     }
 
-    /// W4.8: Anthropic requires `max_tokens`; it is the model's own limit from the registry,
+    /// Resolves the request's thinking effort: explicit global/composer choice wins over the
+    /// provider's default effort, unless the catalog or a prior 400 heal marks the model
+    /// non-reasoning.
+    fn resolve_reasoning_effort(
+        &self,
+        scope: &registry::CatalogScope,
+        provider_id: &str,
+        model: &str,
+        global_effort: &str,
+        provider_default: ReasoningEffort,
+    ) -> ReasoningEffort {
+        let catalog_says_no = self
+            .pricing
+            .snapshot()
+            .lookup(scope, model)
+            .and_then(|r| r.reasoning)
+            == Some(false);
+        let runtime_says_no = lock_or_recover(&self.reasoning_unsupported, "reasoning_unsupported")
+            .contains(&(provider_id.to_owned(), model.to_owned()));
+        if catalog_says_no || runtime_says_no {
+            return ReasoningEffort::ModelDefault;
+        }
+        match ReasoningEffort::parse(global_effort) {
+            ReasoningEffort::ModelDefault => provider_default,
+            explicit => explicit,
+        }
+    }
+
+    /// Anthropic requires `max_tokens`; it is the model's own limit from the registry,
     /// never a fixed number (the request body keeps a fallback when the model is unknown).
-    fn anthropic_output_limit(&self, dialect: ProviderDialect, model: &str) -> Option<u32> {
+    fn anthropic_output_limit(
+        &self,
+        scope: &registry::CatalogScope,
+        dialect: ProviderDialect,
+        model: &str,
+    ) -> Option<u32> {
         (dialect == ProviderDialect::Anthropic)
             .then(|| {
                 self.pricing
                     .snapshot()
-                    .lookup(model)
+                    .lookup(scope, model)
                     .and_then(|r| r.max_output_tokens)
             })
             .flatten()
     }
 
-    /// R30: cancels a run still going in `thread_id` and waits, at most
+    /// Cancels a run still going in `thread_id` and waits, at most
     /// [`PREVIOUS_RUN_STOP_TIMEOUT`], until it has finished and committed, so a new run (send,
     /// edit, regenerate) never overlaps it or commits after it.
     pub(crate) async fn stop_previous_run(&self, thread_id: &str) {
@@ -582,6 +671,7 @@ impl InProcessEngine {
             thread_auto_approvals: Arc::clone(&self.thread_auto_approvals),
             power: Arc::clone(&self.power),
             unpriced_allowed: Arc::clone(&self.unpriced_allowed),
+            host_actions: Arc::clone(&self.host_actions),
         }
     }
 
@@ -599,16 +689,16 @@ impl InProcessEngine {
         system_prompt: String,
         gen_params: GenerationParams,
         stateless_default: bool,
+        origin: agent::RunApprovalPolicy,
     ) -> BistreResult<String> {
-        let settings = self.storage.load_settings()?;
         let durable_run = self.storage.create_agent_run(CreateAgentRunParams {
             thread_id: thread.id.clone(),
             parent_run_id: None,
             root_node_id: Some(parent_user_node_id.clone()),
             mode: thread.mode,
             max_steps: engine_runs::MAX_RUN_STEPS,
-            unattended_policy: settings.unattended_policy,
-            worktree_path: None,
+            unattended_policy: origin.policy,
+            worktree_path: origin.sandbox.map(|p| p.display().to_string()),
         })?;
 
         let pending_id = Uuid::now_v7().to_string();
@@ -679,6 +769,7 @@ impl InProcessEngine {
             done_tx.send_replace(true);
             lock_or_recover(&services.thread_auto_approvals, "approval_memory").end_run(&run_id);
             lock_or_recover(&services.unpriced_allowed, "unpriced_allowed").remove(&thread_id);
+            services.host_actions.clear_run(&run_id);
 
             // Only remove our own cancel/wake handles (never clobber a newer overlapping run).
             {
@@ -716,6 +807,33 @@ impl InProcessEngine {
         });
 
         Ok(pending_id)
+    }
+
+    pub(crate) fn stage_verified_update(
+        &self,
+        check: UpdateCheckResult,
+        allow_reinstall: bool,
+    ) -> BoxFuture<'_, BistreResult<String>> {
+        Box::pin(async move {
+            let verified = lock_or_recover(&self.verified_update, "verified_update")
+                .clone()
+                .filter(|m| m.latest_version() == check.latest_version)
+                .ok_or_else(|| {
+                    BistreError::with_detail(
+                        DiagnosticKey::OtaIntegrityFailed,
+                        "ota_manifest_unverified",
+                    )
+                })?;
+            ota::stage_update_artifact_with_mode(
+                &self.ota_http,
+                &self.data_dir,
+                &verified,
+                CORE_VERSION,
+                self.active_runs.load(Ordering::Relaxed),
+                allow_reinstall,
+            )
+            .await
+        })
     }
 }
 #[cfg(test)]

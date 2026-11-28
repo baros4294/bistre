@@ -1,10 +1,10 @@
 //! Writing & Roleplay Helper Agents and Turn Routers:
-//! - Two-Phase Prewriter (clarifying writing brief before prose)
-//! - Background Continuity Librarian (editable Era Summaries + contradiction audit, Wallet Shield aware)
+//! - Two-Phase Prewriter (a writing brief, with questions for the author, before prose)
+//! - Continuity Librarian (editable Era Summaries + contradiction audit)
 //! - Group Scene Turn Router (`natural` | `round_robin` | `manual`)
-//! - Continue, Impersonate, and Inline Rewrite Laser Tools (`rewrite` | `expand` | `shorten` | `polish`).
+//! - Inline Rewrite Laser Tools (`rewrite` | `expand` | `shorten` | `polish`).
 
-use bistre_protocol::{CharacterCardRecord, NodeRecord};
+use bistre_protocol::CharacterCardRecord;
 
 /// Supported inline selection rewrite operations inside the Manuscript Canvas.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,91 +71,154 @@ pub fn select_group_scene_speaker<'a>(
     characters.first()
 }
 
-/// Builds a Two-Phase Prewriter prompt that proposes a structured scene plan & clarifies intent before prose.
-pub fn build_prewriter_prompt(scene_title: &str, beats: &str, story_memory: &str) -> String {
-    format!(
-        "Before writing final prose for scene \"{scene_title}\", produce a concise Writing Brief:\n\
-         1. Emotional arc and pacing beat order.\n\
-         2. Key continuity anchors from Story Memory ({story_memory}).\n\
-         3. Up to 2 brief clarifying questions if any motivation or detail is ambiguous.\n\n\
-         Scene Beats:\n{beats}"
-    )
+/// A writing tool's request: fixed instructions (sent as the system prompt) and the text they
+/// act on (sent as the user message).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WriterPrompt {
+    pub system: &'static str,
+    pub user: String,
 }
 
-/// Builds a Background Continuity Librarian audit prompt to synthesize an editable Era Summary
-/// and surface any timeline or character contradictions.
-pub fn build_continuity_librarian_prompt(
+const PREWRITER_PROMPT: &str = "Write a writing brief for the scene below, before any prose is written. \
+List: 1. the emotional arc and the order of the beats; 2. each fact from the story memory the scene must keep; \
+3. at most two questions for the author, each about a motive or a detail the beats do not state. \
+Reply in the language of the beats, as a numbered list. Write no prose of the scene.";
+
+/// The prewriter brief for a scene: its title, beats, and the chat's story memory.
+pub fn prewriter_prompt(scene_title: &str, beats: &str, story_memory: &str) -> WriterPrompt {
+    let memory = if story_memory.trim().is_empty() {
+        "(none)"
+    } else {
+        story_memory.trim()
+    };
+    WriterPrompt {
+        system: PREWRITER_PROMPT,
+        user: format!(
+            "[Scene]\n{}\n\n[Story memory]\n{memory}\n\n[Beats]\n{}",
+            scene_title.trim(),
+            beats.trim()
+        ),
+    }
+}
+
+/// The line that opens the contradiction list in a continuity librarian reply.
+pub const CONTRADICTIONS_HEADING: &str = "Contradictions:";
+
+const LIBRARIAN_PROMPT: &str = "Summarize the chapter below for the story's record. \
+First write at most three bullets on what the chapter changes for good: the plot, relationships, \
+and what characters own or carry. Then write the line \"Contradictions:\" followed by one bullet \
+for each statement in the chapter that conflicts with the earlier summaries, naming both, or \
+nothing when there is none. Reply in the chapter's language.";
+
+/// The continuity librarian's request: an era summary of a chapter, checked against the
+/// summaries of the chapters before it.
+pub fn continuity_librarian_prompt(
     chapter_title: &str,
     chapter_text: &str,
     prior_era_summaries: &str,
-) -> String {
-    format!(
-        "Act as a Continuity Librarian for \"{chapter_title}\".\n\
-         1. Write a concise 3-bullet Era Summary capturing permanent plot, relationship, and inventory changes.\n\
-         2. List any contradictions against prior Era Summaries ({prior_era_summaries}), or state 'None'.\n\n\
-         Chapter Text:\n{chapter_text}"
-    )
+) -> WriterPrompt {
+    let prior = if prior_era_summaries.trim().is_empty() {
+        "(none)"
+    } else {
+        prior_era_summaries.trim()
+    };
+    WriterPrompt {
+        system: LIBRARIAN_PROMPT,
+        user: format!(
+            "[Chapter]\n{}\n\n[Earlier summaries]\n{prior}\n\n[Chapter text]\n{}",
+            chapter_title.trim(),
+            chapter_text.trim()
+        ),
+    }
 }
 
-/// Builds a seamless `Continue` prompt extending the last assistant passage without repetition.
-pub fn build_continue_prompt(last_passage: &str) -> String {
-    let tail: String = last_passage
-        .chars()
-        .rev()
-        .take(320)
-        .collect::<String>()
-        .chars()
-        .rev()
+/// Splits a librarian reply into the era summary and its contradiction bullets. A reply with
+/// no [`CONTRADICTIONS_HEADING`] line is all summary.
+pub fn split_librarian_reply(reply: &str) -> (String, Vec<String>) {
+    let Some((summary, rest)) = reply.split_once(CONTRADICTIONS_HEADING) else {
+        return (reply.trim().to_owned(), Vec::new());
+    };
+    let contradictions = rest
+        .lines()
+        .map(|l| l.trim().trim_start_matches(['-', '*', '\u{2022}']).trim())
+        .filter(|l| !l.is_empty())
+        .map(ToOwned::to_owned)
         .collect();
-    format!(
-        "Continue seamlessly from the exact end of the previous passage without repeating prior sentences. \
-         Maintain identical POV, tense, and voice.\n\nPrevious ending:\n{tail}"
-    )
+    (summary.trim().to_owned(), contradictions)
 }
 
-/// Builds an `Impersonate` prompt drafting a reply in the active User Persona voice.
-pub fn build_impersonate_prompt(
-    persona_name: &str,
-    persona_desc: &str,
-    recent: &[NodeRecord],
-) -> String {
-    let last_line = recent.last().map_or("", |n| n.content.as_str());
-    format!(
-        "Draft the next response strictly from {persona_name}'s perspective ({persona_desc}). \
-         Write only {persona_name}'s dialogue/actions in response to:\n{last_line}"
-    )
-}
-
-/// Builds an Inline Rewrite Laser Tool prompt (`rewrite` | `expand` | `shorten` | `polish`).
-pub fn build_laser_edit_prompt(
+/// The inline rewrite tool's request for the highlighted excerpt of a scene.
+pub fn laser_edit_prompt(
     mode: LaserEditMode,
     selected_excerpt: &str,
     surrounding_context: &str,
-) -> String {
-    let instruction = match mode {
+) -> WriterPrompt {
+    let system = match mode {
         LaserEditMode::Rewrite => {
-            "Rewrite the highlighted excerpt with fresher phrasing while preserving plot meaning."
+            "Rewrite the highlighted excerpt in new words. Keep its events, facts, point of view, \
+             and tense. Reply with the replacement text alone, in the excerpt's language."
         }
         LaserEditMode::Expand => {
-            "Expand the highlighted excerpt with grounded sensory detail and character interiority."
+            "Expand the highlighted excerpt with sensory detail and the point-of-view character's \
+             thoughts. Keep its events, point of view, and tense. Reply with the replacement text \
+             alone, in the excerpt's language."
         }
         LaserEditMode::Shorten => {
-            "Tighten and shorten the highlighted excerpt for sharper pacing without losing key beats."
+            "Shorten the highlighted excerpt. Keep every event and fact it states, its point of \
+             view, and its tense. Reply with the replacement text alone, in the excerpt's language."
         }
         LaserEditMode::Polish => {
-            "Polish prose rhythm, word choice, and dialogue cadence while staying faithful to the author's voice."
+            "Improve the rhythm, word choice, and dialogue of the highlighted excerpt. Keep its \
+             meaning, point of view, tense, and the author's voice. Reply with the replacement \
+             text alone, in the excerpt's language."
         }
     };
-    format!(
-        "{instruction}\nReturn ONLY the replacement text for the highlighted excerpt.\n\n\
-         Context:\n{surrounding_context}\n\n\
-         Highlighted Excerpt:\n{selected_excerpt}"
-    )
+    WriterPrompt {
+        system,
+        user: format!(
+            "[Scene, for context only]\n{}\n\n[Highlighted excerpt]\n{}",
+            surrounding_context.trim(),
+            selected_excerpt.trim()
+        ),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn writer_prompts_follow_the_prompt_rules() {
+        let mut systems: Vec<&str> = [
+            LaserEditMode::Rewrite,
+            LaserEditMode::Expand,
+            LaserEditMode::Shorten,
+            LaserEditMode::Polish,
+        ]
+        .into_iter()
+        .map(|mode| laser_edit_prompt(mode, "x", "y").system)
+        .collect();
+        systems.push(prewriter_prompt("t", "b", "").system);
+        systems.push(continuity_librarian_prompt("t", "x", "").system);
+        for system in systems {
+            let breaks = crate::test_support::prompt_rule_breaks(system);
+            assert_eq!(breaks, Vec::<String>::new(), "{system}");
+        }
+    }
+
+    /// The summary stops at the contradictions line; each bullet after it is one item.
+    #[test]
+    fn a_librarian_reply_splits_into_summary_and_contradictions() {
+        let (summary, found) = split_librarian_reply(
+            "- Lyra loses the map.\n- Bram joins the crew.\nContradictions:\n- Chapter 2 says the map burned.\n",
+        );
+        assert_eq!(summary, "- Lyra loses the map.\n- Bram joins the crew.");
+        assert_eq!(found, vec!["Chapter 2 says the map burned.".to_owned()]);
+        let (only, none) = split_librarian_reply("- Nothing changes.\nContradictions:\n");
+        assert_eq!(only, "- Nothing changes.");
+        assert_eq!(none, Vec::<String>::new());
+        assert_eq!(split_librarian_reply("plain").0, "plain");
+    }
 
     #[test]
     fn group_router_handles_natural_mentions_and_round_robin() {
@@ -193,10 +256,9 @@ mod tests {
         );
         assert_eq!(rotated.map(|c| c.id.as_str()), Some("c1"));
 
-        // Laser edit builder includes exact instruction and excerpt.
-        let prompt =
-            build_laser_edit_prompt(LaserEditMode::Expand, "She opened the door.", "Hallway.");
-        assert!(prompt.contains("Expand"));
-        assert!(prompt.contains("She opened the door."));
+        // The rewrite request carries the mode's instruction and the excerpt.
+        let prompt = laser_edit_prompt(LaserEditMode::Expand, "She opened the door.", "Hallway.");
+        assert!(prompt.system.starts_with("Expand"));
+        assert!(prompt.user.ends_with("She opened the door."));
     }
 }

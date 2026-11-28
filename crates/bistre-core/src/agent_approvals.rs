@@ -1,5 +1,5 @@
-//! Live tool-approval state shared by every run (R2, P9, P10, P11, D1, D2) and the
-//! workspace-hook gate around tool calls (A-S5).
+//! Live tool-approval state shared by every run and the
+//! workspace-hook gate around tool calls.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -26,7 +26,7 @@ pub type ThreadAutoApprovals = Arc<Mutex<ApprovalMemory>>;
 /// Most chat grants plus run denials remembered at once; beyond this, calls simply ask again.
 pub const MAX_APPROVAL_MEMORY: usize = 1024;
 
-/// What "Approve for this chat" and "Deny" leave behind (decision D1, P9, P10).
+/// What "Approve for this chat" and "Deny" leave behind.
 ///
 /// A chat grant covers the exact call (tool + canonical arguments) for the whole chat; only a
 /// Tier-0 read tool is granted for any arguments. A denial covers the exact call for the rest
@@ -131,7 +131,7 @@ impl ApprovalMemory {
     }
 }
 
-/// Waits for the user's decision with no time limit (decision D2) and without polling: the
+/// Waits for the user's decision with no time limit and without polling: the
 /// run's `wake` is notified on cancel, so only cancel or a dropped responder ends the wait.
 /// A dropped responder means nobody can answer: deny. Returns `(decision, cancelled)`.
 pub(crate) async fn wait_for_decision(
