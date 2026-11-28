@@ -449,6 +449,9 @@ class _ChatInspectorDrawerState extends State<ChatInspectorDrawer> {
                         ThinkingEffortPicker(
                           value: ctrl.settings.reasoningEffort,
                           reduceMotionOverride: ctrl.reduceMotionOverride,
+                          allowedLevels:
+                              ctrl.activeModelInfo?.effortLevels ??
+                              const <String>[],
                           onChanged: (effort) =>
                               unawaited(ctrl.setReasoningEffort(effort)),
                         ),

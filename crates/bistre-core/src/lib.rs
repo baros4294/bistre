@@ -28,6 +28,7 @@ mod data_wipe;
 pub mod delegate;
 pub mod desktop_helpers;
 pub mod durability;
+pub mod effort_levels;
 mod engine_grounding;
 pub mod error_policy;
 mod events;
@@ -591,21 +592,21 @@ impl InProcessEngine {
         global_effort: &str,
         provider_default: ReasoningEffort,
     ) -> ReasoningEffort {
-        let catalog_says_no = self
-            .pricing
-            .snapshot()
-            .lookup(scope, model)
-            .and_then(|r| r.reasoning)
-            == Some(false);
+        let rates = self.pricing.snapshot().lookup(scope, model);
+        let catalog_says_no = rates.and_then(|r| r.reasoning) == Some(false);
         let runtime_says_no = lock_or_recover(&self.reasoning_unsupported, "reasoning_unsupported")
             .contains(&(provider_id.to_owned(), model.to_owned()));
         if catalog_says_no || runtime_says_no {
             return ReasoningEffort::ModelDefault;
         }
-        match ReasoningEffort::parse(global_effort) {
+        let wanted = match ReasoningEffort::parse(global_effort) {
             ReasoningEffort::ModelDefault => provider_default,
             explicit => explicit,
-        }
+        };
+        // A level the catalog says the model lacks becomes its nearest listed level.
+        rates
+            .and_then(|r| r.effort_levels)
+            .map_or(wanted, |levels| levels.clamp(wanted))
     }
 
     /// Anthropic requires `max_tokens`; it is the model's own limit from the registry,

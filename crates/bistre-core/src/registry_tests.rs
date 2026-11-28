@@ -706,3 +706,28 @@ fn picture_and_sound_tokens_in_a_reply_use_their_own_rates() {
         Some(2_000)
     );
 }
+
+#[test]
+fn effort_levels_come_from_the_catalog_entry() {
+    use crate::effort_levels::EffortSet;
+    use bistre_protocol::ReasoningEffort::{High, Low, Max, Medium};
+    let litellm = json!({
+        "listed": {"input_cost_per_token": 1e-6, "output_cost_per_token": 1e-6, "supports_reasoning": true,
+                   "reasoning_effort_levels": ["minimal", "low", "medium", "high", "turbo"]},
+        "flagged": {"input_cost_per_token": 1e-6, "output_cost_per_token": 1e-6, "supports_reasoning": true,
+                    "supports_xhigh_reasoning_effort": false, "supports_max_reasoning_effort": true,
+                    "thinking_always_on": true},
+        "silent": {"input_cost_per_token": 1e-6, "output_cost_per_token": 1e-6, "supports_reasoning": true}
+    });
+    let registry = PricingRegistry::new();
+    registry.publish(parse("litellm", &litellm));
+    let table = registry.snapshot();
+    let levels = |id: &str| table.lookup(ANY, id).and_then(|r| r.effort_levels);
+
+    let listed: EffortSet = [Low, Medium, High].into_iter().collect();
+    assert_eq!(levels("listed"), Some(listed));
+    // No xhigh, and a model that always thinks cannot be turned off.
+    let flagged: EffortSet = [Low, Medium, High, Max].into_iter().collect();
+    assert_eq!(levels("flagged"), Some(flagged));
+    assert_eq!(levels("silent"), None, "no data keeps every level");
+}
