@@ -1,0 +1,65 @@
+name: Release tag
+
+# Zero-checkout: once CI passed on a main commit whose version has no tag yet, tags that commit
+# `v<version>` and starts the release on the tag. Version bump raises the version in every
+# owner pull request, so each such merge ships; Dependabot merges keep it and ship nothing.
+on:
+  workflow_run: # zizmor: ignore[dangerous-triggers] -- zero checkout; reads Cargo.toml of a CI-tested main SHA through the API
+    workflows: ["CI"]
+    types: [completed]
+    branches: ["main"]
+
+permissions: {}
+
+concurrency:
+  group: release-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: tag
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write # create the release tag
+      actions: write # start the release (a GITHUB_TOKEN tag push starts no workflow)
+    steps:
+      - name: Tag a new version on main and start its release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$TESTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "ERROR: invalid tested SHA"
+            exit 1
+          fi
+          main_sha="$(gh api "repos/${REPO}/commits/main" --jq '.sha')"
+          if [ "$main_sha" != "$TESTED_SHA" ]; then
+            echo "main moved past ${TESTED_SHA}; its own CI run tags it."
+            exit 0
+          fi
+          # The first `version = "X.Y.Z"` line is `[workspace.package]`'s; `just guard` keeps
+          # pubspec.yaml equal to it.
+          version="$(gh api "repos/${REPO}/contents/Cargo.toml?ref=${TESTED_SHA}" --jq '.content' \
+            | base64 -d | sed -n 's/^version = "\([0-9]*\.[0-9]*\.[0-9]*\)"$/\1/p' | head -n 1)"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "ERROR: Cargo.toml at ${TESTED_SHA} has no X.Y.Z workspace version"
+            exit 1
+          fi
+          tag="v${version}"
+          # A 404 (no such tag) prints to the log and falls through to creating it.
+          if gh api "repos/${REPO}/git/ref/tags/${tag}" --silent; then
+            echo "${tag} already exists; nothing to release."
+            exit 0
+          fi
+          gh api "repos/${REPO}/git/refs" -f "ref=refs/tags/${tag}" -f "sha=${TESTED_SHA}" --silent
+          gh workflow run release.yml --repo "$REPO" --ref "$tag"
+          echo "Tagged ${TESTED_SHA} as ${tag} and started its release."
