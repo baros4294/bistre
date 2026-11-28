@@ -339,3 +339,30 @@ fn openrouter_reasoning_details_replay_only_to_openrouter() {
     ));
     assert!(!text.to_string().contains("reasoning.encrypted"), "{text}");
 }
+
+/// Prompt caches match byte for byte, so a replayed tool call must serialize the same way
+/// every turn whatever key order the model streamed: `serde_json` maps are sorted, and this
+/// pins it (no `preserve_order`).
+#[test]
+fn a_replayed_tool_call_serializes_the_same_bytes_every_turn() {
+    let call = |args: &str| {
+        json!({ "tool_calls": [{ "call_id": "c1", "name": "read", "arguments_json": args }] })
+    };
+    let result = json!({ "tool_result": { "call_id": "c1", "name": "read" } });
+    let turn = |args: &str| {
+        vec![
+            rec("u1", NodeRole::User, "Hi", None, 1),
+            rec("a1", NodeRole::Assistant, "", Some(call(args)), 2),
+            rec("r1", NodeRole::Tool, "ok", Some(result.clone()), 3),
+        ]
+    };
+    let anthropic = |history: &[NodeRecord]| {
+        Value::Array(build_anthropic_messages_with_ctx(history, None, None)).to_string()
+    };
+    let streamed = anthropic(&turn(r#"{"path":"a.md","limit":5}"#));
+    assert_eq!(streamed, anthropic(&turn(r#"{"limit":5,"path":"a.md"}"#)));
+    assert!(
+        streamed.contains(r#""input":{"limit":5,"path":"a.md"}"#),
+        "{streamed}"
+    );
+}
