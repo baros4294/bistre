@@ -409,6 +409,9 @@ abstract interface class BistreEngineGateway {
     required String bodyJson,
   });
 
+  /// The approval requests whose runs still wait for the user, as the events that asked.
+  Future<List<BistreEvent>> pendingToolApprovals();
+
   /// Delivers a live tool-approval decision (`approve_once` / `approve_for_thread` / `deny` /
   /// `stop`) to the run [runId] of [threadId] paused at [callId].
   Future<bool> respondToolApproval({

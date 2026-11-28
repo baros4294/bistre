@@ -239,6 +239,40 @@ async fn approving_one_chat_never_releases_another_chat_with_the_same_call_id() 
     Ok(())
 }
 
+/// An app that missed `ToolApprovalRequested` (lagged events, a window opened while the run
+/// waited) gets the request again from core until it is answered.
+#[tokio::test]
+async fn a_missed_approval_request_stays_listed_until_answered() -> TestResult {
+    let ws = Workspace::open()?;
+    let server = MockServer::start(vec![
+        edit_call("call_7", "hello", "edited"),
+        text_turn("done"),
+    ])
+    .await?;
+    let (thread, dir) = ws.thread("t", &server).await?;
+    let mut rx = ws.engine.subscribe_events();
+    ws.set_workspace(&dir).await?;
+    ws.engine
+        .send_and_stream_reply(thread.clone(), None, "edit".to_owned())
+        .await?;
+    let req = next_request(&mut rx, &thread).await?.ok_or("never asked")?;
+    let listed = ws.engine.pending_tool_approvals().await?;
+    assert!(
+        matches!(
+            listed.as_slice(),
+            [EngineEvent::ToolApprovalRequested { thread_id, run_id, call_id, tool_name, .. }]
+                if *thread_id == req.thread && *run_id == req.run && call_id == "call_7"
+                    && !tool_name.is_empty()
+        ),
+        "{listed:?}"
+    );
+    assert!(respond(&ws, &req, ToolApprovalDecision::ApproveOnce).await?);
+    assert_eq!(ws.engine.pending_tool_approvals().await?, Vec::new());
+    assert_eq!(finish(&mut rx, &thread).await?, 0);
+    drop(server.finish().await);
+    Ok(())
+}
+
 /// "Approve for this chat" covers the exact call only; other arguments ask again.
 #[tokio::test]
 async fn approve_for_chat_covers_the_exact_call_only() -> TestResult {

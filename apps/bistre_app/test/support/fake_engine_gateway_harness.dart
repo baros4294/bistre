@@ -86,6 +86,14 @@ mixin _FakeHarnessAndStory implements BistreEngineGateway {
   Future<void> allowUnpricedMediaOnce() =>
       _record('allowUnpricedMediaOnce', <String, Object?>{});
 
+  List<BistreEvent> pendingApprovals = <BistreEvent>[];
+
+  @override
+  Future<List<BistreEvent>> pendingToolApprovals() async {
+    await _record('pendingToolApprovals', const <String, Object?>{});
+    return pendingApprovals;
+  }
+
   @override
   Future<bool> respondToolApproval({
     required String threadId,

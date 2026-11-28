@@ -261,6 +261,7 @@ macro_rules! with_engine_rpc_table {
                 body_json: String,
             ) -> ();
             Reply fn allow_unpriced_media_once() -> ();
+            Reply fn pending_tool_approvals() -> Vec<EngineEvent>;
             Reply fn respond_tool_approval(
                 thread_id: String,
                 run_id: String,

@@ -158,6 +158,7 @@ extension FolioBootActions on FolioController {
       unawaited(refreshLibrary());
       await _hydrateCustomFontsFromSettings();
       unawaited(_loadPendingUpdate());
+      unawaited(_restorePendingApprovals());
       if (_settings.otaAutoCheck && !_disposed) {
         unawaited(checkForUpdates(background: true));
       }

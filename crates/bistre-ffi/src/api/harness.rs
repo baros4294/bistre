@@ -74,6 +74,21 @@ pub async fn respond_tool_approval(
         .map_err(crate::dto_mapping::ffi_err)
 }
 
+/// The approval requests whose runs still wait for the user, shown again after lagged events
+/// or when a window opens while a background run waits.
+#[frb]
+pub async fn pending_tool_approvals() -> Result<Vec<super::FfiEngineEvent>, String> {
+    let engine = current_engine()?;
+    let events = engine
+        .pending_tool_approvals()
+        .await
+        .map_err(crate::dto_mapping::ffi_err)?;
+    Ok(events
+        .into_iter()
+        .map(crate::dto_mapping::map_event)
+        .collect())
+}
+
 /// Delivers the native host-bridge result for a `HostActionRequested` event (`computer_use`).
 #[frb]
 pub async fn respond_host_action(

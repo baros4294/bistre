@@ -224,6 +224,10 @@ mixin _GalleryRunsAndStory implements BistreEngineGateway {
   }) async {}
 
   @override
+  Future<List<BistreEvent>> pendingToolApprovals() async =>
+      const <BistreEvent>[];
+
+  @override
   Future<bool> respondToolApproval({
     required String threadId,
     required String runId,
