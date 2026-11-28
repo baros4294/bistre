@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:bistre_app/features/shell/folio_controller.dart';
+import 'package:bistre_app/l10n/l10n_keys.g.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,9 +18,11 @@ void main() {
   Future<ShellHarness> pump(WidgetTester tester) async {
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
-      (call) async => call.method == 'Clipboard.getData'
-          ? <String, Object?>{'text': clipboardText}
-          : null,
+      (call) async => switch (call.method) {
+        'Clipboard.getData' => <String, Object?>{'text': clipboardText},
+        'Clipboard.hasStrings' => <String, Object?>{'value': true},
+        _ => null,
+      },
     );
     const host = MethodChannel('bistre/desktop_host');
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(host, (
@@ -78,6 +81,50 @@ void main() {
     );
     expect(field.controller.text, 'hello there');
     expect(shell.controller.attachments, isEmpty);
+    await tester.pump(const Duration(seconds: 9));
+  });
+
+  testWidgets('the toolbar Paste takes the same path as Ctrl+V', (
+    tester,
+  ) async {
+    final shell = await pump(tester);
+    clipboardText = 'x' * (kPasteAsFileChars + 1);
+    await tester.tap(find.byKey(const Key('composer_input')));
+    await tester.pump();
+    tester
+        .state<EditableTextState>(
+          find.descendant(
+            of: find.byKey(const Key('composer_input')),
+            matching: find.byType(EditableText),
+          ),
+        )
+        .showToolbar();
+    await tester.pump();
+    await tester.tap(find.text(shell.t(L10nKey.shellSelectionPaste)));
+    // The pasted text is written to a real temp file: let that I/O finish.
+    for (var i = 0; i < 20 && shell.controller.attachments.isEmpty; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+    }
+    final field = tester.widget<EditableText>(
+      find.descendant(
+        of: find.byKey(const Key('composer_input')),
+        matching: find.byType(EditableText),
+      ),
+    );
+    expect(
+      field.controller.text,
+      isEmpty,
+      reason: 'long text is not typed into the field',
+    );
+    expect(
+      shell.controller.attachments.map((a) => a.mimeType),
+      <String>['text/plain'],
+      reason:
+          'long text from the touch toolbar joins as a file, as with Ctrl+V',
+    );
     await tester.pump(const Duration(seconds: 9));
   });
 
