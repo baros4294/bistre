@@ -1,53 +1,139 @@
-//! Live model pricing registry (Spec 03 / Spec 06): zero hardcoded model rates.
+//! Live model catalog (Spec 03 / Spec 06): prices, limits, and modalities, never hardcoded.
 //!
-//! - Single-flight, detached background sync: `OpenRouter` → Vercel AI Gateway → `LiteLLM` →
-//!   `models.dev`. Earlier sources win; later sources only fill gaps. Each source is published
-//!   incrementally through a `tokio::sync::watch` channel.
+//! - Sources, in order: `OpenRouter`'s full model list (every output modality), its video
+//!   price list, then `LiteLLM`. Earlier sources win; later ones only fill gaps. Each source is
+//!   published incrementally through a `tokio::sync::watch` channel.
+//! - Lookups are scoped to the provider that serves the model: its own catalog namespace
+//!   (`openrouter`, `gemini`, or the API host's name, which is how `LiteLLM` names providers)
+//!   comes first, then the plain id, then the id without its `vendor/` prefix as the model's
+//!   maker lists it. A reseller's entry (`azure/eu/x`) never prices a model it does not serve.
 //! - `24 h` freshness TTL, `60 s` cooldown after a sync that produced nothing. Syncs start only
 //!   at engine start (when `pricing_auto_refresh` is on) or on an explicit refresh, never from
 //!   a run, and the merged table is cached on disk with a format version.
 //! - Callers may wait up to `2.5 s` for one model's rate; waiting never cancels the download.
 //! - Every price is converted once, with integer math only, into `MoneyMicros` per one million
-//!   tokens; JSON floats are re-read from their shortest decimal text, never multiplied as `f64`.
+//!   tokens (or characters), per image, or per second; JSON floats are re-read from their
+//!   shortest decimal text, never multiplied as `f64`.
 //! - Catalog GETs carry no identifiers and go through `PublicWebTransport`.
 
 use bistre_protocol::lock_or_recover;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use bistre_protocol::MoneyMicros;
-use serde::Deserialize;
-use serde::de::IgnoredAny;
+use bistre_protocol::{MoneyMicros, ProviderDialect, ProviderProfile};
 use tokio::sync::watch;
 
+pub use crate::registry_parse::parse_source;
 use crate::ssrf::PublicWebTransport;
 
 /// Freshness window for a successful sync.
 pub const REGISTRY_TTL: Duration = Duration::from_hours(24);
 /// Version of the on-disk price cache; a different version is ignored and rebuilt.
-pub const PRICE_CACHE_FORMAT: u32 = 5;
+pub const PRICE_CACHE_FORMAT: u32 = 8;
 /// Cooldown after a sync that yielded no rates.
 pub const REGISTRY_FAILURE_COOLDOWN: Duration = Duration::from_secs(60);
 /// Maximum wait for one model's rate.
 pub const REGISTRY_MODEL_WAIT: Duration = Duration::from_millis(2_500);
 const MAX_CATALOG_BYTES: usize = 32 * 1024 * 1024;
 
-/// Ordered pricing sources: (name, URL).
+/// Ordered catalog sources: (name, URL). `output_modalities=all` lists image, video, speech,
+/// and transcription models too (the bare list holds text models only).
 pub const PRICING_SOURCES: [(&str, &str); 4] = [
-    ("openrouter", "https://openrouter.ai/api/v1/models"),
-    ("vercel", "https://ai-gateway.vercel.sh/v1/models"),
+    (
+        "openrouter",
+        "https://openrouter.ai/api/v1/models?output_modalities=all",
+    ),
+    (
+        "openrouter_images",
+        "https://openrouter.ai/api/v1/images/models",
+    ),
+    (
+        "openrouter_videos",
+        "https://openrouter.ai/api/v1/videos/models",
+    ),
     (
         "litellm",
         "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
     ),
-    ("models_dev", "https://models.dev/api.json"),
 ];
 
-/// Integer rates in micro-USD per one million tokens.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// One kind of content a model reads or writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Modality {
+    Text,
+    Image,
+    Audio,
+    Video,
+    File,
+}
+
+impl Modality {
+    const fn bit(self) -> u8 {
+        match self {
+            Self::Text => 1,
+            Self::Image => 2,
+            Self::Audio => 4,
+            Self::Video => 8,
+            Self::File => 16,
+        }
+    }
+
+    /// A catalog's name for it (`speech` is spoken audio); other names (`embeddings`,
+    /// `rerank`) are not content.
+    fn from_catalog_name(name: &str) -> Option<Self> {
+        match name.trim().to_ascii_lowercase().as_str() {
+            "text" => Some(Self::Text),
+            "image" => Some(Self::Image),
+            "audio" | "speech" => Some(Self::Audio),
+            "video" => Some(Self::Video),
+            "file" | "pdf" => Some(Self::File),
+            _ => None,
+        }
+    }
+}
+
+/// A set of [`Modality`] values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct ModalitySet(u8);
+
+impl ModalitySet {
+    #[must_use]
+    pub fn of(items: &[Modality]) -> Self {
+        let mut set = Self::default();
+        for m in items {
+            set.insert(*m);
+        }
+        set
+    }
+
+    pub fn insert(&mut self, m: Modality) {
+        self.0 |= m.bit();
+    }
+
+    #[must_use]
+    pub const fn contains(self, m: Modality) -> bool {
+        self.0 & m.bit() != 0
+    }
+}
+
+impl<'a> FromIterator<&'a str> for ModalitySet {
+    fn from_iter<I: IntoIterator<Item = &'a str>>(names: I) -> Self {
+        let mut set = Self::default();
+        for m in names.into_iter().filter_map(Modality::from_catalog_name) {
+            set.insert(m);
+        }
+        set
+    }
+}
+
+/// Integer rates in micro-USD (per one million tokens unless the field says otherwise),
+/// limits, and modalities of one model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct ModelRates {
     pub input_per_mtok: i64,
     pub output_per_mtok: i64,
@@ -57,13 +143,35 @@ pub struct ModelRates {
     pub cache_write_per_mtok: Option<i64>,
     /// Cache-write rate for the 1-hour TTL, when the source reports one.
     pub cache_write_1h_per_mtok: Option<i64>,
+    /// Separate reasoning-token rate when explicitly overridden per model.
+    pub reasoning_per_mtok: Option<i64>,
     /// The model's conversation limit (context window) in tokens, when the source reports one.
     pub context_tokens: Option<u32>,
     /// Whether the model accepts a reasoning/thinking effort, when the source reports it.
     pub reasoning: Option<bool>,
-    /// The most tokens one reply may have, when the source reports it (W4.8: Anthropic's
+    /// The most tokens one reply may have, when the source reports it (Anthropic's
     /// required `max_tokens` comes from here, not a fixed number).
     pub max_output_tokens: Option<u32>,
+    /// What the model reads, when the source says.
+    pub input_modalities: Option<ModalitySet>,
+    /// What the model writes, when the source says; it picks the request route (Spec 02 §7).
+    pub output_modalities: Option<ModalitySet>,
+    /// Micro-USD per generated image.
+    pub per_image_micros: Option<i64>,
+    /// Micro-USD per second of generated video (the dearest resolution).
+    pub per_video_second_micros: Option<i64>,
+    /// The longest video the model makes, in seconds.
+    pub max_video_seconds: Option<u32>,
+    /// Micro-USD per one million characters of text read aloud.
+    pub per_mchar_micros: Option<i64>,
+    /// Rate of a reply's picture tokens, when the source lists one apart from text.
+    pub image_output_per_mtok: Option<i64>,
+    /// Rate of a reply's sound tokens, when the source lists one apart from text.
+    pub audio_output_per_mtok: Option<i64>,
+    /// Micro-USD per provider web search (the dearest search size the source lists).
+    pub per_search_micros: Option<i64>,
+    /// Micro-USD per provider code session (`OpenAI` code interpreter container).
+    pub per_code_session_micros: Option<i64>,
 }
 
 impl ModelRates {
@@ -74,9 +182,63 @@ impl ModelRates {
         self.cache_write_1h_per_mtok = self
             .cache_write_1h_per_mtok
             .or(other.cache_write_1h_per_mtok);
+        self.reasoning_per_mtok = self.reasoning_per_mtok.or(other.reasoning_per_mtok);
         self.context_tokens = self.context_tokens.or(other.context_tokens);
         self.max_output_tokens = self.max_output_tokens.or(other.max_output_tokens);
         self.reasoning = self.reasoning.or(other.reasoning);
+        self.input_modalities = self.input_modalities.or(other.input_modalities);
+        self.output_modalities = self.output_modalities.or(other.output_modalities);
+        self.per_image_micros = self.per_image_micros.or(other.per_image_micros);
+        self.per_video_second_micros = self
+            .per_video_second_micros
+            .or(other.per_video_second_micros);
+        self.max_video_seconds = self.max_video_seconds.or(other.max_video_seconds);
+        self.per_mchar_micros = self.per_mchar_micros.or(other.per_mchar_micros);
+        self.per_search_micros = self.per_search_micros.or(other.per_search_micros);
+        self.image_output_per_mtok = self.image_output_per_mtok.or(other.image_output_per_mtok);
+        self.audio_output_per_mtok = self.audio_output_per_mtok.or(other.audio_output_per_mtok);
+        self.per_code_session_micros = self
+            .per_code_session_micros
+            .or(other.per_code_session_micros);
+    }
+
+    /// Whether the model writes text (an unknown model is treated as a text model).
+    #[must_use]
+    pub fn writes_text(&self) -> bool {
+        self.output_modalities
+            .is_none_or(|m| m.contains(Modality::Text))
+    }
+
+    /// Micro-USD for `images` generated images, when the catalog prices images.
+    #[must_use]
+    pub fn image_cost(&self, images: u32) -> Option<MoneyMicros> {
+        self.per_image_micros
+            .map(|p| MoneyMicros::from_micros(p.saturating_mul(i64::from(images))))
+    }
+
+    /// The most one video can cost: the dearest per-second rate times the chosen length,
+    /// else the longest one.
+    #[must_use]
+    pub fn video_cost_for(&self, seconds: Option<u32>) -> Option<MoneyMicros> {
+        let per_second = self.per_video_second_micros?;
+        let seconds = seconds.or(self.max_video_seconds)?;
+        Some(MoneyMicros::from_micros(
+            per_second.saturating_mul(i64::from(seconds)),
+        ))
+    }
+
+    /// Micro-USD to read `chars` characters aloud. A per-token price is applied per character,
+    /// an upper bound (a token is at least one character).
+    #[must_use]
+    pub fn speech_cost(&self, chars: u64) -> Option<MoneyMicros> {
+        let rate = self
+            .per_mchar_micros
+            .or(Some(self.input_per_mtok))
+            .filter(|&r| r > 0)?;
+        let total = u128::from(chars) * u128::try_from(rate).ok()? / 1_000_000;
+        Some(MoneyMicros::from_micros(
+            i64::try_from(total).unwrap_or(i64::MAX),
+        ))
     }
 
     /// Exact cost; cached input tokens are billed at the cached rate when known.
@@ -95,6 +257,19 @@ impl ModelRates {
         MoneyMicros::from_micros(i64::try_from(total / 1_000_000).unwrap_or(i64::MAX))
     }
 
+    /// `tokens` of a reply at the output rate, except its picture and sound tokens, which use
+    /// their own rates when the catalog lists them (else the output rate, as before).
+    fn output_cost(&self, tokens: u64, usage: &bistre_protocol::UsageMetrics) -> u128 {
+        let rate = |r: i64| u128::try_from(r).unwrap_or(0);
+        let image = usage.output_image_tokens.min(tokens);
+        let audio = usage.output_audio_tokens.min(tokens - image);
+        let text = tokens - image - audio;
+        let own = |r: Option<i64>| rate(r.unwrap_or(self.output_per_mtok));
+        u128::from(text) * rate(self.output_per_mtok)
+            + u128::from(image) * own(self.image_output_per_mtok)
+            + u128::from(audio) * own(self.audio_output_per_mtok)
+    }
+
     /// Dialect-accurate exact micro-USD cost, or `None` when a rate it needs is unknown.
     ///
     /// - Anthropic's `input_tokens` **excludes** `cache_read_input_tokens` and
@@ -106,7 +281,7 @@ impl ModelRates {
     /// - An unknown cache-read rate bills cached tokens at the full input rate (an upper bound).
     pub fn cost_for_dialect(
         &self,
-        dialect: bistre_protocol::ProviderDialect,
+        dialect: ProviderDialect,
         usage: &bistre_protocol::UsageMetrics,
     ) -> Option<MoneyMicros> {
         use bistre_protocol::ProviderDialect;
@@ -115,12 +290,23 @@ impl ModelRates {
         let read_rate = rate(self.cached_input_per_mtok.unwrap_or(self.input_per_mtok));
         // Gemini bills thinking as output but reports it apart from the answer
         // (`thoughtsTokenCount` / `total_thought_tokens`); other dialects already include it.
-        let billed_output = if dialect == ProviderDialect::GoogleGemini {
-            usage.output_tokens.saturating_add(usage.reasoning_tokens)
+        // When a per-model override gives a separate reasoning rate, bill reasoning tokens at it.
+        let out_cost = if let Some(reason_rate) = self.reasoning_per_mtok {
+            let r_cost = u128::from(usage.reasoning_tokens) * rate(reason_rate);
+            let non_reason_out = if dialect == ProviderDialect::GoogleGemini {
+                usage.output_tokens
+            } else {
+                usage.output_tokens.saturating_sub(usage.reasoning_tokens)
+            };
+            r_cost + self.output_cost(non_reason_out, usage)
         } else {
-            usage.output_tokens
+            let billed_output = if dialect == ProviderDialect::GoogleGemini {
+                usage.output_tokens.saturating_add(usage.reasoning_tokens)
+            } else {
+                usage.output_tokens
+            };
+            self.output_cost(billed_output, usage)
         };
-        let out_cost = u128::from(billed_output) * rate(self.output_per_mtok);
         let total = if dialect == ProviderDialect::Anthropic {
             let one_hour_writes = usage
                 .cache_creation_1h_input_tokens
@@ -143,8 +329,18 @@ impl ModelRates {
             let fresh = usage.input_tokens - cached;
             u128::from(fresh) * base_in + u128::from(cached) * read_rate + out_cost
         };
+        // Per-call fees are micro-USD per call; `total` is micro-USD per million tokens.
+        let fee = |calls: u64, r: Option<i64>| -> Option<u128> {
+            if calls == 0 {
+                Some(0)
+            } else {
+                r.map(|r| u128::from(calls) * rate(r) * 1_000_000)
+            }
+        };
+        let fees = fee(usage.web_searches, self.per_search_micros)?
+            + fee(usage.code_sessions, self.per_code_session_micros)?;
         Some(MoneyMicros::from_micros(
-            i64::try_from(total / 1_000_000).unwrap_or(i64::MAX),
+            i64::try_from((total + fees) / 1_000_000).unwrap_or(i64::MAX),
         ))
     }
 }
@@ -169,19 +365,27 @@ pub fn parse_decimal_scaled(text: &str, scale: u32) -> Option<i64> {
     }
     let digits = format!("{int_part}{frac_part}");
     let frac_len = i32::try_from(frac_part.len()).ok()?;
-    let shift = i32::try_from(scale).ok()? + exp - frac_len;
+    // A catalog number's exponent is untrusted: overflow makes the price unknown.
+    let shift = i32::try_from(scale)
+        .ok()?
+        .checked_add(exp)?
+        .checked_sub(frac_len)?;
     let significant = digits.trim_start_matches('0');
     let mut value: i128 = if significant.is_empty() {
         0
     } else {
         significant.parse::<i128>().ok()?
     };
+    // Zero never overflows or reaches zero, so the loops below would run `shift` times.
+    if value == 0 {
+        return Some(0);
+    }
     if shift >= 0 {
         for _ in 0..shift {
             value = value.checked_mul(10)?;
         }
     } else {
-        for _ in 0..(-shift) {
+        for _ in 0..shift.unsigned_abs() {
             value /= 10;
             if value == 0 {
                 break;
@@ -191,251 +395,106 @@ pub fn parse_decimal_scaled(text: &str, scale: u32) -> Option<i64> {
     i64::try_from(value).ok()
 }
 
-// Typed views of the four public price lists. Only the fields used here are read; every other
-// field is skipped without allocating, so a multi-megabyte list never becomes a full
-// `serde_json::Value` tree (which held hundreds of MB in worker malloc arenas on Linux).
-
-/// A field or entry of unexpected shape is skipped instead of failing the whole list.
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum Lenient<T> {
-    Parsed(T),
-    Skipped(IgnoredAny),
+/// One model as one source lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogEntry {
+    /// The provider the source lists it under (`openrouter`, `openai`, `azure`), if any.
+    pub namespace: Option<String>,
+    pub id: String,
+    pub rates: ModelRates,
+    pub extras: ModelExtras,
 }
 
-impl<T> Lenient<T> {
-    fn get(self) -> Option<T> {
-        match self {
-            Self::Parsed(v) => Some(v),
-            Self::Skipped(_) => None,
+/// Most values kept per media choice list.
+pub const MAX_MEDIA_CHOICES: usize = 32;
+
+/// What a media model lets the user pick, as the catalog lists it. Empty means the model
+/// offers no choice the catalog names (the provider's default applies).
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct ModelExtras {
+    /// The first voice the source names for a speech model.
+    pub voice: Option<String>,
+    /// Picture shapes (`16:9`, `9:19.5`); `auto` is left out (it is the default).
+    pub aspect_ratios: Vec<String>,
+    /// Output sizes (`1K`, `2K`, `720p`).
+    pub resolutions: Vec<String>,
+    /// Video lengths in seconds.
+    pub durations_s: Vec<u32>,
+}
+
+impl ModelExtras {
+    fn fill_gaps(&mut self, other: &Self) {
+        if self.voice.is_none() {
+            self.voice.clone_from(&other.voice);
         }
+        for (mine, theirs) in [
+            (&mut self.aspect_ratios, &other.aspect_ratios),
+            (&mut self.resolutions, &other.resolutions),
+        ] {
+            if mine.is_empty() {
+                mine.clone_from(theirs);
+            }
+        }
+        if self.durations_s.is_empty() {
+            self.durations_s.clone_from(&other.durations_s);
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self == &Self::default()
     }
 }
 
-type Field<T> = Option<Lenient<T>>;
-
-fn field<T>(f: Field<T>) -> Option<T> {
-    f.and_then(Lenient::get)
+/// Which catalog namespace a provider is billed under: `gemini` for the Gemini dialect,
+/// else the second-to-last label of its API host (`api.deepseek.com` → `deepseek`), which
+/// matches a namespace exactly or as `<label>_...` (`api.together.xyz` → `together_ai`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CatalogScope {
+    label: Option<String>,
 }
 
-/// A price as JSON text or number; numbers are re-read from their shortest decimal text.
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum Decimal {
-    Text(String),
-    Number(serde_json::Number),
-}
+impl CatalogScope {
+    /// No provider: plain and maker ids only.
+    pub const ANY: Self = Self { label: None };
 
-impl Decimal {
-    fn scaled(&self, scale: u32) -> Option<i64> {
-        match self {
-            Self::Text(s) => parse_decimal_scaled(s, scale),
-            Self::Number(n) => parse_decimal_scaled(&n.to_string(), scale),
+    #[must_use]
+    pub fn of(provider: &ProviderProfile) -> Self {
+        if provider.dialect == ProviderDialect::GoogleGemini {
+            return Self {
+                label: Some("gemini".to_owned()),
+            };
         }
+        let host = reqwest::Url::parse(provider.base_url.trim())
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_ascii_lowercase))
+            .filter(|h| h.parse::<std::net::IpAddr>().is_err() && !h.starts_with('['));
+        let label = host.and_then(|h| {
+            let mut labels = h.rsplit('.');
+            labels.next();
+            labels.next().map(str::to_owned)
+        });
+        Self { label }
     }
-}
-
-/// Per-token USD price → micro-USD per 1M tokens (`× 10^12`).
-fn per_token(f: Field<Decimal>) -> Option<i64> {
-    field(f).and_then(|d| d.scaled(12))
-}
-
-/// Per-1M-token USD price → micro-USD per 1M tokens (`× 10^6`).
-fn per_mtok(f: Field<Decimal>) -> Option<i64> {
-    field(f).and_then(|d| d.scaled(6))
-}
-
-/// A non-negative JSON integer that fits `u32` (context limits).
-fn count(f: Field<u64>) -> Option<u32> {
-    field(f).and_then(|n| u32::try_from(n).ok())
-}
-
-#[derive(Deserialize)]
-struct ListDoc {
-    #[serde(default)]
-    data: Vec<Lenient<ListItem>>,
-}
-
-#[derive(Deserialize)]
-struct ListItem {
-    id: String,
-    pricing: Field<ListPricing>,
-    context_length: Field<u64>,
-    context_window: Field<u64>,
-    /// `OpenRouter`: request parameters the model accepts (`"reasoning"` when it can think).
-    supported_parameters: Field<Vec<String>>,
-    /// Vercel AI Gateway: capability tags (`"reasoning"`).
-    tags: Field<Vec<String>>,
-}
-
-#[derive(Deserialize)]
-struct ListPricing {
-    prompt: Field<Decimal>,
-    completion: Field<Decimal>,
-    input: Field<Decimal>,
-    output: Field<Decimal>,
-    input_cache_read: Field<Decimal>,
-    input_cache_write: Field<Decimal>,
-    input_cache_write_1h: Field<Decimal>,
-}
-
-#[derive(Deserialize)]
-struct LiteSpec {
-    input_cost_per_token: Field<Decimal>,
-    output_cost_per_token: Field<Decimal>,
-    cache_read_input_token_cost: Field<Decimal>,
-    cache_creation_input_token_cost: Field<Decimal>,
-    cache_creation_input_token_cost_above_1hr: Field<Decimal>,
-    max_input_tokens: Field<u64>,
-    max_tokens: Field<u64>,
-    max_output_tokens: Field<u64>,
-    supports_reasoning: Field<bool>,
-}
-
-#[derive(Deserialize)]
-struct DevProvider {
-    models: Field<BTreeMap<String, Lenient<DevModel>>>,
-}
-
-#[derive(Deserialize)]
-struct DevModel {
-    cost: Field<DevCost>,
-    limit: Field<DevLimit>,
-    reasoning: Field<bool>,
-}
-
-#[derive(Deserialize)]
-struct DevCost {
-    input: Field<Decimal>,
-    output: Field<Decimal>,
-    cache_read: Field<Decimal>,
-    cache_write: Field<Decimal>,
-}
-
-#[derive(Deserialize)]
-struct DevLimit {
-    context: Field<u64>,
-    output: Field<u64>,
-}
-
-/// Parses one source's raw JSON into `(model_id, rates)` pairs; an unreadable list yields none.
-pub fn parse_source(source: &str, body: &[u8]) -> Vec<(String, ModelRates)> {
-    let parsed = match source {
-        "openrouter" | "vercel" => parse_list(source == "openrouter", body),
-        "litellm" => parse_litellm(body),
-        "models_dev" => parse_models_dev(body),
-        _ => return Vec::new(),
-    };
-    parsed.unwrap_or_else(|err| {
-        tracing::warn!(source, %err, "price list unreadable");
-        Vec::new()
-    })
-}
-
-fn parse_list(openrouter: bool, body: &[u8]) -> serde_json::Result<Vec<(String, ModelRates)>> {
-    let doc: ListDoc = serde_json::from_slice(body)?;
-    Ok(doc
-        .data
-        .into_iter()
-        .filter_map(Lenient::get)
-        .filter_map(|item| {
-            let p = field(item.pricing)?;
-            let (input, output) = if openrouter {
-                (per_token(p.prompt)?, per_token(p.completion)?)
-            } else {
-                (per_token(p.input)?, per_token(p.output)?)
-            };
-            let context = if openrouter {
-                item.context_length
-            } else {
-                item.context_window
-            };
-            let flags = if openrouter {
-                field(item.supported_parameters)
-            } else {
-                field(item.tags)
-            };
-            let reasoning = flags.map(|f| f.iter().any(|t| t == "reasoning"));
-            Some((
-                item.id,
-                ModelRates {
-                    input_per_mtok: input,
-                    output_per_mtok: output,
-                    cached_input_per_mtok: per_token(p.input_cache_read),
-                    cache_write_per_mtok: per_token(p.input_cache_write),
-                    cache_write_1h_per_mtok: per_token(p.input_cache_write_1h),
-                    context_tokens: count(context),
-                    reasoning,
-                    max_output_tokens: None,
-                },
-            ))
-        })
-        .collect())
-}
-
-fn parse_litellm(body: &[u8]) -> serde_json::Result<Vec<(String, ModelRates)>> {
-    let doc: BTreeMap<String, Lenient<LiteSpec>> = serde_json::from_slice(body)?;
-    Ok(doc
-        .into_iter()
-        .filter_map(|(id, spec)| {
-            let spec = spec.get()?;
-            Some((
-                id,
-                ModelRates {
-                    input_per_mtok: per_token(spec.input_cost_per_token)?,
-                    output_per_mtok: per_token(spec.output_cost_per_token)?,
-                    cached_input_per_mtok: per_token(spec.cache_read_input_token_cost),
-                    cache_write_per_mtok: per_token(spec.cache_creation_input_token_cost),
-                    cache_write_1h_per_mtok: per_token(
-                        spec.cache_creation_input_token_cost_above_1hr,
-                    ),
-                    context_tokens: count(spec.max_input_tokens).or(count(spec.max_tokens)),
-                    reasoning: field(spec.supports_reasoning),
-                    max_output_tokens: count(spec.max_output_tokens),
-                },
-            ))
-        })
-        .collect())
-}
-
-fn parse_models_dev(body: &[u8]) -> serde_json::Result<Vec<(String, ModelRates)>> {
-    let doc: BTreeMap<String, Lenient<DevProvider>> = serde_json::from_slice(body)?;
-    Ok(doc
-        .into_values()
-        .filter_map(Lenient::get)
-        .filter_map(|p| field(p.models))
-        .flatten()
-        .filter_map(|(id, model)| {
-            let model = model.get()?;
-            let cost = field(model.cost)?;
-            let limit = field(model.limit);
-            let (context, output) =
-                limit.map_or((None, None), |l| (count(l.context), count(l.output)));
-            Some((
-                id,
-                ModelRates {
-                    input_per_mtok: per_mtok(cost.input)?,
-                    output_per_mtok: per_mtok(cost.output)?,
-                    cached_input_per_mtok: per_mtok(cost.cache_read),
-                    cache_write_per_mtok: per_mtok(cost.cache_write),
-                    cache_write_1h_per_mtok: None,
-                    context_tokens: context,
-                    reasoning: field(model.reasoning),
-                    max_output_tokens: output,
-                },
-            ))
-        })
-        .collect())
 }
 
 fn normalize_id(id: &str) -> String {
     id.trim().to_ascii_lowercase()
 }
 
-/// Immutable snapshot of known rates.
+fn short_id(full: &str) -> &str {
+    full.rsplit('/').next().unwrap_or(full)
+}
+
+/// Key prefix of the last-resort tier: any source's entry by its id without prefix.
+const ANY_SHORT: &str = "~";
+
+/// Immutable snapshot of known models.
 #[derive(Debug, Clone, Default)]
 pub struct RateTable {
     rates: HashMap<String, ModelRates>,
+    extras: HashMap<String, ModelExtras>,
+    namespaces: BTreeSet<String>,
 }
 
 impl RateTable {
@@ -447,21 +506,58 @@ impl RateTable {
         self.rates.is_empty()
     }
 
-    /// Fills gaps only: an id already present keeps its earlier-source rate.
-    pub fn merge_gaps(&mut self, entries: Vec<(String, ModelRates)>) {
-        for (id, rates) in entries {
-            let full = normalize_id(&id);
-            let short = full.rsplit('/').next().unwrap_or(&full).to_owned();
-            for key in [full, short] {
-                self.rates
-                    .entry(key)
-                    .and_modify(|known| known.fill_gaps(&rates))
-                    .or_insert(rates);
+    fn put(&mut self, key: String, rates: &ModelRates) {
+        self.rates
+            .entry(key)
+            .and_modify(|known| known.fill_gaps(rates))
+            .or_insert(*rates);
+    }
+
+    /// Fills gaps only: a key already present keeps its earlier-source rate.
+    ///
+    /// Keys: `<namespace>:<id>` (the id without the namespace's own prefix), the plain id,
+    /// the maker's id without its `vendor/` prefix (from `OpenRouter`, whose ids are
+    /// `maker/model` at the maker's price, and from unprefixed `LiteLLM` ids, which are the
+    /// makers' own APIs), and `~<id without prefix>` from any source as the last resort.
+    pub fn merge_gaps(&mut self, entries: Vec<CatalogEntry>) {
+        for entry in entries {
+            let full = normalize_id(&entry.id);
+            let short = short_id(&full).to_owned();
+            if !entry.extras.is_empty() {
+                for key in [full.clone(), short.clone()] {
+                    self.extras
+                        .entry(key)
+                        .and_modify(|known| known.fill_gaps(&entry.extras))
+                        .or_insert_with(|| entry.extras.clone());
+                }
+            }
+            // An entry that carries only choices adds no rates.
+            if entry.rates == ModelRates::default() {
+                continue;
+            }
+            let openrouter = entry.namespace.as_deref() == Some("openrouter");
+            if let Some(ns) = &entry.namespace {
+                let own = full
+                    .strip_prefix(ns.as_str())
+                    .and_then(|rest| rest.strip_prefix('/'))
+                    .unwrap_or(&full);
+                self.put(format!("{ns}:{own}"), &entry.rates);
+                self.namespaces.insert(ns.clone());
+            }
+            self.put(full.clone(), &entry.rates);
+            // `~vendor/x` ids on OpenRouter are moving aliases, never a maker's own id.
+            let alias = full.starts_with('~');
+            let maker = (openrouter && !alias) || !full.contains('/');
+            if maker && short != full {
+                self.put(short.clone(), &entry.rates);
+            }
+            if !alias {
+                self.put(format!("{ANY_SHORT}{short}"), &entry.rates);
             }
         }
     }
 
-    /// W8: a refresh's prices replace what was known ("Update prices now" never changed a
+    /// A refresh's prices replace what was known ("Update prices now" never changed a
     /// known price: syncs only filled gaps); ids no source returned this time keep their
     /// old price, so one failed source does not lose prices.
     #[must_use]
@@ -470,26 +566,62 @@ impl RateTable {
         for (id, old) in &self.rates {
             next.rates.entry(id.clone()).or_insert(*old);
         }
+        for (id, old) in &self.extras {
+            next.extras.entry(id.clone()).or_insert_with(|| old.clone());
+        }
+        next.namespaces.extend(self.namespaces.iter().cloned());
         next
     }
 
-    /// Exact id first, then the id without its `vendor/` prefix.
-    pub fn lookup(&self, model: &str) -> Option<ModelRates> {
+    fn namespace_of(&self, scope: &CatalogScope) -> Option<&str> {
+        let label = scope.label.as_deref()?;
+        if let Some(ns) = self.namespaces.get(label) {
+            return Some(ns);
+        }
+        let prefix = format!("{label}_");
+        self.namespaces
+            .iter()
+            .find(|ns| ns.starts_with(&prefix))
+            .map(String::as_str)
+    }
+
+    /// The scoped entry first, then the plain id, the maker's id, and the last resort; each
+    /// later match only fills fields the earlier one lacks.
+    pub fn lookup(&self, scope: &CatalogScope, model: &str) -> Option<ModelRates> {
         let full = normalize_id(model);
-        let short = full.rsplit('/').next().unwrap_or(&full);
-        let by_short = self.rates.get(short).copied();
-        // A vendor-prefixed entry keeps its own prices; fields it lacks come from the plain id
-        // (sources disagree on prefixes, e.g. `openai/gpt-x` vs `gpt-x`).
-        self.rates
+        let short = short_id(&full);
+        let mut keys = Vec::with_capacity(5);
+        if let Some(ns) = self.namespace_of(scope) {
+            let own = full
+                .strip_prefix(ns)
+                .and_then(|rest| rest.strip_prefix('/'))
+                .unwrap_or(&full);
+            keys.push(format!("{ns}:{own}"));
+            keys.push(format!("{ns}:{short}"));
+        }
+        keys.push(full.clone());
+        keys.push(short.to_owned());
+        keys.push(format!("{ANY_SHORT}{short}"));
+        let mut found = keys.iter().filter_map(|k| self.rates.get(k));
+        let mut rates = *found.next()?;
+        for other in found {
+            rates.fill_gaps(other);
+        }
+        Some(rates)
+    }
+
+    /// The voice and media choices the catalog lists for `model` (by its id, else the
+    /// maker's id without prefix).
+    pub fn extras(&self, model: &str) -> Option<&ModelExtras> {
+        let full = normalize_id(model);
+        self.extras
             .get(&full)
-            .copied()
-            .map(|mut known| {
-                if let Some(other) = by_short {
-                    known.fill_gaps(&other);
-                }
-                known
-            })
-            .or(by_short)
+            .or_else(|| self.extras.get(short_id(&full)))
+    }
+
+    /// The first voice the catalog names for a speech model.
+    pub fn voice(&self, model: &str) -> Option<&str> {
+        self.extras(model)?.voice.as_deref()
     }
 }
 
@@ -507,16 +639,19 @@ pub struct PricingRegistry {
     clock: Mutex<SyncClock>,
     /// Where the merged table is cached between launches (`None` in tests).
     cache_path: Option<PathBuf>,
+    /// The running refresh, stopped and awaited by [`Self::stop_sync`] so no download or
+    /// cache write outlives the engine (it writes into the data folder).
+    sync_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct PriceCache {
     format: u32,
     fetched_at_ms: i64,
-    /// `id -> [input, output, cached_input or -1, context tokens or -1, reasoning 1/0/-1,
-    /// cache_write or -1, cache_write_1h or -1, max output tokens or -1]` (micro-USD per
-    /// million tokens for the rates).
-    rates: HashMap<String, [i64; 8]>,
+    /// Keyed as in [`RateTable::merge_gaps`].
+    rates: HashMap<String, ModelRates>,
+    extras: HashMap<String, ModelExtras>,
+    namespaces: BTreeSet<String>,
 }
 
 fn unix_now_ms() -> i64 {
@@ -539,6 +674,7 @@ impl PricingRegistry {
             syncing: AtomicBool::new(false),
             clock: Mutex::new(SyncClock::default()),
             cache_path: None,
+            sync_task: Mutex::new(None),
         }
     }
 
@@ -546,45 +682,23 @@ impl PricingRegistry {
     /// is loaded immediately and counts as the last successful sync.
     pub fn with_cache(path: PathBuf) -> Self {
         let mut registry = Self::new();
-        if let Some(cache) = std::fs::read(&path)
-            .ok()
-            .and_then(|bytes| serde_json::from_slice::<PriceCache>(&bytes).ok())
-            .filter(|c| c.format == PRICE_CACHE_FORMAT)
-        {
+        let cache = match std::fs::read(&path) {
+            Ok(bytes) => serde_json::from_slice::<PriceCache>(&bytes)
+                .map_err(|err| tracing::debug!(%err, "price cache unreadable; rebuilt on sync"))
+                .ok(),
+            Err(err) => {
+                tracing::debug!(%err, "no price cache yet");
+                None
+            }
+        };
+        if let Some(cache) = cache.filter(|c| c.format == PRICE_CACHE_FORMAT) {
             let age_ms =
                 u64::try_from(unix_now_ms().saturating_sub(cache.fetched_at_ms)).unwrap_or(0);
-            let entries = cache
-                .rates
-                .into_iter()
-                .map(
-                    |(
-                        id,
-                        [
-                            input,
-                            output,
-                            cached,
-                            context,
-                            reasoning,
-                            write,
-                            write_1h,
-                            max_out,
-                        ],
-                    )| {
-                        let rates = ModelRates {
-                            input_per_mtok: input,
-                            output_per_mtok: output,
-                            cached_input_per_mtok: (cached >= 0).then_some(cached),
-                            cache_write_per_mtok: (write >= 0).then_some(write),
-                            cache_write_1h_per_mtok: (write_1h >= 0).then_some(write_1h),
-                            context_tokens: u32::try_from(context).ok(),
-                            reasoning: (reasoning >= 0).then_some(reasoning == 1),
-                            max_output_tokens: u32::try_from(max_out).ok(),
-                        };
-                        (id, rates)
-                    },
-                )
-                .collect();
-            registry.publish(entries);
+            registry.table_tx.send_replace(Arc::new(RateTable {
+                rates: cache.rates,
+                extras: cache.extras,
+                namespaces: cache.namespaces,
+            }));
             lock_or_recover(&registry.clock, "clock").last_success =
                 Instant::now().checked_sub(Duration::from_millis(age_ms));
         }
@@ -598,28 +712,9 @@ impl PricingRegistry {
         let cache = PriceCache {
             format: PRICE_CACHE_FORMAT,
             fetched_at_ms: unix_now_ms(),
-            rates: table
-                .rates
-                .iter()
-                .map(|(id, r)| {
-                    let cached = r.cached_input_per_mtok.unwrap_or(-1);
-                    let context = r.context_tokens.map_or(-1, i64::from);
-                    let reasoning = r.reasoning.map_or(-1, i64::from);
-                    (
-                        id.clone(),
-                        [
-                            r.input_per_mtok,
-                            r.output_per_mtok,
-                            cached,
-                            context,
-                            reasoning,
-                            r.cache_write_per_mtok.unwrap_or(-1),
-                            r.cache_write_1h_per_mtok.unwrap_or(-1),
-                            r.max_output_tokens.map_or(-1, i64::from),
-                        ],
-                    )
-                })
-                .collect(),
+            rates: table.rates.clone(),
+            extras: table.extras.clone(),
+            namespaces: table.namespaces.clone(),
         };
         let written = serde_json::to_vec(&cache)
             .map_err(std::io::Error::other)
@@ -644,7 +739,7 @@ impl PricingRegistry {
     }
 
     /// Publishes a merged snapshot (used by the sync task and tests).
-    pub fn publish(&self, entries: Vec<(String, ModelRates)>) {
+    pub fn publish(&self, entries: Vec<CatalogEntry>) {
         let mut next = (*self.snapshot()).clone();
         next.merge_gaps(entries);
         self.table_tx.send_replace(Arc::new(next));
@@ -688,7 +783,7 @@ impl PricingRegistry {
         }
         let registry = Arc::clone(self);
         let web = web.clone();
-        runtime.spawn(async move {
+        let task = runtime.spawn(async move {
             let mut any = false;
             let base = registry.snapshot();
             let mut fresh = RateTable::default();
@@ -721,11 +816,28 @@ impl PricingRegistry {
             }
             registry.syncing.store(false, Ordering::Release);
         });
+        *lock_or_recover(&self.sync_task, "sync_task") = Some(task);
     }
 
-    /// Rate for `model`, waiting up to [`REGISTRY_MODEL_WAIT`] for an in-flight sync to publish it.
-    pub async fn rates_for(&self, model: &str) -> Option<ModelRates> {
-        if let Some(r) = self.snapshot().lookup(model) {
+    /// Stops a running refresh and waits until it has ended. The cache write has no await
+    /// point, so a stop never cuts it in half.
+    pub async fn stop_sync(&self) {
+        let task = lock_or_recover(&self.sync_task, "sync_task").take();
+        if let Some(task) = task {
+            task.abort();
+            match task.await {
+                Ok(()) => {}
+                Err(err) if err.is_cancelled() => {}
+                Err(err) => tracing::warn!(%err, "price refresh ended with a panic"),
+            }
+        }
+        self.syncing.store(false, Ordering::Release);
+    }
+
+    /// Rate for `model` as `scope`'s provider serves it, waiting up to
+    /// [`REGISTRY_MODEL_WAIT`] for an in-flight sync to publish it.
+    pub async fn rates_for(&self, scope: &CatalogScope, model: &str) -> Option<ModelRates> {
+        if let Some(r) = self.snapshot().lookup(scope, model) {
             return Some(r);
         }
         if !self.syncing.load(Ordering::Acquire) {
@@ -737,7 +849,7 @@ impl PricingRegistry {
                 if rx.changed().await.is_err() {
                     return None;
                 }
-                if let Some(r) = rx.borrow().lookup(model) {
+                if let Some(r) = rx.borrow().lookup(scope, model) {
                     return Some(r);
                 }
             }
@@ -750,381 +862,5 @@ impl PricingRegistry {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::{Value, json};
-
-    fn parse(source: &str, doc: &Value) -> Vec<(String, ModelRates)> {
-        parse_source(source, doc.to_string().as_bytes())
-    }
-
-    #[test]
-    fn decimal_scaling_is_exact_integer_math() {
-        assert_eq!(parse_decimal_scaled("0.000000075", 12), Some(75_000));
-        assert_eq!(parse_decimal_scaled("7.5e-8", 12), Some(75_000));
-        assert_eq!(parse_decimal_scaled("0.0000025", 12), Some(2_500_000));
-        assert_eq!(parse_decimal_scaled("2.5", 6), Some(2_500_000));
-        assert_eq!(parse_decimal_scaled("15", 6), Some(15_000_000));
-        assert_eq!(parse_decimal_scaled("1e-13", 12), Some(0));
-        assert_eq!(parse_decimal_scaled("-1", 6), None);
-        assert_eq!(parse_decimal_scaled("abc", 6), None);
-    }
-
-    #[test]
-    fn parses_all_four_source_shapes_and_earlier_sources_win() {
-        let openrouter = json!({"data": [{"id": "vendor/model-a", "pricing": {"prompt": "0.000001", "completion": "0.000002", "input_cache_read": "0.0000001"}}]});
-        let vercel = json!({"data": [{"id": "vendor/model-a", "pricing": {"input": "0.000009", "output": "0.000009"}}, {"id": "vendor/model-b", "pricing": {"input": "0.0000005", "output": "0.0000015"}}]});
-        let litellm = json!({"sample_spec": {}, "model-c": {"input_cost_per_token": 3e-6, "output_cost_per_token": 1.5e-5}});
-        let models_dev = json!({"prov": {"models": {"model-d": {"cost": {"input": 0.5, "output": 1.5, "cache_read": 0.05}}}}});
-
-        let registry = PricingRegistry::new();
-        registry.publish(parse("openrouter", &openrouter));
-        registry.publish(parse("vercel", &vercel));
-        registry.publish(parse("litellm", &litellm));
-        registry.publish(parse("models_dev", &models_dev));
-        let table = registry.snapshot();
-
-        let a = table.lookup("vendor/model-a");
-        assert_eq!(
-            a.map(|r| r.input_per_mtok),
-            Some(1_000_000),
-            "OpenRouter must win over Vercel"
-        );
-        assert_eq!(
-            table.lookup("MODEL-A").map(|r| r.output_per_mtok),
-            Some(2_000_000)
-        );
-        assert_eq!(
-            table.lookup("model-b").map(|r| r.input_per_mtok),
-            Some(500_000)
-        );
-        assert_eq!(
-            table.lookup("model-c").map(|r| r.output_per_mtok),
-            Some(15_000_000)
-        );
-        assert_eq!(
-            table
-                .lookup("model-d")
-                .and_then(|r| r.cached_input_per_mtok),
-            Some(50_000)
-        );
-        assert!(table.lookup("unknown").is_none());
-    }
-
-    /// R3: Gemini reports thinking apart from the visible answer and bills both as output
-    /// (generateContent `thoughtsTokenCount`, Interactions `total_thought_tokens`); `OpenAI`'s
-    /// `reasoning_tokens` are already inside `output_tokens` and must not count twice.
-    #[test]
-    fn gemini_thinking_is_billed_as_output_and_openai_reasoning_is_not_double_counted() {
-        use bistre_protocol::{ProviderDialect, UsageMetrics};
-        let rates = ModelRates {
-            input_per_mtok: 1_000_000,
-            output_per_mtok: 10_000_000,
-            cached_input_per_mtok: None,
-            cache_write_per_mtok: None,
-            cache_write_1h_per_mtok: None,
-            context_tokens: None,
-            reasoning: None,
-            max_output_tokens: None,
-        };
-        let usage = UsageMetrics {
-            input_tokens: 0,
-            output_tokens: 100_000,
-            reasoning_tokens: 900_000,
-            ..UsageMetrics::default()
-        };
-        // Gemini: 100k answer + 900k thinking = 1M output tokens = $10.
-        assert_eq!(
-            rates
-                .cost_for_dialect(ProviderDialect::GoogleGemini, &usage)
-                .map(MoneyMicros::as_micros),
-            Some(10_000_000)
-        );
-        // OpenAI reports reasoning inside output_tokens: only the 100k output is billed.
-        assert_eq!(
-            rates
-                .cost_for_dialect(ProviderDialect::OpenAi, &usage)
-                .map(MoneyMicros::as_micros),
-            Some(1_000_000)
-        );
-    }
-
-    #[test]
-    fn cost_bills_cached_input_at_cached_rate() {
-        let rates = ModelRates {
-            input_per_mtok: 3_000_000,
-            output_per_mtok: 15_000_000,
-            cached_input_per_mtok: Some(300_000),
-            cache_write_per_mtok: None,
-            cache_write_1h_per_mtok: None,
-            context_tokens: None,
-            reasoning: None,
-            max_output_tokens: None,
-        };
-        // 1M fresh input = $3, 1M cached = $0.30, 100k output = $1.50.
-        let cost = rates.cost(2_000_000, 1_000_000, 100_000);
-        assert_eq!(cost.as_micros(), 4_800_000);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn waiting_for_an_unknown_model_without_a_sync_returns_immediately() {
-        let registry = PricingRegistry::new();
-        // Paused clock: any timed wait would advance virtual time by `REGISTRY_MODEL_WAIT`.
-        let started = tokio::time::Instant::now();
-        assert!(registry.rates_for("nothing").await.is_none());
-        assert_eq!(started.elapsed(), Duration::ZERO);
-    }
-
-    #[test]
-    fn price_cache_round_trips_and_ignores_other_formats() -> Result<(), Box<dyn std::error::Error>>
-    {
-        let dir = tempfile::tempdir()?;
-        let path = dir.path().join("pricing_cache.json");
-        let registry = PricingRegistry::with_cache(path.clone());
-        registry.publish(vec![(
-            "vendor/model-a".to_owned(),
-            ModelRates {
-                input_per_mtok: 1_000_000,
-                output_per_mtok: 2_000_000,
-                cached_input_per_mtok: Some(100_000),
-                cache_write_per_mtok: None,
-                cache_write_1h_per_mtok: None,
-                context_tokens: None,
-                reasoning: None,
-                max_output_tokens: None,
-            },
-        )]);
-        registry.save_cache();
-
-        // A new process loads the cache and treats it as a fresh sync (no download needed).
-        let reloaded = PricingRegistry::with_cache(path.clone());
-        assert_eq!(
-            reloaded
-                .snapshot()
-                .lookup("model-a")
-                .map(|r| r.cached_input_per_mtok),
-            Some(Some(100_000))
-        );
-        assert!(!reloaded.sync_due());
-
-        // A cache written by another format version is ignored and rebuilt.
-        std::fs::write(&path, r#"{"format":999,"fetched_at_ms":0,"rates":{}}"#)?;
-        let other = PricingRegistry::with_cache(path);
-        assert!(other.snapshot().lookup("model-a").is_none());
-        assert!(other.sync_due());
-        Ok(())
-    }
-
-    /// W4.8: each model's output limit comes from the registry (`LiteLLM` `max_output_tokens`,
-    /// models.dev `limit.output`, read 2026-11-26) and survives the on-disk cache.
-    /// W8: a refresh replaces a known price; a price no source returned stays.
-    #[test]
-    fn a_refresh_replaces_known_prices() {
-        let mut old = RateTable::default();
-        old.merge_gaps(parse(
-            "litellm",
-            &json!({
-                "a": {"input_cost_per_token": 0.000_001, "output_cost_per_token": 0.000_002},
-                "only-old": {"input_cost_per_token": 0.000_003, "output_cost_per_token": 0.000_004}
-            }),
-        ));
-        let mut fresh = RateTable::default();
-        fresh.merge_gaps(parse(
-            "litellm",
-            &json!({
-                "a": {"input_cost_per_token": 0.000_005, "output_cost_per_token": 0.000_006}
-            }),
-        ));
-        let next = old.refreshed_from(&fresh);
-        assert_eq!(next.lookup("a").map(|r| r.input_per_mtok), Some(5_000_000));
-        assert_eq!(
-            next.lookup("only-old").map(|r| r.input_per_mtok),
-            Some(3_000_000)
-        );
-    }
-
-    #[test]
-    fn output_limits_come_from_the_registry() -> Result<(), Box<dyn std::error::Error>> {
-        let litellm = json!({"b": {"input_cost_per_token": 0.000_001, "output_cost_per_token": 0.000_002, "max_input_tokens": 200_000, "max_output_tokens": 64_000}});
-        let models_dev = json!({"p": {"models": {"c": {"cost": {"input": 1, "output": 2}, "limit": {"context": 64000, "output": 8192}}}}});
-        let out = |src: &str, doc: &Value| {
-            parse(src, doc)
-                .first()
-                .and_then(|(_, r)| r.max_output_tokens)
-        };
-        assert_eq!(out("litellm", &litellm), Some(64_000));
-        assert_eq!(out("models_dev", &models_dev), Some(8_192));
-
-        let dir = tempfile::tempdir()?;
-        let path = dir.path().join("prices.json");
-        let registry = PricingRegistry::with_cache(path.clone());
-        registry.publish(parse("litellm", &litellm));
-        registry.save_cache();
-        let reloaded = PricingRegistry::with_cache(path);
-        assert_eq!(
-            reloaded
-                .snapshot()
-                .lookup("b")
-                .and_then(|r| r.max_output_tokens),
-            Some(64_000)
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn context_limits_come_from_each_source_shape() {
-        let openrouter = json!({"data": [{"id": "v/a", "context_length": 128_000, "pricing": {"prompt": "0.000001", "completion": "0.000002"}}]});
-        let litellm = json!({"b": {"input_cost_per_token": 0.000_001, "output_cost_per_token": 0.000_002, "max_input_tokens": 200_000}});
-        let models_dev = json!({"p": {"models": {"c": {"cost": {"input": 1, "output": 2}, "limit": {"context": 64000}}}}});
-        let ctx =
-            |src: &str, doc: &Value| parse(src, doc).first().and_then(|(_, r)| r.context_tokens);
-        assert_eq!(ctx("openrouter", &openrouter), Some(128_000));
-        assert_eq!(ctx("litellm", &litellm), Some(200_000));
-        assert_eq!(ctx("models_dev", &models_dev), Some(64_000));
-    }
-
-    #[test]
-    fn one_malformed_entry_never_drops_the_rest_of_a_list() {
-        let openrouter = json!({"data": ["junk", {"id": "x/bad", "pricing": "free"}, {"id": "x/ok", "context_length": "big", "pricing": {"prompt": "0.000001", "completion": {"odd": 1}}}, {"id": "x/good", "pricing": {"prompt": 1e-6, "completion": "0.000002"}}]});
-        let litellm = json!({"sample_spec": {"max_tokens": "legacy", "input_cost_per_token": "n/a"}, "broken": "text", "m": {"input_cost_per_token": 1e-6, "output_cost_per_token": 2e-6, "max_tokens": 8192}});
-        let models_dev = json!({"p1": "text", "p2": {"models": {"m1": 5, "m2": {"cost": {"input": 1, "output": 2}, "limit": {"context": -1}}}}});
-        let ids =
-            |v: Vec<(String, ModelRates)>| v.into_iter().map(|(id, _)| id).collect::<Vec<_>>();
-        assert_eq!(ids(parse("openrouter", &openrouter)), vec!["x/good"]);
-        let lite = parse("litellm", &litellm);
-        assert_eq!(lite.len(), 1);
-        assert_eq!(lite.first().and_then(|(_, r)| r.context_tokens), Some(8192));
-        let dev = parse("models_dev", &models_dev);
-        assert_eq!(ids(dev.clone()), vec!["m2"]);
-        assert_eq!(dev.first().and_then(|(_, r)| r.context_tokens), None);
-        assert_eq!(parse_source("openrouter", b"not json"), Vec::new());
-    }
-
-    #[test]
-    fn reasoning_capability_comes_from_each_source_shape() {
-        let openrouter = json!({"data": [{"id": "v/think", "supported_parameters": ["reasoning", "tools"], "pricing": {"prompt": "0.000001", "completion": "0.000002"}}, {"id": "v/plain", "supported_parameters": ["tools"], "pricing": {"prompt": "0.000001", "completion": "0.000002"}}]});
-        let vercel = json!({"data": [{"id": "v/tag", "tags": ["reasoning"], "pricing": {"input": "0.000001", "output": "0.000002"}}]});
-        let litellm = json!({"lite": {"input_cost_per_token": 0.000_001, "output_cost_per_token": 0.000_002, "supports_reasoning": true}});
-        let models_dev = json!({"p": {"models": {"dev": {"cost": {"input": 1, "output": 2}, "reasoning": false}}}});
-        let flag = |src: &str, doc: &Value, id: &str| {
-            parse(src, doc)
-                .into_iter()
-                .find(|(i, _)| i == id)
-                .and_then(|(_, r)| r.reasoning)
-        };
-        assert_eq!(flag("openrouter", &openrouter, "v/think"), Some(true));
-        assert_eq!(flag("openrouter", &openrouter, "v/plain"), Some(false));
-        assert_eq!(flag("vercel", &vercel, "v/tag"), Some(true));
-        assert_eq!(flag("litellm", &litellm, "lite"), Some(true));
-        assert_eq!(flag("models_dev", &models_dev, "dev"), Some(false));
-
-        // A later source fills a field the earlier one lacked, but never overrides it.
-        let registry = PricingRegistry::new();
-        registry.publish(parse("openrouter", &json!({"data": [{"id": "x/m", "pricing": {"prompt": "0.000001", "completion": "0.000002"}}]})));
-        registry.publish(parse("models_dev", &json!({"p": {"models": {"m": {"cost": {"input": 9, "output": 9}, "reasoning": true, "limit": {"context": 1000}}}}})));
-        let merged = registry.snapshot().lookup("x/m");
-        assert_eq!(merged.map(|r| r.input_per_mtok), Some(1_000_000));
-        assert_eq!(merged.and_then(|r| r.reasoning), Some(true));
-        assert_eq!(merged.and_then(|r| r.context_tokens), Some(1000));
-    }
-
-    fn anthropic_rates() -> ModelRates {
-        ModelRates {
-            input_per_mtok: 10_000_000,                // $10 / 1M
-            output_per_mtok: 20_000_000,               // $20 / 1M
-            cached_input_per_mtok: Some(1_000_000),    // $1 / 1M
-            cache_write_per_mtok: Some(12_500_000),    // $12.50 / 1M (5-minute TTL)
-            cache_write_1h_per_mtok: Some(20_000_000), // $20 / 1M (1-hour TTL)
-            context_tokens: Some(200_000),
-            reasoning: Some(true),
-            max_output_tokens: None,
-        }
-    }
-
-    #[test]
-    fn anthropic_cache_cost_is_additive_and_prices_cache_creation() {
-        let rates = anthropic_rates();
-        let usage = bistre_protocol::UsageMetrics {
-            input_tokens: 100_000,                // $1.00 fresh
-            cached_input_tokens: 1_000_000,       // $1.00 cache read
-            cache_creation_input_tokens: 400_000, // 0.4M * $12.50 = $5.00 cache write (5m)
-            output_tokens: 100_000,               // $2.00 output
-            ..bistre_protocol::UsageMetrics::default()
-        };
-        // Anthropic: additive ($1 + $1 + $5 + $2 = $9.00 = 9_000_000 micros).
-        let anth = rates.cost_for_dialect(bistre_protocol::ProviderDialect::Anthropic, &usage);
-        assert_eq!(anth.map(MoneyMicros::as_micros), Some(9_000_000));
-
-        // OpenAI: input_tokens includes cached_input_tokens.
-        let oai_usage = bistre_protocol::UsageMetrics {
-            input_tokens: 1_000_000,
-            cached_input_tokens: 800_000, // 200k fresh ($2) + 800k cached ($0.80)
-            output_tokens: 100_000,       // $2.00
-            ..bistre_protocol::UsageMetrics::default()
-        };
-        let oai = rates.cost_for_dialect(bistre_protocol::ProviderDialect::OpenAi, &oai_usage);
-        assert_eq!(oai.map(MoneyMicros::as_micros), Some(4_800_000));
-    }
-
-    /// R22: 1-hour cache writes are billed at the 1-hour rate from the registry, split by the
-    /// `usage.cache_creation` TTL breakdown; an unknown write rate makes the cost unknown.
-    #[test]
-    fn anthropic_one_hour_cache_writes_use_their_own_rate_or_fail_closed() {
-        let mut usage = bistre_protocol::UsageMetrics::default();
-        crate::wire_parse::merge_sse_usage(
-            bistre_protocol::ProviderDialect::Anthropic,
-            r#"{"type":"message_start","message":{"usage":{"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":400000,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":400000}}}}"#,
-            &mut usage,
-        );
-        assert_eq!(usage.cache_creation_1h_input_tokens, 400_000);
-        let rates = anthropic_rates();
-        // 0.4M * $20 = $8.00, not 0.4M * $12.50 = $5.00.
-        assert_eq!(
-            rates
-                .cost_for_dialect(bistre_protocol::ProviderDialect::Anthropic, &usage)
-                .map(MoneyMicros::as_micros),
-            Some(8_000_000)
-        );
-        let no_1h_rate = ModelRates {
-            cache_write_1h_per_mtok: None,
-            ..rates
-        };
-        assert_eq!(
-            no_1h_rate.cost_for_dialect(bistre_protocol::ProviderDialect::Anthropic, &usage),
-            None,
-            "an unknown 1-hour write rate is an unknown price, never a guessed multiplier"
-        );
-        // An unknown read rate bills reads at the full input rate (upper bound, no guess).
-        let reads = bistre_protocol::UsageMetrics {
-            cached_input_tokens: 1_000_000,
-            ..bistre_protocol::UsageMetrics::default()
-        };
-        let no_read_rate = ModelRates {
-            cached_input_per_mtok: None,
-            ..rates
-        };
-        assert_eq!(
-            no_read_rate
-                .cost_for_dialect(bistre_protocol::ProviderDialect::Anthropic, &reads)
-                .map(MoneyMicros::as_micros),
-            Some(10_000_000)
-        );
-    }
-
-    #[test]
-    fn every_source_reports_cache_write_rates() {
-        let openrouter = json!({"data": [{"id": "a/m", "pricing": {"prompt": "0.00001", "completion": "0.00002", "input_cache_write": "0.0000125", "input_cache_write_1h": "0.00002"}}]});
-        let litellm = json!({"l": {"input_cost_per_token": 1e-5, "output_cost_per_token": 2e-5, "cache_creation_input_token_cost": 1.25e-5, "cache_creation_input_token_cost_above_1hr": 2e-5}});
-        let models_dev = json!({"p": {"models": {"d": {"cost": {"input": 10, "output": 20, "cache_write": 12.5}}}}});
-        let or = parse("openrouter", &openrouter);
-        let lt = parse("litellm", &litellm);
-        let md = parse("models_dev", &models_dev);
-        let write = |v: &[(String, ModelRates)]| {
-            v.first()
-                .map(|(_, r)| (r.cache_write_per_mtok, r.cache_write_1h_per_mtok))
-        };
-        assert_eq!(write(&or), Some((Some(12_500_000), Some(20_000_000))));
-        assert_eq!(write(&lt), Some((Some(12_500_000), Some(20_000_000))));
-        assert_eq!(write(&md), Some((Some(12_500_000), None)));
-    }
-}
+#[path = "registry_tests.rs"]
+mod tests;

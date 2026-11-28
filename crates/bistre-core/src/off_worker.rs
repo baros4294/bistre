@@ -18,7 +18,20 @@ where
     blocking(move || f(&storage)).await
 }
 
-/// Runs blocking work (file walks, file reads and writes) on the blocking pool (R20, R21).
+/// Runs blocking work that borrows its caller's data (a request build that reads attachment
+/// files) where it is called, after handing this worker's other tasks to another thread on a
+/// multi-thread runtime, so a reply streaming on the same worker never waits behind it. A
+/// single-thread runtime (unit tests) runs it inline.
+pub(crate) fn in_place<T>(f: impl FnOnce() -> T) -> T {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
+            tokio::task::block_in_place(f)
+        }
+        _ => f(),
+    }
+}
+
+/// Runs blocking work (file walks, file reads and writes) on the blocking pool.
 pub(crate) async fn blocking<T, F>(f: F) -> BistreResult<T>
 where
     T: Send + 'static,

@@ -1,5 +1,5 @@
-//! W4.6: attachments are typed by their bytes (R23), never silently dropped (R24), Office files
-//! go to Gemini as text (R25), and a request with uploaded files uses the uploading key (R11).
+//! Attachments are typed by their bytes, never silently dropped, Office files
+//! go to Gemini as text, and a request with uploaded files uses the uploading key.
 
 use bistre_protocol::{NodeRecord, NodeRole, StoredAttachment};
 use serde_json::{Value, json};
@@ -49,7 +49,7 @@ fn history_with(attachment: &StoredAttachment) -> Vec<NodeRecord> {
     }]
 }
 
-/// R24: a missing blob becomes a visible note to the model in every dialect (and the run is
+/// A missing blob becomes a visible note to the model in every dialect (and the run is
 /// told, see `unsent_attachment_names`), never a silent drop.
 #[test]
 fn a_missing_attachment_is_never_silently_dropped() -> Result<(), Box<dyn std::error::Error>> {
@@ -100,7 +100,7 @@ fn a_missing_attachment_is_never_silently_dropped() -> Result<(), Box<dyn std::e
     Ok(())
 }
 
-/// R25: Office files are never uploaded to Gemini's Files API (it rejects Office types); they
+/// Office files are never uploaded to Gemini's Files API (it rejects Office types); they
 /// go as extracted text.
 #[test]
 fn office_files_go_to_gemini_as_text() {
@@ -115,7 +115,7 @@ fn office_files_go_to_gemini_as_text() {
     )));
 }
 
-/// R11: a request that refers to uploaded files is sent with the key that uploaded them.
+/// A request that refers to uploaded files is sent with the key that uploaded them.
 #[test]
 fn a_request_with_uploaded_files_uses_the_uploading_key() {
     let ring = crate::credentials::KeyRing::from_vault_text("key-one\nkey-two");

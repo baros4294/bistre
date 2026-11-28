@@ -51,21 +51,30 @@ pub struct CursorEventRecord {
     pub created_at_ms: i64,
 }
 
-/// Length-prefixed JSON RPC request frame sent from `LocalIpcEngine` to `bistre-daemon`.
+/// One call from `LocalIpcEngine` to `bistre-daemon`: an `EngineClient` method by name, with its
+/// arguments as a JSON array in parameter order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DaemonRpcRequest {
     pub request_id: u64,
     pub method: String,
-    pub params_json: String,
+    pub params: serde_json::Value,
 }
 
-/// Length-prefixed JSON RPC response frame returned by `bistre-daemon`.
+/// The daemon's answer to one [`DaemonRpcRequest`]: the method's value, or its error.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DaemonRpcResponse {
     pub request_id: u64,
-    pub ok: bool,
-    pub payload_json: String,
+    pub payload: serde_json::Value,
     pub error: Option<BistreError>,
+}
+
+/// One frame of the daemon's event stream. `cursor` is the durable event log position the app
+/// has seen through (a reconnect replays what was logged after it); `event` is `None` only in
+/// the first frame, which says where the live stream starts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DaemonEventFrame {
+    pub cursor: u64,
+    pub event: Option<EngineEvent>,
 }
 
 /// Batched event union streamed from Rust core to UI / IPC subscribers.
@@ -154,10 +163,17 @@ pub enum EngineEvent {
         session_id: String,
         wav_base64: String,
     },
+    /// Requests the native platform host bridge to execute one approved `computer_use` action.
+    HostActionRequested {
+        request_id: String,
+        thread_id: String,
+        run_id: String,
+        action_json: String,
+    },
 }
 
 impl EngineEvent {
-    /// The form kept in the durable event log (R31): ids, states, and counts only. Message
+    /// The form kept in the durable event log: ids, states, and counts only. Message
     /// text, thinking, tool arguments and outputs, run buffers, and audio live in their own
     /// tables (or nowhere), so deleting a chat deletes its content; a replay re-reads bodies
     /// by id.
@@ -196,6 +212,7 @@ impl EngineEvent {
             }
             Self::LiveVoiceTranscript { text, .. } => text.clear(),
             Self::LiveVoiceAudio { wav_base64, .. } => wav_base64.clear(),
+            Self::HostActionRequested { action_json, .. } => action_json.clear(),
             Self::RunStarted { .. }
             | Self::RunFinished { .. }
             | Self::SteeringQueueChanged { .. }

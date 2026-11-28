@@ -6,7 +6,7 @@ use tempfile::tempdir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
-type TestResult = Result<(), Box<dyn std::error::Error>>;
+pub(crate) type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 fn spawn_mock_sse_server(listener: TcpListener) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
@@ -66,9 +66,10 @@ async fn unconfigured_provider_returns_diagnostic_and_local_sse_streams_real_htt
         Some(DiagnosticKey::ProviderNotConfigured)
     );
 
-    // Verify Big 3 built-in providers exist and API keys store safely in SecretVault.
+    // The Big 3 and OpenRouter starters exist (the keyless OpenRouter one was not picked
+    // above), and API keys store safely in SecretVault.
     let providers = engine.list_providers().await?;
-    assert_eq!(providers.len(), 3);
+    assert_eq!(providers.len(), 4);
     let saved_openai = Some(
         engine
             .set_provider_api_key("openai".to_owned(), "sk-test-1234567890abcd".to_owned())
@@ -354,12 +355,12 @@ async fn suspend_resume_reconciles_tier2_indeterminate_halt_and_wallet_shield_pr
     // Verify backoff watchdog respects Retry-After and stops once total budget expires.
     assert!(agent::compute_backoff_wait_ms(0, Some(12), 0, 60, 0).is_some_and(|ms| ms >= 12_000));
     assert_eq!(agent::compute_backoff_wait_ms(4, None, 60, 60, 0), None);
-    // R32: a provider asking for longer than the budget left is not retried early.
+    // A provider asking for longer than the budget left is not retried early.
     assert_eq!(
         agent::compute_backoff_wait_ms(0, Some(400), 0, 300, 0),
         None
     );
-    // R32: jitter differs per run, so runs failing together do not retry together.
+    // Jitter differs per run, so runs failing together do not retry together.
     let waits: std::collections::HashSet<u64> = (0..8_u64)
         .filter_map(|seed| agent::compute_backoff_wait_ms(1, None, 0, 300, seed))
         .collect();
@@ -576,4 +577,90 @@ async fn trust_preset_off_denies_all_tools_and_strict_requires_permit_for_reads(
         .await?;
     assert!(allowed.output_text.contains("hello"));
     engine.shutdown().await
+}
+
+/// A reply that ends while the chat's goal is open gets a work check, a marked user turn
+/// sending the model back to the goal, at most `MAX_GOAL_CHECKS` times; then the run ends.
+#[tokio::test]
+async fn an_open_goal_sends_bounded_work_checks() -> TestResult {
+    let dir = tempdir()?;
+    let engine = InProcessEngine::open_for_test(dir.path(), http_clients::provider_client()?)?;
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let addr = listener.local_addr()?;
+    let turns = 1 + goal::MAX_GOAL_CHECKS;
+    let server = tokio::spawn(async move {
+        for turn in 0..turns {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                break;
+            };
+            let mut req_buf = [0_u8; 4096];
+            assert!(socket.read(&mut req_buf).await.is_ok());
+            let body = format!(
+                "data: {{\"choices\":[{{\"delta\":{{\"content\":\"Step {turn}\"}}}}]}}\n\n\
+                 data: [DONE]\n\n"
+            );
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            assert!(socket.write_all(resp.as_bytes()).await.is_ok());
+        }
+    });
+    let custom = engine
+        .create_custom_provider(
+            "Goal Loopback".to_owned(),
+            format!("http://{addr}/v1"),
+            "local-model".to_owned(),
+            None,
+        )
+        .await?;
+    let mut settings = engine.load_settings().await?;
+    settings.active_provider_id = custom.id;
+    settings.active_model_id = "local-model".to_owned();
+    engine.save_settings(settings).await?;
+    let thread = engine
+        .create_thread(None, "Goal".to_owned(), ThreadMode::Chat, None, None)
+        .await?;
+    engine
+        .set_thread_goal(thread.id.clone(), "Port the parser".to_owned())
+        .await?;
+    let mut rx = engine.subscribe_events();
+    engine
+        .send_and_stream_reply(thread.id.clone(), None, "Start".to_owned())
+        .await?;
+    let mut finished = false;
+    for _ in 0..120 {
+        if let Ok(Ok(EngineEvent::RunFinished { .. })) =
+            tokio::time::timeout(Duration::from_secs(3), rx.recv()).await
+        {
+            finished = true;
+            break;
+        }
+    }
+    assert!(server.await.is_ok());
+    assert!(finished);
+    let nodes = engine.list_nodes(thread.id.clone()).await?;
+    assert_eq!(
+        nodes.len(),
+        2 * turns,
+        "user, then a reply per turn with a check between"
+    );
+    let checks: Vec<&NodeRecord> = nodes
+        .iter()
+        .filter(|n| n.role == NodeRole::User)
+        .skip(1)
+        .collect();
+    assert_eq!(checks.len(), goal::MAX_GOAL_CHECKS);
+    assert!(checks.iter().all(|n| {
+        n.content == goal::GOAL_CHECK_PROMPT
+            && n.provider_meta_json
+                .as_deref()
+                .is_some_and(|m| m.contains("\"goal_check\":true"))
+    }));
+    assert_eq!(
+        nodes.last().map(|n| n.content.clone()),
+        Some(format!("Step {}", turns - 1))
+    );
+    engine.shutdown().await?;
+    Ok(())
 }

@@ -8,7 +8,7 @@
 //! - An unsupported request field is healed by one ordered, data-driven step at a time
 //!   (`MAX_HTTP_400_HEALS` resends), each surfaced as `DiagnosticKey::ProviderRequestHealed`.
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use bistre_protocol::{BistreError, DiagnosticKey};
 use reqwest::header::HeaderMap;
@@ -78,10 +78,7 @@ const TRANSIENT_MARKERS: [&str; 5] = [
 ];
 
 fn scan(body: &str) -> String {
-    let mut end = body.len().min(MAX_ERROR_BODY_SCAN_BYTES);
-    while end > 0 && !body.is_char_boundary(end) {
-        end -= 1;
-    }
+    let end = body.floor_char_boundary(MAX_ERROR_BODY_SCAN_BYTES);
     body[..end].to_ascii_lowercase()
 }
 
@@ -122,7 +119,7 @@ pub fn failure_error(
         detail.push_str(";retry_after_ms=");
         detail.push_str(&ms.to_string());
     }
-    // P4: the provider's own words (bounded, separators removed), shown with the error.
+    // The provider's own words (bounded, separators removed), shown with the error.
     if let Some(reason) = reason.filter(|r| !r.is_empty()) {
         detail.push_str(";reason=");
         detail.push_str(reason);
@@ -146,13 +143,13 @@ pub fn parse_retry_hint(headers: &HeaderMap, body: &str, now: SystemTime) -> Opt
             .and_then(|v| v.to_str().ok())
             .map(str::trim)
     };
-    // G4 (opencode #63174): a zero `retry-after-ms` is no hint, so `retry-after` decides.
+    // A zero `retry-after-ms` is no hint, so `retry-after` decides.
     let raw_ms = header("retry-after-ms")
         .and_then(|v| v.parse::<u64>().ok())
         .filter(|&ms| ms > 0)
         .or_else(|| header("retry-after").and_then(|v| parse_retry_after_value(v, now)))
         .or_else(|| parse_gemini_retry_delay(body))?;
-    // R32: no upper clamp: a wait longer than the retry budget makes the run give up
+    // No upper clamp: a wait longer than the retry budget makes the run give up
     // instead of retrying early into the same limit.
     Some(raw_ms.max(MIN_HINT_MS))
 }
@@ -659,7 +656,7 @@ pub fn apply_next_heal_for_dialect(
     None
 }
 
-/// R14: whether a 400 says the model does not take reasoning at all (as opposed to, say, a
+/// Whether a 400 says the model does not take reasoning at all (as opposed to, say, a
 /// stale signature), so the "no reasoning" mark is set only when it is true.
 #[must_use]
 pub fn says_reasoning_unsupported(error_body: &str) -> bool {
@@ -685,18 +682,13 @@ pub fn says_reasoning_unsupported(error_body: &str) -> bool {
     about_reasoning && unsupported && !lower.contains("signature")
 }
 
-/// Converts a hint into a sleep duration.
-pub const fn hint_duration(ms: u64) -> Duration {
-    Duration::from_millis(ms)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use reqwest::header::HeaderValue;
     use serde_json::json;
 
-    /// R14: only a 400 that says reasoning is unsupported marks the model as "no reasoning";
+    /// Only a 400 that says reasoning is unsupported marks the model as "no reasoning";
     /// a signature or other 400 healed by dropping reasoning does not.
     #[test]
     fn only_an_unsupported_reasoning_error_marks_the_model() {
@@ -750,7 +742,7 @@ mod tests {
 
     #[test]
     fn retry_hint_priority_and_formats() {
-        let now = UNIX_EPOCH + Duration::from_secs(784_111_777); // Sun, 06 Nov 1994 08:49:37 GMT
+        let now = UNIX_EPOCH + std::time::Duration::from_secs(784_111_777); // Sun, 06 Nov 1994 08:49:37 GMT
         let mut h = HeaderMap::new();
         h.insert(
             "retry-after",
@@ -765,7 +757,7 @@ mod tests {
         let mut huge = HeaderMap::new();
         huge.insert("retry-after", HeaderValue::from_static("86400"));
         assert_eq!(parse_retry_hint(&huge, "", now), Some(86_400_000));
-        // G4 (opencode #63174): a zero `retry-after-ms` is no hint; `retry-after` decides.
+        // A zero `retry-after-ms` is no hint; `retry-after` decides.
         let mut zero = HeaderMap::new();
         zero.insert("retry-after-ms", HeaderValue::from_static("0"));
         zero.insert("retry-after", HeaderValue::from_static("60"));

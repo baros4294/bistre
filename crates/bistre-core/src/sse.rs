@@ -277,14 +277,15 @@ mod tests {
         let mut framer = SseFramer::new();
         framer.push_bytes(b"data: ")?;
         let chunk = vec![b'a'; 16 * 1024];
-        let started = std::time::Instant::now();
         for _ in 0..1024 {
             framer.push_bytes(&chunk)?;
+            // The next search starts after every byte already searched, so each byte is
+            // scanned once and the whole line costs time linear in its length.
+            assert_eq!(framer.scanned, framer.pending.len());
         }
         let got = framer.push_bytes(b"\n\n")?;
-        let elapsed = started.elapsed();
         assert_eq!(got.len(), 1);
-        assert!(elapsed < Duration::from_secs(2), "took {elapsed:?}");
+        assert_eq!(got[0].len(), 16 * 1024 * 1024);
         Ok(())
     }
 

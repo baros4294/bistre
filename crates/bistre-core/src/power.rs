@@ -174,7 +174,7 @@ impl PowerCoordinator {
         }
     }
 
-    /// Gives back one run's keep-awake while the run waits for the user (decision D2): an
+    /// Gives back one run's keep-awake while the run waits for the user: an
     /// approval can wait for hours, and the machine may sleep meanwhile. Dropping the pause
     /// takes the lease again.
     pub fn pause_for_user(self: &Arc<Self>) -> PowerUserPause {

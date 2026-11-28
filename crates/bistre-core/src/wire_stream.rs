@@ -15,7 +15,7 @@ use serde_json::Value;
 
 use crate::replay_policy::{ReasoningBlock, StoredToolCall};
 use crate::sse::StreamingTextBuffer;
-use crate::tools::{ParsedToolCall, heal_and_dedup_tool_calls, sanitize_tool_call_id};
+use crate::tools::{heal_and_dedup_tool_calls, sanitize_tool_call_id};
 
 /// Completed SSE stream payload paired with thinking trace, cryptographic reasoning blocks,
 /// parsed tool calls, cancellation flag, and exact usage.
@@ -33,12 +33,14 @@ pub struct StreamOutcome {
     pub usage: UsageMetrics,
     /// Non-fatal notices raised while dispatching (heals, key failover), as `(key, detail)`.
     pub notices: Vec<(DiagnosticKey, String)>,
-    /// Web pages the reply used (search results and citations), parsed and bounded (B2).
+    /// Web pages the reply used (search results and citations), parsed and bounded.
     pub grounding: Vec<crate::grounding::GroundingSource>,
-    /// How the reply ended (R10/P3); `None` when no terminal frame said.
+    /// How the reply ended; `None` when no terminal frame said.
     pub finish: Option<crate::finish::FinishKind>,
-    /// The provider's own words when it ended the stream with an error (P4), bounded.
+    /// The provider's own words when it ended the stream with an error, bounded.
     pub error_reason: Option<String>,
+    /// Images and audio the reply carried (`media_wire`), bounded.
+    pub(crate) media: Vec<crate::media_wire::GeneratedMedia>,
 }
 
 #[derive(Debug, Default)]
@@ -74,7 +76,12 @@ pub(crate) struct StreamState {
     gemini_thought_sig: Option<String>,
     /// The latest signature seen on a plain text part (classic `generateContent`).
     gemini_text_sig: Option<String>,
-    /// Raw provider call ids already captured (R1): a call repeated by the provider (`OpenAI`
+    /// One per picture part of a Gemini reply, empty when it carried no signature.
+    gemini_picture_sigs: Vec<String>,
+    /// `OpenRouter` `reasoning_details` fragments of this reply.
+    reasoning_details: crate::reasoning_details::DetailsAssembler,
+    media: crate::media_wire::MediaCollector,
+    /// Raw provider call ids already captured: a call repeated by the provider (`OpenAI`
     /// Responses `response.completed` after `output_item.done`) is dropped before its id is
     /// sanitized, so it can never come back renamed and run twice.
     raw_tool_call_ids: std::collections::HashSet<String>,
@@ -105,7 +112,7 @@ impl StreamState {
             self.terminal_seen = true;
             return;
         }
-        // R35: each frame is parsed once; every reader below works on this value.
+        // Each frame is parsed once; every reader below works on this value.
         let Ok(val) = serde_json::from_str::<Value>(payload) else {
             return;
         };
@@ -141,7 +148,12 @@ impl StreamState {
             self.out.thinking_text.push_str(&thought);
             on_thinking(&thought);
         }
-        if let Some(delta) = crate::wire_parse::delta_of_frame(dialect, &val) {
+        // A spoken reply's transcript is its text.
+        let spoken = self.media.absorb(dialect, &val);
+        for delta in [crate::wire_parse::delta_of_frame(dialect, &val), spoken]
+            .into_iter()
+            .flatten()
+        {
             let clean = self.text_norm.push(&delta);
             if !clean.is_empty() {
                 self.mark_first_token();
@@ -179,6 +191,12 @@ impl StreamState {
                 .reasoning_blocks
                 .push(ReasoningBlock::GeminiTextSignature { signature });
         }
+        let signatures = core::mem::take(&mut self.gemini_picture_sigs);
+        if !signatures.is_empty() {
+            self.out
+                .reasoning_blocks
+                .push(ReasoningBlock::GeminiPictureSignatures { signatures });
+        }
         // Flush OpenAI Responses / Chat Completions tool call accumulators.
         let oai_items = core::mem::take(&mut self.openai_calls_by_item);
         for (_, acc) in oai_items {
@@ -187,6 +205,21 @@ impl StreamState {
         let chat_items = core::mem::take(&mut self.chat_calls_by_index);
         for (_, acc) in chat_items {
             self.push_tool_call(acc.call_id, acc.name, acc.arguments, None);
+        }
+        let media = core::mem::take(&mut self.media);
+        if media.dropped {
+            tracing::warn!(
+                max_items = crate::media_wire::MAX_MEDIA_ITEMS,
+                max_bytes = crate::media_wire::MAX_MEDIA_BYTES,
+                "reply media over the bound left out"
+            );
+        }
+        self.out.media = media.finish();
+        let details = core::mem::take(&mut self.reasoning_details).finish();
+        if !details.is_empty() {
+            self.out
+                .reasoning_blocks
+                .push(ReasoningBlock::OpenRouterDetails { details });
         }
         // If CustomOpenAi/plain reasoning produced text without structured blocks, store PlainReasoning.
         if self.out.reasoning_blocks.is_empty() && !self.out.thinking_text.trim().is_empty() {
@@ -251,12 +284,7 @@ impl StreamState {
                 if let Some(item) = val.get("item")
                     && item.get("type").and_then(Value::as_str) == Some("function_call")
                 {
-                    let key = item
-                        .get("id")
-                        .or_else(|| item.get("call_id"))
-                        .and_then(Value::as_str)
-                        .unwrap_or("fc_0")
-                        .to_owned();
+                    let key = openai_call_key(val, Some(item));
                     let entry = self.openai_calls_by_item.entry(key).or_default();
                     if let Some(cid) = item.get("call_id").and_then(Value::as_str) {
                         cid.clone_into(&mut entry.call_id);
@@ -272,11 +300,7 @@ impl StreamState {
                 }
             }
             "response.function_call_arguments.delta" => {
-                let key = val
-                    .get("item_id")
-                    .and_then(Value::as_str)
-                    .unwrap_or("fc_0")
-                    .to_owned();
+                let key = openai_call_key(val, None);
                 if let Some(delta) = val.get("delta").and_then(Value::as_str) {
                     self.openai_calls_by_item
                         .entry(key)
@@ -286,11 +310,7 @@ impl StreamState {
                 }
             }
             "response.function_call_arguments.done" => {
-                let key = val
-                    .get("item_id")
-                    .and_then(Value::as_str)
-                    .unwrap_or("fc_0")
-                    .to_owned();
+                let key = openai_call_key(val, None);
                 if let Some(args) = val.get("arguments").and_then(Value::as_str)
                     && !args.is_empty()
                 {
@@ -301,6 +321,10 @@ impl StreamState {
             }
             "response.output_item.done" => {
                 if let Some(item) = val.get("item") {
+                    if item.get("type").and_then(Value::as_str) == Some("function_call") {
+                        self.openai_calls_by_item
+                            .remove(&openai_call_key(val, Some(item)));
+                    }
                     self.capture_openai_output_item(item);
                 }
             }
@@ -359,12 +383,6 @@ impl StreamState {
                     });
             }
             Some("function_call") => {
-                let key = item
-                    .get("id")
-                    .or_else(|| item.get("call_id"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                self.openai_calls_by_item.remove(key);
                 let call_id = item
                     .get("call_id")
                     .or_else(|| item.get("id"))
@@ -381,6 +399,11 @@ impl StreamState {
                     .and_then(Value::as_str)
                     .unwrap_or("{}")
                     .to_owned();
+                // The finished item replaces any partial copy of the same call.
+                if !call_id.is_empty() {
+                    self.openai_calls_by_item
+                        .retain(|_, acc| acc.call_id != call_id);
+                }
                 self.push_tool_call(call_id, name, arguments, None);
             }
             _ => {}
@@ -693,6 +716,13 @@ impl StreamState {
                     .map(ToOwned::to_owned);
                 let is_thought = part.get("thought").and_then(Value::as_bool) == Some(true);
                 let is_call = part.get("functionCall").is_some();
+                if !is_thought
+                    && part.get("inlineData").is_some()
+                    && self.gemini_picture_sigs.len() < crate::media_wire::MAX_MEDIA_ITEMS
+                {
+                    self.gemini_picture_sigs
+                        .push(part_sig.clone().unwrap_or_default());
+                }
                 if let Some(ref sig) = part_sig {
                     if !is_thought && !is_call && part.get("text").is_some() {
                         // A text part's signature stays with the text (kelivo fixtures).
@@ -740,6 +770,15 @@ impl StreamState {
         let Some(choice) = val.pointer("/choices/0") else {
             return;
         };
+        if let Some(details) = choice
+            .pointer("/delta/reasoning_details")
+            .or_else(|| choice.pointer("/message/reasoning_details"))
+            .and_then(Value::as_array)
+        {
+            for fragment in details {
+                self.reasoning_details.push(fragment);
+            }
+        }
         if let Some(calls) = choice
             .pointer("/delta/tool_calls")
             .or_else(|| choice.pointer("/message/tool_calls"))
@@ -760,7 +799,13 @@ impl StreamState {
                 if let Some(name) = call.pointer("/function/name").and_then(Value::as_str)
                     && !name.is_empty()
                 {
-                    entry.name.push_str(name);
+                    // A gateway that resends the whole (or the growing) name replaces it;
+                    // a name split over chunks joins.
+                    if name.starts_with(entry.name.as_str()) {
+                        name.clone_into(&mut entry.name);
+                    } else {
+                        entry.name.push_str(name);
+                    }
                 }
                 if let Some(args) = call.pointer("/function/arguments").and_then(Value::as_str) {
                     entry.arguments.push_str(args);
@@ -808,147 +853,20 @@ impl StreamState {
     }
 }
 
-/// Converts a persisted `StoredToolCall` into a `ParsedToolCall` for execution.
-pub fn stored_to_parsed_tool_call(call: &StoredToolCall) -> ParsedToolCall {
-    let arguments = serde_json::from_str::<Value>(&call.arguments_json)
-        .unwrap_or_else(|_| serde_json::json!({}));
-    ParsedToolCall {
-        id: call.call_id.clone(),
-        name: call.name.clone(),
-        arguments,
-        healed_from_text: false,
+/// The accumulator key of a streamed Responses function call: its `output_index`, which
+/// every streaming event of the call carries, else the item id, so calls from a gateway that
+/// omits ids never merge.
+fn openai_call_key(frame: &Value, item: Option<&Value>) -> String {
+    if let Some(index) = frame.get("output_index").and_then(Value::as_u64) {
+        return format!("#{index}");
     }
+    item.and_then(|it| it.get("id").or_else(|| it.get("call_id")))
+        .or_else(|| frame.get("item_id"))
+        .and_then(Value::as_str)
+        .unwrap_or("#?")
+        .to_owned()
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// R1: `OpenAI` Responses repeats a `function_call` in `response.completed` after
-    /// `output_item.done`. It must be captured once, or the tool (a shell command, an edit, an
-    /// MCP call) runs twice.
-    #[test]
-    fn a_function_call_repeated_in_response_completed_is_captured_once() {
-        let mut st = StreamState::default();
-        let item = r#"{"type":"function_call","id":"fc_1","call_id":"call_42","name":"shell","arguments":"{\"command\":\"echo hi\"}"}"#;
-        let frames = [
-            format!(r#"{{"type":"response.output_item.done","item":{item}}}"#),
-            format!(
-                r#"{{"type":"response.completed","response":{{"id":"resp_1","output":[{item}]}}}}"#
-            ),
-        ];
-        for f in &frames {
-            st.handle_payload(ProviderDialect::OpenAi, f, &mut |_| {}, &mut |_| {});
-        }
-        st.finalize(ProviderDialect::OpenAi);
-        let ids: Vec<&str> = st
-            .out
-            .tool_calls
-            .iter()
-            .map(|c| c.call_id.as_str())
-            .collect();
-        assert_eq!(ids, ["call_42"], "one call, not a renamed duplicate");
-    }
-
-    /// R1: two different provider ids that sanitize to the same text stay two calls.
-    #[test]
-    fn distinct_raw_ids_that_sanitize_alike_stay_distinct() {
-        let mut st = StreamState::default();
-        for raw in ["call.1", "call:1"] {
-            let item = format!(
-                r#"{{"type":"function_call","call_id":"{raw}","name":"read","arguments":"{{}}"}}"#
-            );
-            let frame = format!(r#"{{"type":"response.output_item.done","item":{item}}}"#);
-            st.handle_payload(ProviderDialect::OpenAi, &frame, &mut |_| {}, &mut |_| {});
-        }
-        assert_eq!(st.out.tool_calls.len(), 2);
-    }
-
-    #[test]
-    fn captures_anthropic_thinking_signature_and_redacted_thinking_and_tool_use() {
-        let mut st = StreamState::default();
-        let frames = [
-            r#"{"type":"message_start","message":{"id":"msg_123"}}"#,
-            r#"{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}"#,
-            r#"{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"plan A"}}"#,
-            r#"{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig_part1"}}"#,
-            r#"{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"_part2"}}"#,
-            r#"{"type":"content_block_stop","index":0}"#,
-            r#"{"type":"content_block_start","index":1,"content_block":{"type":"redacted_thinking","data":"opaque_redacted_1"}}"#,
-            r#"{"type":"content_block_stop","index":1}"#,
-            r#"{"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_01","name":"read"}}"#,
-            r#"{"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"path\":\"a.rs\"}"}}"#,
-            r#"{"type":"content_block_stop","index":2}"#,
-            r#"{"type":"message_stop"}"#,
-        ];
-        for f in frames {
-            st.handle_payload(ProviderDialect::Anthropic, f, &mut |_| {}, &mut |_| {});
-        }
-        st.finalize(ProviderDialect::Anthropic);
-        assert_eq!(st.out.provider_response_id.as_deref(), Some("msg_123"));
-        assert_eq!(st.out.reasoning_blocks.len(), 2);
-        assert_eq!(
-            st.out.reasoning_blocks[0],
-            ReasoningBlock::AnthropicThinking {
-                thinking: "plan A".to_owned(),
-                signature: "sig_part1_part2".to_owned(),
-            }
-        );
-        assert_eq!(
-            st.out.reasoning_blocks[1],
-            ReasoningBlock::AnthropicRedactedThinking {
-                data: "opaque_redacted_1".to_owned(),
-            }
-        );
-        assert_eq!(st.out.tool_calls.len(), 1);
-        assert_eq!(st.out.tool_calls[0].name, "read");
-        assert_eq!(st.out.tool_calls[0].call_id, "toolu_01");
-    }
-
-    #[test]
-    fn captures_openai_encrypted_reasoning_and_function_call() {
-        let mut st = StreamState::default();
-        let frames = [
-            r#"{"type":"response.created","response":{"id":"resp_99"}}"#,
-            r#"{"type":"response.output_item.done","item":{"id":"rs_1","type":"reasoning","summary":[{"type":"summary_text","text":"checked"}],"encrypted_content":"enc_blob_xyz"}}"#,
-            r#"{"type":"response.output_item.added","item":{"id":"fc_1","type":"function_call","call_id":"call_42","name":"grep"}}"#,
-            r#"{"type":"response.function_call_arguments.delta","item_id":"fc_1","delta":"{\"pattern\":\"WAL\"}"}"#,
-            r#"{"type":"response.completed","response":{"id":"resp_99","output":[]}}"#,
-        ];
-        for f in frames {
-            st.handle_payload(ProviderDialect::OpenAi, f, &mut |_| {}, &mut |_| {});
-        }
-        st.finalize(ProviderDialect::OpenAi);
-        assert_eq!(st.out.provider_response_id.as_deref(), Some("resp_99"));
-        assert_eq!(st.out.reasoning_blocks.len(), 1);
-        assert!(matches!(
-            &st.out.reasoning_blocks[0],
-            ReasoningBlock::OpenAiReasoning { id, encrypted_content, .. }
-            if id == "rs_1" && encrypted_content == "enc_blob_xyz"
-        ));
-        assert_eq!(st.out.tool_calls.len(), 1);
-        assert_eq!(st.out.tool_calls[0].call_id, "call_42");
-        assert_eq!(st.out.tool_calls[0].name, "grep");
-    }
-
-    #[test]
-    fn captures_gemini_thought_signature_and_function_call() {
-        let mut st = StreamState::default();
-        let frame = r#"{"candidates":[{"content":{"parts":[{"thought":true,"text":"thinking","thoughtSignature":"gem_sig_77"},{"functionCall":{"id":"fc_g1","name":"glob","args":{"pattern":"*.rs"}},"thoughtSignature":"gem_sig_77"}]},"finishReason":"STOP"}]}"#;
-        st.handle_payload(
-            ProviderDialect::GoogleGemini,
-            frame,
-            &mut |_| {},
-            &mut |_| {},
-        );
-        st.finalize(ProviderDialect::GoogleGemini);
-        assert_eq!(st.out.full_text, "");
-        assert_eq!(st.out.thinking_text, "thinking");
-        assert_eq!(st.out.reasoning_blocks.len(), 1);
-        assert_eq!(st.out.tool_calls.len(), 1);
-        assert_eq!(
-            st.out.tool_calls[0].thought_signature.as_deref(),
-            Some("gem_sig_77")
-        );
-    }
-}
+#[path = "wire_stream_tests.rs"]
+mod tests;

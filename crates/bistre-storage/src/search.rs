@@ -1,6 +1,6 @@
 //! Full-text search over messages (Spec 01 section 8): the ranked word index, the trigram
-//! index for CJK and substrings (D6), the bounded scan used while an index is stale or the
-//! query is shorter than a trigram, and the one-time rebuild at open after corruption (G3).
+//! index for CJK and substrings, the bounded scan used while an index is stale or the
+//! query is shorter than a trigram, and the one-time rebuild at open after corruption.
 
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -28,7 +28,7 @@ pub(crate) const SEARCH_ALL_SQL: &str = "SELECT n.id, n.thread_id, n.role,
  ORDER BY bm25(nodes_fts)
  LIMIT ?2";
 
-/// D6 trigram search (CJK and mid-word substrings), in one thread: ?1 quoted phrase, ?2 thread, ?3 limit.
+/// Trigram search (CJK and mid-word substrings), in one thread: ?1 quoted phrase, ?2 thread, ?3 limit.
 const SEARCH_TRI_IN_THREAD_SQL: &str = "SELECT n.id, n.thread_id, n.role,
         snippet(nodes_fts_tri, 0, '[', ']', '...', 16),
         n.created_at_ms
@@ -38,7 +38,7 @@ const SEARCH_TRI_IN_THREAD_SQL: &str = "SELECT n.id, n.thread_id, n.role,
  ORDER BY bm25(nodes_fts_tri)
  LIMIT ?3";
 
-/// D6 trigram search across every thread: ?1 quoted phrase, ?2 limit.
+/// Trigram search across every thread: ?1 quoted phrase, ?2 limit.
 const SEARCH_TRI_ALL_SQL: &str = "SELECT n.id, n.thread_id, n.role,
         snippet(nodes_fts_tri, 0, '[', ']', '...', 16),
         n.created_at_ms
@@ -75,7 +75,7 @@ impl StorageHandle {
             return search_nodes_by_scan(&conn, trimmed, thread_id, capped_limit);
         }
 
-        // D6: the word index first (ranked); then the trigram index for CJK and mid-word
+        // The word index first (ranked); then the trigram index for CJK and mid-word
         // substrings; queries shorter than a trigram use a bounded scan.
         let words = run_fts_search(
             &conn,
@@ -112,7 +112,7 @@ fn sanitize_fts_query(raw: &str) -> String {
         .join(" ")
 }
 
-/// G3 fallback while the FTS index is stale: a bounded `LIKE` scan (`%` and `_` escaped) with a
+/// Fallback while the FTS index is stale: a bounded `LIKE` scan (`%` and `_` escaped) with a
 /// short snippet around the first match.
 fn search_nodes_by_scan(
     conn: &Connection,
@@ -196,7 +196,7 @@ fn run_fts_search(
     }
 }
 
-/// G3: when the search index was marked stale, rebuild both full-text indexes from `nodes`
+/// When the search index was marked stale, rebuild both full-text indexes from `nodes`
 /// and restore their triggers, once, at open (before any write; never live). A failed
 /// rebuild is logged and search stays on the plain scan; opening never fails for it.
 pub(crate) fn rebuild_stale_search_index(conn: &mut Connection) {

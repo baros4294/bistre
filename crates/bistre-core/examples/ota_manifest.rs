@@ -1,4 +1,4 @@
-//! Release tool for the OTA manifest v2 (Spec 10, A-W 7b): written and checked with the same
+//! Release tool for the OTA manifest v2 (Spec 10): written and checked with the same
 //! types the app reads.
 //!
 //! - `build <dist> <tag> <repo> [notes_file]`: writes `<dist>/manifest.json`.
@@ -44,7 +44,13 @@ fn main() -> ExitCode {
                 },
                 None => String::new(),
             };
-            let manifest = match build_release_manifest(Path::new(dist), tag, repo, &notes) {
+            let manifest = match build_release_manifest(
+                Path::new(dist),
+                tag,
+                bistre_core::CORE_VERSION,
+                repo,
+                &notes,
+            ) {
                 Ok(m) => m,
                 Err(err) => return fail("build", &err),
             };

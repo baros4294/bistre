@@ -53,6 +53,111 @@
       "type": "function"
     },
     {
+      "description": "Delete one workspace file (not a folder). A rewind checkpoint keeps its content.",
+      "name": "fs_delete",
+      "parameters": {
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "type": "function"
+    },
+    {
+      "description": "List one workspace folder: names, folders marked with a trailing slash, and file sizes.",
+      "name": "fs_list",
+      "parameters": {
+        "properties": {
+          "path": {
+            "description": "Folder relative to the workspace; empty for the top.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "type": "function"
+    },
+    {
+      "description": "Move or rename one workspace file. Never replaces an existing file.",
+      "name": "fs_move",
+      "parameters": {
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "type": "object"
+      },
+      "type": "function"
+    },
+    {
+      "description": "Apply several exact text replacements to one workspace file in order; all apply or none do.",
+      "name": "fs_multi_edit",
+      "parameters": {
+        "properties": {
+          "edits": {
+            "items": {
+              "properties": {
+                "replacement": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "target",
+                "replacement"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "edits"
+        ],
+        "type": "object"
+      },
+      "type": "function"
+    },
+    {
+      "description": "Create a workspace file, or replace a whole file you have read in full. Creates missing folders.",
+      "name": "fs_write",
+      "parameters": {
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "type": "object"
+      },
+      "type": "function"
+    },
+    {
       "description": "Find workspace files matching a glob pattern respecting .gitignore.",
       "name": "glob",
       "parameters": {

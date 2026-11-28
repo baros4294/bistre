@@ -45,7 +45,7 @@ pub fn estimate_branch_tokens_for_model(
     total
 }
 
-/// R26: what replay sends besides the text: tool calls (name + arguments), a tool result's
+/// What replay sends besides the text: tool calls (name + arguments), a tool result's
 /// output, and reasoning blocks (their text, or their opaque payload, which the provider counts
 /// too). Over-counting an opaque payload only makes compaction start a little early.
 fn replayed_meta_tokens(node: &NodeRecord, encoding: crate::tokenizer::BpeEncoding) -> u64 {
@@ -77,15 +77,33 @@ fn replayed_meta_tokens(node: &NodeRecord, encoding: crate::tokenizer::BpeEncodi
             }
             B::PlainReasoning { text } => count(text),
             B::GeminiTextSignature { signature } => count(signature),
+            B::GeminiPictureSignatures { signatures } => signatures
+                .iter()
+                .fold(0, |sum: u64, s| sum.saturating_add(count(s))),
+            B::OpenRouterDetails { details } => count(&Value::Array(details.clone()).to_string()),
         };
         total = total.saturating_add(tokens);
     }
     total
 }
 
-/// The share of the context window kept free: a run shortens the chat before sending once the
-/// request would fill more than `100 - AUTO_COMPACT_RESERVE_PERCENT` percent of it.
-pub const AUTO_COMPACT_RESERVE_PERCENT: u8 = 15;
+/// The lowest and highest fill (percent of the context window) the user may pick for auto
+/// compaction; the highest still leaves room for the reply.
+pub const AUTO_COMPACT_MIN_PERCENT: u8 = 50;
+pub const AUTO_COMPACT_MAX_PERCENT: u8 = 95;
+
+/// The share of the context window kept free when a run shortens the chat once a request
+/// would fill `at_percent` of it (Settings), clamped to the allowed range.
+pub const fn auto_compact_reserve_percent(at_percent: u8) -> u8 {
+    let at = if at_percent < AUTO_COMPACT_MIN_PERCENT {
+        AUTO_COMPACT_MIN_PERCENT
+    } else if at_percent > AUTO_COMPACT_MAX_PERCENT {
+        AUTO_COMPACT_MAX_PERCENT
+    } else {
+        at_percent
+    };
+    100 - at
+}
 
 /// Returns `true` when estimated tokens cross the configurable compaction reserve threshold
 /// (e.g., `reserve_percent = 20` triggers compaction once 80% of `context_window_tokens` is full).
@@ -113,50 +131,74 @@ pub fn project_effective_history(
     branch: &[NodeRecord],
     pinned_start_node_id: Option<&str>,
 ) -> Vec<NodeRecord> {
-    let start_slice = if let Some(pin_id) = pinned_start_node_id
-        && let Some(pos) = branch.iter().position(|n| n.id == pin_id)
-    {
-        &branch[pos..]
-    } else {
-        branch
+    let start_slice = from_pin(branch, pinned_start_node_id);
+    let Some((summary_pos, kept_pos)) = latest_summary_split(start_slice) else {
+        return start_slice.to_vec();
     };
+    let mut effective = vec![start_slice[summary_pos].clone()];
+    effective.extend(
+        start_slice[kept_pos..]
+            .iter()
+            .filter(|n| n.role != NodeRole::CompactionSummary)
+            .cloned(),
+    );
+    effective
+}
 
-    if let Some(compact_pos) = start_slice
+/// The messages the latest summary stands in for: on the branch from the context-start pin,
+/// every message before the summary's first kept one. Their full text stays saved; the prompt
+/// carries only the summary. Empty when nothing is condensed.
+pub fn condensed_messages(
+    branch: &[NodeRecord],
+    pinned_start_node_id: Option<&str>,
+) -> Vec<NodeRecord> {
+    let start_slice = from_pin(branch, pinned_start_node_id);
+    let Some((_, kept_pos)) = latest_summary_split(start_slice) else {
+        return Vec::new();
+    };
+    start_slice[..kept_pos]
         .iter()
-        .rposition(|n| n.role == NodeRole::CompactionSummary)
-    {
-        let summary_node = &start_slice[compact_pos];
-        let mut effective = vec![summary_node.clone()];
-        let first_kept_id = summary_node
-            .provider_meta_json
-            .as_deref()
-            .and_then(|s| serde_json::from_str::<Value>(s).ok())
-            .and_then(|v| {
-                v.get("first_kept_node_id")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned)
-            });
+        .filter(|n| n.role != NodeRole::CompactionSummary)
+        .cloned()
+        .collect()
+}
 
-        if let Some(kept_id) = first_kept_id
-            && let Some(kept_pos) = start_slice.iter().position(|n| n.id == kept_id)
-        {
-            for node in &start_slice[kept_pos..] {
-                if node.id != summary_node.id && node.role != NodeRole::CompactionSummary {
-                    effective.push(node.clone());
-                }
-            }
-            return effective;
-        }
+/// Whether a summary leads the history about to be sent. Role alternation may have merged it
+/// with the next user message, so its `compaction` mark counts as well as its role.
+pub fn history_opens_with_summary(history: &[NodeRecord]) -> bool {
+    history.first().is_some_and(|n| {
+        n.role == NodeRole::CompactionSummary
+            || n.provider_meta_json
+                .as_deref()
+                .and_then(|m| serde_json::from_str::<Value>(m).ok())
+                .is_some_and(|v| v.get("compaction") == Some(&Value::Bool(true)))
+    })
+}
 
-        for node in &start_slice[(compact_pos + 1)..] {
-            if node.role != NodeRole::CompactionSummary {
-                effective.push(node.clone());
-            }
-        }
-        return effective;
-    }
+fn from_pin<'a>(branch: &'a [NodeRecord], pinned_start_node_id: Option<&str>) -> &'a [NodeRecord] {
+    pinned_start_node_id
+        .and_then(|pin| branch.iter().position(|n| n.id == pin))
+        .map_or(branch, |pos| &branch[pos..])
+}
 
-    start_slice.to_vec()
+/// The latest summary's position and where the messages it keeps begin: its
+/// `first_kept_node_id`, or the node right after the summary when that id is not on the branch.
+fn latest_summary_split(nodes: &[NodeRecord]) -> Option<(usize, usize)> {
+    let summary_pos = nodes
+        .iter()
+        .rposition(|n| n.role == NodeRole::CompactionSummary)?;
+    let kept_pos = nodes[summary_pos]
+        .provider_meta_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str::<Value>(s).ok())
+        .and_then(|v| {
+            v.get("first_kept_node_id")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
+        .and_then(|kept_id| nodes.iter().position(|n| n.id == kept_id))
+        .unwrap_or(summary_pos + 1);
+    Some((summary_pos, kept_pos))
 }
 
 /// Replay role used for alternation checks (`CompactionSummary` is replayed as a user turn).
@@ -398,6 +440,41 @@ fn synthesize_local_summary(nodes: &[&NodeRecord]) -> String {
     lines.join("\n")
 }
 
+/// Returns the set of node IDs whose image attachments should remain attached on replay,
+/// keeping at most `max_recent_images` most-recent image-bearing user/tool turns so long
+/// multimodal chats do not exhaust context windows.
+#[must_use]
+pub fn plan_image_retention(
+    history: &[NodeRecord],
+    max_recent_images: usize,
+) -> std::collections::HashSet<String> {
+    let mut keep = std::collections::HashSet::new();
+    if max_recent_images == 0 {
+        return keep;
+    }
+    for node in history.iter().rev() {
+        let has_image = node
+            .provider_meta_json
+            .as_deref()
+            .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+            .and_then(|v| v.get("attachments")?.as_array().cloned())
+            .is_some_and(|arr| {
+                arr.iter().any(|a| {
+                    a.get("mime_type")
+                        .and_then(Value::as_str)
+                        .is_some_and(|m| m.starts_with("image/"))
+                })
+            });
+        if has_image {
+            keep.insert(node.id.clone());
+            if keep.len() >= max_recent_images {
+                break;
+            }
+        }
+    }
+    keep
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -406,7 +483,7 @@ mod tests {
 
     type TestResult = Result<(), Box<dyn std::error::Error>>;
 
-    /// R26: replay sends tool calls (name + arguments) and reasoning blocks too; a branch whose
+    /// Replay sends tool calls (name + arguments) and reasoning blocks too; a branch whose
     /// weight sits there must not look nearly empty to the compaction trigger.
     #[test]
     fn tool_arguments_and_reasoning_are_counted() {
@@ -437,7 +514,7 @@ mod tests {
         );
     }
 
-    /// R13: a stopped reply that only thought (no text, no tool call) is never sent back as an
+    /// A stopped reply that only thought (no text, no tool call) is never sent back as an
     /// empty assistant turn (Anthropic answers that with a 400).
     #[test]
     fn an_empty_assistant_turn_is_never_replayed() -> TestResult {
@@ -593,6 +670,32 @@ mod tests {
     }
 
     #[test]
+    fn image_retention_planner_keeps_only_most_recent_image_turns() {
+        let mk = |id: &str, with_img: bool| NodeRecord {
+            id: id.to_owned(),
+            thread_id: "t1".to_owned(),
+            parent_id: None,
+            role: NodeRole::User,
+            content: "hi".to_owned(),
+            provider_meta_json: with_img.then(|| {
+                r#"{"attachments":[{"mime_type":"image/png","name":"a.png"}]}"#.to_owned()
+            }),
+            created_at_ms: 1,
+        };
+        let hist = vec![
+            mk("n1", true),
+            mk("n2", false),
+            mk("n3", true),
+            mk("n4", true),
+        ];
+        let keep = plan_image_retention(&hist, 2);
+        assert_eq!(keep.len(), 2);
+        assert!(keep.contains("n3"));
+        assert!(keep.contains("n4"));
+        assert!(!keep.contains("n1"));
+    }
+
+    #[test]
     fn the_user_name_reaches_chat_prompts_but_not_write_mode() {
         use crate::engine_runs::with_user_name;
         assert_eq!(
@@ -661,6 +764,19 @@ mod tests {
         assert!(should_auto_compact(85_000, 100_000, 20));
         assert!(!should_auto_compact(50_000, 100_000, 20));
         Ok(())
+    }
+
+    #[test]
+    fn the_auto_compact_point_stays_in_range() {
+        assert_eq!(auto_compact_reserve_percent(85), 15);
+        assert_eq!(
+            auto_compact_reserve_percent(0),
+            100 - AUTO_COMPACT_MIN_PERCENT
+        );
+        assert_eq!(
+            auto_compact_reserve_percent(100),
+            100 - AUTO_COMPACT_MAX_PERCENT
+        );
     }
 
     #[test]

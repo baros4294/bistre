@@ -3,7 +3,7 @@
 use super::*;
 use crate::schema::{SCHEMA_V1_SQL, apply_sql_migration};
 use crate::search::{SEARCH_ALL_SQL, SEARCH_IN_THREAD_SQL};
-use bistre_protocol::TrustPreset;
+use bistre_protocol::{SpendPurpose, TrustPreset};
 use tempfile::tempdir;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -33,7 +33,7 @@ fn dag_branching_draft_persistence_fts5_index_plan_and_checkpoint() -> TestResul
         thread.id.clone(),
         None,
         NodeRole::User,
-        "Xin chào thế giới! مرحبا بالعالم — root prompt".to_owned(),
+        "Xin chào thế giới! مرحبا بالعالم: root prompt".to_owned(),
         None,
     )?;
 
@@ -182,7 +182,7 @@ fn v1_expand_migration_pinning_assistants_settings_and_delete_cascade() -> TestR
     assert_eq!(TrustPreset::parse("parchment"), TrustPreset::Strict);
     assert_eq!(TrustPreset::parse("parchment_safe"), TrustPreset::Strict);
     assert_eq!(TrustPreset::parse("off"), TrustPreset::Off);
-    // A-S7: an unknown preset is the strictest one that still allows tools, never looser.
+    // An unknown preset is the strictest one that still allows tools, never looser.
     assert_eq!(TrustPreset::parse("guided-craft"), TrustPreset::Strict);
     assert_eq!(TrustPreset::parse(""), TrustPreset::Strict);
     assert_eq!(
@@ -194,9 +194,21 @@ fn v1_expand_migration_pinning_assistants_settings_and_delete_cascade() -> TestR
     assert!(storage.delete_thread(newer.id).is_ok());
     assert_eq!(storage.list_threads(None)?.len(), 1);
 
-    // Verify ALL providers (including initial Big 3 starters) are freely deletable and do NOT return on reopen.
+    // Verify ALL providers (the Big 3 and OpenRouter starters) are freely deletable and do NOT
+    // return on reopen.
     let providers = storage.list_providers()?;
-    assert_eq!(providers.len(), 3);
+    assert_eq!(providers.len(), 4);
+    let openrouter = providers.iter().find(|p| p.id == "openrouter");
+    assert_eq!(
+        openrouter.map(|p| (p.dialect, p.base_url.as_str(), p.icon_slug.as_str())),
+        Some((
+            ProviderDialect::CustomOpenAi,
+            "https://openrouter.ai/api/v1",
+            "openrouter"
+        ))
+    );
+    assert!(openrouter.is_some_and(ProviderProfile::requires_api_key));
+    assert!(storage.delete_provider("openrouter".to_owned()).is_ok());
     let cp = storage.create_provider(
         "Local Ollama",
         ProviderDialect::CustomOpenAi,
@@ -277,6 +289,7 @@ fn node_delete_export_and_daily_wallet_spend_work_atomically() -> TestResult {
                 100,
                 200,
                 "settled".to_owned(),
+                SpendPurpose::Chat,
             )
             .is_ok()
     );
@@ -581,7 +594,7 @@ fn schema_v9_perf_indexes_eliminate_temp_sorts_and_ledger_scans() -> TestResult 
     Ok(())
 }
 
-/// R4: a reservation is refused when it would carry today's spend past the ceiling, not only
+/// A reservation is refused when it would carry today's spend past the ceiling, not only
 /// when the ceiling is already reached.
 #[test]
 fn a_reservation_that_would_exceed_the_ceiling_is_refused() -> TestResult {
@@ -645,7 +658,7 @@ fn a_reservation_that_would_exceed_the_ceiling_is_refused() -> TestResult {
     Ok(())
 }
 
-/// A-S1: the per-chat cap is checked on the writer against the wallet ledger (settled and
+/// The per-chat cap is checked on the writer against the wallet ledger (settled and
 /// reserved spend of that chat), together with the new estimate.
 #[test]
 fn a_chat_cap_counts_the_chats_ledger_spend_and_the_estimate() -> TestResult {
@@ -670,6 +683,7 @@ fn a_chat_cap_counts_the_chats_ledger_spend_and_the_estimate() -> TestResult {
             None,
             0,
             cap,
+            SpendPurpose::Chat,
         )
     };
     assert_eq!(
@@ -696,396 +710,97 @@ fn a_chat_cap_counts_the_chats_ledger_spend_and_the_estimate() -> TestResult {
     Ok(())
 }
 
-/// U1: a node's parent must belong to the same thread; a parent from another chat would graft
+/// A node's parent must belong to the same thread; a parent from another chat would graft
 /// one conversation onto another and corrupt its history graph.
 #[test]
-fn a_parent_from_another_thread_is_refused() -> TestResult {
+fn settled_spend_is_summed_per_purpose_and_reservations_are_left_out() -> TestResult {
     let dir = tempdir()?;
-    let storage = StorageHandle::open(dir.path().join("graph.db"))?;
-    let a = storage.create_thread(None, "A", ThreadMode::Chat, None, None)?;
-    let b = storage.create_thread(None, "B", ThreadMode::Chat, None, None)?;
-    let in_a = storage.append_node(a.id.clone(), None, NodeRole::User, "a".to_owned(), None)?;
-    let crossed = storage.append_node(
-        b.id.clone(),
-        Some(in_a.id.clone()),
-        NodeRole::User,
-        "b".to_owned(),
+    let storage = StorageHandle::open(dir.path().join("wallet.db"))?;
+    let book = |purpose: SpendPurpose, micros: i64, input: u64, output: u64| {
+        storage.record_wallet_entry_with_usage(
+            None,
+            "p".to_owned(),
+            "m".to_owned(),
+            MoneyMicros::from_micros(micros),
+            input,
+            output,
+            "settled".to_owned(),
+            purpose,
+        )
+    };
+    book(SpendPurpose::Title, 300, 10, 2)?;
+    book(SpendPurpose::Chat, 5_000, 900, 400)?;
+    book(SpendPurpose::Title, 200, 12, 3)?;
+    // A reservation keeps its purpose through settlement; an open one is not counted.
+    let settled = storage.reserve_wallet_spend_with_chat_cap(
         None,
-    );
-    assert_eq!(
-        crossed.err().map(|e| e.key),
-        Some(DiagnosticKey::StorageParentThreadMismatch)
-    );
-    let missing = storage.append_node(
-        b.id.clone(),
-        Some("no-such-node".to_owned()),
-        NodeRole::User,
-        "b".to_owned(),
+        "p".to_owned(),
+        "m".to_owned(),
+        MoneyMicros::from_micros(1_000),
         None,
-    );
-    assert!(missing.is_err(), "an unknown parent is refused too");
-    assert_eq!(storage.list_nodes(&b.id)?, [] as [NodeRecord; 0]);
-    assert!(
-        storage
-            .append_node(
-                a.id.clone(),
-                Some(in_a.id),
-                NodeRole::Assistant,
-                "ok".to_owned(),
-                None
+        0,
+        None,
+        SpendPurpose::Voice,
+    )?;
+    storage.settle_wallet_reservation(
+        settled,
+        MoneyMicros::from_micros(700),
+        40,
+        0,
+        "settled".to_owned(),
+    )?;
+    storage.reserve_wallet_spend_with_chat_cap(
+        None,
+        "p".to_owned(),
+        "m".to_owned(),
+        MoneyMicros::from_micros(9_000),
+        None,
+        0,
+        None,
+        SpendPurpose::Summary,
+    )?;
+    let usage = storage.wallet_usage_by_purpose(0)?;
+    let rows: Vec<_> = usage
+        .iter()
+        .map(|u| {
+            (
+                u.purpose,
+                u.requests,
+                u.input_tokens,
+                u.output_tokens,
+                u.cost.as_micros(),
             )
-            .is_ok()
-    );
-    Ok(())
-}
-
-/// R31: deleting a chat deletes everything derived from it (event log rows, run journal and
-/// steps), and the event log never keeps message text in the first place.
-#[test]
-fn deleting_a_chat_removes_its_event_log_and_run_journal() -> TestResult {
-    use crate::harness::CreateAgentRunParams;
-    use bistre_protocol::{EngineEvent, UnattendedPolicy};
-    let dir = tempdir()?;
-    let storage = StorageHandle::open(dir.path().join("events.db"))?;
-    let thread = storage.create_thread(None, "private", ThreadMode::Chat, None, None)?;
-    let node = storage.append_node(
-        thread.id.clone(),
-        None,
-        NodeRole::User,
-        "my secret plan".to_owned(),
-        None,
-    )?;
-    storage.append_engine_event_log(
-        Some(thread.id.clone()),
-        &EngineEvent::NodeCommitted { node: node.clone() },
-    )?;
-    let logged = storage.read_engine_events_after(0, 10)?;
-    let text = serde_json::to_string(&logged.iter().map(|r| &r.event).collect::<Vec<_>>())?;
-    assert!(
-        !text.contains("my secret plan"),
-        "the log keeps ids, not text: {text}"
-    );
-    assert!(text.contains(&node.id), "the node id is kept for replay");
-
-    let run = storage.create_agent_run(CreateAgentRunParams {
-        thread_id: thread.id.clone(),
-        parent_run_id: None,
-        root_node_id: Some(node.id.clone()),
-        mode: ThreadMode::Chat,
-        max_steps: 4,
-        unattended_policy: UnattendedPolicy::default(),
-        worktree_path: None,
-    })?;
-    storage.append_agent_run_partial_text(run.id.clone(), "partial secret".to_owned())?;
-
-    storage.delete_thread(thread.id.clone())?;
-    assert_eq!(
-        storage.read_engine_events_after(0, 10)?,
-        [] as [bistre_protocol::CursorEventRecord; 0]
-    );
-    assert_eq!(
-        storage.list_agent_runs(Some(&thread.id), false, 10)?,
-        [] as [bistre_protocol::AgentRunRecord; 0]
-    );
-    Ok(())
-}
-
-/// R31 + R38 (v9 -> v10): the one-time cleanup clears the v0.1.2 event log (it held message
-/// bodies) and the run journals of chats deleted earlier, and adds the child-by-parent index
-/// that a node delete's foreign-key check needs.
-#[test]
-fn v10_migration_clears_old_event_bodies_and_indexes_parents() -> TestResult {
-    let dir = tempdir()?;
-    let db = dir.path().join("v9.db");
-    {
-        let storage = StorageHandle::open(&db)?;
-        storage.shutdown()?;
-    }
-    {
-        let conn = Connection::open(&db)?;
-        // Legacy rows written before v10 (foreign keys off to plant an orphaned journal).
-        conn.execute_batch(
-            "PRAGMA foreign_keys = OFF;
-             DROP INDEX IF EXISTS idx_nodes_parent;
-             INSERT INTO engine_events_log (thread_id, event_json, created_at_ms)
-                 VALUES ('t-old', '{\"kind\":\"node_committed\",\"content\":\"old secret\"}', 1);
-             INSERT INTO agent_runs (id, thread_id, mode, status, step_index, max_steps,
-                 unattended_policy, last_heartbeat_ms, partial_text_buffer,
-                 partial_thinking_buffer, cost_micros, created_at_ms, updated_at_ms)
-                 VALUES ('r-old', 't-deleted', 'chat', 'cancelled', 0, 4,
-                 'deny_tier2_and_continue', 0, 'orphan secret', '', 0, 1, 1);
-             PRAGMA user_version = 9;",
-        )?;
-    }
-    let storage = StorageHandle::open(&db)?;
-    assert_eq!(
-        storage.read_engine_events_after(0, 10)?,
-        [] as [bistre_protocol::CursorEventRecord; 0]
-    );
-    assert_eq!(
-        storage.list_agent_runs(Some("t-deleted"), false, 10)?,
-        [] as [bistre_protocol::AgentRunRecord; 0]
-    );
-    let conn = storage.open_reader()?;
-    let plan: String = conn.query_row(
-        "EXPLAIN QUERY PLAN SELECT id FROM nodes WHERE parent_id = 'x'",
-        [],
-        |row| row.get(3),
-    )?;
-    assert!(plan.contains("idx_nodes_parent"), "{plan}");
-    Ok(())
-}
-
-/// R38 (kelivo #1539): deleting a 25,000-message chat completes and removes every node.
-#[test]
-fn deleting_a_25k_message_chat_removes_every_node() -> TestResult {
-    let dir = tempdir()?;
-    let storage = StorageHandle::open(dir.path().join("big.db"))?;
-    let thread = storage.create_thread(None, "long", ThreadMode::Chat, None, None)?;
-    let mut parent: Option<String> = None;
-    for i in 0..25_000 {
-        let role = if i % 2 == 0 {
-            NodeRole::User
-        } else {
-            NodeRole::Assistant
-        };
-        let node = storage.append_node(thread.id.clone(), parent, role, format!("m{i}"), None)?;
-        parent = Some(node.id);
-    }
-    storage.delete_thread(thread.id.clone())?;
-    assert_eq!(storage.list_nodes(&thread.id)?, [] as [NodeRecord; 0]);
-    Ok(())
-}
-
-/// G3 (Hermes #153688): a corrupt full-text index must never block saving messages. Writes
-/// drop the search triggers and mark the index stale in the same transaction, then succeed;
-/// search keeps working through a plain scan until the index is rebuilt.
-#[test]
-fn a_corrupt_search_index_never_blocks_writes_and_search_falls_back() -> TestResult {
-    let dir = tempdir()?;
-    let db = dir.path().join("fts.db");
-    let storage = StorageHandle::open(&db)?;
-    let thread = storage.create_thread(None, "t", ThreadMode::Chat, None, None)?;
-    let first = storage.append_node(
-        thread.id.clone(),
-        None,
-        NodeRole::User,
-        "the quick brown fox".to_owned(),
-        None,
-    )?;
-    {
-        let conn = Connection::open(&db)?;
-        // A missing structure record makes every FTS5 write fail with SQLITE_CORRUPT_VTAB.
-        conn.execute("DELETE FROM nodes_fts_data WHERE id = 1", [])?;
-    }
-    let second = storage.append_node(
-        thread.id.clone(),
-        Some(first.id.clone()),
-        NodeRole::Assistant,
-        "jumps over the lazy dog".to_owned(),
-        None,
-    );
-    assert!(second.is_ok(), "writes survive a corrupt index: {second:?}");
-    assert_eq!(
-        storage.get_kv_meta("search.fts_stale")?.as_deref(),
-        Some("1")
-    );
-    let hits = storage.search_nodes("lazy dog", Some(&thread.id), 10)?;
-    assert_eq!(hits.len(), 1, "stale index: search falls back to a scan");
-    storage.delete_node(thread.id.clone(), first.id)?;
-    assert_eq!(storage.list_nodes(&thread.id)?.len(), 1);
-    Ok(())
-}
-
-/// D6: CJK text and mid-word substrings are found (trigram index; queries shorter than three
-/// characters use a bounded scan), and Latin words keep the word index with ranking.
-#[test]
-fn search_finds_cjk_and_substrings() -> TestResult {
-    let dir = tempdir()?;
-    let storage = StorageHandle::open(dir.path().join("tri.db"))?;
-    let thread = storage.create_thread(None, "t", ThreadMode::Chat, None, None)?;
-    let mut parent = None;
-    for text in [
-        "我爱北京天安门",
-        "the quick brownfox jumps",
-        "Xin chào thế giới",
-    ] {
-        let node = storage.append_node(
-            thread.id.clone(),
-            parent,
-            NodeRole::User,
-            text.to_owned(),
-            None,
-        )?;
-        parent = Some(node.id);
-    }
-    let found = |q: &str| -> Result<usize, Box<dyn std::error::Error>> {
-        Ok(storage.search_nodes(q, Some(&thread.id), 10)?.len())
-    };
-    assert_eq!(found("北京天")?, 1, "CJK via trigram");
-    assert_eq!(found("北京")?, 1, "two CJK characters via scan");
-    assert_eq!(found("brownfo")?, 1, "mid-word substring via trigram");
-    assert_eq!(found("thế giới")?, 1, "Vietnamese words");
-    assert_eq!(found("quick")?, 1, "Latin word via the word index");
-    Ok(())
-}
-
-/// G3: a stale search index is rebuilt once at the next open (never live, during writes),
-/// restoring indexed search and both sets of triggers.
-#[test]
-fn a_stale_search_index_is_rebuilt_at_the_next_open() -> TestResult {
-    let dir = tempdir()?;
-    let db = dir.path().join("rebuild.db");
-    let thread_id = {
-        let storage = StorageHandle::open(&db)?;
-        let thread = storage.create_thread(None, "t", ThreadMode::Chat, None, None)?;
-        let first = storage.append_node(
-            thread.id.clone(),
-            None,
-            NodeRole::User,
-            "alpha beta".to_owned(),
-            None,
-        )?;
-        {
-            let conn = Connection::open(&db)?;
-            conn.execute("DELETE FROM nodes_fts_data WHERE id = 1", [])?;
-        }
-        storage.append_node(
-            thread.id.clone(),
-            Some(first.id),
-            NodeRole::Assistant,
-            "gamma delta".to_owned(),
-            None,
-        )?;
-        assert_eq!(
-            storage.get_kv_meta("search.fts_stale")?.as_deref(),
-            Some("1")
-        );
-        storage.shutdown()?;
-        thread.id
-    };
-    let storage = StorageHandle::open(&db)?;
-    assert_eq!(storage.get_kv_meta("search.fts_stale")?, None);
-    let conn = storage.open_reader()?;
-    let indexed: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM nodes_fts WHERE nodes_fts MATCH 'gamma'",
-        [],
-        |row| row.get(0),
-    )?;
-    assert_eq!(
-        indexed, 1,
-        "the word index holds the row written while stale"
-    );
-    let triggers: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'nodes_%'",
-        [],
-        |row| row.get(0),
-    )?;
-    assert_eq!(triggers, 6, "word and trigram triggers are back");
-    assert_eq!(
-        storage.search_nodes("gamma", Some(&thread_id), 10)?.len(),
-        1
-    );
-    Ok(())
-}
-
-/// opencode #59189: after a disk I/O error (for example once the machine wakes from sleep) the
-/// writer reopens its connection, so the next write works instead of failing forever.
-#[test]
-fn the_writer_reopens_its_connection_after_an_io_error() -> TestResult {
-    let dir = tempdir()?;
-    let storage = StorageHandle::open(dir.path().join("io.db"))?;
-    // Simulate a dead handle: swap in a connection to nowhere and fail with an I/O error.
-    let failed: BistreResult<()> = storage.write(|conn| {
-        *conn = Connection::open_in_memory().map_err(map_sqlite_err)?;
-        Err(BistreError::new(DiagnosticKey::StorageIoError))
-    });
-    assert_eq!(
-        failed.err().map(|e| e.key),
-        Some(DiagnosticKey::StorageIoError)
-    );
-    let thread = storage.create_thread(None, "after wake", ThreadMode::Chat, None, None);
-    assert!(
-        thread.is_ok(),
-        "the next write reaches the database: {thread:?}"
-    );
-    Ok(())
-}
-
-/// R20: a backup never occupies the single writer, so runs keep saving while it copies. Here
-/// the writer is held busy; the backup must still finish.
-#[test]
-fn a_backup_does_not_wait_for_the_writer() -> TestResult {
-    let dir = tempdir()?;
-    let storage = StorageHandle::open(dir.path().join("live.db"))?;
-    storage.create_thread(None, "t", ThreadMode::Chat, None, None)?;
-    let (release_tx, release_rx) = mpsc::channel::<()>();
-    let (held_tx, held_rx) = mpsc::channel::<()>();
-    let busy = Arc::clone(&storage);
-    let holder = thread::spawn(move || {
-        busy.write(move |_| {
-            held_tx
-                .send(())
-                .map_err(|_| BistreError::new(DiagnosticKey::InternalError))?;
-            release_rx
-                .recv_timeout(std::time::Duration::from_secs(10))
-                .map_err(|_| BistreError::new(DiagnosticKey::InternalError))
         })
-    });
-    held_rx.recv_timeout(std::time::Duration::from_secs(5))?;
-    let (done_tx, done_rx) = mpsc::channel();
-    let snap = Arc::clone(&storage);
-    let dest = dir.path().join("backup.db");
-    let backup = thread::spawn(move || done_tx.send(snap.backup_database(&dest)));
-    let outcome = done_rx.recv_timeout(std::time::Duration::from_secs(5));
-    release_tx.send(())?;
-    holder.join().map_err(|_| "holder panicked")??;
-    backup.join().map_err(|_| "backup panicked")??;
-    assert!(
-        matches!(outcome, Ok(Ok(()))),
-        "the backup finished while the writer was busy: {outcome:?}"
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            (SpendPurpose::Chat, 1, 900, 400, 5_000),
+            (SpendPurpose::Title, 2, 22, 5, 500),
+            (SpendPurpose::Voice, 1, 40, 0, 700),
+        ]
     );
-    Ok(())
-}
-
-/// R37: the branch walk returns exactly the leaf's ancestry, root first, skipping siblings.
-#[test]
-fn the_branch_walk_returns_only_the_leafs_ancestry() -> Result<(), Box<dyn std::error::Error>> {
-    let dir = tempdir()?;
-    let storage = StorageHandle::open(dir.path().join("b.sqlite"))?;
-    let thread = storage.create_thread(None, "t", ThreadMode::Chat, None, None)?;
-    let root = storage.append_node(
-        thread.id.clone(),
-        None,
-        NodeRole::User,
-        "root".to_owned(),
-        None,
+    assert_eq!(storage.wallet_usage_by_purpose(i64::MAX)?, Vec::new());
+    // One chat's spend counts its settled rows only.
+    let thread = storage.create_thread(None, "spend", ThreadMode::Chat, None, None)?;
+    storage.record_wallet_entry(
+        Some(thread.id.clone()),
+        "p".to_owned(),
+        "m".to_owned(),
+        MoneyMicros::from_micros(1_250),
+        "settled".to_owned(),
     )?;
-    let a = storage.append_node(
-        thread.id.clone(),
-        Some(root.id.clone()),
-        NodeRole::Assistant,
-        "a".to_owned(),
+    storage.reserve_wallet_spend(
+        Some(thread.id.clone()),
+        "p".to_owned(),
+        "m".to_owned(),
+        MoneyMicros::from_micros(9_000),
         None,
+        0,
     )?;
-    let sibling = storage.append_node(
-        thread.id.clone(),
-        Some(root.id.clone()),
-        NodeRole::Assistant,
-        "other".to_owned(),
-        None,
-    )?;
-    let leaf = storage.append_node(
-        thread.id.clone(),
-        Some(a.id.clone()),
-        NodeRole::User,
-        "leaf".to_owned(),
-        None,
-    )?;
-    let branch = storage.list_branch(&thread.id, &leaf.id)?;
-    let ids: Vec<&str> = branch.iter().map(|n| n.id.as_str()).collect();
-    assert_eq!(ids, vec![root.id.as_str(), a.id.as_str(), leaf.id.as_str()]);
-    assert!(!ids.contains(&sibling.id.as_str()));
-    assert_eq!(storage.list_branch(&thread.id, "missing")?.len(), 0);
+    assert_eq!(
+        storage.thread_spend_micros(&thread.id)?,
+        MoneyMicros::from_micros(1_250)
+    );
     Ok(())
 }

@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use bistre_protocol::{BistreError, BistreResult, DiagnosticKey, MoneyMicros};
+use bistre_protocol::{BistreError, BistreResult, DiagnosticKey};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -20,18 +20,6 @@ pub struct SubagentSandbox {
     pub source_root: String,
     pub sandbox_path: String,
     pub used_git_worktree: bool,
-}
-
-/// Compact structured receipt returned to parent runs without flooding parent context.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SubagentProgressReceipt {
-    pub subagent_id: String,
-    pub role: String,
-    pub status: String,
-    pub sandbox_path: String,
-    pub used_git_worktree: bool,
-    pub summary: String,
-    pub cost_micros: MoneyMicros,
 }
 
 /// Prepares an isolated sandbox directory for a background subagent under `scratch_parent`:
@@ -76,7 +64,8 @@ pub async fn prepare_worktree_sandbox(
     }
 
     // Deterministic non-git / Android copy-sandbox fallback (skipping heavy VCS/build caches).
-    copy_dir_filtered(source_root, &target_dir, 0)?;
+    let (src, dst) = (source_root.to_path_buf(), target_dir.clone());
+    crate::off_worker::blocking(move || copy_dir_filtered(&src, &dst, 0)).await?;
     Ok(SubagentSandbox {
         sandbox_id,
         source_root: source_root.display().to_string(),
@@ -102,12 +91,15 @@ pub async fn cleanup_worktree_sandbox(sandbox: &SubagentSandbox) -> BistreResult
             tracing::debug!(code = ?out.status.code(), "git worktree remove failed; removing directory");
         }
     }
-    if target.exists() {
-        std::fs::remove_dir_all(&target).map_err(|_| {
-            BistreError::with_detail(DiagnosticKey::InternalError, "sandbox_cleanup")
-        })?;
-    }
-    Ok(())
+    crate::off_worker::blocking(move || {
+        if target.exists() {
+            std::fs::remove_dir_all(&target).map_err(|_| {
+                BistreError::with_detail(DiagnosticKey::InternalError, "sandbox_cleanup")
+            })?;
+        }
+        Ok(())
+    })
+    .await
 }
 
 fn copy_dir_filtered(src: &Path, dst: &Path, depth: u8) -> BistreResult<()> {
@@ -148,12 +140,40 @@ fn copy_dir_filtered(src: &Path, dst: &Path, depth: u8) -> BistreResult<()> {
     Ok(())
 }
 
+/// Upper bound on a subagent summary returned to its parent run (`4 KiB`).
+pub const MAX_SUBAGENT_SUMMARY_BYTES: usize = 4 * 1024;
+
+/// Bounds a subagent summary to [`MAX_SUBAGENT_SUMMARY_BYTES`] on a UTF-8 char boundary so a
+/// subagent can never flood its parent context window.
+#[must_use]
+pub fn cap_subagent_summary(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.len() <= MAX_SUBAGENT_SUMMARY_BYTES {
+        return trimmed.to_owned();
+    }
+    let cut = trimmed.floor_char_boundary(MAX_SUBAGENT_SUMMARY_BYTES);
+    let mut out = trimmed[..cut].to_owned();
+    out.push_str("\n...[truncated]");
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use tempfile::tempdir;
 
     type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+    #[test]
+    fn subagent_summary_is_capped_on_utf8_boundary() {
+        let short = "All checks green.";
+        assert_eq!(cap_subagent_summary(short), short);
+
+        let long = "é".repeat(3_000);
+        let capped = cap_subagent_summary(&long);
+        assert!(capped.ends_with("\n...[truncated]"));
+        assert!(capped.len() <= MAX_SUBAGENT_SUMMARY_BYTES + "\n...[truncated]".len());
+    }
 
     #[tokio::test]
     async fn copy_sandbox_fallback_isolates_workspace_and_skips_secrets() -> TestResult {

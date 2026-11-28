@@ -1,4 +1,4 @@
-//! W4.9: the cached prefix of every request (tools, then the system prompt) is pinned by a
+//! The cached prefix of every request (tools, then the system prompt) is pinned by a
 //! golden per dialect, and stays byte-identical as the conversation grows (hermes #144442: a
 //! volatile value in the hashed prefix collapses the prompt cache). Cache breakpoints are
 //! checked on the converted wire body, not on canonical data (`SillyTavern` #5227).

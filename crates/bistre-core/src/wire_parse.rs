@@ -71,7 +71,7 @@ pub fn extract_sse_delta(dialect: ProviderDialect, json_str: &str) -> Option<Str
     delta_of_frame(dialect, &val)
 }
 
-/// The same, on a frame already parsed once (R35).
+/// The same, on a frame already parsed once.
 pub fn delta_of_frame(dialect: ProviderDialect, val: &Value) -> Option<String> {
     match dialect {
         ProviderDialect::OpenAi => {
@@ -196,7 +196,7 @@ pub fn extract_sse_thinking_delta(dialect: ProviderDialect, json_str: &str) -> O
     thinking_delta_of_frame(dialect, &val)
 }
 
-/// The same, on a frame already parsed once (R35).
+/// The same, on a frame already parsed once.
 pub fn thinking_delta_of_frame(dialect: ProviderDialect, val: &Value) -> Option<String> {
     match dialect {
         ProviderDialect::OpenAi => {
@@ -266,13 +266,25 @@ pub fn thinking_delta_of_frame(dialect: ProviderDialect, val: &Value) -> Option<
     }
 }
 
+/// A delta's reasoning text: the plain `reasoning_content` or `reasoning` string, else the
+/// readable `OpenRouter` `reasoning_details` entries, so one thought is never shown twice.
+/// The redaction placeholder `OpenRouter` streams for encrypted reasoning is never shown.
 fn extract_openai_chat_reasoning_delta(val: &Value) -> Option<String> {
     let delta = val.get("choices")?.get(0)?.get("delta")?;
-    delta
+    let text = match delta
         .get("reasoning_content")
         .or_else(|| delta.get("reasoning"))
         .and_then(Value::as_str)
-        .map(ToOwned::to_owned)
+    {
+        Some(plain) => plain.to_owned(),
+        None => crate::reasoning_details::readable_text(
+            delta
+                .get("reasoning_details")
+                .and_then(Value::as_array)
+                .map_or(&[][..], Vec::as_slice),
+        ),
+    };
+    (!text.is_empty() && !crate::reasoning_details::is_placeholder(&text)).then_some(text)
 }
 
 fn merge_anthropic_usage_block(u: &Value, usage: &mut UsageMetrics) {
@@ -295,6 +307,58 @@ fn merge_anthropic_usage_block(u: &Value, usage: &mut UsageMetrics) {
     {
         usage.cache_creation_1h_input_tokens = v;
     }
+    if let Some(v) = u
+        .pointer("/server_tool_use/web_search_requests")
+        .and_then(Value::as_u64)
+    {
+        usage.web_searches = v;
+    }
+}
+
+/// A reply's picture and sound tokens: `OpenAI` `completion_tokens_details` or
+/// `output_tokens_details` (`image_tokens`, `audio_tokens`), Gemini `candidatesTokensDetails`
+/// (`modality` `IMAGE` and `AUDIO`).
+fn merge_media_output_tokens(u: &Value, usage: &mut UsageMetrics) {
+    if let Some(d) = u
+        .get("completion_tokens_details")
+        .or_else(|| u.get("output_tokens_details"))
+    {
+        if let Some(v) = d.get("image_tokens").and_then(Value::as_u64) {
+            usage.output_image_tokens = v;
+        }
+        if let Some(v) = d.get("audio_tokens").and_then(Value::as_u64) {
+            usage.output_audio_tokens = v;
+        }
+    }
+    if let Some(list) = u
+        .get("candidatesTokensDetails")
+        .or_else(|| u.get("candidates_tokens_details"))
+        .and_then(Value::as_array)
+    {
+        let count = |m: &str| -> u64 {
+            list.iter()
+                .filter(|e| e["modality"] == m)
+                .filter_map(|e| {
+                    e["tokenCount"]
+                        .as_u64()
+                        .or_else(|| e["token_count"].as_u64())
+                })
+                .sum()
+        };
+        usage.output_image_tokens = count("IMAGE");
+        usage.output_audio_tokens = count("AUDIO");
+    }
+}
+
+/// The per-call provider tools of a finished `OpenAI` Responses reply: its `web_search_call`
+/// items, and its code interpreter containers (each one session).
+fn merge_openai_paid_calls(output: &[Value], usage: &mut UsageMetrics) {
+    let of_type = |ty: &'static str| output.iter().filter(move |i| i["type"] == ty);
+    usage.web_searches = u64::try_from(of_type("web_search_call").count()).unwrap_or(u64::MAX);
+    let containers: std::collections::BTreeSet<&str> = of_type("code_interpreter_call")
+        .map(|i| i["container_id"].as_str().unwrap_or_default())
+        .collect();
+    usage.code_sessions = u64::try_from(containers.len()).unwrap_or(u64::MAX);
 }
 
 /// Extracts exact integer token counts from SSE lifecycle frames across all 4 supported dialects.
@@ -304,15 +368,19 @@ pub fn merge_sse_usage(dialect: ProviderDialect, json_str: &str, usage: &mut Usa
     }
 }
 
-/// The same, on a frame already parsed once (R35).
+/// The same, on a frame already parsed once.
 pub fn merge_usage_of_frame(dialect: ProviderDialect, val: &Value, usage: &mut UsageMetrics) {
     match dialect {
         ProviderDialect::OpenAi => {
+            if let Some(output) = val.pointer("/response/output").and_then(Value::as_array) {
+                merge_openai_paid_calls(output, usage);
+            }
             let u = val
                 .get("response")
                 .and_then(|r| r.get("usage"))
                 .or_else(|| val.get("usage"));
             if let Some(u) = u {
+                merge_media_output_tokens(u, usage);
                 if let Some(v) = u
                     .get("input_tokens")
                     .or_else(|| u.get("prompt_tokens"))
@@ -359,6 +427,7 @@ pub fn merge_usage_of_frame(dialect: ProviderDialect, val: &Value, usage: &mut U
                 .or_else(|| val.get("interaction").and_then(|i| i.get("usage")))
                 .or_else(|| val.get("usage"));
             if let Some(u) = u {
+                merge_media_output_tokens(u, usage);
                 if let Some(v) = u
                     .get("promptTokenCount")
                     .or_else(|| u.get("total_input_tokens"))
@@ -393,6 +462,7 @@ pub fn merge_usage_of_frame(dialect: ProviderDialect, val: &Value, usage: &mut U
         }
         ProviderDialect::CustomOpenAi => {
             if let Some(u) = val.get("usage") {
+                merge_media_output_tokens(u, usage);
                 if let Some(v) = u
                     .get("prompt_tokens")
                     .or_else(|| u.get("input_tokens"))
@@ -420,7 +490,7 @@ pub fn is_terminal_event(dialect: ProviderDialect, payload: &str) -> bool {
     serde_json::from_str::<Value>(payload).is_ok_and(|val| is_terminal_frame(dialect, &val))
 }
 
-/// The same, on a frame already parsed once (R35).
+/// The same, on a frame already parsed once.
 pub fn is_terminal_frame(dialect: ProviderDialect, val: &Value) -> bool {
     let chat_finished = || {
         val.get("choices")

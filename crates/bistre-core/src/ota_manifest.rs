@@ -1,4 +1,4 @@
-//! OTA manifest v2 (A-W 7b, Spec 10): one typed shape, written by the release builder
+//! OTA manifest v2 (Spec 10): one typed shape, written by the release builder
 //! (`examples/ota_manifest.rs`) and read by the app with the same types, so the two can never
 //! drift. Unknown fields are refused, every digest is 64 hex characters, every size is
 //! non-zero, and each platform names exactly the file it can install.
@@ -157,13 +157,24 @@ fn hash_file(path: &Path) -> BistreResult<(String, u64)> {
 /// with URLs pinned to `https://github.com/<repo>/releases/download/<tag>/<file>`. Only
 /// installable files are listed (the SBOM and system packages are not). Every target must be
 /// present, so a release can never silently drop a platform.
+///
+/// `built_version` is the version the released binaries report (`CORE_VERSION` from
+/// `Cargo.toml`). A tag that differs is refused: the installed app would still report the
+/// old version and offer the same update again after every install.
 pub fn build_release_manifest(
     dist: &Path,
     tag: &str,
+    built_version: &str,
     repo: &str,
     release_notes: &str,
 ) -> BistreResult<OtaManifestV2> {
     let semver = tag.strip_prefix('v').unwrap_or(tag).to_owned();
+    if semver != built_version {
+        return Err(BistreError::with_detail(
+            DiagnosticKey::OtaCheckFailed,
+            "tag_version_mismatch",
+        ));
+    }
     let mut targets = BTreeMap::new();
     for target in OtaTarget::ALL {
         let name = target.asset_file_name(tag);
@@ -287,7 +298,11 @@ mod tests {
             )?;
         }
         std::fs::write(dir.path().join("bistre-v0.3.0-engine.cdx.json"), b"{}")?;
-        let m = build_release_manifest(dir.path(), "v0.3.0", "owner/repo", "notes")?;
+        assert!(
+            build_release_manifest(dir.path(), "v0.3.0", "0.2.0", "owner/repo", "").is_err(),
+            "a tag other than the built version is refused"
+        );
+        let m = build_release_manifest(dir.path(), "v0.3.0", "0.3.0", "owner/repo", "notes")?;
         assert_eq!(m.semver, "0.3.0");
         assert_eq!(m.targets.len(), 3, "the SBOM is never an asset");
         assert_eq!(
@@ -303,7 +318,7 @@ mod tests {
                 .join(OtaTarget::AndroidArm64.asset_file_name("v0.3.0")),
         )?;
         assert!(
-            build_release_manifest(dir.path(), "v0.3.0", "owner/repo", "").is_err(),
+            build_release_manifest(dir.path(), "v0.3.0", "0.3.0", "owner/repo", "").is_err(),
             "a release missing a platform is refused"
         );
         Ok(())

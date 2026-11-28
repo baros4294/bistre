@@ -5,21 +5,24 @@ use super::{
     BistreResult, BoxFuture, CORE_VERSION, CharacterCardRecord, CronJobRecord, CursorEventRecord,
     DiagnosticKey, DraftRecord, EngineClient, EngineEvent, InProcessEngine, MemoryEntryRecord,
     MoneyMicros, NodeRecord, NodeRole, Ordering, Path, PowerGuardStatus, PowerLeasePolicy,
-    ProviderDialect, ProviderModelInfo, ProviderPatch, ProviderProfile, RegexRuleRecord,
-    RunStepRecord, SearchHit, SignedPackManifest, SteeringMessage, StorageStats,
+    ProjectRecord, ProviderDialect, ProviderModelInfo, ProviderPatch, ProviderProfile,
+    RegexRuleRecord, RunStepRecord, SearchHit, SignedPackManifest, SteeringMessage, StorageStats,
     StoryChapterRecord, StoryEntryRecord, StoryProgressionRecord, StorySceneRecord,
     StorySnapshotRecord, StoryThreadStateRecord, SystemPowerEvent, ThreadMode, ThreadPatch,
-    ThreadSummary, ToolRiskTier, UpdateCheckResult, UserPersonaRecord, WorkspaceCheckpointRecord,
-    WorkspaceSummary, agent, broadcast, compaction, credentials, cron, hooks, import_policy, mcp,
-    ota, providers, skills, story, subagents, tools, verify_signed_pack,
+    ThreadSummary, UpdateCheckResult, UserPersonaRecord, WorkspaceCheckpointRecord, broadcast,
+    credentials, hooks, mcp, ota, providers, skills, story, subagents, tools, verify_signed_pack,
 };
-use crate::engine_runs::{utc_day_start_unix_ms, utc_now_unix_ms};
-use crate::events::{emit, emit_logged};
+use super::{AttachmentInput, ModelCatalogInfo, StorageFileEntry};
+use crate::engine_runs::utc_day_start_unix_ms;
+use crate::events::emit;
 use crate::off_worker::off_worker;
 use bistre_protocol::lock_or_recover;
 
-impl EngineClient for InProcessEngine {
-    fn health(&self) -> BoxFuture<'_, BistreResult<AppHealthSnapshot>> {
+/// Longest direction a guided Regenerate sends, in characters.
+pub(crate) const MAX_REPLY_GUIDANCE_CHARS: usize = 2_000;
+
+impl InProcessEngine {
+    pub fn health(&self) -> BoxFuture<'_, BistreResult<AppHealthSnapshot>> {
         Box::pin(async move {
             let h = self.storage.health()?;
             Ok(AppHealthSnapshot {
@@ -34,25 +37,21 @@ impl EngineClient for InProcessEngine {
         })
     }
 
-    fn list_workspaces(&self) -> BoxFuture<'_, BistreResult<Vec<WorkspaceSummary>>> {
-        Box::pin(async move { self.storage.list_workspaces() })
-    }
-
-    fn list_providers(&self) -> BoxFuture<'_, BistreResult<Vec<ProviderProfile>>> {
+    pub fn list_providers(&self) -> BoxFuture<'_, BistreResult<Vec<ProviderProfile>>> {
         Box::pin(async move {
             let list = self.storage.list_providers()?;
             Ok(list.into_iter().map(|p| self.hydrate_provider(p)).collect())
         })
     }
 
-    fn update_provider(
+    pub fn update_provider(
         &self,
         provider_id: String,
         patch: ProviderPatch,
     ) -> BoxFuture<'_, BistreResult<ProviderProfile>> {
         Box::pin(async move {
             let updated = self.storage.update_provider(provider_id, patch)?;
-            // Saved custom headers belong to one server: a new origin clears them (A-S8).
+            // Saved custom headers belong to one server: a new origin clears them.
             if crate::provider_prefs::drop_headers_if_origin_changed(
                 &self.storage,
                 &updated.id,
@@ -70,7 +69,7 @@ impl EngineClient for InProcessEngine {
         })
     }
 
-    fn set_provider_api_key(
+    pub fn set_provider_api_key(
         &self,
         provider_id: String,
         api_key: String,
@@ -118,7 +117,7 @@ impl EngineClient for InProcessEngine {
         })
     }
 
-    fn clear_provider_api_key(
+    pub fn clear_provider_api_key(
         &self,
         provider_id: String,
     ) -> BoxFuture<'_, BistreResult<ProviderProfile>> {
@@ -135,21 +134,29 @@ impl EngineClient for InProcessEngine {
         })
     }
 
-    fn get_provider_api_keys(
+    pub fn get_provider_api_keys(
         &self,
         provider_id: String,
     ) -> BoxFuture<'_, BistreResult<Vec<String>>> {
         Box::pin(async move { self.get_provider_api_keys_inner(&provider_id) })
     }
 
-    fn lookup_model_catalog_info(
+    pub fn lookup_model_catalog_info(
         &self,
+        provider_id: String,
         model_id: String,
-    ) -> BoxFuture<'_, BistreResult<Option<super::ModelCatalogInfo>>> {
-        Box::pin(async move { self.lookup_model_catalog_info_inner(&model_id).await })
+    ) -> BoxFuture<'_, BistreResult<Option<ModelCatalogInfo>>> {
+        Box::pin(async move {
+            self.lookup_model_catalog_info_inner(&provider_id, &model_id)
+                .await
+        })
     }
 
-    fn create_provider(
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Explicit provider creation fields map directly across EngineClient implementations."
+    )]
+    pub fn create_provider(
         &self,
         name: String,
         dialect: ProviderDialect,
@@ -196,7 +203,7 @@ impl EngineClient for InProcessEngine {
         })
     }
 
-    fn create_custom_provider(
+    pub fn create_custom_provider(
         &self,
         name: String,
         base_url: String,
@@ -214,7 +221,7 @@ impl EngineClient for InProcessEngine {
         )
     }
 
-    fn delete_provider(&self, provider_id: String) -> BoxFuture<'_, BistreResult<()>> {
+    pub fn delete_provider(&self, provider_id: String) -> BoxFuture<'_, BistreResult<()>> {
         Box::pin(async move {
             self.storage.delete_provider(provider_id.clone())?;
             self.vault.delete(&Self::vault_key(&provider_id))?;
@@ -228,7 +235,7 @@ impl EngineClient for InProcessEngine {
         })
     }
 
-    fn fetch_provider_models(
+    pub fn fetch_provider_models(
         &self,
         provider_id: String,
     ) -> BoxFuture<'_, BistreResult<Vec<ProviderModelInfo>>> {
@@ -237,17 +244,18 @@ impl EngineClient for InProcessEngine {
                 .storage
                 .get_provider(&provider_id)?
                 .ok_or_else(|| BistreError::new(DiagnosticKey::StorageNotFound))?;
-            let profile = self.hydrate_provider(raw);
+            let adv = crate::provider_prefs::load_provider_advanced(&self.storage, &provider_id);
+            let profile = adv.speaking(&self.hydrate_provider(raw));
             let keys = self.load_key_ring(&provider_id)?;
-            providers::fetch_models(&self.http, &profile, &keys).await
+            providers::fetch_models_with_auth(&self.http, &profile, &keys, adv.auth_mode).await
         })
     }
 
-    fn list_assistants(&self) -> BoxFuture<'_, BistreResult<Vec<AssistantRecord>>> {
+    pub fn list_assistants(&self) -> BoxFuture<'_, BistreResult<Vec<AssistantRecord>>> {
         Box::pin(async move { self.storage.list_assistants() })
     }
 
-    fn create_assistant(
+    pub fn create_assistant(
         &self,
         name: String,
         role_subtitle: String,
@@ -266,7 +274,7 @@ impl EngineClient for InProcessEngine {
         })
     }
 
-    fn update_assistant(
+    pub fn update_assistant(
         &self,
         assistant_id: String,
         patch: AssistantPatch,
@@ -274,11 +282,17 @@ impl EngineClient for InProcessEngine {
         Box::pin(async move { self.storage.update_assistant(assistant_id, patch) })
     }
 
-    fn delete_assistant(&self, assistant_id: String) -> BoxFuture<'_, BistreResult<()>> {
-        Box::pin(async move { self.storage.delete_assistant(assistant_id) })
+    pub fn delete_assistant(&self, assistant_id: String) -> BoxFuture<'_, BistreResult<()>> {
+        Box::pin(async move {
+            self.storage.delete_assistant(assistant_id.clone())?;
+            self.storage.delete_kv_meta(format!(
+                "{}{assistant_id}",
+                crate::chat_extras::GREETING_KEY_PREFIX
+            ))
+        })
     }
 
-    fn create_thread(
+    pub fn create_thread(
         &self,
         workspace_id: Option<String>,
         title: String,
@@ -287,17 +301,18 @@ impl EngineClient for InProcessEngine {
         assistant_id: Option<String>,
     ) -> BoxFuture<'_, BistreResult<ThreadSummary>> {
         Box::pin(async move {
-            self.storage.create_thread(
+            let thread = self.storage.create_thread(
                 workspace_id,
                 &title,
                 mode,
                 topic.as_deref(),
                 assistant_id.as_deref(),
-            )
+            )?;
+            crate::chat_extras::open_with_greeting(&self.storage, thread)
         })
     }
 
-    fn update_thread(
+    pub fn update_thread(
         &self,
         thread_id: String,
         patch: ThreadPatch,
@@ -305,7 +320,7 @@ impl EngineClient for InProcessEngine {
         Box::pin(async move { self.storage.update_thread(thread_id, patch) })
     }
 
-    fn delete_thread(&self, thread_id: String) -> BoxFuture<'_, BistreResult<()>> {
+    pub fn delete_thread(&self, thread_id: String) -> BoxFuture<'_, BistreResult<()>> {
         Box::pin(async move {
             self.cancel_active_run(thread_id.clone()).await?;
             lock_or_recover(&self.thread_auto_approvals, "approval_memory")
@@ -314,14 +329,14 @@ impl EngineClient for InProcessEngine {
         })
     }
 
-    fn list_threads(
+    pub fn list_threads(
         &self,
         workspace_id: Option<String>,
     ) -> BoxFuture<'_, BistreResult<Vec<ThreadSummary>>> {
         Box::pin(async move { self.storage.list_threads(workspace_id.as_deref()) })
     }
 
-    fn append_node(
+    pub fn append_node(
         &self,
         thread_id: String,
         parent_id: Option<String>,
@@ -345,32 +360,34 @@ impl EngineClient for InProcessEngine {
         })
     }
 
-    fn send_and_stream_reply(
+    pub fn send_and_stream_reply(
         &self,
         thread_id: String,
         parent_id: Option<String>,
         user_content: String,
     ) -> BoxFuture<'_, BistreResult<NodeRecord>> {
         Box::pin(async move {
+            self.refresh_stale_mcp_tools();
             self.stop_previous_run(&thread_id).await;
             self.send_with_attachments_inner(thread_id, parent_id, &user_content, &[])
         })
     }
 
-    fn send_and_stream_reply_with_attachments(
+    pub fn send_and_stream_reply_with_attachments(
         &self,
         thread_id: String,
         parent_id: Option<String>,
         user_content: String,
-        attachments: Vec<super::AttachmentInput>,
+        attachments: Vec<AttachmentInput>,
     ) -> BoxFuture<'_, BistreResult<NodeRecord>> {
         Box::pin(async move {
+            self.refresh_stale_mcp_tools();
             self.stop_previous_run(&thread_id).await;
             self.send_with_attachments_inner(thread_id, parent_id, &user_content, &attachments)
         })
     }
 
-    fn steer_active_run_now(
+    pub fn steer_active_run_now(
         &self,
         thread_id: String,
         content: String,
@@ -378,19 +395,15 @@ impl EngineClient for InProcessEngine {
         Box::pin(async move { self.steer_active_run_now_inner(thread_id, &content) })
     }
 
-    fn export_all_threads_json(&self) -> BoxFuture<'_, BistreResult<String>> {
-        Box::pin(async move { self.export_all_threads_json_inner() })
-    }
-
-    fn import_threads_json(&self, raw_json: String) -> BoxFuture<'_, BistreResult<u32>> {
+    pub fn import_threads_json(&self, raw_json: String) -> BoxFuture<'_, BistreResult<u32>> {
         Box::pin(async move { self.import_threads_json_inner(&raw_json) })
     }
 
-    fn export_settings_json(&self) -> BoxFuture<'_, BistreResult<String>> {
+    pub fn export_settings_json(&self) -> BoxFuture<'_, BistreResult<String>> {
         Box::pin(async move { self.export_settings_json_inner() })
     }
 
-    fn import_settings_json(
+    pub fn import_settings_json(
         &self,
         raw_json: String,
         allow_loosening: bool,
@@ -398,19 +411,19 @@ impl EngineClient for InProcessEngine {
         Box::pin(async move { self.import_settings_json_inner(&raw_json, allow_loosening) })
     }
 
-    fn list_storage_files(&self) -> BoxFuture<'_, BistreResult<Vec<super::StorageFileEntry>>> {
+    pub fn list_storage_files(&self) -> BoxFuture<'_, BistreResult<Vec<StorageFileEntry>>> {
         Box::pin(async move { self.list_storage_files_inner() })
     }
 
-    fn delete_storage_file(&self, rel_path: String) -> BoxFuture<'_, BistreResult<bool>> {
+    pub fn delete_storage_file(&self, rel_path: String) -> BoxFuture<'_, BistreResult<bool>> {
         Box::pin(async move { self.delete_storage_file_inner(&rel_path) })
     }
 
-    fn clean_unused_storage_files(&self) -> BoxFuture<'_, BistreResult<u64>> {
+    pub fn clean_unused_storage_files(&self) -> BoxFuture<'_, BistreResult<u64>> {
         Box::pin(async move { self.clean_unused_storage_files_inner() })
     }
 
-    fn synthesize_speech(
+    pub fn synthesize_speech(
         &self,
         provider_id: String,
         model_id: String,
@@ -423,7 +436,7 @@ impl EngineClient for InProcessEngine {
         })
     }
 
-    fn start_live_voice_session(
+    pub fn start_live_voice_session(
         &self,
         provider_id: String,
         model_id: String,
@@ -436,7 +449,7 @@ impl EngineClient for InProcessEngine {
         })
     }
 
-    fn send_live_voice_pcm_chunk(
+    pub fn send_live_voice_pcm_chunk(
         &self,
         session_id: String,
         pcm_base64: String,
@@ -444,7 +457,7 @@ impl EngineClient for InProcessEngine {
         Box::pin(async move { self.live_voice.send_pcm_chunk(&session_id, pcm_base64) })
     }
 
-    fn send_live_voice_text(
+    pub fn send_live_voice_text(
         &self,
         session_id: String,
         text: String,
@@ -452,19 +465,37 @@ impl EngineClient for InProcessEngine {
         Box::pin(async move { self.live_voice.send_text(&session_id, text) })
     }
 
-    fn stop_live_voice_session(&self, session_id: String) -> BoxFuture<'_, BistreResult<()>> {
+    pub fn stop_live_voice_session(&self, session_id: String) -> BoxFuture<'_, BistreResult<()>> {
         Box::pin(async move {
             self.live_voice.stop_session(&session_id);
             Ok(())
         })
     }
 
-    fn regenerate_reply(
+    pub fn regenerate_reply(
         &self,
         thread_id: String,
         user_node_id: String,
     ) -> BoxFuture<'_, BistreResult<String>> {
+        self.regenerate_reply_guided(thread_id, user_node_id, String::new())
+    }
+
+    /// Regenerate whose reply follows `guidance` (at most `MAX_REPLY_GUIDANCE_CHARS`), sent
+    /// with this reply's instructions only; empty guidance is a plain Regenerate.
+    pub fn regenerate_reply_guided(
+        &self,
+        thread_id: String,
+        user_node_id: String,
+        guidance: String,
+    ) -> BoxFuture<'_, BistreResult<String>> {
         Box::pin(async move {
+            let guidance = guidance.trim();
+            if guidance.chars().count() > MAX_REPLY_GUIDANCE_CHARS {
+                return Err(BistreError::with_detail(
+                    DiagnosticKey::InvalidInput,
+                    "guidance_length",
+                ));
+            }
             let settings = self.storage.load_settings()?;
             let thread = self
                 .storage
@@ -487,11 +518,15 @@ impl EngineClient for InProcessEngine {
                 .system_prompt_override
                 .clone()
                 .unwrap_or_else(|| assistant.map_or_default(|a| a.system_prompt));
-            let system_prompt = crate::engine_runs::with_user_name(
+            let mut system_prompt = crate::engine_runs::with_user_name(
                 system_prompt,
                 &settings.user_display_name,
                 thread.mode,
             );
+            if !guidance.is_empty() {
+                system_prompt.push_str("\n\n[Direction for this reply]\n");
+                system_prompt.push_str(guidance);
+            }
 
             self.stop_previous_run(&thread_id).await;
             self.spawn_live_stream(
@@ -503,11 +538,12 @@ impl EngineClient for InProcessEngine {
                 system_prompt,
                 gen_params,
                 settings.provider_stateless_default,
+                crate::agent::RunApprovalPolicy::INTERACTIVE,
             )
         })
     }
 
-    fn edit_user_node_and_stream(
+    pub fn edit_user_node_and_stream(
         &self,
         thread_id: String,
         node_id: String,
@@ -527,15 +563,58 @@ impl EngineClient for InProcessEngine {
                 original.parent_id,
                 &new_content,
                 &preserved,
+                crate::agent::RunApprovalPolicy::INTERACTIVE,
             )
         })
     }
 
-    fn delete_node(&self, thread_id: String, node_id: String) -> BoxFuture<'_, BistreResult<()>> {
+    pub fn delete_node(
+        &self,
+        thread_id: String,
+        node_id: String,
+    ) -> BoxFuture<'_, BistreResult<()>> {
         Box::pin(async move { self.storage.delete_node(thread_id, node_id) })
     }
 
-    fn export_thread(
+    /// Copies the branch ending at `node_id` into a new chat (`StorageHandle::fork_thread`).
+    pub fn fork_thread(
+        &self,
+        thread_id: String,
+        node_id: String,
+    ) -> BoxFuture<'_, BistreResult<ThreadSummary>> {
+        Box::pin(off_worker(&self.storage, move |s| {
+            s.fork_thread(
+                &thread_id,
+                &node_id,
+                &[
+                    crate::context_exclusion::KEY_PREFIX,
+                    crate::goal::KEY_PREFIX,
+                ],
+            )
+        }))
+    }
+
+    /// Removes `node_id` and every message after it, stopping the chat's reply first.
+    pub fn delete_from_node(
+        &self,
+        thread_id: String,
+        node_id: String,
+    ) -> BoxFuture<'_, BistreResult<()>> {
+        Box::pin(async move {
+            self.cancel_active_run(thread_id.clone()).await?;
+            self.storage.delete_from_node(thread_id, node_id)
+        })
+    }
+
+    /// Removes every message of a chat and keeps the chat, stopping its reply first.
+    pub fn clear_thread_messages(&self, thread_id: String) -> BoxFuture<'_, BistreResult<()>> {
+        Box::pin(async move {
+            self.cancel_active_run(thread_id.clone()).await?;
+            self.storage.clear_thread_messages(thread_id)
+        })
+    }
+
+    pub fn export_thread(
         &self,
         thread_id: String,
         format: String,
@@ -545,13 +624,13 @@ impl EngineClient for InProcessEngine {
         }))
     }
 
-    fn backup_database(&self, dest_path: String) -> BoxFuture<'_, BistreResult<()>> {
+    pub fn backup_database(&self, dest_path: String) -> BoxFuture<'_, BistreResult<()>> {
         Box::pin(off_worker(&self.storage, move |s| {
             s.backup_database(Path::new(&dest_path))
         }))
     }
 
-    fn storage_stats(&self) -> BoxFuture<'_, BistreResult<StorageStats>> {
+    pub fn storage_stats(&self) -> BoxFuture<'_, BistreResult<StorageStats>> {
         Box::pin(async move {
             let h = self.storage.health()?;
             Ok(StorageStats {
@@ -567,14 +646,38 @@ impl EngineClient for InProcessEngine {
         })
     }
 
-    fn wallet_daily_spend_micros(&self) -> BoxFuture<'_, BistreResult<MoneyMicros>> {
+    pub fn wallet_daily_spend_micros(&self) -> BoxFuture<'_, BistreResult<MoneyMicros>> {
         Box::pin(async move {
             self.storage
                 .sum_wallet_spend_since_micros(utc_day_start_unix_ms())
         })
     }
 
-    fn check_for_updates(
+    pub fn search_mcp_registry(
+        &self,
+        query: String,
+        cursor: Option<String>,
+    ) -> BoxFuture<'_, BistreResult<crate::mcp_registry::McpRegistryPage>> {
+        Box::pin(async move {
+            crate::mcp_registry::search_registry(&self.web, &query, cursor.as_deref()).await
+        })
+    }
+
+    pub fn thread_spend_micros(
+        &self,
+        thread_id: String,
+    ) -> BoxFuture<'_, BistreResult<MoneyMicros>> {
+        Box::pin(async move { self.storage.thread_spend_micros(&thread_id) })
+    }
+
+    pub fn wallet_usage_by_purpose(
+        &self,
+        since_unix_ms: i64,
+    ) -> BoxFuture<'_, BistreResult<Vec<bistre_protocol::PurposeUsage>>> {
+        Box::pin(async move { self.storage.wallet_usage_by_purpose(since_unix_ms) })
+    }
+
+    pub fn check_for_updates(
         &self,
         feed_url_override: Option<String>,
     ) -> BoxFuture<'_, BistreResult<UpdateCheckResult>> {
@@ -584,10 +687,11 @@ impl EngineClient for InProcessEngine {
                 .map(|u| u.trim().to_owned())
                 .filter(|u| !u.is_empty())
                 .unwrap_or(settings.ota_feed_url);
-            let (summary, verified) = ota::check_for_updates(
+            let (summary, verified) = ota::check_for_updates_on_channel(
                 &self.ota_http,
                 &feed_url,
                 CORE_VERSION,
+                &settings.ota_channel,
                 self.active_runs.load(Ordering::Relaxed),
                 self.ota_release_key.get().map(String::as_str),
             )
@@ -597,31 +701,18 @@ impl EngineClient for InProcessEngine {
         })
     }
 
-    fn stage_update(&self, check: UpdateCheckResult) -> BoxFuture<'_, BistreResult<String>> {
-        Box::pin(async move {
-            // The UI only chooses *which* checked version to stage; every URL, digest, and size
-            // comes from the core-held signed manifest.
-            let verified = lock_or_recover(&self.verified_update, "verified_update")
-                .clone()
-                .filter(|m| m.latest_version() == check.latest_version)
-                .ok_or_else(|| {
-                    BistreError::with_detail(
-                        DiagnosticKey::OtaIntegrityFailed,
-                        "ota_manifest_unverified",
-                    )
-                })?;
-            ota::stage_update_artifact(
-                &self.ota_http,
-                &self.data_dir,
-                &verified,
-                CORE_VERSION,
-                self.active_runs.load(Ordering::Relaxed),
-            )
-            .await
-        })
+    pub fn stage_update(&self, check: UpdateCheckResult) -> BoxFuture<'_, BistreResult<String>> {
+        self.stage_verified_update(check, false)
     }
 
-    fn cancel_active_run(&self, thread_id: String) -> BoxFuture<'_, BistreResult<bool>> {
+    pub fn reinstall_update(
+        &self,
+        check: UpdateCheckResult,
+    ) -> BoxFuture<'_, BistreResult<String>> {
+        self.stage_verified_update(check, true)
+    }
+
+    pub fn cancel_active_run(&self, thread_id: String) -> BoxFuture<'_, BistreResult<bool>> {
         Box::pin(async move {
             let guard = lock_or_recover(&self.cancellations, "cancellations");
             if let Some(flag) = guard.get(&thread_id) {
@@ -633,15 +724,15 @@ impl EngineClient for InProcessEngine {
         })
     }
 
-    fn retry_run_now(&self, thread_id: String) -> BoxFuture<'_, BistreResult<bool>> {
+    pub fn retry_run_now(&self, thread_id: String) -> BoxFuture<'_, BistreResult<bool>> {
         Box::pin(async move { Ok(self.wake_run(&thread_id)) })
     }
 
-    fn list_nodes(&self, thread_id: String) -> BoxFuture<'_, BistreResult<Vec<NodeRecord>>> {
+    pub fn list_nodes(&self, thread_id: String) -> BoxFuture<'_, BistreResult<Vec<NodeRecord>>> {
         Box::pin(off_worker(&self.storage, move |s| s.list_nodes(&thread_id)))
     }
 
-    fn save_draft(
+    pub fn save_draft(
         &self,
         thread_id: String,
         text: String,
@@ -659,15 +750,18 @@ impl EngineClient for InProcessEngine {
         })
     }
 
-    fn load_draft(&self, thread_id: String) -> BoxFuture<'_, BistreResult<Option<DraftRecord>>> {
+    pub fn load_draft(
+        &self,
+        thread_id: String,
+    ) -> BoxFuture<'_, BistreResult<Option<DraftRecord>>> {
         Box::pin(async move { self.storage.load_draft(&thread_id) })
     }
 
-    fn load_settings(&self) -> BoxFuture<'_, BistreResult<AppSettings>> {
+    pub fn load_settings(&self) -> BoxFuture<'_, BistreResult<AppSettings>> {
         Box::pin(async move { self.storage.load_settings() })
     }
 
-    fn save_settings(&self, settings: AppSettings) -> BoxFuture<'_, BistreResult<AppSettings>> {
+    pub fn save_settings(&self, settings: AppSettings) -> BoxFuture<'_, BistreResult<AppSettings>> {
         Box::pin(async move {
             let saved = self.storage.save_settings(settings)?;
             // Any settings change may alter tool permissions: revoke outstanding permits now.
@@ -681,11 +775,11 @@ impl EngineClient for InProcessEngine {
         })
     }
 
-    fn wallet_spend_micros(&self) -> BoxFuture<'_, BistreResult<MoneyMicros>> {
+    pub fn wallet_spend_micros(&self) -> BoxFuture<'_, BistreResult<MoneyMicros>> {
         Box::pin(async move { self.storage.sum_wallet_spend_micros() })
     }
 
-    fn search_nodes(
+    pub fn search_nodes(
         &self,
         query: String,
         thread_id: Option<String>,
@@ -696,7 +790,7 @@ impl EngineClient for InProcessEngine {
         }))
     }
 
-    fn verify_data_pack(
+    pub fn verify_data_pack(
         &self,
         public_key_b64: String,
         manifest_bytes: Vec<u8>,
@@ -720,759 +814,58 @@ impl EngineClient for InProcessEngine {
             Ok(manifest)
         })
     }
+}
 
-    fn list_agent_runs(
-        &self,
-        thread_id: Option<String>,
-        only_active: bool,
-        limit: u32,
-    ) -> BoxFuture<'_, BistreResult<Vec<AgentRunRecord>>> {
-        Box::pin(async move {
-            self.storage
-                .list_agent_runs(thread_id.as_deref(), only_active, limit)
-        })
-    }
+/// Each `EngineClient` method runs the inherent method of the same name. The table in
+/// `engine_rpc.rs` lists them all, so none can be missed: a missing one would call itself,
+/// which the `unconditional_recursion` lint rejects.
+macro_rules! in_process_methods {
+    ($($wait:ident fn $name:ident ($($arg:ident : $ty:ty),* $(,)?) -> $ret:ty;)*) => {
+        $(fn $name(&self, $($arg: $ty),*) -> BoxFuture<'_, BistreResult<$ret>> {
+            InProcessEngine::$name(self, $($arg),*)
+        })*
+    };
+}
 
-    fn list_run_steps(&self, run_id: String) -> BoxFuture<'_, BistreResult<Vec<RunStepRecord>>> {
-        Box::pin(async move { self.storage.list_run_steps(&run_id) })
-    }
+impl EngineClient for InProcessEngine {
+    crate::engine_rpc::with_engine_rpc_table!(in_process_methods);
 
-    fn enqueue_steering(
-        &self,
-        thread_id: String,
-        content: String,
-    ) -> BoxFuture<'_, BistreResult<SteeringMessage>> {
-        Box::pin(async move {
-            let active_run_id = self
-                .storage
-                .list_agent_runs(Some(&thread_id), true, 1)?
-                .into_iter()
-                .next()
-                .map(|r| r.id);
-            let msg = self.storage.enqueue_steering_message(
-                thread_id.clone(),
-                active_run_id,
-                &content,
-                "[]".to_owned(),
-            )?;
-            let pending_count =
-                u32::try_from(self.storage.list_pending_steering(&thread_id)?.len())
-                    .unwrap_or(u32::MAX);
-            let ev = EngineEvent::SteeringQueueChanged {
-                thread_id: thread_id.clone(),
-                pending_count,
-            };
-            emit_logged(&self.storage, &self.events_tx, Some(thread_id), ev);
-            Ok(msg)
-        })
-    }
-
-    fn list_pending_steering(
-        &self,
-        thread_id: String,
-    ) -> BoxFuture<'_, BistreResult<Vec<SteeringMessage>>> {
-        Box::pin(async move { self.storage.list_pending_steering(&thread_id) })
-    }
-
-    fn delete_steering(&self, steering_id: String) -> BoxFuture<'_, BistreResult<()>> {
-        Box::pin(async move { self.storage.delete_steering_message(steering_id) })
-    }
-
-    fn power_guard_status(&self) -> BoxFuture<'_, BistreResult<PowerGuardStatus>> {
-        Box::pin(async move { Ok(self.power.status()) })
-    }
-
-    fn notify_power_event(&self, event: SystemPowerEvent) -> BoxFuture<'_, BistreResult<u32>> {
-        Box::pin(async move {
-            self.power.notify_system_event(event);
-            let settings = self.storage.load_settings()?;
-            let spent = self
-                .storage
-                .sum_wallet_spend_since_micros(utc_day_start_unix_ms())?;
-            let actions =
-                agent::handle_power_event(&self.storage, &settings, &self.events_tx, event, spent)?;
-            emit(
-                &self.events_tx,
-                EngineEvent::PowerStatusChanged {
-                    status: self.power.status(),
-                },
-            );
-            Ok(u32::try_from(actions.len()).unwrap_or(u32::MAX))
-        })
-    }
-
-    fn set_android_power_state(
-        &self,
-        fgs_active: bool,
-        battery_unrestricted: bool,
-    ) -> BoxFuture<'_, BistreResult<PowerGuardStatus>> {
-        Box::pin(async move {
-            self.power
-                .set_android_power_state(fgs_active, battery_unrestricted);
-            let status = self.power.status();
-            emit(
-                &self.events_tx,
-                EngineEvent::PowerStatusChanged {
-                    status: status.clone(),
-                },
-            );
-            Ok(status)
-        })
-    }
-
-    fn resolve_indeterminate_run(
-        &self,
-        run_id: String,
-        confirm_completed: bool,
-    ) -> BoxFuture<'_, BistreResult<AgentRunRecord>> {
-        Box::pin(async move {
-            agent::resolve_indeterminate_run(
-                &self.storage,
-                &self.events_tx,
-                run_id,
-                confirm_completed,
-            )
-        })
-    }
-
-    fn replay_events_after(
-        &self,
-        after_cursor: u64,
-        limit: u32,
-    ) -> BoxFuture<'_, BistreResult<Vec<CursorEventRecord>>> {
-        Box::pin(async move { self.storage.read_engine_events_after(after_cursor, limit) })
-    }
-
-    fn latest_event_cursor(&self) -> BoxFuture<'_, BistreResult<u64>> {
-        Box::pin(async move { self.storage.latest_event_cursor() })
-    }
-
-    fn context_breakdown(
-        &self,
-        thread_id: String,
-        leaf_node_id: String,
-        draft: String,
-    ) -> BoxFuture<'_, BistreResult<crate::ContextBreakdown>> {
-        let dir = self.data_dir.clone();
-        let prices = self.pricing.snapshot();
-        Box::pin(off_worker(&self.storage, move |s| {
-            let limit_for = |model: &str| {
-                prices
-                    .lookup(model)
-                    .and_then(|r| r.context_tokens)
-                    .map(u64::from)
-            };
-            crate::context_breakdown::branch_context_breakdown(
-                s,
-                Some(&dir),
-                &thread_id,
-                &leaf_node_id,
-                &draft,
-                &limit_for,
-            )
-        }))
-    }
-
-    fn model_context_tokens(&self, model: String) -> BoxFuture<'_, BistreResult<Option<u32>>> {
-        Box::pin(async move {
-            Ok(self
-                .pricing
-                .snapshot()
-                .lookup(&model)
-                .and_then(|r| r.context_tokens))
-        })
-    }
-
-    fn refresh_prices(&self) -> BoxFuture<'_, BistreResult<()>> {
-        Box::pin(async move {
-            self.pricing.force_refresh(&self.web);
-            Ok(())
-        })
-    }
-
-    fn approve_tool_call(
-        &self,
-        thread_id: String,
-        tool_name: String,
-        arguments_json: String,
-    ) -> BoxFuture<'_, BistreResult<String>> {
-        Box::pin(async move {
-            let settings = self.storage.load_settings()?;
-            if settings.trust_preset == bistre_protocol::TrustPreset::Off {
-                return Err(BistreError::with_detail(
-                    DiagnosticKey::ToolTierBlocked,
-                    "tools_disabled",
-                ));
-            }
-            let args = parse_tool_args(&arguments_json)?;
-            if tools::classify_tool_risk(&tool_name, &args) == ToolRiskTier::Tier3Blocked {
-                return Err(BistreError::with_detail(
-                    DiagnosticKey::ToolTierBlocked,
-                    "tier3_blocked",
-                ));
-            }
-            self.broker.approve(&thread_id, &tool_name, &args)
-        })
-    }
-
-    fn allow_unpriced_once(&self, thread_id: String) -> BoxFuture<'_, BistreResult<()>> {
-        Box::pin(async move {
-            lock_or_recover(&self.unpriced_allowed, "unpriced_allowed").insert(thread_id);
-            Ok(())
-        })
-    }
-
-    fn save_provider_overrides(
+    fn synthesize_speech(
         &self,
         provider_id: String,
-        headers_json: String,
-        body_json: String,
-    ) -> BoxFuture<'_, BistreResult<()>> {
-        Box::pin(async move {
-            self.save_provider_overrides_inner(&provider_id, &headers_json, &body_json)
-        })
-    }
-    fn allow_unpriced_media_once(&self) -> BoxFuture<'_, BistreResult<()>> {
-        Box::pin(async move {
-            lock_or_recover(&self.unpriced_allowed, "unpriced_allowed")
-                .insert(crate::engine_extras::MEDIA_ALLOWANCE.to_owned());
-            Ok(())
-        })
+        model_id: String,
+        text: String,
+        voice: Option<String>,
+    ) -> BoxFuture<'_, BistreResult<Vec<u8>>> {
+        InProcessEngine::synthesize_speech(self, provider_id, model_id, text, voice)
     }
 
-    fn respond_tool_approval(
+    fn verify_data_pack(
         &self,
-        thread_id: String,
-        run_id: String,
-        call_id: String,
-        decision: bistre_protocol::ToolApprovalDecision,
-    ) -> BoxFuture<'_, BistreResult<bool>> {
-        Box::pin(async move {
-            Ok(crate::agent_tools::deliver_tool_approval(
-                &self.pending_approvals,
-                &crate::agent_tools::ApprovalKey {
-                    thread_id,
-                    run_id,
-                    call_id,
-                },
-                decision,
-            ))
-        })
-    }
-
-    fn execute_workspace_tool(
-        &self,
-        workspace_root: String,
-        thread_id: String,
-        tool_name: String,
-        arguments_json: String,
-        permit_id: Option<String>,
-    ) -> BoxFuture<'_, BistreResult<tools::ToolExecutionOutput>> {
-        Box::pin(async move {
-            let args = parse_tool_args(&arguments_json)?;
-            crate::agent_tools::execute_workspace_tool_direct(
-                &self.storage,
-                &self.web,
-                &self.read_ledger,
-                &self.broker,
-                &workspace_root,
-                &thread_id,
-                &tool_name,
-                &args,
-                permit_id,
-            )
-            .await
-        })
-    }
-
-    fn rewind_checkpoint(
-        &self,
-        workspace_root: String,
-        checkpoint_id: String,
-    ) -> BoxFuture<'_, BistreResult<String>> {
-        Box::pin(async move {
-            let rel_path = tools::tool_rewind_checkpoint(
-                &self.storage,
-                Path::new(&workspace_root),
-                &checkpoint_id,
-            )?;
-            self.read_ledger.invalidate_path(&rel_path);
-            Ok(rel_path)
-        })
-    }
-
-    fn list_checkpoints(
-        &self,
-        thread_id: String,
-        limit: u32,
-    ) -> BoxFuture<'_, BistreResult<Vec<WorkspaceCheckpointRecord>>> {
-        Box::pin(async move {
-            let mut cps = self.storage.list_workspace_checkpoints(&thread_id)?;
-            let max = usize::try_from(limit).unwrap_or(50);
-            if cps.len() > max {
-                cps.truncate(max);
-            }
-            Ok(cps)
-        })
-    }
-
-    fn compact_thread(
-        &self,
-        thread_id: String,
-        keep_recent_turns: u32,
-        custom_summary: Option<String>,
-    ) -> BoxFuture<'_, BistreResult<NodeRecord>> {
-        Box::pin(async move {
-            let nodes = self.storage.list_nodes(&thread_id)?;
-            let active_leaf = self
-                .storage
-                .get_thread(&thread_id)?
-                .and_then(|t| t.active_head_node_id)
-                .or_else(|| nodes.last().map(|n| n.id.clone()));
-            let branch = match active_leaf.as_deref() {
-                Some(leaf) => crate::engine_runs::collect_branch_ancestry(&nodes, leaf),
-                None => nodes,
-            };
-            let keep = usize::try_from(keep_recent_turns).unwrap_or(4);
-            let node = compaction::create_reversible_compaction(
-                &self.storage,
-                &thread_id,
-                &branch,
-                keep,
-                custom_summary.as_deref(),
-            )?;
-            let ev = EngineEvent::NodeCommitted { node: node.clone() };
-            emit_logged(&self.storage, &self.events_tx, Some(thread_id), ev);
-            Ok(node)
-        })
-    }
-
-    fn undo_compaction(
-        &self,
-        thread_id: String,
-        compaction_node_id: String,
-    ) -> BoxFuture<'_, BistreResult<()>> {
-        Box::pin(async move {
-            compaction::undo_compaction(&self.storage, &thread_id, &compaction_node_id)
-        })
-    }
-
-    fn set_context_start_pin(
-        &self,
-        thread_id: String,
-        node_id: Option<String>,
-    ) -> BoxFuture<'_, BistreResult<Option<String>>> {
-        Box::pin(async move {
-            let key = format!("thread_context_start:{thread_id}");
-            if let Some(id) = node_id
-                .map(|s| s.trim().to_owned())
-                .filter(|s| !s.is_empty())
-            {
-                self.storage.set_kv_meta(key, id.clone())?;
-                Ok(Some(id))
-            } else {
-                self.storage.delete_kv_meta(key)?;
-                Ok(None)
-            }
-        })
-    }
-
-    fn get_context_start_pin(
-        &self,
-        thread_id: String,
-    ) -> BoxFuture<'_, BistreResult<Option<String>>> {
-        Box::pin(async move {
-            let key = format!("thread_context_start:{thread_id}");
-            self.storage.get_kv_meta(&key)
-        })
-    }
-
-    fn discover_mcp_server(
-        &self,
-        server: mcp::McpServerConfig,
-    ) -> BoxFuture<'_, BistreResult<mcp::McpDiscoveryReport>> {
-        Box::pin(async move {
-            let bearer = self.load_mcp_bearer(&server.id);
-            let report =
-                mcp::discover_mcp_server(&self.mcp_http, &server, bearer.as_deref()).await?;
-            if let Ok(json) = serde_json::to_string(&report.tools) {
-                let key = format!("mcp.tools_cache:{}", server.id);
-                if let Err(err) = self.storage.set_kv_meta(key, json) {
-                    tracing::warn!(key = err.key.as_key(), "failed to cache mcp tools");
-                }
-            }
-            Ok(report)
-        })
-    }
-
-    fn call_mcp_tool(
-        &self,
-        server: mcp::McpServerConfig,
-        tool_name: String,
-        arguments_json: String,
-    ) -> BoxFuture<'_, BistreResult<String>> {
-        Box::pin(async move {
-            let args: serde_json::Value = serde_json::from_str(&arguments_json)
-                .map_err(|_| BistreError::with_detail(DiagnosticKey::InvalidInput, "mcp_args"))?;
-            let bearer = self.load_mcp_bearer(&server.id);
-            let out = mcp::call_mcp_tool_rich(
-                &self.mcp_http,
-                &server,
-                bearer.as_deref(),
-                &tool_name,
-                &args,
-                Some(&self.data_dir),
-            )
-            .await?;
-            Ok(out.text)
-        })
-    }
-
-    fn get_kv_meta(&self, key: String) -> BoxFuture<'_, BistreResult<Option<String>>> {
-        Box::pin(async move { self.storage.get_kv_meta(&key) })
-    }
-
-    fn set_kv_meta(&self, key: String, value: String) -> BoxFuture<'_, BistreResult<()>> {
-        Box::pin(async move {
-            crate::agent_tools::invalidate_broker_on_policy_change(&self.broker, &key);
-            if key == "agent.mcp_servers" {
-                crate::mcp_stdio::close_all_stdio_sessions();
-            }
-            self.storage.set_kv_meta(key, value)
-        })
-    }
-
-    fn list_memory_entries(
-        &self,
-        scope: Option<String>,
-    ) -> BoxFuture<'_, BistreResult<Vec<MemoryEntryRecord>>> {
-        Box::pin(async move { self.storage.list_memory_entries(scope.as_deref()) })
-    }
-
-    fn upsert_memory_entry(
-        &self,
-        id: Option<String>,
-        scope: String,
-        scope_id: String,
-        key: String,
-        content: String,
-        pinned: bool,
-    ) -> BoxFuture<'_, BistreResult<MemoryEntryRecord>> {
-        Box::pin(async move {
-            self.storage
-                .upsert_memory_entry(id, scope, scope_id, key, content, None, pinned)
-        })
-    }
-
-    fn delete_memory_entry(&self, entry_id: String) -> BoxFuture<'_, BistreResult<()>> {
-        Box::pin(async move { self.storage.delete_memory_entry(entry_id) })
-    }
-
-    fn discover_workspace_skills(
-        &self,
-        workspace_root: String,
-    ) -> BoxFuture<'_, BistreResult<Vec<skills::SkillIndexEntry>>> {
-        Box::pin(async move {
-            Ok(skills::discover_workspace_skills(Path::new(
-                &workspace_root,
-            )))
-        })
-    }
-
-    fn load_skill_body(
-        &self,
-        workspace_root: String,
-        skill_path: String,
-    ) -> BoxFuture<'_, BistreResult<String>> {
-        Box::pin(async move {
-            skills::load_skill_body(Path::new(&workspace_root), Path::new(&skill_path))
-        })
-    }
-
-    fn list_thread_grounding(
-        &self,
-        thread_id: String,
-    ) -> BoxFuture<'_, BistreResult<Vec<crate::engine_grounding::NodeGrounding>>> {
-        Box::pin(self.list_thread_grounding_inner(thread_id))
-    }
-
-    fn workspace_hooks_status(
-        &self,
-        workspace_root: String,
-    ) -> BoxFuture<'_, BistreResult<Option<hooks::WorkspaceHooksStatus>>> {
-        Box::pin(async move { self.workspace_hooks_status_inner(Path::new(&workspace_root)) })
-    }
-
-    fn approve_workspace_hooks(
-        &self,
-        workspace_root: String,
-        digest: String,
-    ) -> BoxFuture<'_, BistreResult<()>> {
-        Box::pin(
-            async move { self.approve_workspace_hooks_inner(Path::new(&workspace_root), &digest) },
+        public_key_b64: String,
+        manifest_bytes: Vec<u8>,
+        manifest_sig_text: String,
+        pack_payload: Vec<u8>,
+    ) -> BoxFuture<'_, BistreResult<SignedPackManifest>> {
+        InProcessEngine::verify_data_pack(
+            self,
+            public_key_b64,
+            manifest_bytes,
+            manifest_sig_text,
+            pack_payload,
         )
-    }
-    fn list_cron_jobs(&self) -> BoxFuture<'_, BistreResult<Vec<CronJobRecord>>> {
-        Box::pin(async move { self.storage.list_cron_jobs() })
-    }
-
-    fn upsert_cron_job(
-        &self,
-        mut job: CronJobRecord,
-    ) -> BoxFuture<'_, BistreResult<CronJobRecord>> {
-        Box::pin(async move {
-            if job.next_run_ms <= 0 {
-                job.next_run_ms =
-                    cron::compute_next_run_unix_ms(&job.schedule_expr, utc_now_unix_ms())?;
-            }
-            self.storage.upsert_cron_job(job)
-        })
-    }
-
-    fn delete_cron_job(&self, job_id: String) -> BoxFuture<'_, BistreResult<()>> {
-        Box::pin(async move { self.storage.delete_cron_job(job_id) })
-    }
-
-    fn prepare_subagent_sandbox(
-        &self,
-        workspace_root: String,
-    ) -> BoxFuture<'_, BistreResult<subagents::SubagentSandbox>> {
-        Box::pin(async move {
-            let scratch = self.data_dir.join("worktrees");
-            subagents::prepare_worktree_sandbox(Path::new(&workspace_root), &scratch).await
-        })
-    }
-
-    fn list_character_cards(&self) -> BoxFuture<'_, BistreResult<Vec<CharacterCardRecord>>> {
-        Box::pin(async move { self.storage.list_character_cards() })
-    }
-
-    fn upsert_character_card(
-        &self,
-        card: CharacterCardRecord,
-    ) -> BoxFuture<'_, BistreResult<CharacterCardRecord>> {
-        Box::pin(async move { self.storage.upsert_character_card(card) })
-    }
-
-    fn delete_character_card(&self, card_id: String) -> BoxFuture<'_, BistreResult<()>> {
-        Box::pin(async move { self.storage.delete_character_card(card_id) })
-    }
-
-    fn import_character_card_file(
-        &self,
-        file_path: String,
-    ) -> BoxFuture<'_, BistreResult<CharacterCardRecord>> {
-        Box::pin(async move {
-            let path = Path::new(&file_path);
-            let raw = std::fs::read(path).map_err(|_| {
-                BistreError::with_detail(DiagnosticKey::StorageNotFound, "card_read")
-            })?;
-            let bundle = if path
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("png"))
-            {
-                story::card_io::import_card_png(&raw)?
-            } else if path.extension().is_some_and(|ext| {
-                ext.eq_ignore_ascii_case("charx") || ext.eq_ignore_ascii_case("zip")
-            }) {
-                story::card_io::import_card_charx(&raw)?
-            } else {
-                let text = String::from_utf8(raw).map_err(|_| {
-                    BistreError::with_detail(DiagnosticKey::InvalidInput, "card_utf8")
-                })?;
-                story::card_io::import_card_json(&text)?
-            };
-
-            // Imported cards are data, never authority (Spec 06 import policy).
-            let (bundle, policy) = import_policy::with_imported_permissions(bundle);
-            if !policy.is_clean() {
-                tracing::info!(
-                    grants = policy.stripped_grants,
-                    network_paths = policy.stripped_network_paths,
-                    media_paths = policy.stripped_media_paths,
-                    "import policy stripped untrusted card permissions"
-                );
-            }
-            let saved_card = self.storage.upsert_character_card(bundle.card)?;
-            for entry in bundle.lore_entries {
-                self.storage.upsert_story_entry(entry)?;
-            }
-            Ok(saved_card)
-        })
-    }
-
-    fn export_character_card_ccv3(&self, card_id: String) -> BoxFuture<'_, BistreResult<String>> {
-        Box::pin(async move {
-            let cards = self.storage.list_character_cards()?;
-            let card = cards
-                .into_iter()
-                .find(|c| c.id == card_id)
-                .ok_or_else(|| BistreError::new(DiagnosticKey::StorageNotFound))?;
-            let entries = self.storage.list_story_entries(None)?;
-            Ok(story::card_io::export_card_ccv3_json(&card, &entries))
-        })
-    }
-
-    fn list_user_personas(&self) -> BoxFuture<'_, BistreResult<Vec<UserPersonaRecord>>> {
-        Box::pin(async move { self.storage.list_user_personas() })
-    }
-
-    fn upsert_user_persona(
-        &self,
-        persona: UserPersonaRecord,
-    ) -> BoxFuture<'_, BistreResult<UserPersonaRecord>> {
-        Box::pin(async move { self.storage.upsert_user_persona(persona) })
-    }
-
-    fn list_story_entries(
-        &self,
-        book_id: Option<String>,
-    ) -> BoxFuture<'_, BistreResult<Vec<StoryEntryRecord>>> {
-        Box::pin(async move { self.storage.list_story_entries(book_id.as_deref()) })
-    }
-
-    fn upsert_story_entry(
-        &self,
-        entry: StoryEntryRecord,
-    ) -> BoxFuture<'_, BistreResult<StoryEntryRecord>> {
-        Box::pin(async move { self.storage.upsert_story_entry(entry) })
-    }
-
-    fn delete_story_entry(&self, entry_id: String) -> BoxFuture<'_, BistreResult<()>> {
-        Box::pin(async move { self.storage.delete_story_entry(entry_id) })
-    }
-
-    fn list_story_progressions(
-        &self,
-        entry_id: Option<String>,
-    ) -> BoxFuture<'_, BistreResult<Vec<StoryProgressionRecord>>> {
-        Box::pin(async move { self.storage.list_story_progressions(entry_id.as_deref()) })
-    }
-
-    fn add_story_progression(
-        &self,
-        prog: StoryProgressionRecord,
-    ) -> BoxFuture<'_, BistreResult<StoryProgressionRecord>> {
-        Box::pin(async move { self.storage.add_story_progression(prog) })
-    }
-
-    fn list_story_chapters(
-        &self,
-        thread_id: String,
-    ) -> BoxFuture<'_, BistreResult<Vec<StoryChapterRecord>>> {
-        Box::pin(async move { self.storage.list_story_chapters(&thread_id) })
-    }
-
-    fn upsert_story_chapter(
-        &self,
-        chapter: StoryChapterRecord,
-    ) -> BoxFuture<'_, BistreResult<StoryChapterRecord>> {
-        Box::pin(async move { self.storage.upsert_story_chapter(chapter) })
-    }
-
-    fn list_story_scenes(
-        &self,
-        chapter_id: String,
-    ) -> BoxFuture<'_, BistreResult<Vec<StorySceneRecord>>> {
-        Box::pin(async move { self.storage.list_story_scenes(&chapter_id) })
-    }
-
-    fn upsert_story_scene(
-        &self,
-        scene: StorySceneRecord,
-    ) -> BoxFuture<'_, BistreResult<StorySceneRecord>> {
-        Box::pin(async move { self.storage.upsert_story_scene(scene) })
-    }
-
-    fn load_story_thread_state(
-        &self,
-        thread_id: String,
-    ) -> BoxFuture<'_, BistreResult<StoryThreadStateRecord>> {
-        Box::pin(async move { self.storage.load_story_thread_state(&thread_id) })
-    }
-
-    fn save_story_thread_state(
-        &self,
-        state: StoryThreadStateRecord,
-    ) -> BoxFuture<'_, BistreResult<StoryThreadStateRecord>> {
-        Box::pin(async move { self.storage.save_story_thread_state(state) })
-    }
-
-    fn list_regex_rules(&self) -> BoxFuture<'_, BistreResult<Vec<RegexRuleRecord>>> {
-        Box::pin(async move { self.storage.list_regex_rules() })
-    }
-
-    fn upsert_regex_rule(
-        &self,
-        rule: RegexRuleRecord,
-    ) -> BoxFuture<'_, BistreResult<RegexRuleRecord>> {
-        Box::pin(async move { self.storage.upsert_regex_rule(rule) })
-    }
-
-    fn list_story_snapshots(
-        &self,
-        entity_type: String,
-        entity_id: String,
-        limit: u32,
-    ) -> BoxFuture<'_, BistreResult<Vec<StorySnapshotRecord>>> {
-        Box::pin(async move {
-            self.storage
-                .list_story_snapshots(&entity_type, &entity_id, limit)
-        })
-    }
-
-    fn inspect_story_prompt(
-        &self,
-        thread_id: String,
-        active_scene_beats: Option<String>,
-    ) -> BoxFuture<'_, BistreResult<story::prompt_assembler::CompiledPromptReport>> {
-        Box::pin(async move {
-            self.inspect_story_prompt_inner(&thread_id, active_scene_beats.as_deref())
-        })
     }
 
     fn subscribe_events(&self) -> broadcast::Receiver<EngineEvent> {
-        self.events_tx.subscribe()
+        InProcessEngine::subscribe_events(self)
     }
 
     fn shutdown(&self) -> BoxFuture<'_, BistreResult<()>> {
-        Box::pin(async move {
-            self.live_voice.stop_all();
-            {
-                let guard = lock_or_recover(&self.cancellations, "cancellations");
-                for flag in guard.values() {
-                    flag.store(true, Ordering::SeqCst);
-                }
-            }
-            // Wake every run blocked in a backoff or approval wait so it sees the cancel and
-            // records its final state now, instead of being aborted at the drain deadline (A-S11).
-            for wake in lock_or_recover(&self.wakers, "wakers").values() {
-                wake.notify_one();
-            }
-            // Let cancelled runs record their final state before storage closes (bounded).
-            let mut runs = std::mem::take(&mut *lock_or_recover(&self.run_tasks, "run_tasks"));
-            let drained = tokio::time::timeout(RUN_DRAIN_TIMEOUT, async {
-                while runs.join_next().await.is_some() {}
-            })
-            .await;
-            if drained.is_err() {
-                tracing::warn!(
-                    remaining = runs.len(),
-                    "runs did not stop in time; aborting"
-                );
-                runs.abort_all();
-            }
-            crate::mcp_stdio::close_all_stdio_sessions();
-            self.storage.shutdown()?;
-            Ok(())
-        })
+        InProcessEngine::shutdown(self)
     }
 }
 
-/// Upper bound on how long shutdown waits for cancelled runs to finish.
-const RUN_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
-
-fn parse_tool_args(arguments_json: &str) -> BistreResult<serde_json::Value> {
+pub(crate) fn parse_tool_args(arguments_json: &str) -> BistreResult<serde_json::Value> {
     serde_json::from_str(arguments_json)
         .map_err(|_| BistreError::with_detail(DiagnosticKey::InvalidInput, "tool_args_json"))
 }

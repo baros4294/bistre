@@ -1,12 +1,13 @@
-//! What fills the next request (A-SE, the composer's context breakdown), counted with the same
+//! What fills the next request (the composer's context breakdown), counted with the same
 //! builders a run uses: the system prompt and its Write-mode story or workspace instructions
 //! from the turn-context builder, the tool catalog schema by schema, the projected history
-//! (tool calls and reasoning included, R26), attachments, and the unsent draft. Deferred MCP
+//! (tool calls and reasoning included), attachments, and the unsent draft. Deferred MCP
 //! schemas are listed but not sent. Core owns every number; the app maps each closed
 //! [`ContextCategoryKind`] to its own words.
 
-use bistre_protocol::{BistreError, BistreResult, DiagnosticKey, ThreadMode};
+use bistre_protocol::{BistreError, BistreResult, DiagnosticKey, NodeRecord, ThreadMode};
 use bistre_storage::StorageHandle;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::compaction;
@@ -16,12 +17,14 @@ const MAX_SERVERS: usize = 64;
 const MAX_TOOLS: usize = 512;
 
 /// A row of the breakdown, in display order.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ContextCategoryKind {
     Messages,
     BuiltInTools,
     McpTools,
     SystemPrompt,
+    /// The chat's project instructions.
+    ProjectInstructions,
     WorkspaceInstructions,
     Story,
     Attachments,
@@ -37,6 +40,7 @@ impl ContextCategoryKind {
             Self::BuiltInTools => "built_in_tools",
             Self::McpTools => "mcp_tools",
             Self::SystemPrompt => "system_prompt",
+            Self::ProjectInstructions => "project_instructions",
             Self::WorkspaceInstructions => "workspace_instructions",
             Self::Story => "story",
             Self::Attachments => "attachments",
@@ -46,7 +50,7 @@ impl ContextCategoryKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContextCategory {
     pub kind: ContextCategoryKind,
     pub tokens: u64,
@@ -56,14 +60,14 @@ pub struct ContextCategory {
     pub sent: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct McpToolUsage {
     pub name: String,
     pub tokens: u64,
     pub deferred: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct McpServerUsage {
     pub server_id: String,
     pub label: String,
@@ -71,7 +75,7 @@ pub struct McpServerUsage {
 }
 
 /// The whole breakdown; rows with 0 tokens are left out.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContextBreakdown {
     pub categories: Vec<ContextCategory>,
     /// The model's context window, when known.
@@ -137,18 +141,87 @@ fn model_for(
         })
 }
 
-/// [`model_for`] read from storage (the story inspector sizes its budget with it).
-pub(crate) fn thread_model_id(
+/// The model and provider a thread's next turn uses: its override, else its assistant's
+/// default, else Settings > Default models, else the active pick.
+fn provider_for(
+    thread: &bistre_protocol::ThreadSummary,
+    assistant: Option<&bistre_protocol::AssistantRecord>,
+    settings: &bistre_protocol::AppSettings,
+    global_provider: &str,
+) -> Option<String> {
+    thread
+        .provider_id_override
+        .clone()
+        .filter(|p| !p.trim().is_empty())
+        .or_else(|| {
+            assistant
+                .map(|a| a.default_provider_id.clone())
+                .filter(|p| !p.trim().is_empty())
+        })
+        .or_else(|| (!global_provider.trim().is_empty()).then(|| global_provider.trim().to_owned()))
+        .or_else(|| {
+            let p = settings.active_provider_id.clone();
+            (!p.trim().is_empty()).then_some(p)
+        })
+}
+
+/// [`provider_for`] and [`model_for`] read from storage (used by the story inspector).
+pub(crate) fn thread_provider_and_model(
     storage: &StorageHandle,
     thread: &bistre_protocol::ThreadSummary,
-) -> BistreResult<Option<String>> {
+) -> BistreResult<(Option<String>, Option<String>)> {
     let settings = storage.load_settings()?;
     let assistant = storage
         .list_assistants()?
         .into_iter()
         .find(|a| a.id == thread.assistant_id);
-    let global = crate::provider_prefs::load_default_models(storage).global_model_id;
-    Ok(model_for(thread, assistant.as_ref(), &settings, &global))
+    let defaults = crate::provider_prefs::load_default_models(storage);
+    Ok((
+        provider_for(
+            thread,
+            assistant.as_ref(),
+            &settings,
+            &defaults.global_provider_id,
+        ),
+        model_for(
+            thread,
+            assistant.as_ref(),
+            &settings,
+            &defaults.global_model_id,
+        ),
+    ))
+}
+
+/// Token sum and count for all attachments on `history`.
+fn attachment_totals(history: &[NodeRecord], data_dir: Option<&std::path::Path>) -> (u64, u32) {
+    let mut totals = (0_u64, 0_u32);
+    for node in history {
+        for att in crate::attachments::parse_node_attachments(node.provider_meta_json.as_deref()) {
+            let est = data_dir.map_or(512, |dir| {
+                crate::attachments::estimate_attachment_tokens(dir, &att)
+            });
+            totals = (totals.0.saturating_add(est), totals.1.saturating_add(1));
+        }
+    }
+    totals
+}
+
+/// The model's context window: the provider's per-model override, else `limit_for`.
+fn context_limit(
+    storage: &StorageHandle,
+    provider_id: Option<&str>,
+    model: &str,
+    limit_for: &dyn Fn(&str) -> Option<u64>,
+) -> Option<u64> {
+    provider_id
+        .and_then(|pid| {
+            crate::provider_prefs::load_provider_advanced(storage, pid)
+                .model_overrides
+                .get(model)
+                .and_then(|ov| ov.context_tokens)
+                .map(u64::from)
+        })
+        .or_else(|| limit_for(model))
 }
 
 /// Builds the breakdown for the branch ending at `leaf_id`. `limit_for` resolves the model's
@@ -175,9 +248,22 @@ pub(crate) fn branch_context_breakdown(
             .as_ref()
             .map_or_else(String::new, |a| a.system_prompt.clone()),
     };
-    let global = crate::provider_prefs::load_default_models(storage).global_model_id;
-    let model = model_for(&thread, assistant.as_ref(), &settings, &global);
+    let defaults = crate::provider_prefs::load_default_models(storage);
+    let provider_id = provider_for(
+        &thread,
+        assistant.as_ref(),
+        &settings,
+        &defaults.global_provider_id,
+    );
+    let model = model_for(
+        &thread,
+        assistant.as_ref(),
+        &settings,
+        &defaults.global_model_id,
+    );
     let model_ref = model.as_deref();
+    let limit_tokens =
+        model_ref.and_then(|m| context_limit(storage, provider_id.as_deref(), m, limit_for));
     let base_prompt =
         crate::engine_runs::with_user_name(base_prompt, &settings.user_display_name, thread.mode);
     // The same builder the run uses: projected history and the effective system prompt.
@@ -186,32 +272,25 @@ pub(crate) fn branch_context_breakdown(
         thread_id,
         leaf_id,
         &base_prompt,
-        model_ref.and_then(limit_for),
+        limit_tokens,
     )?;
     let system_tokens = compaction::estimate_tokens_for_model(&base_prompt, model_ref);
+    let project_tokens = crate::projects::project_instructions(storage, thread_id)?
+        .map_or(0, |block| {
+            compaction::estimate_tokens_for_model(&block, model_ref)
+        });
     let extra_prompt = compaction::estimate_tokens_for_model(&effective_prompt, model_ref)
-        .saturating_sub(system_tokens);
+        .saturating_sub(system_tokens)
+        .saturating_sub(project_tokens);
     let (story_tokens, workspace_tokens) = match mode {
         ThreadMode::Write => (extra_prompt, 0),
-        ThreadMode::Code | ThreadMode::Plan => (0, extra_prompt),
-        _ => (0, 0),
+        _ => (0, extra_prompt),
     };
 
-    let tools = tool_rows(storage, thread.mode, model_ref)?;
+    let tools = tool_rows(storage, &thread, &history, model_ref)?;
     let (built_in, mcp_sent, deferred) = (tools.built_in, tools.mcp_sent, tools.deferred);
 
-    let mut attachments = (0_u64, 0_u32);
-    for node in &history {
-        for att in crate::attachments::parse_node_attachments(node.provider_meta_json.as_deref()) {
-            let est = data_dir.map_or(512, |dir| {
-                crate::attachments::estimate_attachment_tokens(dir, &att)
-            });
-            attachments = (
-                attachments.0.saturating_add(est),
-                attachments.1.saturating_add(1),
-            );
-        }
-    }
+    let attachments = attachment_totals(&history, data_dir);
     let messages = compaction::estimate_branch_tokens_for_model("", &history, model_ref);
     let turns = u32::try_from(history.len()).unwrap_or(u32::MAX);
     let draft_tokens = compaction::estimate_tokens_for_model(draft.trim(), model_ref);
@@ -231,6 +310,12 @@ pub(crate) fn branch_context_breakdown(
             true,
         ),
         (ContextCategoryKind::SystemPrompt, system_tokens, None, true),
+        (
+            ContextCategoryKind::ProjectInstructions,
+            project_tokens,
+            None,
+            true,
+        ),
         (
             ContextCategoryKind::WorkspaceInstructions,
             workspace_tokens,
@@ -262,9 +347,9 @@ pub(crate) fn branch_context_breakdown(
             sent,
         })
         .collect();
-    let limit_tokens = model_ref.and_then(limit_for);
     let reserve_tokens = limit_tokens.map_or(0, |limit| {
-        limit.saturating_mul(u64::from(compaction::AUTO_COMPACT_RESERVE_PERCENT)) / 100
+        let reserve = compaction::auto_compact_reserve_percent(settings.auto_compact_at_percent);
+        limit.saturating_mul(u64::from(reserve)) / 100
     });
     Ok(ContextBreakdown {
         categories,
@@ -287,10 +372,13 @@ struct ToolRows {
 /// Tools, schema by schema, exactly as the catalog sends them; deferred MCP schemas apart.
 fn tool_rows(
     storage: &StorageHandle,
-    mode: ThreadMode,
+    thread: &bistre_protocol::ThreadSummary,
+    history: &[NodeRecord],
     model: Option<&str>,
 ) -> BistreResult<ToolRows> {
-    let catalog = crate::agent_tools::resolve_active_tool_catalog(storage, mode)?;
+    let mut catalog =
+        crate::agent_tools::resolve_active_tool_catalog(storage, Some(&thread.id), thread.mode)?;
+    crate::agent_tools::offer_turn_tools(&mut catalog, storage, &thread.id, thread.mode, history);
     let mut rows = ToolRows {
         built_in: (0, 0),
         mcp_sent: (0, 0),

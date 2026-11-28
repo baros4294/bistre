@@ -1,4 +1,4 @@
-//! User-supplied custom provider headers and body fields (A-S8).
+//! User-supplied custom provider headers and body fields.
 //!
 //! Parsed once at the boundary into types that cannot hold an invalid header: a
 //! [`CustomHeader`] can only be built by [`parse_custom_headers`], which rejects reserved and

@@ -25,26 +25,34 @@ pub struct SkillIndexEntry {
 /// Scans `.agents/skills/*/SKILL.md` and `skills/*/SKILL.md` inside `workspace_root`,
 /// returning sorted frontmatter entries without loading full bodies into memory.
 pub fn discover_workspace_skills(workspace_root: &Path) -> Vec<SkillIndexEntry> {
-    let mut found = Vec::new();
-    let roots = [
-        workspace_root.join(".agents").join("skills"),
-        workspace_root.join("skills"),
-    ];
+    let mut found = discover_skills_in(&workspace_root.join(".agents").join("skills"));
+    found.extend(discover_skills_in(&workspace_root.join("skills")));
+    found.sort_by(|a, b| a.name.cmp(&b.name));
+    found.dedup_by(|a, b| a.name == b.name);
+    found.truncate(MAX_INDEXED_SKILLS);
+    found
+}
 
-    for root in roots {
-        let Ok(entries) = std::fs::read_dir(&root) else {
+/// The skills in `dir` (`<dir>/<folder>/SKILL.md`), at most `MAX_INDEXED_SKILLS`, sorted by
+/// name. A missing folder has none; a `SKILL.md` that cannot be read is logged and skipped.
+pub fn discover_skills_in(dir: &Path) -> Vec<SkillIndexEntry> {
+    let mut found = Vec::new();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return found;
+    };
+    for entry in entries.flatten() {
+        if found.len() >= MAX_INDEXED_SKILLS {
+            break;
+        }
+        let candidate = entry.path().join("SKILL.md");
+        if !candidate
+            .metadata()
+            .is_ok_and(|m| m.is_file() && m.len() <= MAX_SKILL_FILE_BYTES)
+        {
             continue;
-        };
-        for entry in entries.flatten() {
-            if found.len() >= MAX_INDEXED_SKILLS {
-                break;
-            }
-            let candidate = entry.path().join("SKILL.md");
-            if candidate
-                .metadata()
-                .is_ok_and(|m| m.is_file() && m.len() <= MAX_SKILL_FILE_BYTES)
-                && let Ok(raw) = std::fs::read_to_string(&candidate)
-            {
+        }
+        match std::fs::read_to_string(&candidate) {
+            Ok(raw) => {
                 let (name, description) =
                     parse_skill_frontmatter(&raw, &entry.file_name().to_string_lossy());
                 found.push(SkillIndexEntry {
@@ -53,11 +61,10 @@ pub fn discover_workspace_skills(workspace_root: &Path) -> Vec<SkillIndexEntry> 
                     path: candidate.display().to_string(),
                 });
             }
+            Err(err) => tracing::warn!(error = %err, "skill file unreadable; skipped"),
         }
     }
-
     found.sort_by(|a, b| a.name.cmp(&b.name));
-    found.dedup_by(|a, b| a.name == b.name);
     found
 }
 
@@ -67,7 +74,9 @@ pub fn load_skill_body(workspace_root: &Path, skill_path: &Path) -> BistreResult
         .map_err(|_| BistreError::with_detail(DiagnosticKey::StorageNotFound, "workspace_canon"))?;
     let canon_file = std::fs::canonicalize(skill_path)
         .map_err(|_| BistreError::with_detail(DiagnosticKey::StorageNotFound, "skill_not_found"))?;
-    if !canon_file.starts_with(&canon_root) {
+    if !canon_file.starts_with(&canon_root)
+        || canon_file.file_name().is_none_or(|n| n != "SKILL.md")
+    {
         return Err(BistreError::with_detail(
             DiagnosticKey::ToolPathDenied,
             "skill_outside_workspace",
@@ -76,10 +85,7 @@ pub fn load_skill_body(workspace_root: &Path, skill_path: &Path) -> BistreResult
     let mut text = std::fs::read_to_string(&canon_file)
         .map_err(|_| BistreError::with_detail(DiagnosticKey::StorageNotFound, "skill_read"))?;
     if text.len() > MAX_SKILL_BODY_BYTES {
-        let mut cut = MAX_SKILL_BODY_BYTES;
-        while cut > 0 && !text.is_char_boundary(cut) {
-            cut -= 1;
-        }
+        let cut = text.floor_char_boundary(MAX_SKILL_BODY_BYTES);
         text.truncate(cut);
         text.push_str("\n...[truncated]");
     }
@@ -96,7 +102,22 @@ pub fn discover_agents_md(workspace_root: &Path) -> Option<(PathBuf, String)> {
     Some((candidate, text))
 }
 
-fn parse_skill_frontmatter(raw: &str, fallback_name: &str) -> (String, String) {
+/// Discovers workspace-level instruction files (`AGENTS.md` and `CLAUDE.md`) in order.
+pub fn discover_workspace_instructions(workspace_root: &Path) -> Vec<(PathBuf, String)> {
+    let mut out = Vec::new();
+    for name in ["AGENTS.md", "CLAUDE.md"] {
+        let candidate = workspace_root.join(name);
+        if candidate.is_file()
+            && let Ok(text) = std::fs::read_to_string(&candidate)
+            && !text.trim().is_empty()
+        {
+            out.push((candidate, text));
+        }
+    }
+    out
+}
+
+pub(crate) fn parse_skill_frontmatter(raw: &str, fallback_name: &str) -> (String, String) {
     let mut name = fallback_name.to_owned();
     let mut description = String::new();
     let normalized = raw.replace("\r\n", "\n");
@@ -132,7 +153,7 @@ mod tests {
 
     type TestResult = Result<(), Box<dyn std::error::Error>>;
 
-    /// W8: a file outside the workspace is a path denial with its own key, not an "edit hash
+    /// A file outside the workspace is a path denial with its own key, not an "edit hash
     /// mismatch" (which sent the user to the wrong fix).
     #[test]
     fn a_skill_outside_the_workspace_is_a_path_denial() -> TestResult {

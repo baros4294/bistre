@@ -32,7 +32,7 @@ pub enum RecoveryAction {
 
 /// Computes jittered exponential backoff (in milliseconds) honoring `Retry-After` within the
 /// user's `retry_watchdog_max_wait_secs` budget. `None` means give up: the budget is spent, or
-/// the provider asked for longer than what is left (R32: an early retry hits the same limit).
+/// the provider asked for longer than what is left (an early retry hits the same limit).
 /// `jitter_seed` differs per run, so runs that failed together do not retry together.
 pub fn compute_backoff_wait_ms(
     attempt: u32,
@@ -72,30 +72,89 @@ pub fn jitter_seed(run_id: &str) -> u64 {
     })
 }
 
-/// Evaluates whether a Tier-2 action may proceed automatically under an unattended policy.
-pub const fn evaluate_unattended_tier2(
+/// What a run does with a tool call that needs approval. An interactive run records
+/// `PauseAndNotify`, so it waits for the user; a scheduled run follows its job's policy.
+/// `SandboxWorktreeAuto` runs the call only when `contained_in_sandbox` (the run works in its
+/// own worktree and the tool's effects stay inside it); any other call waits.
+pub const fn unattended_approval(
     policy: UnattendedPolicy,
-    in_isolated_worktree: bool,
-) -> UnattendedTier2Decision {
+    contained_in_sandbox: bool,
+) -> UnattendedApproval {
     match policy {
-        UnattendedPolicy::PauseAndNotify => UnattendedTier2Decision::PauseAndNotify,
-        UnattendedPolicy::DenyTier2AndContinue => UnattendedTier2Decision::DenyAndContinue,
+        UnattendedPolicy::PauseAndNotify => UnattendedApproval::Wait,
+        UnattendedPolicy::DenyTier2AndContinue => UnattendedApproval::Skip,
         UnattendedPolicy::SandboxWorktreeAuto => {
-            if in_isolated_worktree {
-                UnattendedTier2Decision::AllowInSandbox
+            if contained_in_sandbox {
+                UnattendedApproval::RunInSandbox
             } else {
-                UnattendedTier2Decision::PauseAndNotify
+                UnattendedApproval::Wait
             }
         }
     }
 }
 
-/// Deterministic decision returned when an unattended run encounters a Tier-2 tool call.
+/// [`unattended_approval`]'s answer for one tool call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UnattendedTier2Decision {
-    PauseAndNotify,
-    DenyAndContinue,
-    AllowInSandbox,
+pub enum UnattendedApproval {
+    /// Wait in the chat for the user's decision.
+    Wait,
+    /// Refuse the call and let the run go on.
+    Skip,
+    /// Run the call in the run's worktree.
+    RunInSandbox,
+}
+
+/// A run's approval policy and worktree, read once from its run record. An unreadable or
+/// missing record, or a worktree folder that is gone, waits for the user (fail closed).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunApprovalPolicy {
+    pub policy: UnattendedPolicy,
+    pub sandbox: Option<std::path::PathBuf>,
+}
+
+impl RunApprovalPolicy {
+    /// Waits for the user on every call that needs approval, with no worktree.
+    pub const INTERACTIVE: Self = Self {
+        policy: UnattendedPolicy::PauseAndNotify,
+        sandbox: None,
+    };
+
+    pub fn load(storage: &StorageHandle, run_id: &str) -> Self {
+        let run = match storage.get_agent_run(run_id) {
+            Ok(Some(run)) => run,
+            Ok(None) => {
+                tracing::warn!(
+                    key = DiagnosticKey::StorageNotFound.as_key(),
+                    "run record missing; approvals wait for the user"
+                );
+                return Self::INTERACTIVE;
+            }
+            Err(err) => {
+                tracing::warn!(
+                    key = err.key.as_key(),
+                    "run record unreadable; approvals wait for the user"
+                );
+                return Self::INTERACTIVE;
+            }
+        };
+        let sandbox = run
+            .worktree_path
+            .map(std::path::PathBuf::from)
+            .filter(|p| p.is_dir());
+        Self {
+            policy: run.unattended_policy,
+            sandbox,
+        }
+    }
+
+    /// The decision for `tool_name`. Only the workspace file and shell tools work in the
+    /// worktree; MCP, web, paid tools, and computer use act outside it, so they wait.
+    pub fn decide(&self, tool_name: &str) -> UnattendedApproval {
+        unattended_approval(
+            self.policy,
+            self.sandbox.is_some() && crate::tools::works_in_workspace(tool_name),
+        )
+    }
 }
 
 /// Handles a live `SystemPowerEvent` by flushing active runs cleanly on suspend/timeout

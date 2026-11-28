@@ -15,4 +15,4 @@ Tests load them with `test_support::sse_fixture(dialect, name)` and serve them t
 
 Provenance: written by hand from each provider's published streaming reference, not captured
 from a live account. They are `[UNVERIFIED]` against the live docs until the W4 protocol pass
-re-checks every event name and field (tracked in `TASKS.md`).
+re-checks every event name and field (tracked in `tasks.md`).

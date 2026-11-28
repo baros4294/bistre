@@ -1,5 +1,5 @@
-//! How a streamed reply ended (R10/P3), parsed from each dialect's terminal frames into one
-//! typed [`FinishKind`]. Values checked 2026-11-26 against the official docs (Anthropic
+//! How a streamed reply ended, parsed from each dialect's terminal frames into one
+//! typed [`FinishKind`]. Values against the official docs (Anthropic
 //! `stop_reason` and the `error` event, `OpenAI` `incomplete_details.reason` and Chat
 //! `finish_reason`, Gemini `FinishReason`); the `OpenAI` `response.failed` payload shape is
 //! [UNVERIFIED] (read as the documented `ResponseError {code, message}`).
@@ -7,7 +7,7 @@
 use bistre_protocol::ProviderDialect;
 use serde_json::Value;
 
-/// Longest provider-written error detail kept (P4).
+/// Longest provider-written error detail kept.
 pub const MAX_REASON_CHARS: usize = 200;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,7 +27,7 @@ pub enum FinishKind {
 }
 
 /// The provider's own words about an error, bounded and stripped of control characters and of
-/// the `;` and `=` separators diagnostic details use (P4).
+/// the `;` and `=` separators diagnostic details use.
 pub fn sanitize_reason(raw: &str) -> String {
     raw.chars()
         .filter(|c| !c.is_control())
@@ -107,7 +107,7 @@ fn from_gemini_reason(reason: &str) -> Option<FinishKind> {
 
 /// The finish this frame reports, if it is a terminal (or error) frame.
 pub fn finish_of_frame(dialect: ProviderDialect, val: &Value) -> Option<FinishKind> {
-    // R42: a plain JSON error body (often with HTTP 200) in any dialect.
+    // A plain JSON error body (often with HTTP 200) in any dialect.
     if let Some(err) = val.get("error").filter(|e| e.is_object())
         && val
             .get("type")

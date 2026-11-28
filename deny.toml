@@ -5,6 +5,7 @@ no-default-features = false
 
 [advisories]
 version = 2
+yanked = "deny"
 ignore = []
 
 [licenses]

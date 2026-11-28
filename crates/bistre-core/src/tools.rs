@@ -3,7 +3,7 @@
 //! execution, web fetch/search, and malformed tool-call self-healing (Spec 04 & 06).
 
 use bistre_protocol::lock_or_recover;
-use std::collections::{HashSet, VecDeque};
+use std::collections::VecDeque;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
@@ -19,13 +19,17 @@ use grep_searcher::Searcher;
 use grep_searcher::sinks::UTF8;
 use ignore::WalkBuilder;
 use imara_diff::{Algorithm, BasicLineDiffPrinter, Diff, InternedInput, UnifiedDiffConfig};
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::process_util::{ShellKind, decode_clixml, preferred_shell, shell_command};
+pub use crate::tool_call_ids::{
+    MAX_TOOL_CALL_ID_LEN, heal_and_dedup_tool_calls, sanitize_tool_call_id,
+};
+use crate::web_tools::truncate_utf8_in_place;
+pub use crate::web_tools::{tool_web_fetch, tool_web_search, tool_web_search_with_endpoint};
 
-const MAX_READ_FILE_BYTES: u64 = 2 * 1024 * 1024;
+pub(crate) const MAX_READ_FILE_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_TOOL_OUTPUT_BYTES: usize = 256 * 1024;
 const MAX_GREP_MATCHES: usize = 100;
 const MAX_GLOB_RESULTS: usize = 250;
@@ -78,6 +82,14 @@ impl ReadLedger {
         } else {
             Ok(())
         }
+    }
+
+    /// Whether this scope has read `rel_path` (a whole-file overwrite requires it).
+    pub fn has_read(&self, scope: &str, rel_path: &str) -> bool {
+        let key = normalize_rel(rel_path);
+        lock_or_recover(&self.entries, "read_ledger")
+            .iter()
+            .any(|(s, p, _)| s == scope && *p == key)
     }
 
     /// Removes cached read fingerprints for `rel_path` across scopes (e.g., after checkpoint rewind).
@@ -159,20 +171,29 @@ pub struct ToolExecutionOutput {
 
 /// Statically + dynamically classifies a tool call into Risk Tiers 0..=3 (Spec 06).
 pub fn classify_tool_risk(tool_name: &str, args: &Value) -> ToolRiskTier {
-    if let Some(path_str) = args
-        .get("path")
-        .or_else(|| args.get("file_path"))
-        .and_then(Value::as_str)
-        && is_forbidden_secret_path(path_str)
+    if tool_name != "skill_load"
+        && ["path", "file_path", "from", "to"]
+            .iter()
+            .filter_map(|key| args.get(key).and_then(Value::as_str))
+            .any(is_forbidden_secret_path)
     {
         return ToolRiskTier::Tier3Blocked;
     }
 
     match tool_name {
-        "read" | "grep" | "glob" | "diff" | "web_fetch" | "web_search" => {
-            ToolRiskTier::Tier0ReadOnly
+        "read" | "grep" | "glob" | "fs_list" | "diff" | "web_fetch" | "web_search"
+        | "skill_load" | "agent_delegate" | "ask_user" | "history_search" | "history_open"
+        | "goal_complete" => ToolRiskTier::Tier0ReadOnly,
+        "agent_memory" => {
+            if args.get("action").and_then(Value::as_str) == Some("list") {
+                ToolRiskTier::Tier0ReadOnly
+            } else {
+                ToolRiskTier::Tier1ReversibleEdit
+            }
         }
-        "edit" => ToolRiskTier::Tier1ReversibleEdit,
+        "edit" | "fs_write" | "fs_multi_edit" | "fs_move" | "fs_delete" => {
+            ToolRiskTier::Tier1ReversibleEdit
+        }
         "shell" => {
             if let Some(cmd) = args.get("command").and_then(Value::as_str) {
                 let lower = cmd.to_ascii_lowercase();
@@ -187,6 +208,16 @@ pub fn classify_tool_risk(tool_name: &str, args: &Value) -> ToolRiskTier {
         }
         _ => ToolRiskTier::Tier2ExternalSideEffect,
     }
+}
+
+/// Whether `tool_name` works on the workspace folder it is given, so a worktree copy takes
+/// its changes: the file tools are confined to the folder handle, and the shell starts in
+/// the folder (a command can still reach outside it; Sandbox auto accepts that).
+pub fn works_in_workspace(tool_name: &str) -> bool {
+    matches!(
+        tool_name,
+        "edit" | "fs_write" | "fs_multi_edit" | "fs_move" | "fs_delete" | "shell"
+    )
 }
 
 /// Returns `true` when a relative path attempts symlink/parent traversal or targets OS secrets (Tier 3).
@@ -340,6 +371,7 @@ pub fn builtin_tool_schemas(include_write_tools: bool) -> Vec<Value> {
         }));
     }
 
+    tools.extend(crate::fs_tools::schemas(include_write_tools));
     tools.sort_by(|a, b| {
         let an = a.get("name").and_then(Value::as_str).unwrap_or("");
         let bn = b.get("name").and_then(Value::as_str).unwrap_or("");
@@ -491,29 +523,7 @@ pub fn tool_edit(
         }
     }
 
-    // Preserve CRLF files: models usually send LF-only targets/replacements.
-    let crlf_file = before_text.contains("\r\n");
-    let (target_owned, replacement_owned);
-    let (target_text, replacement_text) = if crlf_file && !target_text.contains('\r') {
-        target_owned = target_text.replace('\n', "\r\n");
-        replacement_owned = replacement_text.replace("\r\n", "\n").replace('\n', "\r\n");
-        (target_owned.as_str(), replacement_owned.as_str())
-    } else {
-        (target_text, replacement_text)
-    };
-
-    if !before_text.contains(target_text) {
-        let detail = near_miss_line(&before_text, target_text).map_or_else(
-            || "target_not_found".to_owned(),
-            |line| format!("target_not_found;near_line={line}"),
-        );
-        return Err(BistreError::with_detail(
-            DiagnosticKey::ToolEditHashMismatch,
-            detail,
-        ));
-    }
-
-    let after_text = before_text.replacen(target_text, replacement_text, 1);
+    let after_text = apply_replacement(&before_text, target_text, replacement_text)?;
     let before_digest = bytes_blake3(&pre_bytes);
     let after_digest = bytes_blake3(after_text.as_bytes());
     let unified = compute_unified_diff(&before_text, &after_text);
@@ -544,7 +554,38 @@ pub fn tool_edit(
     })
 }
 
+/// Replaces the first `target_text` in `before_text`, keeping a CRLF file CRLF (models usually
+/// send LF-only targets and replacements). A missing target names the nearest line.
+pub(crate) fn apply_replacement(
+    before_text: &str,
+    target_text: &str,
+    replacement_text: &str,
+) -> BistreResult<String> {
+    let crlf_file = before_text.contains("\r\n");
+    let (target_owned, replacement_owned);
+    let (target_text, replacement_text) = if crlf_file && !target_text.contains('\r') {
+        target_owned = target_text.replace('\n', "\r\n");
+        replacement_owned = replacement_text.replace("\r\n", "\n").replace('\n', "\r\n");
+        (target_owned.as_str(), replacement_owned.as_str())
+    } else {
+        (target_text, replacement_text)
+    };
+    if target_text.is_empty() || !before_text.contains(target_text) {
+        let detail = near_miss_line(before_text, target_text).map_or_else(
+            || "target_not_found".to_owned(),
+            |line| format!("target_not_found;near_line={line}"),
+        );
+        return Err(BistreError::with_detail(
+            DiagnosticKey::ToolEditHashMismatch,
+            detail,
+        ));
+    }
+    Ok(before_text.replacen(target_text, replacement_text, 1))
+}
+
 /// Restores a workspace file from a saved `workspace_checkpoints` pre-image snapshot (1-click Rewind).
+/// A checkpoint of a file that did not exist before removes the file again, but only while it
+/// still holds what the tool wrote, so a later change is never lost.
 pub fn tool_rewind_checkpoint(
     storage: &StorageHandle,
     workspace_root: &Path,
@@ -561,12 +602,35 @@ pub fn tool_rewind_checkpoint(
     }
     let dir = Dir::open_ambient_dir(workspace_root, ambient_authority())
         .map_err(|_| BistreError::with_detail(DiagnosticKey::StorageNotFound, "workspace_open"))?;
+    if cp.before_blake3 == crate::fs_tools::ABSENT_FILE_DIGEST {
+        let current = dir.read(&cp.file_path).map_err(|_| {
+            BistreError::with_detail(DiagnosticKey::StorageNotFound, "rewind_file_gone")
+        })?;
+        if bytes_blake3(&current) != cp.after_blake3 {
+            return Err(BistreError::with_detail(
+                DiagnosticKey::ToolStaleRead,
+                "file_changed_since_tool",
+            ));
+        }
+        dir.remove_file(&cp.file_path).map_err(|_| {
+            BistreError::with_detail(DiagnosticKey::InternalError, "rewind_remove_failed")
+        })?;
+        return Ok(cp.file_path);
+    }
+    if let Some(parent) = Path::new(&cp.file_path)
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+    {
+        dir.create_dir_all(parent).map_err(|_| {
+            BistreError::with_detail(DiagnosticKey::InternalError, "rewind_parent_create")
+        })?;
+    }
     atomic_write_in_dir(&dir, &cp.file_path, &cp.pre_image_blob)?;
     Ok(cp.file_path)
 }
 
 /// Atomic temp-file write + rename inside a `cap_std::fs::Dir` with 3-step Windows AV sharing backoff.
-fn atomic_write_in_dir(dir: &Dir, rel_path: &str, bytes: &[u8]) -> BistreResult<()> {
+pub(crate) fn atomic_write_in_dir(dir: &Dir, rel_path: &str, bytes: &[u8]) -> BistreResult<()> {
     let target = Path::new(rel_path);
     let parent = target.parent().unwrap_or_else(|| Path::new(""));
     let file_name = target
@@ -787,7 +851,7 @@ pub async fn tool_shell(
     tool_shell_with_progress(workspace_root, command_str, timeout_secs, None).await
 }
 
-/// [`tool_shell`], sending output pieces to `progress` while the command runs (P21).
+/// [`tool_shell`], sending output pieces to `progress` while the command runs.
 pub async fn tool_shell_with_progress(
     workspace_root: &Path,
     command_str: &str,
@@ -857,439 +921,10 @@ pub async fn tool_shell_with_progress(
     })
 }
 
-/// Maximum bytes read from the network for one `web_fetch` (socket-level stream cap).
-const MAX_WEB_FETCH_NETWORK_BYTES: usize = 2 * 1024 * 1024;
-/// Maximum readable text returned to the model from one `web_fetch`.
-const MAX_WEB_FETCH_TEXT_BYTES: usize = 64 * 1024;
-
-/// Fetches a public HTTP(S) URL through `PublicWebTransport` (public-IP pinning, validated
-/// redirects, streamed body cap) and returns readable text with HTML tags stripped.
-pub async fn tool_web_fetch(
-    web: &crate::ssrf::PublicWebTransport,
-    url: &str,
-) -> BistreResult<ToolExecutionOutput> {
-    let started = Instant::now();
-    let clean_url = url.trim();
-    let fetched = web.get(clean_url, MAX_WEB_FETCH_NETWORK_BYTES).await?;
-    let body = String::from_utf8_lossy(&fetched.body);
-    let mut capped = strip_html_tags(&body);
-    if capped.len() > MAX_WEB_FETCH_TEXT_BYTES || fetched.truncated {
-        truncate_utf8_in_place(&mut capped, MAX_WEB_FETCH_TEXT_BYTES);
-        capped.push_str("...[truncated]");
-    }
-
-    Ok(ToolExecutionOutput {
-        tool_name: "web_fetch".to_owned(),
-        risk_tier: ToolRiskTier::Tier0ReadOnly,
-        ok: (200..300).contains(&fetched.status),
-        summary: format!("fetch {} ({})", fetched.final_url, fetched.status),
-        output_text: capped,
-        diff_text: None,
-        checkpoint_id: None,
-        duration_ms: i64::try_from(started.elapsed().as_millis()).unwrap_or(0),
-        media_attachments: Vec::new(),
-    })
-}
-
-/// Searches the public web through `PublicWebTransport` (SSRF-safe, public-IP pinned, zero API
-/// keys required) and returns structured title/URL/snippet results.
-pub async fn tool_web_search(
-    web: &crate::ssrf::PublicWebTransport,
-    query: &str,
-    max_results: usize,
-) -> BistreResult<ToolExecutionOutput> {
-    let started = Instant::now();
-    let clean_query = query.trim();
-    if clean_query.is_empty() {
-        return Err(BistreError::with_detail(
-            DiagnosticKey::InvalidInput,
-            "empty_search_query",
-        ));
-    }
-    let limit = max_results.clamp(1, 10);
-    let encoded: String = clean_query
-        .bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                (b as char).to_string()
-            }
-            b' ' => "+".to_owned(),
-            other => format!("%{other:02X}"),
-        })
-        .collect();
-    let url = format!("https://html.duckduckgo.com/html/?q={encoded}");
-    let fetched = web.get(&url, 512 * 1024).await?;
-    let body = String::from_utf8_lossy(&fetched.body);
-
-    let mut results = Vec::new();
-    if let Ok(link_re) =
-        Regex::new(r#"(?is)<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>"#)
-    {
-        for cap in link_re.captures_iter(&body) {
-            if results.len() >= limit {
-                break;
-            }
-            let raw_href = cap.get(1).map_or("", |m| m.as_str()).trim();
-            let title = strip_html_tags(cap.get(2).map_or("", |m| m.as_str()));
-            if title.is_empty() {
-                continue;
-            }
-            let href = raw_href
-                .split("uddg=")
-                .nth(1)
-                .and_then(|rest| rest.split('&').next())
-                .map_or_else(|| raw_href.to_owned(), percent_decode_url);
-            results.push(format!("{}. {} — {}", results.len() + 1, title, href));
-        }
-    }
-    let count = results.len();
-    let output_text = if results.is_empty() {
-        strip_html_tags(&body).chars().take(4_000).collect()
-    } else {
-        results.join("\n")
-    };
-    Ok(ToolExecutionOutput {
-        tool_name: "web_search".to_owned(),
-        risk_tier: ToolRiskTier::Tier0ReadOnly,
-        ok: (200..300).contains(&fetched.status),
-        summary: format!("search `{clean_query}` ({count} results)"),
-        output_text,
-        diff_text: None,
-        checkpoint_id: None,
-        duration_ms: i64::try_from(started.elapsed().as_millis()).unwrap_or(0),
-        media_attachments: Vec::new(),
-    })
-}
-
-fn percent_decode_url(raw: &str) -> String {
-    let bytes = raw.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%'
-            && i + 2 < bytes.len()
-            && let Ok(hex) = std::str::from_utf8(&bytes[i + 1..i + 3])
-            && let Ok(val) = u8::from_str_radix(hex, 16)
-        {
-            out.push(val);
-            i += 3;
-            continue;
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-fn truncate_utf8_in_place(text: &mut String, max_bytes: usize) {
-    if text.len() <= max_bytes {
-        return;
-    }
-    let mut cut = max_bytes;
-    while cut > 0 && !text.is_char_boundary(cut) {
-        cut -= 1;
-    }
-    text.truncate(cut);
-}
-
-fn strip_html_tags(raw: &str) -> String {
-    let Ok(tag_re) = Regex::new(r"(?is)<(?:script|style)[^>]*>.*?</(?:script|style)>|<[^>]+>")
-    else {
-        return raw.to_owned();
-    };
-    let no_tags = tag_re.replace_all(raw, " ");
-    no_tags.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// Maximum replayed tool-call ID length.
-pub const MAX_TOOL_CALL_ID_LEN: usize = 64;
-
-/// `ReplayToolCallIds`: restricts IDs to `[A-Za-z0-9_-]{1,64}` and makes them unique, so a
-/// provider never rejects replayed history over a foreign or duplicated call ID.
-pub fn sanitize_tool_call_id<S: std::hash::BuildHasher>(
-    raw: &str,
-    seen: &mut HashSet<String, S>,
-    ordinal: usize,
-) -> String {
-    let mut id: String = raw
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
-        .take(MAX_TOOL_CALL_ID_LEN)
-        .collect();
-    if id.is_empty() {
-        id = format!("call_{ordinal}");
-    }
-    let base = id.clone();
-    let mut n = 1_usize;
-    while !seen.insert(id.clone()) {
-        n += 1;
-        let suffix = format!("_{n}");
-        let keep = MAX_TOOL_CALL_ID_LEN
-            .saturating_sub(suffix.len())
-            .min(base.len());
-        id = format!("{}{suffix}", &base[..keep]);
-    }
-    id
-}
-
-/// Unsloth-inspired self-healing tool-call parser: recovers XML-leaked `<tool_call>{...}</tool_call>`
-/// calls emitted as plain text by local/open models and deduplicates identical invocations.
-pub fn heal_and_dedup_tool_calls(
-    native_calls: Vec<ParsedToolCall>,
-    assistant_text: &str,
-) -> (Vec<ParsedToolCall>, String) {
-    let mut out = Vec::new();
-    let mut seen: HashSet<(String, String)> = HashSet::new();
-    let mut seen_ids: HashSet<String> = HashSet::new();
-
-    for mut call in native_calls {
-        let sig = (call.name.clone(), call.arguments.to_string());
-        if seen.insert(sig) {
-            call.id = sanitize_tool_call_id(&call.id, &mut seen_ids, out.len() + 1);
-            out.push(call);
-        }
-    }
-
-    let Ok(re) = Regex::new(r"(?s)<tool_call>\s*(\{.*?\})\s*</tool_call>") else {
-        return (out, assistant_text.to_owned());
-    };
-    let mut healed_idx: u32 = 0;
-    for cap in re.captures_iter(assistant_text) {
-        let Some(json_slice) = cap.get(1).map(|m| m.as_str()) else {
-            continue;
-        };
-        if let Ok(val) = serde_json::from_str::<Value>(json_slice)
-            && let Some(name) = val.get("name").and_then(Value::as_str)
-        {
-            let args = val.get("arguments").cloned().unwrap_or_else(|| json!({}));
-            let sig = (name.to_owned(), args.to_string());
-            if seen.insert(sig) {
-                healed_idx = healed_idx.saturating_add(1);
-                out.push(ParsedToolCall {
-                    id: sanitize_tool_call_id(
-                        &format!("healed_call_{healed_idx}"),
-                        &mut seen_ids,
-                        out.len() + 1,
-                    ),
-                    name: name.to_owned(),
-                    arguments: args,
-                    healed_from_text: true,
-                });
-            }
-        }
-    }
-
-    let cleaned_text = re.replace_all(assistant_text, "").trim().to_owned();
-    (out, cleaned_text)
-}
-
 #[cfg(test)]
 #[expect(
     clippy::disallowed_methods,
     reason = "tests map errors to empty values that the following assertions reject"
 )]
-mod tests {
-    use super::*;
-    use tempfile::tempdir;
-
-    type TestResult = Result<(), Box<dyn std::error::Error>>;
-
-    #[test]
-    fn capability_scoped_read_edit_diff_rewind_and_tier3_secret_blocks() -> TestResult {
-        let dir = tempdir()?;
-        let workspace = dir.path().join("ws");
-        assert!(std::fs::create_dir_all(&workspace).is_ok());
-        let file = workspace.join("hello.rs");
-        assert!(std::fs::write(&file, "fn main() {\n    let x = 1;\n}\n").is_ok());
-
-        // Tier-3 secret/traversal paths are hard-blocked.
-        assert_eq!(
-            classify_tool_risk("read", &json!({"path": "../etc/passwd"})),
-            ToolRiskTier::Tier3Blocked
-        );
-        assert_eq!(
-            classify_tool_risk("read", &json!({"path": ".env"})),
-            ToolRiskTier::Tier3Blocked
-        );
-        assert!(tool_read(&workspace, ".env", None, None).is_err());
-
-        // Read produces blake3 line-hash anchors.
-        let read_out = Some(tool_read(&workspace, "hello.rs", Some(1), Some(3))?);
-        assert!(
-            read_out
-                .as_ref()
-                .is_some_and(|r| r.output_text.contains("2#"))
-        );
-
-        // Edit verifies hash, saves pre-image checkpoint, writes atomically, produces unified diff.
-        let storage = StorageHandle::open(dir.path().join("tools.sqlite"))?;
-        let thread =
-            storage.create_thread(None, "Tools", bistre_protocol::ThreadMode::Code, None, None)?;
-
-        let target = "    let x = 1;";
-        let bad_edit = tool_edit(
-            &storage,
-            &workspace,
-            &thread.id,
-            None,
-            "hello.rs",
-            target,
-            "    let x = 42;",
-            Some("deadbeef"),
-        );
-        assert_eq!(
-            bad_edit.err().map(|e| e.key),
-            Some(DiagnosticKey::ToolEditHashMismatch)
-        );
-
-        let anchor = line_range_blake3(target);
-        let edit_out = tool_edit(
-            &storage,
-            &workspace,
-            &thread.id,
-            None,
-            "hello.rs",
-            target,
-            "    let x = 42;",
-            Some(&anchor),
-        )?;
-        assert!(edit_out.ok && edit_out.diff_text.is_some());
-        assert_eq!(
-            std::fs::read_to_string(&file)?,
-            "fn main() {\n    let x = 42;\n}\n"
-        );
-
-        // 1-click Rewind restores exact original bytes!
-        let cp_id = edit_out.checkpoint_id.ok_or("edit made no checkpoint")?;
-        assert!(tool_rewind_checkpoint(&storage, &workspace, &cp_id).is_ok());
-        assert_eq!(
-            std::fs::read_to_string(&file)?,
-            "fn main() {\n    let x = 1;\n}\n"
-        );
-
-        // Grep & Glob run zero-fork in-process.
-        let g = Some(tool_grep(&workspace, "let x = 1", None)?);
-        assert!(
-            g.as_ref()
-                .is_some_and(|r| r.output_text.contains("hello.rs:2:"))
-        );
-        let gl = Some(tool_glob(&workspace, "*.rs")?);
-        assert!(
-            gl.as_ref()
-                .is_some_and(|r| r.output_text.contains("hello.rs"))
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn self_healing_tool_parser_recovers_xml_leaks_and_deduplicates() {
-        let raw = "Sure!\n<tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"a.rs\"}}</tool_call>\n<tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"a.rs\"}}</tool_call>";
-        let (calls, cleaned) = heal_and_dedup_tool_calls(Vec::new(), raw);
-        assert_eq!(calls.len(), 1);
-        assert!(calls[0].healed_from_text);
-        assert_eq!(calls[0].name, "read");
-        assert_eq!(cleaned, "Sure!");
-    }
-
-    #[test]
-    fn stale_read_guard_near_miss_hints_crlf_edits_and_truncation_footer() -> TestResult {
-        let dir = tempdir()?;
-        let ws = dir.path().join("ws");
-        assert!(std::fs::create_dir_all(&ws).is_ok());
-        assert!(
-            std::fs::write(ws.join("win.txt"), "alpha\r\n    beta  gamma\r\nomega\r\n").is_ok()
-        );
-        let storage = StorageHandle::open(dir.path().join("t.sqlite"))?;
-        let thread = storage.create_thread(
-            None,
-            "Harness",
-            bistre_protocol::ThreadMode::Code,
-            None,
-            None,
-        )?;
-        let tid = thread.id.as_str();
-
-        // Run-scoped stale-read guard.
-        let ledger = ReadLedger::default();
-        let d1 = file_digest(&ws, "win.txt").unwrap_or_default();
-        ledger.record("thread-a", "win.txt", &d1);
-        assert!(ledger.check_fresh("thread-a", "./win.txt", &d1).is_ok());
-        assert!(
-            std::fs::write(ws.join("win.txt"), "alpha\r\n    beta  gamma\r\nomega!\r\n").is_ok()
-        );
-        let d2 = file_digest(&ws, "win.txt").unwrap_or_default();
-        assert_eq!(
-            ledger
-                .check_fresh("thread-a", "win.txt", &d2)
-                .err()
-                .map(|e| e.key),
-            Some(DiagnosticKey::ToolStaleRead)
-        );
-        assert!(
-            ledger.check_fresh("thread-b", "win.txt", &d2).is_ok(),
-            "other scopes unaffected"
-        );
-
-        // CRLF is preserved when the model sends LF text.
-        let edited = tool_edit(
-            &storage,
-            &ws,
-            tid,
-            None,
-            "win.txt",
-            "alpha\n    beta  gamma",
-            "alpha\nBETA",
-            None,
-        );
-        assert!(edited.is_ok());
-        let after = std::fs::read_to_string(ws.join("win.txt")).unwrap_or_default();
-        assert_eq!(after, "alpha\r\nBETA\r\nomega!\r\n");
-
-        // Near-miss hint points at the closest line.
-        let miss = tool_edit(
-            &storage,
-            &ws,
-            tid,
-            None,
-            "win.txt",
-            "omega!  \nnot here",
-            "x",
-            None,
-        );
-        assert_eq!(
-            miss.err().and_then(|e| e.detail_code),
-            Some("target_not_found;near_line=3".to_owned())
-        );
-
-        // Partial reads end with the truncation footer.
-        let mut lines = String::new();
-        for i in 0..300 {
-            push_line(&mut lines, format_args!("line {i}"));
-        }
-        assert!(std::fs::write(ws.join("long.txt"), lines).is_ok());
-        let read = tool_read(&ws, "long.txt", None, None)
-            .map_or_else(|_| String::new(), |o| o.output_text);
-        assert!(read.contains(TRUNCATED_READ_FOOTER));
-        assert!(read.contains("start_line=251"));
-        Ok(())
-    }
-
-    #[test]
-    fn replayed_tool_call_ids_are_sanitized_bounded_and_unique() {
-        let mut seen = HashSet::new();
-        assert_eq!(
-            sanitize_tool_call_id("call:abc/1", &mut seen, 1),
-            "callabc1"
-        );
-        assert_eq!(
-            sanitize_tool_call_id("callabc1", &mut seen, 2),
-            "callabc1_2"
-        );
-        assert_eq!(sanitize_tool_call_id("%%%", &mut seen, 3), "call_3");
-        let long = "x".repeat(200);
-        let a = sanitize_tool_call_id(&long, &mut seen, 4);
-        let b = sanitize_tool_call_id(&long, &mut seen, 5);
-        assert_eq!(a.len(), MAX_TOOL_CALL_ID_LEN);
-        assert!(b.len() <= MAX_TOOL_CALL_ID_LEN && a != b);
-    }
-}
+#[path = "tools_tests.rs"]
+mod tests;

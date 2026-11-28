@@ -146,11 +146,42 @@ pub fn normalize_ota_feed_url(raw: &str) -> String {
     trimmed.to_owned()
 }
 
-/// Performs a zero-telemetry check against `feed_url` (static JSON manifest + mandatory `.minisig`).
+/// Receipt written atomically to `<data_dir>/ota_staging/staged.json` once a payload passes
+/// SHA-256 verification, consumed by `bistre-updater --apply-staged` on the next launch.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct StagedUpdateReceipt {
+    pub version: String,
+    pub payload_path: String,
+    pub sha256: String,
+    pub reinstall: bool,
+}
+
+/// Performs a zero-telemetry check against `feed_url` on the `stable` channel.
 pub async fn check_for_updates(
     http: &reqwest::Client,
     feed_url: &str,
     current_version: &str,
+    active_runs: u32,
+    release_key: Option<&str>,
+) -> BistreResult<(UpdateCheckResult, VerifiedManifest)> {
+    check_for_updates_on_channel(
+        http,
+        feed_url,
+        current_version,
+        "stable",
+        active_runs,
+        release_key,
+    )
+    .await
+}
+
+/// Performs a zero-telemetry check against `feed_url` (static JSON manifest + mandatory `.minisig`),
+/// applying `channel` (`"stable"` filters out prereleases; `"beta"` accepts them).
+pub async fn check_for_updates_on_channel(
+    http: &reqwest::Client,
+    feed_url: &str,
+    current_version: &str,
+    channel: &str,
     active_runs: u32,
     release_key: Option<&str>,
 ) -> BistreResult<(UpdateCheckResult, VerifiedManifest)> {
@@ -187,13 +218,14 @@ pub async fn check_for_updates(
         .map_err(|_| BistreError::new(DiagnosticKey::CryptoSignatureInvalid))?;
     verify_minisign_bytes(pk, &manifest_bytes, &sig_text)?;
 
-    // A-W 7b: the same typed manifest the release builder writes (format 2).
+    // The same typed manifest the release builder writes (format 2).
     let parsed = crate::ota_manifest::OtaManifestV2::parse(&manifest_bytes)?;
     let asset = parsed
         .asset_for(crate::ota_manifest::OtaTarget::current())?
         .clone();
     let latest_version = parsed.semver.trim().to_owned();
-    let update_available = is_semver_newer(&latest_version, current_version);
+    let update_available =
+        is_update_available_for_channel(&latest_version, current_version, channel);
     let sha256_hex = asset.sha256.as_str().to_owned();
     let download_size_bytes = asset.size_bytes.get();
 
@@ -231,9 +263,25 @@ pub async fn stage_update_artifact(
     current_version: &str,
     active_runs: u32,
 ) -> BistreResult<String> {
-    // R27: only a strictly newer version is ever staged; a replayed older (or equal) signed
-    // manifest would be a downgrade.
-    if !is_semver_newer(&check.latest_version, current_version) {
+    stage_update_artifact_with_mode(http, data_dir, check, current_version, active_runs, false)
+        .await
+}
+
+/// [`stage_update_artifact`] with explicit opt-in for reinstalling the exact running version.
+/// Older versions (downgrades) are always refused.
+pub async fn stage_update_artifact_with_mode(
+    http: &reqwest::Client,
+    data_dir: &Path,
+    check: &VerifiedManifest,
+    current_version: &str,
+    active_runs: u32,
+    allow_reinstall: bool,
+) -> BistreResult<String> {
+    // Only a strictly newer version (or exact same version on explicit reinstall) is ever staged.
+    let version_ok = is_semver_newer(&check.latest_version, current_version)
+        || (allow_reinstall
+            && parse_semver(&check.latest_version) == parse_semver(current_version));
+    if !version_ok {
         return Err(BistreError::with_detail(
             DiagnosticKey::OtaIntegrityFailed,
             "ota_not_newer",
@@ -277,17 +325,9 @@ pub async fn stage_update_artifact(
         ));
     }
 
-    let safe_ver: String = check
-        .latest_version
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
-        .collect();
-    let slot_name = if safe_ver.is_empty() {
-        "staged".to_owned()
-    } else {
-        safe_ver
-    };
-    let staging_dir = data_dir.join("ota_staging").join(&slot_name);
+    let staging_dir = data_dir
+        .join("ota_staging")
+        .join(safe_ota_slot_name(&check.latest_version));
     std::fs::create_dir_all(&staging_dir)
         .map_err(|_| BistreError::with_detail(DiagnosticKey::InternalError, "ota_staging_dir"))?;
     let artifact_path = staging_dir.join("payload.bin");
@@ -345,12 +385,63 @@ pub async fn stage_update_artifact(
     }
     std::fs::rename(&partial_path, &artifact_path)
         .map_err(|_| BistreError::with_detail(DiagnosticKey::InternalError, "ota_staging_write"))?;
+    let artifact_str = artifact_path.to_string_lossy().into_owned();
+    write_staged_receipt(
+        data_dir,
+        &check.latest_version,
+        &artifact_str,
+        expected_sha,
+        allow_reinstall,
+    )?;
+    Ok(artifact_str)
+}
 
-    Ok(artifact_path.to_string_lossy().into_owned())
+fn safe_ota_slot_name(version: &str) -> String {
+    let safe_ver: String = version
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
+        .collect();
+    if safe_ver.is_empty() {
+        "staged".to_owned()
+    } else {
+        safe_ver
+    }
+}
+
+fn write_staged_receipt(
+    data_dir: &Path,
+    version: &str,
+    payload_path: &str,
+    sha256: String,
+    reinstall: bool,
+) -> BistreResult<()> {
+    let receipt = StagedUpdateReceipt {
+        version: version.to_owned(),
+        payload_path: payload_path.to_owned(),
+        sha256,
+        reinstall,
+    };
+    let receipt_bytes = serde_json::to_vec_pretty(&receipt)
+        .map_err(|_| BistreError::with_detail(DiagnosticKey::InternalError, "ota_staging_write"))?;
+    let receipt_tmp = data_dir.join("ota_staging").join("staged.json.tmp");
+    let receipt_path = data_dir.join("ota_staging").join("staged.json");
+    {
+        let mut rf = std::fs::File::create(&receipt_tmp).map_err(|_| {
+            BistreError::with_detail(DiagnosticKey::InternalError, "ota_staging_write")
+        })?;
+        rf.write_all(&receipt_bytes).map_err(|_| {
+            BistreError::with_detail(DiagnosticKey::InternalError, "ota_staging_write")
+        })?;
+        rf.sync_all().map_err(|_| {
+            BistreError::with_detail(DiagnosticKey::InternalError, "ota_staging_write")
+        })?;
+    }
+    std::fs::rename(&receipt_tmp, &receipt_path)
+        .map_err(|_| BistreError::with_detail(DiagnosticKey::InternalError, "ota_staging_write"))
 }
 
 /// Requires `https://` (or `http://` strictly for loopback test feeds) and returns the trimmed URL.
-/// `https`, or `http` to a loopback host decided by the parsed URL (R28: never a string
+/// `https`, or `http` to a loopback host decided by the parsed URL (never a string
 /// prefix, so `http://localhost.evil.com` is plain http to a public host and refused).
 fn require_secure_url<'a>(raw: &'a str, detail: &'static str) -> BistreResult<&'a str> {
     let url = raw.trim();
@@ -377,25 +468,12 @@ pub fn normalize_sha256(raw: &str) -> Option<String> {
 }
 
 async fn read_bounded(
-    mut resp: reqwest::Response,
+    resp: reqwest::Response,
     max: usize,
     detail: &'static str,
 ) -> BistreResult<Vec<u8>> {
-    let mut out = Vec::new();
-    while let Some(chunk) = resp
-        .chunk()
-        .await
-        .map_err(|_| BistreError::with_detail(DiagnosticKey::OtaCheckFailed, detail))?
-    {
-        if out.len() + chunk.len() > max {
-            return Err(BistreError::with_detail(
-                DiagnosticKey::OtaCheckFailed,
-                detail,
-            ));
-        }
-        out.extend_from_slice(&chunk);
-    }
-    Ok(out)
+    let err = BistreError::with_detail(DiagnosticKey::OtaCheckFailed, detail);
+    crate::http_clients::read_body_capped(resp, max, err.clone(), err).await
 }
 
 /// Parsed `SemVer` 2.0 version (build metadata ignored for precedence).
@@ -483,6 +561,20 @@ pub fn is_semver_newer(candidate: &str, current: &str) -> bool {
     parse_semver(candidate) > parse_semver(current)
 }
 
+/// Returns `true` when `version` carries a `SemVer` prerelease suffix (e.g. `0.2.0-beta.1`).
+pub fn is_prerelease(version: &str) -> bool {
+    !parse_semver(version).pre.is_empty()
+}
+
+/// Channel-aware update availability check: `"stable"` ignores prereleases while `"beta"` accepts
+/// them, always enforcing strict `SemVer` 2.0 monotonicity.
+pub fn is_update_available_for_channel(candidate: &str, current: &str, channel: &str) -> bool {
+    if channel.eq_ignore_ascii_case("stable") && is_prerelease(candidate) {
+        return false;
+    }
+    is_semver_newer(candidate, current)
+}
+
 fn now_unix_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -492,348 +584,5 @@ fn now_unix_ms() -> i64 {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
-    use super::*;
-
-    type TestResult = Result<(), Box<dyn std::error::Error>>;
-
-    #[test]
-    fn semver_anti_rollback_compares_triples_monotonically() {
-        assert!(is_semver_newer("0.2.0", "0.1.0"));
-        assert!(is_semver_newer("v1.0.1", "1.0.0"));
-        assert!(!is_semver_newer("0.1.0", "0.1.0"));
-        assert!(!is_semver_newer("0.0.9", "0.1.0"));
-    }
-
-    #[test]
-    fn semver_prerelease_precedence_follows_semver_2() {
-        assert!(is_semver_newer("1.0.0", "1.0.0-rc.1"));
-        assert!(is_semver_newer("1.0.0-rc.10", "1.0.0-rc.2"));
-        assert!(is_semver_newer("1.0.0-rc.1", "1.0.0-beta.11"));
-        assert!(is_semver_newer("1.0.0-alpha.1", "1.0.0-alpha"));
-        assert!(is_semver_newer("1.0.0-alpha.beta", "1.0.0-alpha.1"));
-        assert!(!is_semver_newer("1.0.0-rc.1", "1.0.0"));
-        assert!(!is_semver_newer("1.0.0+build.9", "1.0.0+build.1"));
-    }
-
-    #[test]
-    fn digest_and_url_policy() {
-        let hex = "a".repeat(64);
-        assert_eq!(
-            normalize_sha256(&format!("sha256:{}", hex.to_uppercase())),
-            Some(hex.clone())
-        );
-        assert_eq!(normalize_sha256(&hex), Some(hex));
-        assert_eq!(normalize_sha256(""), None);
-        assert_eq!(normalize_sha256("sha256:abc"), None);
-        assert!(require_secure_url("https://example.com/m.json", "x").is_ok());
-        assert!(require_secure_url("http://127.0.0.1:8080/m.json", "x").is_ok());
-        assert!(require_secure_url("http://example.com/m.json", "x").is_err());
-        assert!(require_secure_url("file:///m.json", "x").is_err());
-        // R28: loopback is decided by the parsed host, never a string prefix.
-        assert!(require_secure_url("http://localhost.evil.com/m.json", "x").is_err());
-        assert!(require_secure_url("http://127.0.0.1.evil.com/m.json", "x").is_err());
-        assert!(require_secure_url("http://localhost:8080/m.json", "x").is_ok());
-        assert!(require_secure_url("http://[::1]:9/m.json", "x").is_ok());
-    }
-
-    /// R27: a signed manifest that is not strictly newer than the running version is never
-    /// staged (replayed older manifests are downgrades).
-    #[tokio::test]
-    async fn staging_refuses_a_version_that_is_not_newer() -> TestResult {
-        let dir = tempfile::tempdir()?;
-        let http = crate::http_clients::ota_client()?;
-        for version in ["0.1.2", "0.1.1", "0.1.2-rc.1"] {
-            let check = VerifiedManifest {
-                latest_version: version.to_owned(),
-                track: "track_a".to_owned(),
-                ownership_mode: "self_managed".to_owned(),
-                download_url: "https://example.invalid/payload.bin".to_owned(),
-                sha256_hex: "a".repeat(64),
-                download_size_bytes: 1,
-            };
-            let staged = stage_update_artifact(&http, dir.path(), &check, "0.1.2", 0).await;
-            assert_eq!(
-                staged.err().and_then(|e| e.detail_code),
-                Some("ota_not_newer".to_owned()),
-                "{version}"
-            );
-        }
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn staging_requires_digest_and_rejects_mismatch() -> TestResult {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        let dir = tempfile::tempdir()?;
-        let http = crate::providers::build_http_client()?;
-        let mut check = VerifiedManifest {
-            latest_version: "0.2.0".to_owned(),
-            track: "track_a".to_owned(),
-            ownership_mode: "self_managed".to_owned(),
-            download_url: "https://example.invalid/payload.bin".to_owned(),
-            sha256_hex: String::new(),
-            download_size_bytes: 0,
-        };
-        let missing = stage_update_artifact(&http, dir.path(), &check, "0.1.0", 0).await;
-        assert_eq!(
-            missing.err().and_then(|e| e.detail_code),
-            Some("ota_sha256_missing".to_owned())
-        );
-
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-        let Ok(addr) = listener.local_addr() else {
-            return Ok(());
-        };
-        let server = tokio::spawn(async move {
-            if let Ok((mut sock, _)) = listener.accept().await {
-                let mut buf = [0_u8; 2048];
-                assert!(sock.read(&mut buf).await.is_ok());
-                let body = b"tampered payload";
-                let head = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                    body.len()
-                );
-                assert!(sock.write_all(head.as_bytes()).await.is_ok());
-                assert!(sock.write_all(body).await.is_ok());
-            }
-        });
-        check.download_url = format!("http://{addr}/payload.bin");
-        check.sha256_hex = format!("sha256:{}", "0".repeat(64));
-        let mismatch = stage_update_artifact(&http, dir.path(), &check, "0.1.0", 0).await;
-        assert!(server.await.is_ok());
-        assert_eq!(
-            mismatch.err().and_then(|e| e.detail_code),
-            Some("ota_sha256_mismatch".to_owned())
-        );
-        assert!(!dir.path().join("ota_staging/0.2.0/payload.bin").exists());
-        assert!(
-            !dir.path()
-                .join("ota_staging/0.2.0/payload.bin.partial")
-                .exists()
-        );
-        Ok(())
-    }
-
-    // Test-only minisign fixtures: "ED" (prehashed) signatures made with a throwaway key that
-    // exists only for these tests (never a release key).
-    pub(crate) const FIXTURE_PK: &str = "RWQAFXtep/FXfvzfI7Z2I50CNHQOdeirpSLf9jH7+SBcRig/c/84SvdR";
-    /// A v2 manifest with an asset for every target.
-    pub(crate) const FIXTURE_MANIFEST: &str = r#"{"format":2,"semver":"0.2.0","track":"track_b","release_notes":"Faster startup","targets":{"android-arm64":{"url":"https://example.invalid/bistre-v0.2.0-android-arm64.apk","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":1024},"linux-x64":{"url":"https://example.invalid/bistre-v0.2.0-linux-x64.AppImage","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":1024},"windows-x64":{"url":"https://example.invalid/bistre-v0.2.0-windows-x64-setup.exe","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":1024}}}"#;
-    pub(crate) const FIXTURE_SIG: &str = "untrusted comment: bistre test fixture\n\
-RUQAFXtep/FXfn7mrGEFdzchn/Fafqp+vvnqGJreMsVovBn5iALnYPIExlnFhoN4M1LxaeWHO3dW8zBziLds0drGypcOfeXUnwk=\n\
-trusted comment: timestamp:0\tfile:manifest.json\tprehashed\n\
-oyEp6wVLXsxzj6ysZLwn+Gk5CPuSOA/YEn6s6b/JjDOd2QBwWLNpzMvDj8s9wfjY7OG7oCKnJ9WXBUMmJpUXAQ==\n";
-    /// The old (v1) shape, correctly signed: a v0.1.2 feed.
-    pub(crate) const FIXTURE_MANIFEST_V1: &str =
-        r#"{"semver":"0.2.0","track":"track_b","assets":[]}"#;
-    pub(crate) const FIXTURE_SIG_V1: &str = "untrusted comment: bistre test fixture\n\
-RUQAFXtep/FXfpGaUohzN/0MU4YnSnVzcnWu+d6YJDbAdm3XQ5TODaShSR2UhxeWcwIHHqZnQRhTXrCSWq/uo2Y5RbOXjSuBPAQ=\n\
-trusted comment: timestamp:0\tfile:manifest.json\tprehashed\n\
-oTrPXLPg0e2j7DiIjsWpHNSz7CPT4rZfzYSrlRrXVN8xvVVrMcqqkqZ5wSS2FW4eZnE1OdwY3LPTH1i6z+oxBg==\n";
-    /// A v2 manifest with no targets at all.
-    pub(crate) const FIXTURE_MANIFEST_NO_TARGETS: &str =
-        r#"{"format":2,"semver":"0.2.0","track":"track_b","release_notes":"","targets":{}}"#;
-    pub(crate) const FIXTURE_SIG_NO_TARGETS: &str = "untrusted comment: bistre test fixture\n\
-RUQAFXtep/FXfuQHn+jhnNifQZ4V0dIZmGqmBEadtPrZp1sdKN/n5EWjfTx8b9ZDWYy9N1sqHtaeTOpnDXEygI0KHb1h1K9zVgE=\n\
-trusted comment: timestamp:0\tfile:manifest.json\tprehashed\n\
-F0MWeykOYVpNE+ABqzC1o1Xohz532tKEdh4c7sFWkyMTMlLwexyu6xv/g3+Z0Yhe7YPc0HU16HcRbhPKIZnMDw==\n";
-
-    /// Serves `manifest` at any path and `sig` (or 404 when `None`) at `*.minisig`, for up to
-    /// `max_requests` connections.
-    pub(crate) async fn serve_feed(
-        manifest: &'static str,
-        sig: Option<&'static str>,
-        max_requests: usize,
-    ) -> Result<(std::net::SocketAddr, tokio::task::JoinHandle<()>), std::io::Error> {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-        let addr = listener.local_addr()?;
-        let handle = tokio::spawn(async move {
-            for _ in 0..max_requests {
-                let Ok((mut sock, _)) = listener.accept().await else {
-                    return;
-                };
-                let mut buf = [0_u8; 2048];
-                let Ok(n) = sock.read(&mut buf).await else {
-                    return;
-                };
-                let req = String::from_utf8_lossy(&buf[..n]);
-                let body = if req.contains(".minisig") {
-                    sig
-                } else {
-                    Some(manifest)
-                };
-                let resp = match body {
-                    Some(b) => format!(
-                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{b}",
-                        b.len()
-                    ),
-                    None => {
-                        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-                            .to_owned()
-                    }
-                };
-                if sock.write_all(resp.as_bytes()).await.is_err() {
-                    return;
-                }
-            }
-        });
-        Ok((addr, handle))
-    }
-
-    #[tokio::test]
-    async fn missing_release_key_disables_ota_before_any_request()
-    -> Result<(), Box<dyn std::error::Error>> {
-        assert_eq!(
-            resolve_release_key_with(None, "").err().map(|e| e.key),
-            Some(DiagnosticKey::OtaSigningKeyMissing)
-        );
-        let http = crate::providers::build_http_client()?;
-        // Port 9 (discard) is never contacted: the key check runs first.
-        let res = check_for_updates(
-            &http,
-            "http://127.0.0.1:9/manifest.json",
-            "0.1.0",
-            0,
-            Some(""),
-        )
-        .await;
-        assert_eq!(
-            res.err().map(|e| e.key),
-            Some(DiagnosticKey::OtaSigningKeyMissing)
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn official_release_pubkey_verifies_minisign_012_signature_and_rejects_tampering()
-    -> Result<(), Box<dyn std::error::Error>> {
-        const SAMPLE_MANIFEST: &[u8] = br#"{"semver":"1.0.0","track":"track_b","assets":[]}"#;
-        const SAMPLE_SIG: &str = "untrusted comment: signature from minisign secret key\n\
-RUSzNjkoCQGmhLJKWuxwCQ5EJuNVJQndPRi11XbQ61SbTH3mjth6e0ML+bNWiLjjargHeRPWWpsjccwlZgXdIUx7R6vs+3px5Qo=\n\
-trusted comment: bistre v1.0.0\n\
-fgsYLnenA1gdfE3Qca40F0ZfGmgfjF6sYP6BkmoLf+vN0UwGF+ThF99aEy3Gk5XDViORhA2BwS4QcSXGHsHBBQ==\n";
-
-        let resolved = resolve_release_key(None)?;
-        assert_eq!(resolved, OFFICIAL_RELEASE_PUBKEY_B64);
-        verify_minisign_bytes(resolved, SAMPLE_MANIFEST, SAMPLE_SIG)?;
-
-        let tampered = br#"{"semver":"1.0.1","track":"track_b","assets":[]}"#;
-        assert_eq!(
-            verify_minisign_bytes(resolved, tampered, SAMPLE_SIG)
-                .err()
-                .map(|e| e.key),
-            Some(DiagnosticKey::CryptoSignatureInvalid)
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn signed_manifest_yields_verified_manifest() -> Result<(), Box<dyn std::error::Error>> {
-        let http = crate::providers::build_http_client()?;
-        let (addr, server) = serve_feed(FIXTURE_MANIFEST, Some(FIXTURE_SIG), 2).await?;
-        let (summary, verified) = check_for_updates(
-            &http,
-            &format!("http://{addr}/manifest.json"),
-            "0.1.0",
-            0,
-            Some(FIXTURE_PK),
-        )
-        .await?;
-        server.await?;
-        assert!(summary.signature_verified);
-        assert!(summary.update_available);
-        assert_eq!(verified.latest_version(), "0.2.0");
-        let expected = crate::ota_manifest::OtaTarget::current()
-            .map(|t| format!("https://example.invalid/{}", t.asset_file_name("v0.2.0")));
-        assert_eq!(Some(verified.download_url.clone()), expected);
-        Ok(())
-    }
-
-    /// A-W 7b: a correctly signed manifest in the old shape is "unsupported" (reinstall once),
-    /// and a release without this platform says so, instead of "integrity failed".
-    #[tokio::test]
-    async fn old_or_incomplete_manifests_fail_with_their_own_reason() -> TestResult {
-        let http = crate::providers::build_http_client()?;
-        for (manifest, sig, key) in [
-            (
-                FIXTURE_MANIFEST_V1,
-                FIXTURE_SIG_V1,
-                DiagnosticKey::OtaManifestUnsupported,
-            ),
-            (
-                FIXTURE_MANIFEST_NO_TARGETS,
-                FIXTURE_SIG_NO_TARGETS,
-                DiagnosticKey::OtaNoAssetForPlatform,
-            ),
-        ] {
-            let (addr, server) = serve_feed(manifest, Some(sig), 2).await?;
-            let res = check_for_updates(
-                &http,
-                &format!("http://{addr}/manifest.json"),
-                "0.1.0",
-                0,
-                Some(FIXTURE_PK),
-            )
-            .await;
-            server.await?;
-            assert_eq!(res.err().map(|e| e.key), Some(key));
-        }
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn tampered_or_unsigned_manifest_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
-        let http = crate::providers::build_http_client()?;
-        let tampered: &'static str =
-            r#"{"format":2,"semver":"9.9.9","track":"track_b","release_notes":"","targets":{}}"#;
-        let (addr, server) = serve_feed(tampered, Some(FIXTURE_SIG), 2).await?;
-        let res = check_for_updates(
-            &http,
-            &format!("http://{addr}/m.json"),
-            "0.1.0",
-            0,
-            Some(FIXTURE_PK),
-        )
-        .await;
-        server.await?;
-        assert_eq!(
-            res.err().map(|e| e.key),
-            Some(DiagnosticKey::CryptoSignatureInvalid)
-        );
-
-        let (addr, server) = serve_feed(FIXTURE_MANIFEST, None, 2).await?;
-        let res = check_for_updates(
-            &http,
-            &format!("http://{addr}/m.json"),
-            "0.1.0",
-            0,
-            Some(FIXTURE_PK),
-        )
-        .await;
-        server.await?;
-        assert_eq!(
-            res.err().map(|e| e.key),
-            Some(DiagnosticKey::CryptoSignatureInvalid)
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn normalizes_owner_repo_and_github_release_urls() {
-        assert_eq!(normalize_ota_feed_url(""), DEFAULT_OTA_FEED_URL);
-        assert_eq!(
-            normalize_ota_feed_url("baros4294/bistre"),
-            "https://github.com/baros4294/bistre/releases/latest/download/manifest.json"
-        );
-        assert_eq!(
-            normalize_ota_feed_url("https://github.com/baros4294/bistre/releases/latest"),
-            "https://github.com/baros4294/bistre/releases/latest/download/manifest.json"
-        );
-        assert_eq!(
-            normalize_ota_feed_url("https://example.com/custom/manifest.json"),
-            "https://example.com/custom/manifest.json"
-        );
-    }
-}
+#[path = "ota_tests.rs"]
+pub(crate) mod tests;

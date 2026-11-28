@@ -45,6 +45,13 @@ pub enum ReasoningBlock {
     /// Gemini `thoughtSignature` on a (often empty, trailing) text part of the answer; it goes
     /// back on the text part, never moved onto a call (kelivo fixtures).
     GeminiTextSignature { signature: String },
+    /// Gemini `thoughtSignature`s of a reply's picture (`inlineData`) parts, in order, empty
+    /// for a picture that had none; with one for every picture, the pictures go back as the
+    /// model's own parts.
+    GeminiPictureSignatures { signatures: Vec<String> },
+    /// `OpenRouter` `reasoning_details` entries of one reply, raw and in order
+    /// ([`crate::reasoning_details`]).
+    OpenRouterDetails { details: Vec<Value> },
 }
 
 /// Canonical persisted tool call attached to an `Assistant` turn.
@@ -233,7 +240,7 @@ pub fn eligible_server_chain_id<'a>(
     }
 }
 
-/// A safe stateful chain (R7): the stored reply to continue from, and where the items after
+/// A safe stateful chain: the stored reply to continue from, and where the items after
 /// it (the only ones sent) begin in the history.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChainPlan {
@@ -241,7 +248,7 @@ pub struct ChainPlan {
     pub first_new_index: usize,
 }
 
-/// R7: chain from the latest assistant reply when storing is on for this request and the
+/// Chain from the latest assistant reply when storing is on for this request and the
 /// history is uncompacted (a compaction rewrote the prefix the server holds). The request
 /// then sends only what came after that reply; the server already has the rest.
 #[must_use]
@@ -269,7 +276,7 @@ pub fn chain_plan(
     })
 }
 
-/// Keys of a node's metadata the app never reads (R39): opaque reasoning payloads and
+/// Keys of a node's metadata the app never reads: opaque reasoning payloads and
 /// signatures, server chain state, and parts delivered typed elsewhere (grounding through
 /// `list_thread_grounding`, attachments on the node DTO). They stay in storage for replay.
 const UI_HIDDEN_META_KEYS: [&str; 5] = [
@@ -280,7 +287,7 @@ const UI_HIDDEN_META_KEYS: [&str; 5] = [
     "origin",
 ];
 
-/// The node metadata sent to the app (R39): everything but [`UI_HIDDEN_META_KEYS`], so a
+/// The node metadata sent to the app: everything but [`UI_HIDDEN_META_KEYS`], so a
 /// reply's large encrypted reasoning never crosses the FFI on every thread load.
 #[must_use]
 pub fn ui_node_meta(raw: Option<&str>) -> Option<String> {
@@ -297,7 +304,7 @@ pub fn ui_node_meta(raw: Option<&str>) -> Option<String> {
 /// The result sent back for a tool call that never ran (written to the model, not the UI).
 pub const TOOL_CALL_DID_NOT_RUN: &str = "This tool call did not run (the reply was stopped).";
 
-/// Pairs every tool call with a result (pi #9986, cherry-studio #24997): a call left without
+/// Pairs every tool call with a result: a call left without
 /// one by a stopped or crashed run gets a "did not run" error result right after its turn's
 /// existing results, so the next request is valid and the model knows the call did not run.
 #[must_use]
@@ -346,7 +353,7 @@ pub fn answer_dangling_tool_calls(history: Vec<NodeRecord>) -> Vec<NodeRecord> {
     out
 }
 
-/// Drops `null` members from a stored provider item before it is sent back (codex #47733):
+/// Drops `null` members from a stored provider item before it is sent back:
 /// some providers reject `"field": null` they would accept as absent. Depth-bounded.
 #[must_use]
 pub fn without_null_fields(value: &Value) -> Value {
@@ -370,7 +377,7 @@ pub fn without_null_fields(value: &Value) -> Value {
     strip(value, 32)
 }
 
-/// When the history was last compacted: the newest summary marker's time, if any (R14).
+/// When the history was last compacted: the newest summary marker's time, if any.
 #[must_use]
 pub fn latest_compaction_ms(history: &[NodeRecord]) -> Option<i64> {
     history
@@ -384,7 +391,7 @@ pub fn latest_compaction_ms(history: &[NodeRecord]) -> Option<i64> {
         .max()
 }
 
-/// R14: a turn's opaque reasoning is bound to the prefix it was made with; only turns made
+/// A turn's opaque reasoning is bound to the prefix it was made with; only turns made
 /// before the newest compaction lost that prefix (later turns were made after it).
 #[must_use]
 pub fn made_before_compaction(compaction_at: Option<i64>, node: &NodeRecord) -> bool {
@@ -431,6 +438,10 @@ pub fn safe_reasoning_blocks_for_target(
             (ProviderDialect::GoogleGemini, ReasoningBlock::GeminiThought { signature, .. }) => {
                 signature.as_deref().is_some_and(|s| !s.is_empty())
             }
+            (
+                ProviderDialect::GoogleGemini,
+                ReasoningBlock::GeminiPictureSignatures { signatures },
+            ) => !signatures.is_empty() && signatures.iter().all(|s| !s.is_empty()),
             _ => false,
         })
         .cloned()
@@ -467,10 +478,11 @@ pub fn cross_provider_reasoning_handoff_for_node(
     if !is_latest_assistant {
         return None;
     }
-    let switched = meta
-        .origin
-        .as_ref()
-        .is_some_and(|o| o.dialect != target.dialect || o.model_id != target.model_id);
+    let switched = meta.origin.as_ref().is_some_and(|o| {
+        o.dialect != target.dialect
+            || o.provider_id != target.provider_id
+            || o.model_id != target.model_id
+    });
     if !switched {
         return None;
     }
@@ -485,7 +497,7 @@ pub fn cross_provider_reasoning_handoff_for_node(
 
 #[cfg(test)]
 mod tests {
-    /// R39: the app gets the usage and thinking it shows, never the opaque reasoning payload.
+    /// The app gets the usage and thinking it shows, never the opaque reasoning payload.
     #[test]
     fn the_app_gets_slim_node_metadata() {
         let raw = serde_json::json!({
@@ -509,7 +521,7 @@ mod tests {
     }
 
     /// A tool call left without a result (a stopped or crashed run) gets a "did not run" result
-    /// right after its turn, so the next request is valid and the model knows (pi #9986).
+    /// right after its turn, so the next request is valid and the model knows.
     #[test]
     fn a_dangling_tool_call_gets_a_did_not_run_result() {
         let rec = |id: &str, role, meta: Option<Value>| NodeRecord {
@@ -558,7 +570,7 @@ mod tests {
         assert_eq!(fixed[3].content, TOOL_CALL_DID_NOT_RUN);
     }
 
-    /// R14: a compaction only invalidates reasoning made before it; a turn made after the
+    /// A compaction only invalidates reasoning made before it; a turn made after the
     /// newest summary keeps its blocks.
     #[test]
     fn reasoning_made_after_the_compaction_is_still_replayable() {
@@ -599,7 +611,7 @@ mod tests {
         }
     }
 
-    /// R7: chaining happens when storing is on and the history is uncompacted, and then only
+    /// Chaining happens when storing is on and the history is uncompacted, and then only
     /// the items after the chained reply are sent.
     #[test]
     fn chaining_needs_storing_and_sends_only_the_new_items() {
@@ -732,5 +744,25 @@ mod tests {
         let handoff = cross_provider_reasoning_handoff_for_node(&meta, &switched, true);
         assert!(handoff.is_some());
         assert!(handoff.unwrap_or_default().contains("chars omitted"));
+    }
+
+    /// The same model id on another provider (two `OpenAI`-compatible gateways) gets no opaque
+    /// reasoning, so it gets the plain-text handoff instead of losing the reasoning.
+    #[test]
+    fn a_provider_switch_with_the_same_model_id_gets_the_handoff() {
+        let meta = ParsedTurnWireMeta {
+            origin: Some(origin(ProviderDialect::CustomOpenAi, "v/m", "sys", "tools")),
+            thinking_text: Some("because".to_owned()),
+            ..ParsedTurnWireMeta::default()
+        };
+        let other_gateway = ReplayContext::new(
+            ProviderDialect::CustomOpenAi,
+            "prov-2",
+            "v/m",
+            "sys",
+            "tools",
+            Some("thread-1"),
+        );
+        assert!(cross_provider_reasoning_handoff_for_node(&meta, &other_gateway, true).is_some());
     }
 }

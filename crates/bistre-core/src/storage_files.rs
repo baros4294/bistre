@@ -143,7 +143,7 @@ pub fn delete_storage_file(data_dir: &Path, rel_path: &str) -> BistreResult<bool
     Ok(true)
 }
 
-/// R41: an update slot (`ota_staging/<version>/`) is stale only once that version is no
+/// An update slot (`ota_staging/<version>/`) is stale only once that version is no
 /// longer newer than the running one; a staged, newer update is kept for install.
 fn is_stale_update(rel_path: &str) -> bool {
     let mut parts = rel_path.split('/');
@@ -233,6 +233,15 @@ fn sanitize_portable_meta(raw: Option<&str>) -> Option<String> {
             "interaction_id",
         ] {
             obj.remove(volatile);
+        }
+        // A Gemini signature also rides on each stored tool call.
+        if let Some(serde_json::Value::Array(calls)) = obj.get_mut("tool_calls") {
+            for call in calls
+                .iter_mut()
+                .filter_map(serde_json::Value::as_object_mut)
+            {
+                call.remove("thought_signature");
+            }
         }
         if obj.is_empty() {
             return None;
@@ -352,7 +361,7 @@ pub fn export_settings_json(storage: &StorageHandle) -> BistreResult<String> {
         .map_err(|_| BistreError::with_detail(DiagnosticKey::InternalError, "export_settings_json"))
 }
 
-/// Imports user settings JSON safely (A-S3).
+/// Imports user settings JSON safely.
 ///
 /// - Only known settings fields are accepted (an unknown field is refused, so a file from a
 ///   different build cannot smuggle in values this build does not show).
@@ -433,7 +442,7 @@ fn loosens_safety(current: &AppSettings, incoming: &AppSettings) -> bool {
 mod tests {
     use super::*;
 
-    /// R41: cleaning never deletes an update that is staged to install; it removes only
+    /// Cleaning never deletes an update that is staged to install; it removes only
     /// unfinished downloads and slots for versions already installed.
     #[test]
     fn cleaning_keeps_a_staged_update() -> Result<(), Box<dyn std::error::Error>> {
@@ -499,7 +508,8 @@ mod tests {
             "thinking_text": "step 1",
             "signature": "opaque_sig_must_not_export",
             "encrypted_content": "enc_must_not_export",
-            "input_tokens": 42
+            "input_tokens": 42,
+            "tool_calls": [{ "call_id": "c1", "name": "read", "arguments_json": "{}", "thought_signature": "call_sig_must_not_export" }]
         })
         .to_string();
         storage.append_node(
@@ -513,6 +523,8 @@ mod tests {
         assert!(exported.contains("thinking_text"));
         assert!(!exported.contains("opaque_sig_must_not_export"));
         assert!(!exported.contains("enc_must_not_export"));
+        assert!(!exported.contains("call_sig_must_not_export"), "{exported}");
+        assert!(exported.contains("call_id"), "the call itself stays");
 
         let imported_count = import_threads_json(&storage, &exported)?;
         assert_eq!(imported_count, 1);
@@ -534,7 +546,7 @@ mod tests {
         Ok((dir, storage))
     }
 
-    /// A-S3: an imported settings file can never loosen trust or the spending limit unless the
+    /// An imported settings file can never loosen trust or the spending limit unless the
     /// user confirms, and unknown fields are refused.
     #[test]
     fn settings_import_never_loosens_safety_without_confirmation()

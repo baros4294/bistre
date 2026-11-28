@@ -1,8 +1,18 @@
 //! Pure-Rust cron & interval schedule evaluator and SQLite `cron_jobs` polling engine
 //! shared across desktop `bistre-daemon` and Android `WorkManager` recovery (Spec 04).
 
+use std::path::{Path, PathBuf};
+
 use bistre_protocol::{BistreError, BistreResult, CronJobRecord, DiagnosticKey};
 use bistre_storage::StorageHandle;
+
+use crate::agent::RunApprovalPolicy;
+use crate::subagents::{SubagentSandbox, cleanup_worktree_sandbox, prepare_worktree_sandbox};
+use crate::{BoxFuture, InProcessEngine};
+
+/// Most scheduled-run worktrees kept under `<data dir>/scheduled_worktrees`; making one more
+/// removes the oldest, so a frequent job cannot fill the disk.
+pub const MAX_SCHEDULED_WORKTREES: usize = 8;
 
 /// Computes the next Unix millisecond trigger timestamp for `schedule_expr` after `from_unix_ms`.
 ///
@@ -28,21 +38,122 @@ pub fn compute_next_run_unix_ms(schedule_expr: &str, from_unix_ms: i64) -> Bistr
         .ok_or_else(|| BistreError::with_detail(DiagnosticKey::InvalidInput, "cron_never_matches"))
 }
 
-/// Starts the run a due job asks for (W7: jobs were only marked "triggered"): a new chat named
-/// after the job, with its assistant and mode, sent the job's prompt. Returns the chat id.
-/// The run is unattended: approvals wait in that chat (`PauseAndNotify`).
-pub async fn start_job_run(
-    engine: &dyn crate::EngineClient,
-    job: &CronJobRecord,
-) -> BistreResult<String> {
-    let assistant = (!job.assistant_id.trim().is_empty()).then(|| job.assistant_id.clone());
-    let thread = engine
-        .create_thread(None, job.name.clone(), job.mode, None, assistant)
-        .await?;
-    engine
-        .send_and_stream_reply(thread.id.clone(), None, job.prompt.clone())
-        .await?;
-    Ok(thread.id)
+impl InProcessEngine {
+    /// Starts the run a due job asks for (jobs were only marked "triggered"): a new chat named
+    /// after the job, with its assistant and mode, sent the job's prompt under the job's
+    /// unattended policy. Returns the chat id. A job with `use_worktree` works in a new
+    /// worktree of the first workspace folder; with no folder, or when the worktree cannot be
+    /// made, it works without one, and Sandbox auto then waits for approvals.
+    pub fn start_scheduled_run(&self, job: CronJobRecord) -> BoxFuture<'_, BistreResult<String>> {
+        Box::pin(async move {
+            let assistant = (!job.assistant_id.trim().is_empty()).then(|| job.assistant_id.clone());
+            // A job in a project starts its chat there, with the project's folder.
+            let project = self.storage.get_project(&job.workspace_id)?.map(|p| p.id);
+            let thread = self
+                .create_thread(project, job.name.clone(), job.mode, None, assistant)
+                .await?;
+            let sandbox = if job.use_worktree {
+                self.scheduled_worktree(&thread.id).await
+            } else {
+                None
+            };
+            self.refresh_stale_mcp_tools();
+            self.send_with_stored_attachments_inner(
+                thread.id.clone(),
+                None,
+                &job.prompt,
+                &[],
+                RunApprovalPolicy {
+                    policy: job.unattended_policy,
+                    sandbox,
+                },
+            )?;
+            Ok(thread.id)
+        })
+    }
+
+    async fn scheduled_worktree(&self, thread_id: &str) -> Option<PathBuf> {
+        let roots = match crate::projects::workspace_roots_for(&self.storage, Some(thread_id)) {
+            Ok(roots) => roots,
+            Err(err) => {
+                tracing::warn!(
+                    key = err.key.as_key(),
+                    "chat folders unreadable; no worktree"
+                );
+                return None;
+            }
+        };
+        let root = roots.into_iter().next()?;
+        let scratch = self.data_dir.join("scheduled_worktrees");
+        prune_worktrees(&scratch, &root, MAX_SCHEDULED_WORKTREES - 1).await;
+        match prepare_worktree_sandbox(&root, &scratch).await {
+            Ok(sandbox) => Some(PathBuf::from(sandbox.sandbox_path)),
+            Err(err) => {
+                tracing::warn!(
+                    key = err.key.as_key(),
+                    detail = err.detail_code.as_deref().unwrap_or(""),
+                    "scheduled run worktree not made; the run works without one"
+                );
+                None
+            }
+        }
+    }
+}
+
+/// Removes the oldest `wt-<uuid v7>` worktrees under `scratch` until at most `keep` remain.
+/// A failed removal is logged and left for the next run.
+async fn prune_worktrees(scratch: &Path, source_root: &Path, keep: usize) {
+    let dir = scratch.to_path_buf();
+    let git_marker = source_root.join(".git");
+    let listed = crate::off_worker::blocking(move || {
+        let used_git_worktree = git_marker.exists();
+        let mut found = Vec::new();
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                return Ok((found, used_git_worktree));
+            }
+            Err(err) => {
+                tracing::warn!(error = %err, "scheduled worktrees not listed");
+                return Err(BistreError::with_detail(
+                    DiagnosticKey::InternalError,
+                    "worktree_list",
+                ));
+            }
+        };
+        for entry in entries {
+            match entry {
+                Ok(entry) if entry.file_name().to_string_lossy().starts_with("wt-") => {
+                    found.push(entry.path());
+                }
+                Ok(_) => {}
+                Err(err) => tracing::warn!(error = %err, "scheduled worktree entry unreadable"),
+            }
+        }
+        Ok((found, used_git_worktree))
+    })
+    .await;
+    let (mut found, used_git_worktree) = match listed {
+        Ok(listed) => listed,
+        Err(err) => {
+            tracing::warn!(key = err.key.as_key(), "old scheduled worktrees not pruned");
+            return;
+        }
+    };
+    // Version 7 ids sort by creation time.
+    found.sort();
+    let excess = found.len().saturating_sub(keep);
+    for path in found.into_iter().take(excess) {
+        let sandbox = SubagentSandbox {
+            sandbox_id: String::new(),
+            source_root: source_root.display().to_string(),
+            sandbox_path: path.display().to_string(),
+            used_git_worktree,
+        };
+        if let Err(err) = cleanup_worktree_sandbox(&sandbox).await {
+            tracing::warn!(key = err.key.as_key(), "old scheduled worktree not removed");
+        }
+    }
 }
 
 /// Polls all enabled `cron_jobs` due at or before `now_unix_ms`, advancing their `next_run_ms`
@@ -65,7 +176,7 @@ pub fn poll_due_cron_jobs(
                     let updated = storage.upsert_cron_job(job)?;
                     due.push(updated);
                 }
-                // W7: a bad schedule is an error, never "every hour": the job is turned off
+                // A bad schedule is an error, never "every hour": the job is turned off
                 // and says why, and it does not fire.
                 Err(err) => {
                     tracing::warn!(
@@ -274,12 +385,33 @@ mod tests {
 
     type TestResult = Result<(), Box<dyn std::error::Error>>;
 
+    /// Pruning keeps the newest worktrees (version 7 ids sort by time) and leaves other
+    /// folders alone.
+    #[tokio::test]
+    async fn old_scheduled_worktrees_are_removed_beyond_the_cap() -> TestResult {
+        let src = tempdir()?;
+        let scratch = tempdir()?;
+        let mut made = Vec::new();
+        for _ in 0..MAX_SCHEDULED_WORKTREES + 2 {
+            let path = scratch.path().join(format!("wt-{}", uuid::Uuid::now_v7()));
+            std::fs::create_dir_all(&path)?;
+            made.push(path);
+        }
+        std::fs::create_dir_all(scratch.path().join("keep-me"))?;
+        prune_worktrees(scratch.path(), src.path(), MAX_SCHEDULED_WORKTREES - 1).await;
+        let left: Vec<_> = made.iter().filter(|p| p.is_dir()).collect();
+        assert_eq!(left.len(), MAX_SCHEDULED_WORKTREES - 1);
+        assert!(!made[0].exists() && !made[2].exists() && made[3].exists());
+        assert!(scratch.path().join("keep-me").is_dir());
+        Ok(())
+    }
+
     /// Unix ms of a UTC civil time (test helper).
     fn utc(y: i64, mo: u32, d: u32, h: i64, mi: i64) -> i64 {
         (days_from_civil(y, mo, d) * 1440 + h * 60 + mi) * 60_000
     }
 
-    /// W7: every field of a 5-field schedule counts (day of month, month and day of week were
+    /// Every field of a 5-field schedule counts (day of month, month and day of week were
     /// ignored), including ranges, lists and steps; day of month and day of week combine with
     /// OR as in standard cron; leap days are found.
     #[test]
@@ -322,7 +454,7 @@ mod tests {
         Ok(())
     }
 
-    /// W7: a job whose schedule is invalid is turned off and never fires (it used to become
+    /// A job whose schedule is invalid is turned off and never fires (it used to become
     /// "every hour").
     #[test]
     fn a_bad_schedule_turns_its_job_off() -> TestResult {

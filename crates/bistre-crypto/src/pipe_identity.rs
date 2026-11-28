@@ -1,4 +1,4 @@
-//! Audited identity checks for the local daemon IPC channel (R29, ADR-0003).
+//! Audited identity checks for the local daemon IPC channel (ADR-0003).
 //!
 //! The daemon endpoint name is derived from the data directory, so another local user can
 //! predict it. Two checks keep the channel private to the signed-in user:
@@ -208,7 +208,7 @@ fn current_user_sid_string() -> BistreResult<String> {
     text
 }
 
-/// Whether the process serving `pipe` runs as the current user (R29).
+/// Whether the process serving `pipe` runs as the current user.
 ///
 /// Fails closed: any lookup error is an `Err`, which the caller treats as "do not talk".
 #[cfg(windows)]

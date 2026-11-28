@@ -35,6 +35,8 @@ pub struct PublicFetch {
 #[derive(Debug, Clone)]
 pub struct PublicWebTransport {
     client: Result<reqwest::Client, BistreError>,
+    /// The same rules without a read timeout, for streams that may stay silent (MCP listen).
+    stream_client: Result<reqwest::Client, BistreError>,
 }
 
 impl Default for PublicWebTransport {
@@ -52,7 +54,13 @@ impl PublicWebTransport {
     pub fn new() -> Self {
         let client = crate::http_clients::public_web_client(Arc::new(PublicOnlyDnsResolver))
             .map_err(|_| blocked("public_transport_init_failed"));
-        Self { client }
+        let stream_client =
+            crate::http_clients::public_stream_client(Arc::new(PublicOnlyDnsResolver))
+                .map_err(|_| blocked("public_transport_init_failed"));
+        Self {
+            client,
+            stream_client,
+        }
     }
 
     fn client(&self) -> BistreResult<&reqwest::Client> {
@@ -111,6 +119,35 @@ impl PublicWebTransport {
         let resp_headers = resp.headers().clone();
         let fetched = read_capped(resp, url, max_bytes).await?;
         Ok((status, resp_headers, fetched.body))
+    }
+}
+
+impl PublicWebTransport {
+    /// `POST`s JSON and returns the response before its body is read, redirects refused and
+    /// the whole exchange limited to `max_open`; the caller bounds what it reads.
+    pub async fn open_json_stream(
+        &self,
+        url: &str,
+        headers: reqwest::header::HeaderMap,
+        body: &serde_json::Value,
+        max_open: std::time::Duration,
+    ) -> BistreResult<reqwest::Response> {
+        let client = self.stream_client.as_ref().map_err(Clone::clone)?;
+        let target = validate_public_url(url)?;
+        let resp = client
+            .post(target)
+            .headers(headers)
+            .json(body)
+            .timeout(max_open)
+            .send()
+            .await
+            .map_err(|_| {
+                BistreError::with_detail(DiagnosticKey::ProviderRequestFailed, "mcp_connect")
+            })?;
+        if resp.status().is_redirection() {
+            return Err(blocked("redirect_refused"));
+        }
+        Ok(resp)
     }
 }
 

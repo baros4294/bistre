@@ -13,21 +13,19 @@ mod power_linux;
 #[cfg(windows)]
 mod power_win32;
 
-use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use bistre_core::ipc_client::{daemon_ipc_endpoint, read_ipc_frame, write_ipc_frame};
+use bistre_core::InProcessEngine;
+use bistre_core::daemon_launch::WriterLock;
+use bistre_core::daemon_serve::{AttachedApps, serve_ipc_connection};
+use bistre_core::ipc_client::daemon_ipc_endpoint;
 use bistre_core::power::PowerGuardBackend;
-use bistre_core::{EngineClient, InProcessEngine};
 use bistre_protocol::{
-    BistreError, BistreResult, DaemonRpcRequest, DaemonRpcResponse, DiagnosticKey, EngineEvent,
-    NodeRole, SystemPowerEvent, ThreadMode,
+    BistreError, BistreResult, DiagnosticKey, EngineEvent, NodeRole, SystemPowerEvent, ThreadMode,
 };
-use fs2::FileExt;
 use tokio::sync::Notify;
 
 struct DaemonCli {
@@ -112,20 +110,6 @@ const MAX_SCHEDULE_SLEEP: Duration = Duration::from_secs(300);
 /// How long an active-scoped daemon waits, with the window closed and no work, before exiting.
 const IDLE_EXIT_GRACE: Duration = Duration::from_secs(10);
 
-/// Whether the app window has detached, plus a wake-up for anything waiting on that.
-#[derive(Debug, Default)]
-struct ClientState {
-    detached: AtomicBool,
-    changed: Notify,
-}
-
-impl ClientState {
-    fn set_detached(&self, detached: bool) {
-        self.detached.store(detached, Ordering::SeqCst);
-        self.changed.notify_one();
-    }
-}
-
 fn unix_now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -178,13 +162,35 @@ fn next_cron_due_ms(engine: &InProcessEngine) -> Option<i64> {
     }
 }
 
+/// Whether an active-scoped daemon has nothing to stay for: no app is attached and either no
+/// work is live or the user turned off "keep running while a run is active". Unreadable
+/// settings keep it running (the default), so a broken file never ends a run.
+fn is_idle(engine: &InProcessEngine, apps: &AttachedApps, active_scoped: bool) -> bool {
+    if !active_scoped || apps.any() {
+        return false;
+    }
+    if engine.active_work_count() == 0 {
+        return true;
+    }
+    match engine.storage().load_settings() {
+        Ok(settings) => !settings.daemon_keep_alive_when_active,
+        Err(err) => {
+            tracing::warn!(
+                key = err.key.as_key(),
+                "settings unreadable; keeping work alive"
+            );
+            false
+        }
+    }
+}
+
 /// Event-driven housekeeping: fires due cron jobs and exits an idle active-scoped daemon.
 /// Sleeps until the next cron deadline (at most [`MAX_SCHEDULE_SLEEP`]) and wakes early on
-/// engine events or a client attach/detach; it never polls on a short timer.
+/// engine events or an app attaching or leaving; it never polls on a short timer.
 fn spawn_idle_and_cron_task(
     engine: Arc<InProcessEngine>,
     shutdown: Arc<Notify>,
-    client: Arc<ClientState>,
+    apps: Arc<AttachedApps>,
     active_scoped: bool,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
@@ -194,9 +200,9 @@ fn spawn_idle_and_cron_task(
             match bistre_core::cron::poll_due_cron_jobs(&engine.storage(), now_ms) {
                 Ok(due) if !due.is_empty() => {
                     tracing::info!(count = due.len(), "daemon triggered scheduled cron jobs");
-                    // W7: each due job starts its real run (it was only marked "triggered").
+                    // Each due job starts its real run (it was only marked "triggered").
                     for mut job in due {
-                        match bistre_core::cron::start_job_run(engine.as_ref(), &job).await {
+                        match engine.start_scheduled_run(job.clone()).await {
                             Ok(thread_id) => {
                                 job.last_run_id = Some(thread_id);
                                 "started".clone_into(&mut job.last_status);
@@ -223,11 +229,9 @@ fn spawn_idle_and_cron_task(
             let until_cron = next_cron_due_ms(&engine).map_or(MAX_SCHEDULE_SLEEP, |due| {
                 Duration::from_millis(u64::try_from(due.saturating_sub(now_ms)).unwrap_or(0))
             });
-            let idle = active_scoped
-                && client.detached.load(Ordering::SeqCst)
-                && engine.active_work_count() == 0;
+            let idle = is_idle(&engine, &apps, active_scoped);
             let deadline = tokio::time::Instant::now() + housekeeping_wait(until_cron, idle);
-            // W7: only events that change whether work is running wake the housekeeping;
+            // Only events that change whether work is running wake the housekeeping;
             // the stream of deltas during a run does not (each wake re-reads the schedule).
             let woke = loop {
                 tokio::select! {
@@ -239,16 +243,13 @@ fn spawn_idle_and_cron_task(
                         Ok(ev) if !wakes_housekeeping(&ev) => {}
                         _ => break Wake::Event,
                     },
-                    () = client.changed.notified() => break Wake::Event,
+                    () = apps.changed().notified() => break Wake::Event,
                 }
             };
             match woke {
                 Wake::Closed => break,
                 Wake::Deadline => {
-                    let still_idle = active_scoped
-                        && client.detached.load(Ordering::SeqCst)
-                        && engine.active_work_count() == 0;
-                    if idle && still_idle {
+                    if idle && is_idle(&engine, &apps, active_scoped) {
                         tracing::info!(
                             "active-scoped daemon idle after window close; shutting down cleanly"
                         );
@@ -297,22 +298,17 @@ async fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let lock_path = cli.data_dir.join("daemon.lock");
-    let Ok(lock_file) = OpenOptions::new()
-        .create(true)
-        .read(true)
-        .write(true)
-        .truncate(false)
-        .open(&lock_path)
-    else {
-        tracing::error!("failed to open single-instance lock file");
-        return ExitCode::FAILURE;
+    let lock = match WriterLock::try_acquire(&cli.data_dir) {
+        Ok(Some(lock)) => lock,
+        Ok(None) => {
+            tracing::error!("diag.runtime.already_running");
+            return ExitCode::from(2);
+        }
+        Err(err) => {
+            tracing::error!(diagnostic = %err, "single-instance lock unavailable");
+            return ExitCode::FAILURE;
+        }
     };
-
-    if lock_file.try_lock_exclusive().is_err() {
-        tracing::error!("diag.runtime.already_running");
-        return ExitCode::from(2);
-    }
 
     let engine = match InProcessEngine::open_with_power_guard(
         &cli.data_dir,
@@ -329,7 +325,7 @@ async fn main() -> ExitCode {
 
     if cli.seed_synthetic > 0 {
         let seeded = seed_synthetic_chats(&engine, cli.seed_synthetic);
-        shutdown_and_unlock(&engine, &lock_file).await;
+        shutdown_and_unlock(&engine, lock).await;
         return match seeded {
             Ok(()) => ExitCode::SUCCESS,
             Err(err) => {
@@ -341,7 +337,7 @@ async fn main() -> ExitCode {
 
     if cli.health_check {
         let outcome = run_health_check_and_exit(&engine).await;
-        shutdown_and_unlock(&engine, &lock_file).await;
+        shutdown_and_unlock(&engine, lock).await;
         return outcome;
     }
 
@@ -366,22 +362,18 @@ async fn main() -> ExitCode {
 
     let endpoint = daemon_ipc_endpoint(&cli.data_dir);
     let shutdown_notify = Arc::new(Notify::new());
-    let client_state = Arc::new(ClientState::default());
+    let apps = Arc::new(AttachedApps::default());
     let idle_task = spawn_idle_and_cron_task(
         Arc::clone(&engine),
         Arc::clone(&shutdown_notify),
-        Arc::clone(&client_state),
+        Arc::clone(&apps),
         cli.active_scoped,
     );
 
     let ipc_engine = Arc::clone(&engine);
     let ipc_endpoint = endpoint.clone();
-    let ipc_detached = Arc::clone(&client_state);
-    let ipc_shutdown = Arc::clone(&shutdown_notify);
     let ipc_task = tokio::spawn(async move {
-        if let Err(err) =
-            serve_local_ipc(ipc_engine, &ipc_endpoint, ipc_detached, ipc_shutdown).await
-        {
+        if let Err(err) = serve_local_ipc(ipc_engine, &ipc_endpoint, apps).await {
             tracing::error!(diagnostic = %err, "local IPC server terminated");
         }
     });
@@ -407,18 +399,17 @@ async fn main() -> ExitCode {
     power_task.abort();
     #[cfg(unix)]
     remove_stale_socket(std::path::Path::new(&endpoint));
-    shutdown_and_unlock(&engine, &lock_file).await;
+    shutdown_and_unlock(&engine, lock).await;
     ExitCode::SUCCESS
 }
 
-/// Checkpoints the engine and releases the single-instance lock, logging (never hiding) failures.
-async fn shutdown_and_unlock(engine: &InProcessEngine, lock_file: &std::fs::File) {
+/// Checkpoints the engine, then releases the single-instance lock, logging (never hiding) a
+/// failed checkpoint.
+async fn shutdown_and_unlock(engine: &InProcessEngine, lock: WriterLock) {
     if let Err(err) = engine.shutdown().await {
         tracing::warn!(key = err.key.as_key(), "engine shutdown checkpoint failed");
     }
-    if let Err(err) = lock_file.unlock() {
-        tracing::warn!(error = %err, "single-instance lock release failed");
-    }
+    drop(lock);
 }
 
 /// Removes a leftover Unix socket path; a missing file is the normal case.
@@ -449,45 +440,41 @@ fn platform_power_backend() -> Arc<dyn PowerGuardBackend> {
 async fn serve_local_ipc(
     engine: Arc<InProcessEngine>,
     endpoint: &str,
-    client_detached: Arc<ClientState>,
-    shutdown_notify: Arc<Notify>,
+    apps: Arc<AttachedApps>,
 ) -> BistreResult<()> {
     #[cfg(windows)]
     {
         use tokio::net::windows::named_pipe::ServerOptions;
-        let mut first = true;
         let slots = Arc::new(tokio::sync::Semaphore::new(MAX_IPC_CONNECTIONS));
         let mut backoff = AcceptBackoff::default();
-        // R29: every pipe instance is granted only to this user and SYSTEM, and remote
+        // Every pipe instance is granted only to this user and SYSTEM, and remote
         // (network) clients are refused.
         let mut security = bistre_crypto::pipe_identity::OwnerOnlyPipeSecurity::new()?;
+        let mut options = ServerOptions::new();
+        options
+            .first_pipe_instance(true)
+            .reject_remote_clients(true);
+        let mut server = create_owner_only_pipe(&options, endpoint, &mut security)?;
+        options.first_pipe_instance(false);
         loop {
-            let mut options = ServerOptions::new();
-            options
-                .first_pipe_instance(first)
-                .reject_remote_clients(true);
-            let server = create_owner_only_pipe(&options, endpoint, &mut security)?;
-            first = false;
             if server.connect().await.is_err() {
                 backoff.wait().await;
+                server = create_owner_only_pipe(&options, endpoint, &mut security)?;
                 continue;
             }
             backoff.reset();
+            // The next instance exists before this client is served, so the pipe never
+            // disappears while every slot is busy (a client would take that for no daemon).
+            let next = create_owner_only_pipe(&options, endpoint, &mut security)?;
+            let connected = std::mem::replace(&mut server, next);
             let Ok(slot) = Arc::clone(&slots).acquire_owned().await else {
                 return Err(BistreError::new(DiagnosticKey::DaemonUnavailable));
             };
             let eng = Arc::clone(&engine);
-            let det = Arc::clone(&client_detached);
-            let sd = Arc::clone(&shutdown_notify);
+            let apps = Arc::clone(&apps);
             tokio::spawn(async move {
                 let _slot = slot;
-                let mut conn = server;
-                if let Ok(req) = read_ipc_frame::<_, DaemonRpcRequest>(&mut conn).await {
-                    let resp = dispatch_rpc(&eng, req, &det, &sd).await;
-                    if let Err(err) = write_ipc_frame(&mut conn, &resp).await {
-                        tracing::debug!(key = err.key.as_key(), "IPC client left before the reply");
-                    }
-                }
+                serve_ipc_connection(eng.as_ref(), connected, &apps).await;
             });
         }
     }
@@ -505,7 +492,7 @@ async fn serve_local_ipc(
         let slots = Arc::new(tokio::sync::Semaphore::new(MAX_IPC_CONNECTIONS));
         let mut backoff = AcceptBackoff::default();
         loop {
-            let Ok((mut stream, _)) = listener.accept().await else {
+            let Ok((stream, _)) = listener.accept().await else {
                 backoff.wait().await;
                 continue;
             };
@@ -514,23 +501,18 @@ async fn serve_local_ipc(
                 return Err(BistreError::new(DiagnosticKey::DaemonUnavailable));
             };
             let eng = Arc::clone(&engine);
-            let det = Arc::clone(&client_detached);
-            let sd = Arc::clone(&shutdown_notify);
+            let apps = Arc::clone(&apps);
             tokio::spawn(async move {
                 let _slot = slot;
-                if let Ok(req) = read_ipc_frame::<_, DaemonRpcRequest>(&mut stream).await {
-                    let resp = dispatch_rpc(&eng, req, &det, &sd).await;
-                    if let Err(err) = write_ipc_frame(&mut stream, &resp).await {
-                        tracing::debug!(key = err.key.as_key(), "IPC client left before the reply");
-                    }
-                }
+                serve_ipc_connection(eng.as_ref(), stream, &apps).await;
             });
         }
     }
 }
 
-/// Concurrent IPC connections; further clients wait for a slot.
-const MAX_IPC_CONNECTIONS: usize = 16;
+/// Concurrent IPC connections; further clients wait for a slot. A run's reply holds its
+/// connection for the whole run, and each app holds one for its event stream.
+const MAX_IPC_CONNECTIONS: usize = 64;
 
 /// Exponential backoff (50 ms → 2 s) after failed accepts, so a persistent error cannot spin.
 #[derive(Debug, Default)]
@@ -551,140 +533,6 @@ impl AcceptBackoff {
     fn reset(&mut self) {
         self.failures = 0;
     }
-}
-
-/// Parses RPC params; empty means none, malformed JSON is an error (never silently `null`).
-fn parse_rpc_params(raw: &str) -> Result<serde_json::Value, BistreError> {
-    if raw.trim().is_empty() {
-        return Ok(serde_json::Value::Null);
-    }
-    serde_json::from_str(raw)
-        .map_err(|_| BistreError::with_detail(DiagnosticKey::InvalidInput, "rpc_params_json"))
-}
-
-fn rpc_response(
-    request_id: u64,
-    result: Result<serde_json::Value, BistreError>,
-) -> DaemonRpcResponse {
-    match result {
-        Ok(val) => DaemonRpcResponse {
-            request_id,
-            ok: true,
-            payload_json: val.to_string(),
-            error: None,
-        },
-        Err(err) => DaemonRpcResponse {
-            request_id,
-            ok: false,
-            payload_json: String::new(),
-            error: Some(err),
-        },
-    }
-}
-
-async fn dispatch_rpc(
-    engine: &Arc<InProcessEngine>,
-    req: DaemonRpcRequest,
-    client_detached: &Arc<ClientState>,
-    shutdown_notify: &Arc<Notify>,
-) -> DaemonRpcResponse {
-    let request_id = req.request_id;
-    let params = match parse_rpc_params(&req.params_json) {
-        Ok(v) => v,
-        Err(err) => return rpc_response(request_id, Err(err)),
-    };
-
-    let result: Result<serde_json::Value, BistreError> =
-        match req.method.as_str() {
-            "health" => engine.health().await.and_then(|v| {
-                serde_json::to_value(v).map_err(|_| DiagnosticKey::InternalError.into())
-            }),
-            "power_guard_status" => engine.power_guard_status().await.and_then(|v| {
-                serde_json::to_value(v).map_err(|_| DiagnosticKey::InternalError.into())
-            }),
-            "list_agent_runs" => {
-                let thread_id = params
-                    .get("thread_id")
-                    .and_then(serde_json::Value::as_str)
-                    .map(str::to_owned);
-                let only_active = params
-                    .get("only_active")
-                    .and_then(serde_json::Value::as_bool)
-                    .unwrap_or(false);
-                let limit = params
-                    .get("limit")
-                    .and_then(serde_json::Value::as_u64)
-                    .and_then(|n| u32::try_from(n).ok())
-                    .unwrap_or(50);
-                engine
-                    .list_agent_runs(thread_id, only_active, limit)
-                    .await
-                    .and_then(|v| {
-                        serde_json::to_value(v).map_err(|_| DiagnosticKey::InternalError.into())
-                    })
-            }
-            "replay_events_after" => {
-                let after_cursor = params
-                    .get("after_cursor")
-                    .and_then(serde_json::Value::as_u64)
-                    .unwrap_or(0);
-                let limit = params
-                    .get("limit")
-                    .and_then(serde_json::Value::as_u64)
-                    .and_then(|n| u32::try_from(n).ok())
-                    .unwrap_or(200);
-                engine
-                    .replay_events_after(after_cursor, limit)
-                    .await
-                    .and_then(|v| {
-                        serde_json::to_value(v).map_err(|_| DiagnosticKey::InternalError.into())
-                    })
-            }
-            "latest_event_cursor" => engine
-                .latest_event_cursor()
-                .await
-                .map(|c| serde_json::json!({ "cursor": c })),
-            "enqueue_steering" => {
-                let thread_id = params
-                    .get("thread_id")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or_default()
-                    .to_owned();
-                let content = params
-                    .get("content")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or_default()
-                    .to_owned();
-                engine
-                    .enqueue_steering(thread_id, content)
-                    .await
-                    .and_then(|v| {
-                        serde_json::to_value(v).map_err(|_| DiagnosticKey::InternalError.into())
-                    })
-            }
-            "client_attached" => {
-                client_detached.set_detached(false);
-                Ok(serde_json::json!({ "active_work": engine.active_work_count() }))
-            }
-            "client_detached" => {
-                client_detached.set_detached(true);
-                let remaining = engine.active_work_count();
-                Ok(serde_json::json!({ "stay_alive": remaining > 0, "active_work": remaining }))
-            }
-            "shutdown_if_idle" => {
-                let remaining = engine.active_work_count();
-                if remaining == 0 {
-                    shutdown_notify.notify_one();
-                }
-                Ok(serde_json::json!({ "shutting_down": remaining == 0, "active_work": remaining }))
-            }
-            _ => Err(BistreError::with_detail(
-                DiagnosticKey::InvalidInput,
-                "unknown_rpc_method",
-            )),
-        };
-
-    rpc_response(request_id, result)
 }
 
 fn default_data_dir() -> PathBuf {
@@ -709,7 +557,7 @@ fn default_data_dir() -> PathBuf {
     std::env::temp_dir().join("bistre-daemon")
 }
 
-/// Creates one named-pipe instance with the owner-only security descriptor (R29).
+/// Creates one named-pipe instance with the owner-only security descriptor.
 #[cfg(windows)]
 #[expect(
     unsafe_code,
@@ -730,7 +578,7 @@ fn create_owner_only_pipe(
 mod housekeeping_tests {
     use super::*;
 
-    /// W7: the housekeeping never spins (a due job that cannot advance still waits a
+    /// The housekeeping never spins (a due job that cannot advance still waits a
     /// second) and sleeps at most until the next deadline cap.
     #[test]
     fn housekeeping_waits_within_its_bounds() {
@@ -745,7 +593,40 @@ mod housekeeping_tests {
         );
     }
 
-    /// W7: streaming deltas do not wake the housekeeping; run start and end do.
+    /// With the window closed, live work keeps the daemon running only while "keep running
+    /// while a run is active" is on; a daemon that is not active-scoped never idles out.
+    #[test]
+    fn keep_alive_off_lets_a_closed_window_end_live_work() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = tempfile::tempdir()?;
+        let engine = InProcessEngine::open(dir.path(), Some(bistre_core::VaultKey::generate()?))?;
+        let storage = engine.storage();
+        storage.upsert_cron_job(bistre_protocol::CronJobRecord {
+            id: String::new(),
+            name: "Nightly".to_owned(),
+            workspace_id: "default".to_owned(),
+            assistant_id: "default_assistant".to_owned(),
+            schedule_expr: "0 3 * * *".to_owned(),
+            prompt: "x".to_owned(),
+            mode: ThreadMode::Chat,
+            unattended_policy: bistre_protocol::UnattendedPolicy::PauseAndNotify,
+            use_worktree: false,
+            enabled: true,
+            next_run_ms: unix_now_ms() + 3_600_000,
+            last_run_id: None,
+            last_status: "idle".to_owned(),
+        })?;
+        let apps = AttachedApps::default();
+        assert!(!is_idle(&engine, &apps, true));
+        let mut settings = storage.load_settings()?;
+        settings.daemon_keep_alive_when_active = false;
+        storage.save_settings(settings)?;
+        assert!(is_idle(&engine, &apps, true));
+        assert!(!is_idle(&engine, &apps, false));
+        Ok(())
+    }
+
+    /// Streaming deltas do not wake the housekeeping; run start and end do.
     #[test]
     fn only_run_state_events_wake_the_housekeeping() {
         let delta = EngineEvent::DeltaBatch {
