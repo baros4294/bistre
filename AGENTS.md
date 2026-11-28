@@ -73,5 +73,5 @@ Prompts the app sends are code.
 
 ## 10. Commands and index
 - `just check-all` runs every gate; also `just ui-gallery`, `just perf`, `just status`, `just codegen-frb` (after FFI changes).
-- Specs (`docs/specs/`): `00-architecture`, `01-canonical-history-and-storage`, `02-providers-wire-and-self-healing`, `03-aio-registry-and-slots`, `04-agent-harness-tools-and-mcp`, `05-modes-roleplay-and-media`, `06-trust-and-wallet-shield`, `07-remote-bridge-and-security`, `08-sepia-book-ui`, `09-i18n-and-ai-translation`, `10-silent-ota-and-distribution`, `11-performance-and-budgets`.
+- Specs (`docs/specs/`): `00-architecture`, `01-canonical-history-and-storage`, `02-providers-wire-and-self-healing`, `03-aio-registry-and-slots`, `04-agent-harness-tools-and-mcp`, `05-modes-roleplay-and-media`, `06-trust-and-wallet-shield`, `07-secrets-and-os-security`, `08-sepia-book-ui`, `09-i18n-and-ai-translation`, `10-silent-ota-and-distribution`, `11-performance-and-budgets`.
 - ADRs (`docs/adr/`, topic in the file name): ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019.

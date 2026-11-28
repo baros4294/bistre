@@ -2,7 +2,7 @@
 //!
 //! Invariants:
 //! - Zero dependency on Flutter, `flutter_rust_bridge`, GUI toolkits, or OS tray crates.
-//! - Unifies Embedded (Android), Local Daemon (Desktop IPC), and Remote Bridge behind `EngineClient`.
+//! - Unifies Embedded (Android) and Local Daemon (Desktop IPC) behind `EngineClient`.
 //! - Stores API keys strictly in node-local `SecretVault` (Windows DPAPI / OS vault), never plaintext SQLite.
 //! - Streams real responses over pure `rustls` + `reqwest 0.13` across Big 3 + Custom dialects (Spec 02).
 
