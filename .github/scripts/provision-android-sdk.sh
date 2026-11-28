@@ -27,12 +27,17 @@ if [ "$build_tools_only" = true ]; then
   } >> "$GITHUB_ENV"
   exit 0
 fi
-bash "${script_dir}/with-download-retry.sh" "$sdkmanager_bin" --sdk_root="$sdk_root" --install \
-  "platforms;android-${ANDROID_COMPILE_SDK}" \
-  "build-tools;${ANDROID_BUILD_TOOLS}" \
-  "ndk;${ANDROID_NDK_VERSION}"
 ndk_dir="${sdk_root}/ndk/${ANDROID_NDK_VERSION}"
-test -d "$ndk_dir"
+packages=("platforms;android-${ANDROID_COMPILE_SDK}" "build-tools;${ANDROID_BUILD_TOOLS}")
+# A complete NDK restored from the CI cache carries its package.xml; anything else is reinstalled.
+if [ -f "${ndk_dir}/package.xml" ] && [ -f "${ndk_dir}/source.properties" ]; then
+  echo "Using the restored NDK ${ANDROID_NDK_VERSION}"
+else
+  rm -rf "$ndk_dir"
+  packages+=("ndk;${ANDROID_NDK_VERSION}")
+fi
+bash "${script_dir}/with-download-retry.sh" "$sdkmanager_bin" --sdk_root="$sdk_root" --install "${packages[@]}"
+test -f "${ndk_dir}/source.properties"
 {
   echo "ANDROID_HOME=${sdk_root}"
   echo "ANDROID_SDK_ROOT=${sdk_root}"

@@ -5,7 +5,7 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/error/error.dart';
 
-/// Mechanically enforces DESIGN.md Section 7 / AGENTS.md Section 4:
+/// Mechanically enforces design.md Section 7 / AGENTS.md Section 4:
 /// All directional padding and alignment must use RTL-safe `EdgeInsetsDirectional` and `AlignmentDirectional`.
 class ForbidNonDirectionalGeometryRule extends AnalysisRule {
   static const LintCode code = LintCode(

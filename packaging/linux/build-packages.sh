@@ -51,7 +51,7 @@ Exec=/usr/bin/bistre %U
 Icon=bistre
 Terminal=false
 Categories=Utility;Office;Development;
-StartupWMClass=bistre_app
+StartupWMClass=dev.bistre.bistre_app
 DESKTOP
 
 installed_kb="$(du -sk "${deb_root}/opt/bistre" | awk '{print $1}')"
@@ -62,8 +62,8 @@ Section: utils
 Priority: optional
 Architecture: amd64
 Installed-Size: ${installed_kb}
-Depends: libgtk-3-0 | libgtk-3-0t64, liblzma5, libstdc++6
-Maintainer: Bistre Contributors <https://github.com/baros4294/bistre>
+Depends: libc6 (>= 2.31), libgtk-3-0 | libgtk-3-0t64, liblzma5, libstdc++6
+Maintainer: Bistre Maintainers <noreply@users.noreply.github.com>
 Homepage: https://github.com/baros4294/bistre
 Description: Local-first, zero-telemetry AI workspace
  Bistre is an MIT-licensed, local-first AI client powered by a pure-Rust
@@ -89,7 +89,7 @@ Exec=bistre_app
 Icon=bistre
 Terminal=false
 Categories=Utility;Office;Development;
-StartupWMClass=bistre_app
+StartupWMClass=dev.bistre.bistre_app
 DESKTOP
 
 cat > "${appdir}/AppRun" <<'APPRUN'

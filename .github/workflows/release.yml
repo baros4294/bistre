@@ -36,15 +36,29 @@ jobs:
         include:
           - os: ubuntu-24.04
             target: linux-x64
+            # glibc 2.31: the binaries then run everywhere the packages' libc6 (>= 2.31) floor says.
+            container: ubuntu:20.04@sha256:8feb4d8ca5354def3d8fce243717141ce31e2c428701f6682bd2fafe15388214
           - os: windows-2025
             target: windows-x64
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
     timeout-minutes: 35
     permissions:
       contents: read
       id-token: write # OIDC token for the Sigstore build-provenance attestation
       attestations: write # store the build-provenance attestation on the repository
     steps:
+      # Before checkout, so checkout finds git and keeps the history SOURCE_DATE_EPOCH reads.
+      - name: Install Linux release dependencies (inside the glibc 2.31 container, as root)
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git unzip xz-utils zip jq file \
+            clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev rpm dpkg-dev binutils
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
@@ -56,15 +70,15 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: false
-      - name: Install Linux release dependencies
-        if: runner.os == 'Linux'
+      - name: Pin archive and package timestamps to the tagged commit (SOURCE_DATE_EPOCH)
         shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev rpm
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
       - name: Build Rust daemon and updater binaries (locked)
         shell: bash
+        env:
+          # Runner paths stay out of the shipped binaries. Desktop targets have no config
+          # rustflags, so this replaces nothing (Android keeps its own in the build hook).
+          RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=/bistre
         run: cargo build --locked --release -p bistre-daemon -p bistre-updater
       - name: Build Flutter release bundle
         working-directory: apps/bistre_app
@@ -108,6 +122,14 @@ jobs:
           if [ "$RUNNER_OS_NAME" = "Linux" ]; then
             cp -a apps/bistre_app/build/linux/x64/release/bundle/. stage/
             cp target/release/bistre-daemon target/release/bistre-updater stage/
+            # The packages promise libc6 (>= 2.31): refuse any binary that needs a newer symbol.
+            newest="$(find stage -type f \( -name '*.so*' -o -perm -u+x \) -exec sh -c 'file -b "$1" | grep -q ELF && objdump -T "$1"' _ {} \; \
+              | grep -o 'GLIBC_[0-9][0-9.]*' | sed 's/GLIBC_//' | sort -Vu | tail -n 1)"
+            echo "Newest glibc symbol needed: ${newest}"
+            if [ -z "$newest" ] || [ "$(printf '%s\n2.31\n' "$newest" | sort -V | tail -n 1)" != "2.31" ]; then
+              echo "ERROR: the Linux build needs glibc ${newest:-unknown}, above the declared 2.31 floor"
+              exit 1
+            fi
             bash packaging/linux/build-packages.sh "$RELEASE_TAG" stage dist
           else
             cp -a apps/bistre_app/build/windows/x64/runner/Release/. stage/
@@ -131,8 +153,8 @@ jobs:
               "/DOutputBaseFilename=bistre-${RELEASE_TAG}-${TARGET_NAME}-setup" \
               "packaging/windows/bistre.iss"
           fi
-          (cd dist && sha256sum bistre-* > "SHA256SUMS-${TARGET_NAME}.txt")
-          cat "dist/SHA256SUMS-${TARGET_NAME}.txt"
+          (cd dist && sha256sum bistre-* > "sha256sums-${TARGET_NAME}.txt")
+          cat "dist/sha256sums-${TARGET_NAME}.txt"
       - name: Attest build provenance (Sigstore)
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
@@ -143,7 +165,7 @@ jobs:
           path: dist/*
           retention-days: 30
 
-  # C2: the build job never sees the signing key. It builds a debug-signed intermediate that
+  # The build job never sees the signing key. It builds a debug-signed intermediate that
   # only sign-android re-signs; nothing from this job is published as-is.
   build-android:
     name: build-android
@@ -175,7 +197,7 @@ jobs:
         working-directory: apps/bistre_app
         shell: bash
         env:
-          # Explicit, unshipped intermediate: sign-android replaces this signature (C1).
+          # Explicit, unshipped intermediate: sign-android replaces this signature.
           BISTRE_ALLOW_DEBUG_SIGNING: "1"
         run: |
           set -euo pipefail
@@ -222,8 +244,16 @@ jobs:
           name: unsigned-android-arm64
           path: unsigned/*
           retention-days: 1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          # Dart symbols split out of the APK (`flutter symbolize` reads them for crash reports).
+          # Kept with the run, never published.
+          name: symbols-android-arm64
+          path: apps/bistre_app/build/debug-info/
+          if-no-files-found: error
+          retention-days: 90
 
-  # C1 + C2: the only job holding the release keystore. It signs, then refuses to continue
+  # The only job holding the release keystore. It signs, then refuses to continue
   # unless the APK has exactly one signer whose certificate matches the pinned fingerprint.
   sign-android:
     name: sign-android
@@ -236,7 +266,7 @@ jobs:
       id-token: write # OIDC token for the Sigstore build-provenance attestation
       attestations: write # store the build-provenance attestation on the repository
     env:
-      # SHA-256 of the release signing certificate (owner-generated, 2026-11-25).
+      # SHA-256 of the release signing certificate (owner-generated).
       ANDROID_RELEASE_CERT_SHA256: afec66ea6157a762f4f9de7dbb78b466a9ad3ba4c70e7c95c5c870f9572e04bc
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -287,8 +317,8 @@ jobs:
             echo "ERROR: APK signer mismatch (signers=${signers}, digest=${digest})"
             exit 1
           fi
-          (cd dist && sha256sum bistre-*.apk > SHA256SUMS-android-arm64.txt)
-          cat dist/SHA256SUMS-android-arm64.txt
+          (cd dist && sha256sum bistre-*.apk > sha256sums-android-arm64.txt)
+          cat dist/sha256sums-android-arm64.txt
       - name: Attest Android release provenance (Sigstore)
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
@@ -314,34 +344,122 @@ jobs:
         run: bash .github/scripts/install-rust.sh
       - uses: taiki-e/install-action@25f51f6b1bf4e18876107cece836f4f77ac17c8c # v2
         with:
-          tool: cargo-cyclonedx
-      - name: Generate and validate CycloneDX SBOM for the shipped Rust engine (>= 50 libraries)
+          tool: cargo-cyclonedx@0.5.10
+      - name: Generate and validate CycloneDX SBOMs for every shipped Rust binary
         shell: bash
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           cargo cyclonedx --format json --all --override-filename bistre-sbom
-          sbom="$(find crates/bistre-ffi -maxdepth 1 -name 'bistre-sbom*.json' | head -n 1)"
-          test -n "$sbom"
-          libraries="$(jq '[.. | objects | select(.type? == "library")] | length' "$sbom")"
-          echo "CycloneDX libraries listed: ${libraries}"
-          if [ "$libraries" -lt 50 ]; then
-            echo "ERROR: SBOM lists only ${libraries} libraries (floor 50); generation is incomplete"
-            exit 1
-          fi
           mkdir -p dist
-          cp "$sbom" "dist/bistre-${RELEASE_TAG}-engine.cdx.json"
+          # crate:published-name:library-floor. The app's engine library and the background
+          # engine pull the whole core; the updater only verifies and copies files.
+          for shipped in bistre-ffi:engine:50 bistre-daemon:daemon:50 bistre-updater:updater:10; do
+            IFS=: read -r crate name floor <<<"$shipped"
+            sbom="$(find "crates/${crate}" -maxdepth 1 -name 'bistre-sbom*.json' | head -n 1)"
+            if [ -z "$sbom" ]; then
+              echo "ERROR: no SBOM generated for ${crate}"
+              exit 1
+            fi
+            libraries="$(jq '[.. | objects | select(.type? == "library")] | length' "$sbom")"
+            echo "CycloneDX libraries listed for ${crate}: ${libraries}"
+            if [ "$libraries" -lt "$floor" ]; then
+              echo "ERROR: ${crate} SBOM lists only ${libraries} libraries (floor ${floor}); generation is incomplete"
+              exit 1
+            fi
+            cp "$sbom" "dist/bistre-${RELEASE_TAG}-${name}.cdx.json"
+          done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: bistre-sbom
           path: dist/*
           retention-days: 30
 
+  # Installs what users download, starts it, and removes it again, on a clean runner.
+  packaging-smoke:
+    name: packaging-smoke (${{ matrix.target }})
+    needs: [build-desktop-and-attest]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux-x64
+          - os: windows-2025
+            target: windows-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bistre-${{ matrix.target }}
+          path: dist
+      - name: Install, start, and remove the .deb; start the AppImage; read the .rpm
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y xvfb rpm
+          data_dir="$(mktemp -d)"
+          sudo apt-get install -y ./dist/bistre-*-linux-x64.deb
+          /opt/bistre/bistre-daemon --health-check --data-dir "$data_dir" | grep -q '"status_key":"diag.ok"'
+          # Still running after 15 s means it started; timeout's 124 is the pass.
+          set +e
+          xvfb-run -a timeout 15 /usr/bin/bistre
+          status=$?
+          set -e
+          if [ "$status" -ne 124 ]; then
+            echo "ERROR: the installed app exited early (status ${status})"
+            exit 1
+          fi
+          sudo apt-get remove -y bistre
+          if [ -e /opt/bistre ] || [ -e /usr/bin/bistre ]; then
+            echo "ERROR: removing the .deb left files behind"
+            exit 1
+          fi
+          appimage="$(ls dist/bistre-*-linux-x64.AppImage)"
+          chmod 0755 "$appimage"
+          set +e
+          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a timeout 15 "$appimage"
+          status=$?
+          set -e
+          if [ "$status" -ne 124 ]; then
+            echo "ERROR: the AppImage exited early (status ${status})"
+            exit 1
+          fi
+          rpm -qp --queryformat '%{NAME} %{VERSION}\n' dist/bistre-*-linux-x64.rpm | grep -q '^bistre '
+          rpm -qpl dist/bistre-*-linux-x64.rpm | grep -qx /opt/bistre/bistre_app
+      - name: Install, start, and uninstall setup.exe (per-user, silent)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = (Get-ChildItem dist -Filter 'bistre-*-windows-x64-setup.exe').FullName
+          $dir = Join-Path $env:RUNNER_TEMP 'bistre-install'
+          $p = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$dir" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "setup.exe exited with $($p.ExitCode)" }
+          $data = Join-Path $env:RUNNER_TEMP 'bistre-smoke-data'
+          $health = & (Join-Path $dir 'bistre-daemon.exe') --health-check --data-dir $data
+          if ($health -notmatch '"status_key":"diag.ok"') { throw "daemon health check failed: $health" }
+          $app = Start-Process (Join-Path $dir 'bistre_app.exe') -PassThru
+          Start-Sleep -Seconds 15
+          if ($app.HasExited) { throw "the installed app exited early ($($app.ExitCode))" }
+          Stop-Process -Id $app.Id -Force
+          $u = Start-Process (Join-Path $dir 'unins000.exe') -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+          if ($u.ExitCode -ne 0) { throw "the uninstaller exited with $($u.ExitCode)" }
+          # The uninstaller finishes from a temporary copy; wait for it, bounded.
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Test-Path (Join-Path $dir 'bistre_app.exe')) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
+          if (Test-Path (Join-Path $dir 'bistre_app.exe')) { throw 'uninstalling left bistre_app.exe behind' }
+
   sign-and-publish:
     name: sign-and-publish
     if: github.ref_type == 'tag'
-    needs: [build-desktop-and-attest, sign-android, sbom-cyclonedx]
+    needs: [build-desktop-and-attest, packaging-smoke, sign-android, sbom-cyclonedx]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     # Required reviewers on this environment gate every signed release.
@@ -383,7 +501,7 @@ jobs:
           minisign_bin="${tmp_dir}/minisign-linux/x86_64/minisign"
           printf '%s' "${MINISIGN_SECRET_KEY}" > "${tmp_dir}/release.key"
           chmod 600 "${tmp_dir}/release.key"
-          # A-W 7b: the manifest is written by the same Rust types the app reads (format 2:
+          # The manifest is written by the same Rust types the app reads (format 2:
           # one installable file per platform, pinned URLs, the SBOM never listed).
           cargo run --locked --release -p bistre-core --example ota_manifest -- build dist "$RELEASE_TAG" "$REPO"
           printf '%s\n' "${MINISIGN_PASSWORD:-}" | "$minisign_bin" -S -s "${tmp_dir}/release.key" -m dist/manifest.json -x dist/manifest.json.minisig -t "bistre ${RELEASE_TAG}"

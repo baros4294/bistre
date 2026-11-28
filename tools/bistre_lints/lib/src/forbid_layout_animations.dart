@@ -5,7 +5,7 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/error/error.dart';
 
-/// Mechanically enforces DESIGN.md Section 6: animate `transform` and `opacity`; the only height
+/// Mechanically enforces design.md Section 6: animate `transform` and `opacity`; the only height
 /// animation is a disclosure, and it goes through `DisclosureReveal` (`lib/design/disclosure_reveal.dart`).
 class ForbidLayoutAnimationsRule extends AnalysisRule {
   static const LintCode code = LintCode(

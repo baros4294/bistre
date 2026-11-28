@@ -163,6 +163,32 @@ void main() {
       expect(renderDiskReport(<BucketUsage>[usage]), contains('[OVER BUDGET]'));
     });
 
+    test('keeps only the debug and Android caches and drops stray builds', () {
+      final root = _tmp();
+      for (final dir in <String>[
+        'target/debug/deps',
+        'target/release/deps',
+        'target/x86_64-pc-windows-msvc/release',
+        'target/aarch64-linux-android/release',
+        'target/tmp',
+        'build/ui_gallery',
+        'apps/bistre_app/build/native_assets',
+      ]) {
+        Directory('${root.path}/$dir').createSync(recursive: true);
+        File('${root.path}/$dir/f.bin').writeAsBytesSync(<int>[1, 2, 3]);
+      }
+      final report = pruneWorkspace(root);
+      bool kept(String rel) => Directory('${root.path}/$rel').existsSync();
+      expect(kept('target/debug'), isTrue);
+      expect(kept('target/aarch64-linux-android'), isTrue);
+      expect(kept('target/tmp'), isTrue);
+      expect(kept('apps/bistre_app/build/native_assets'), isTrue);
+      expect(kept('target/release'), isFalse);
+      expect(kept('target/x86_64-pc-windows-msvc'), isFalse);
+      expect(kept('build'), isFalse);
+      expect(report.reclaimedBytes, 9);
+    });
+
     test('cargoHashedStem strips the trailing hash only', () {
       expect(cargoHashedStem('bistre_core-0kkjxpdrsvs33'), 'bistre_core');
       expect(cargoHashedStem('serde_json-1a2b'), 'serde_json');

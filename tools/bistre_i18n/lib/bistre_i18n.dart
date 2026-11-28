@@ -360,7 +360,7 @@ void generateL10nArtifacts({
 String _renderL10nKeysDart(Map<String, dynamic> entries) {
   final sortedKeys = entries.keys.toList()..sort();
   final buf = StringBuffer()
-    ..writeln('// GENERATED CODE — DO NOT MODIFY BY HAND.')
+    ..writeln('// GENERATED CODE. DO NOT MODIFY BY HAND.')
     ..writeln('// Source: l10n/catalog/en.bistre-l10n.json')
     ..writeln('// Run: dart run tools/bistre_i18n/bin/bistre_i18n.dart gen')
     ..writeln()
@@ -429,7 +429,7 @@ const List<String> bannedUiWords = <String>[
   'Quill',
 ];
 
-/// English technical terms with a plain replacement (`docs/design/DESIGN.md` §9).
+/// English technical terms with a plain replacement (`docs/design/design.md` §9).
 const Map<String, String> plainWordGlossary = <String, String>{
   'base url': 'Server URL',
   'endpoint': 'Server URL',
@@ -456,7 +456,7 @@ void _validatePlainWords(
   final lower = message.toLowerCase();
   plainWordGlossary.forEach((term, plain) {
     if (RegExp('\\b${RegExp.escape(term)}\\b').hasMatch(lower)) {
-      errors.add('[$locale][$key] uses "$term"; say "$plain" (DESIGN.md §9)');
+      errors.add('[$locale][$key] uses "$term"; say "$plain" (design.md §9)');
     }
   });
 }

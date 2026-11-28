@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'writing_gates.dart';
+
 /// Files allowed to construct `Command::new(...)` directly. Every other Rust file must spawn
 /// children through `process_util::no_window_command` so Windows never flashes a console.
 const Set<String> processSpawnAllowlist = <String>{
@@ -7,17 +9,26 @@ const Set<String> processSpawnAllowlist = <String>{
   'crates/bistre-daemon/src/power_linux.rs',
 };
 
-/// Hard cap on lines per non-generated `.rs` / `.dart` file.
-const int maxSourceLines = 1500;
+/// Hard cap on lines per non-generated code file ([codeExtensions]).
+const int maxSourceLines = 1000;
 
-/// Hard cap on `AGENTS.md` size (characters).
-const int maxAgentsChars = 14000;
+/// Code files held to [maxSourceLines].
+const Set<String> codeExtensions = <String>{
+  '.rs', '.dart', '.kt', '.kts', '.cpp', '.cc', '.h', '.sh', '.ps1', '.py', //
+  '.yml', '.yaml', '.toml', '.cmake', '.iss', '.gradle',
+};
 
 /// Hard cap on any tracked file outside the approved font directory.
 const int maxTrackedFileBytes = 1024 * 1024;
 
-/// Approved directory for OFL font binaries (still budgeted to 2.0 MB total by Spec 11).
+/// Approved directory for OFL font binaries (still budgeted to 2.0 MiB total by Spec 11).
 const String approvedFontDir = 'apps/bistre_app/assets/fonts/';
+
+/// Hard cap on total bundled font bytes across [approvedFontDir] (Spec 11).
+const int maxTotalFontBytes = 2 * 1024 * 1024;
+
+/// Hard cap on total locked Rust crates in `Cargo.lock` (supply-chain & build-time budget).
+const int maxCargoLockPackages = 380;
 
 /// Compiled artifacts that must never be committed.
 const Set<String> bannedArtifactExtensions = <String>{
@@ -84,9 +95,13 @@ void runStaticGates(
   checkErrorSilencing(repoRoot, workspaceFiles, errors);
   checkNoTestRetries(repoRoot, workspaceFiles, errors);
   checkNoSilentRustSkips(repoRoot, workspaceFiles, errors);
-  checkAgentsBudget(repoRoot, errors);
+  checkDocBudgets(repoRoot, workspaceFiles, errors);
+  checkProse(repoRoot, workspaceFiles, errors);
+  checkFileNames(repoRoot, workspaceFiles, errors);
   checkMarkdownAnchors(repoRoot, workspaceFiles, errors);
   checkSingleVersionSource(repoRoot, errors);
+  checkDependencyBudget(repoRoot, errors);
+  checkDesktopRendererDefault(repoRoot, errors);
 }
 
 bool _isGenerated(String rel) =>
@@ -132,7 +147,22 @@ void checkProcessSpawnAndMmap(
   final mmapPattern = RegExp(
     r'\bmemmap2?\b|\bMmap(?:Mut|Options|Choice)?::|\.memory_map\(',
   );
+  // The app starts no child processes itself: core runs them contained (process group,
+  // parent-death signal, whole-tree kill on timeout).
+  final dartSpawn = RegExp(r'\bProcess\.(run|runSync|start)\(');
   for (final rel in files) {
+    if (rel.startsWith('apps/bistre_app/lib/') && rel.endsWith('.dart')) {
+      final lines = _read(root, rel).split('\n');
+      for (var i = 0; i < lines.length; i++) {
+        if (lines[i].trimLeft().startsWith('//')) continue;
+        if (dartSpawn.hasMatch(lines[i])) {
+          errors.add(
+            '[process-spawn] $rel:${i + 1} starts a process from Dart; add a typed core helper that uses run_bounded.',
+          );
+        }
+      }
+      continue;
+    }
     if (!rel.startsWith('crates/')) continue;
     if (rel.endsWith('Cargo.toml')) {
       if (RegExp(
@@ -217,6 +247,7 @@ void checkSecretsAndArtifacts(
   List<String> files,
   List<String> errors,
 ) {
+  var totalFontBytes = 0;
   for (final rel in files) {
     final name = rel.split('/').last;
     final ext = _ext(rel);
@@ -239,7 +270,9 @@ void checkSecretsAndArtifacts(
     final file = File('${root.path}/$rel');
     if (!file.existsSync()) continue;
     final size = file.lengthSync();
-    if (size > maxTrackedFileBytes && !rel.startsWith(approvedFontDir)) {
+    if (rel.startsWith(approvedFontDir)) {
+      totalFontBytes += size;
+    } else if (size > maxTrackedFileBytes) {
       errors.add(
         '[artifacts] $rel is ${(size / 1048576).toStringAsFixed(2)} MiB (> 1 MiB tracked-file cap).',
       );
@@ -254,6 +287,11 @@ void checkSecretsAndArtifacts(
         break;
       }
     }
+  }
+  if (totalFontBytes > maxTotalFontBytes) {
+    errors.add(
+      '[font-budget] $approvedFontDir totals ${(totalFontBytes / 1048576).toStringAsFixed(2)} MiB (> 2.00 MiB Spec 11 cap).',
+    );
   }
 }
 
@@ -300,15 +338,14 @@ void checkHardcodedModelsAndBrands(
   }
 }
 
-/// 7. `<= 1,500` lines per non-generated `.rs` / `.dart` file.
+/// 7. `<= 1,000` lines per non-generated code file.
 void checkSourceLineCap(
   Directory root,
   List<String> files,
   List<String> errors,
 ) {
   for (final rel in files) {
-    if (!(rel.endsWith('.rs') || rel.endsWith('.dart')) || _isGenerated(rel))
-      continue;
+    if (!codeExtensions.contains(_ext(rel)) || _isGenerated(rel)) continue;
     final lines = '\n'.allMatches(_read(root, rel)).length;
     if (lines > maxSourceLines) {
       errors.add(
@@ -391,18 +428,6 @@ void checkErrorSilencing(
   }
 }
 
-/// 8a. `AGENTS.md` character budget.
-void checkAgentsBudget(Directory root, List<String> errors) {
-  final f = File('${root.path}/AGENTS.md');
-  if (!f.existsSync()) return;
-  final chars = f.readAsStringSync().runes.length;
-  if (chars > maxAgentsChars) {
-    errors.add(
-      '[doc-budget] AGENTS.md has $chars characters (> $maxAgentsChars).',
-    );
-  }
-}
-
 /// GitHub-style heading slug.
 String headingSlug(String heading) {
   final text = heading
@@ -426,7 +451,8 @@ String headingSlug(String heading) {
 }
 
 bool _isUnicodePunctuation(int rune) =>
-    (rune >= 0x2000 && rune <= 0x206F) || // general punctuation (—, –, …)
+    (rune >= 0x2000 &&
+        rune <= 0x206F) || // general punctuation (dashes, ellipsis)
     (rune >= 0x2190 && rune <= 0x21FF) || // arrows
     (rune >= 0x2200 && rune <= 0x22FF) || // math operators (≤, ≥)
     (rune >= 0x2500 && rune <= 0x27BF) || // box drawing, symbols, dingbats
@@ -507,7 +533,7 @@ void checkMarkdownAnchors(
 void checkSingleVersionSource(Directory root, List<String> errors) {
   final cargo = File('${root.path}/Cargo.toml');
   final pubspec = File('${root.path}/apps/bistre_app/pubspec.yaml');
-  final rc = File('${root.path}/apps/bistre_app/windows/runner/Runner.rc');
+  final rc = File('${root.path}/apps/bistre_app/windows/runner/runner.rc');
   final mcp = File('${root.path}/crates/bistre-core/src/mcp.rs');
   if (!cargo.existsSync() || !pubspec.existsSync()) return;
   final workspacePkg = RegExp(r'\[workspace\.package\]([\s\S]*?)(?:\n\[|$)')
@@ -518,7 +544,7 @@ void checkSingleVersionSource(Directory root, List<String> errors) {
     multiLine: true,
   ).firstMatch(workspacePkg ?? '')?.group(1);
   final pubMatch = RegExp(
-    r'^version:\s*([0-9]+\.[0-9]+\.[0-9]+)(?:\+([0-9]+))?',
+    r'^version:\s*([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?)(?:\+([0-9]+))?',
     multiLine: true,
   ).firstMatch(pubspec.readAsStringSync());
   if (cargoVersion == null || pubMatch == null) {
@@ -528,6 +554,7 @@ void checkSingleVersionSource(Directory root, List<String> errors) {
     return;
   }
   final pubVersion = pubMatch.group(1)!;
+  final coreTriple = pubVersion.split('-').first;
   final build = pubMatch.group(2) ?? '0';
   if (cargoVersion != pubVersion) {
     errors.add(
@@ -536,17 +563,17 @@ void checkSingleVersionSource(Directory root, List<String> errors) {
   }
   if (rc.existsSync()) {
     final text = rc.readAsStringSync();
-    final expectedNumber = '${pubVersion.replaceAll('.', ',')},$build';
+    final expectedNumber = '${coreTriple.replaceAll('.', ',')},$build';
     if (!text.contains('#define VERSION_AS_NUMBER $expectedNumber') ||
         !text.contains('#define VERSION_AS_STRING "$pubVersion"')) {
       errors.add(
-        '[version-sync] Runner.rc fallback version must be $pubVersion ($expectedNumber).',
+        '[version-sync] runner.rc fallback version must be $pubVersion ($expectedNumber).',
       );
     }
     for (final boilerplate in const <String>['"bistre_app" "', 'dev.bistre']) {
       if (text.contains(boilerplate)) {
         errors.add(
-          '[version-sync] Runner.rc still contains generator boilerplate $boilerplate; use real Bistre product metadata.',
+          '[version-sync] runner.rc still contains generator boilerplate $boilerplate; use real Bistre product metadata.',
         );
       }
     }
@@ -561,6 +588,49 @@ void checkSingleVersionSource(Directory root, List<String> errors) {
     if (RegExp(r'"version"\s*:\s*"[0-9]').hasMatch(text)) {
       errors.add(
         '[version-sync] crates/bistre-core/src/mcp.rs hardcodes a version literal.',
+      );
+    }
+  }
+}
+
+/// 8d. Dependency-count budget on `Cargo.lock` so transitive crate bloat fails CI early.
+void checkDependencyBudget(Directory root, List<String> errors) {
+  final lockFile = File('${root.path}/Cargo.lock');
+  if (!lockFile.existsSync()) return;
+  final count = RegExp(
+    r'^\[\[package\]\]',
+    multiLine: true,
+  ).allMatches(lockFile.readAsStringSync()).length;
+  if (count > maxCargoLockPackages) {
+    errors.add(
+      '[deps-budget] Cargo.lock lists $count packages (> $maxCargoLockPackages budget). Audit new crates before raising.',
+    );
+  }
+}
+
+/// 8e. Desktop runners default to Impeller with a `BISTRE_IMPELLER=off` Skia fallback.
+void checkDesktopRendererDefault(Directory root, List<String> errors) {
+  final winMain = File('${root.path}/apps/bistre_app/windows/runner/main.cpp');
+  if (winMain.existsSync()) {
+    final text = winMain.readAsStringSync();
+    if (!text.contains('ImpellerSwitch::Enabled') ||
+        !text.contains('BISTRE_IMPELLER')) {
+      errors.add(
+        '[renderer] apps/bistre_app/windows/runner/main.cpp must default to ImpellerSwitch::Enabled with BISTRE_IMPELLER=off fallback.',
+      );
+    }
+  }
+  final linuxMain = File(
+    '${root.path}/apps/bistre_app/linux/runner/my_application.cc',
+  );
+  if (linuxMain.existsSync()) {
+    final text = linuxMain.readAsStringSync();
+    if (!text.contains(
+          'fl_dart_project_set_enable_impeller(project, !impeller_off)',
+        ) ||
+        !text.contains('BISTRE_IMPELLER')) {
+      errors.add(
+        '[renderer] apps/bistre_app/linux/runner/my_application.cc must default to Impeller with BISTRE_IMPELLER=off fallback.',
       );
     }
   }
@@ -606,8 +676,8 @@ void checkNoTestRetries(
 }
 
 /// 7d. `let x = e.ok(); let Some(x) = x else { return };` turns an error into a silent early
-/// return; in a test it passes the test without running its checks (34 such sites were found
-/// on 2026-11-24). Use `?` (tests return `TestResult`) or handle the error.
+/// return; in a test it passes the test without running its checks. Use `?` (tests return
+/// `TestResult`) or handle the error.
 void checkNoSilentRustSkips(
   Directory root,
   List<String> files,

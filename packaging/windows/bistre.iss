@@ -40,8 +40,11 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
-CloseApplicationsFilter=bistre_app.exe,bistre-daemon.exe
+CloseApplicationsFilter=bistre_app.exe,bistre-daemon.exe,bistre-updater.exe
 RestartApplications=no
+
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\data"
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -58,3 +61,12 @@ Name: "{autodesktop}\Bistre"; Filename: "{app}\bistre_app.exe"; WorkingDir: "{ap
 
 [Run]
 Filename: "{app}\bistre_app.exe"; Description: "{cm:LaunchProgram,Bistre}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Bistre');
+  end;
+end;
