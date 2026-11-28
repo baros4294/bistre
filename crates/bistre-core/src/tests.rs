@@ -217,6 +217,12 @@ async fn wallet_shield_enforces_daily_cap_and_unlimited_bypasses_and_ota_checks_
             .set(ota::tests::FIXTURE_PK.to_owned())
             .is_ok()
     );
+    assert!(
+        engine
+            .ota_target
+            .set(Some(ota_manifest::OtaTarget::WindowsX64))
+            .is_ok()
+    );
 
     let check = Some(
         engine

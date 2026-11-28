@@ -166,6 +166,7 @@ pub async fn check_for_updates(
     current_version: &str,
     active_runs: u32,
     release_key: Option<&str>,
+    target: Option<crate::ota_manifest::OtaTarget>,
 ) -> BistreResult<(UpdateCheckResult, VerifiedManifest)> {
     check_for_updates_on_channel(
         http,
@@ -174,12 +175,14 @@ pub async fn check_for_updates(
         "stable",
         active_runs,
         release_key,
+        target,
     )
     .await
 }
 
 /// Performs a zero-telemetry check against `feed_url` (static JSON manifest + mandatory `.minisig`),
-/// applying `channel` (`"stable"` filters out prereleases; `"beta"` accepts them).
+/// applying `channel` (`"stable"` filters out prereleases; `"beta"` accepts them). `target` is
+/// this install's package kind (`OtaTarget::current`); `None` is `diag.ota.no_asset_for_platform`.
 pub async fn check_for_updates_on_channel(
     http: &reqwest::Client,
     feed_url: &str,
@@ -187,6 +190,7 @@ pub async fn check_for_updates_on_channel(
     channel: &str,
     active_runs: u32,
     release_key: Option<&str>,
+    target: Option<crate::ota_manifest::OtaTarget>,
 ) -> BistreResult<(UpdateCheckResult, VerifiedManifest)> {
     let pk = resolve_release_key(release_key)?;
     let ownership = detect_ownership_mode();
@@ -223,9 +227,7 @@ pub async fn check_for_updates_on_channel(
 
     // The same typed manifest the release builder writes (format 2).
     let parsed = crate::ota_manifest::OtaManifestV2::parse(&manifest_bytes)?;
-    let asset = parsed
-        .asset_for(crate::ota_manifest::OtaTarget::current())?
-        .clone();
+    let asset = parsed.asset_for(target)?.clone();
     let latest_version = parsed.semver.trim().to_owned();
     let update_available =
         is_update_available_for_channel(&latest_version, current_version, channel);
