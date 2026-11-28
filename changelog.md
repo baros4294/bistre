@@ -2,6 +2,28 @@
 
 Each release, newest first. Release dates, installers, checksums, and build attestations are on [GitHub Releases](https://github.com/baros4294/bistre/releases). What each feature does in detail, and what is still partial, is in [`docs/specs/00-architecture.md`](docs/specs/00-architecture.md) (Implementation Status).
 
+## v1.0.0
+
+### Updating from v0.2.2
+
+v0.2.2 downloads and verifies updates but cannot install them, so install v1.0.0 once from GitHub Releases. From v1.0.0 on, Settings > Updates & Storage installs a verified update for you. Your chats and settings stay on the device.
+
+### Updates
+
+- Install update: on Windows the setup runs silently and Bistre restarts, the AppImage replaces itself, Bistre's `.deb` or `.rpm` installs after your system asks for your password, and Android opens its installer.
+
+### Media and voice
+
+- Sounds and videos play in the app on Windows, Linux, and Android; a video opens in its own window. A file the player cannot play opens in its default app. On Linux this uses GStreamer, which the packages recommend.
+- Live voice shows only on Windows, the one platform where Bistre streams the microphone. Dictation and Read aloud stay on every platform.
+
+### Agents and tools
+
+- A tool call that an MCP server answers with a task is followed until the task finishes, fails, or is cancelled.
+- An approval request missed while the app was busy or reconnecting is asked again.
+- Each model offers only the thinking levels its catalog lists.
+- A web source opens in the browser from Studio Sources and Turn details.
+
 ## v0.2.2
 
 ### Updating from v0.1.2
