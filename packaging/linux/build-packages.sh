@@ -5,18 +5,19 @@
 #   - bistre-<tag>-linux-x64.rpm      (Fedora/RHEL/openSUSE package installing to /opt/bistre)
 #   - bistre-<tag>-linux-x64.AppImage (self-contained AppImage via checksum-pinned appimagetool 1.9.1)
 #
-# Usage: bash packaging/linux/build-packages.sh <release_tag> <stage_dir> <dist_dir>
+# Usage: bash packaging/linux/build-packages.sh <release_tag> <version> <stage_dir> <dist_dir>
 set -euo pipefail
 
-if [ "$#" -ne 3 ]; then
-  echo "Usage: $0 <release_tag> <stage_dir> <dist_dir>" >&2
+if [ "$#" -ne 4 ]; then
+  echo "Usage: $0 <release_tag> <version> <stage_dir> <dist_dir>" >&2
   exit 2
 fi
 
 RELEASE_TAG="$1"
-STAGE_DIR="$2"
-DIST_DIR="$3"
-VERSION="${RELEASE_TAG#v}"
+# The X.Y.Z the build carries: package metadata needs a number, and a dry run's tag is not one.
+VERSION="$2"
+STAGE_DIR="$3"
+DIST_DIR="$4"
 APPIMAGETOOL_VERSION="1.9.1"
 APPIMAGETOOL_SHA256="ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"
 
