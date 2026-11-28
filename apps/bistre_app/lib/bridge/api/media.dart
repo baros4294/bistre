@@ -167,6 +167,11 @@ Future<void> linuxNotify({
 Future<void> linuxOpenFile({required String path}) =>
     BistreRustLib.instance.api.crateApiMediaLinuxOpenFile(path: path);
 
+/// Opens an `http(s)` page in the default Linux browser (`xdg-open`), run contained by core;
+/// every other scheme and any URL with a login is refused.
+Future<void> linuxOpenWebLink({required String url}) =>
+    BistreRustLib.instance.api.crateApiMediaLinuxOpenWebLink(url: url);
+
 /// Opens an existing local folder in the Linux file manager (`xdg-open`), run contained by core.
 Future<void> linuxOpenFolder({required String path}) =>
     BistreRustLib.instance.api.crateApiMediaLinuxOpenFolder(path: path);

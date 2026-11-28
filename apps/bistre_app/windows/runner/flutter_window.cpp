@@ -557,6 +557,19 @@ void FlutterWindow::HandleDesktopHostCall(
     return;
   }
 
+  if (method == "openWebLink" && args != nullptr) {
+    std::wstring url = Utf8ToWide(GetStringArg(*args, "url"));
+    // Only http(s): any other scheme would run a local file or another app's protocol handler.
+    // Dart sends the normalized URL (lowercase scheme, no spaces or quotes).
+    const bool web = url.rfind(L"https://", 0) == 0 || url.rfind(L"http://", 0) == 0;
+    const bool opened =
+        web && url.find_first_of(L" \t\r\n\"") == std::wstring::npos &&
+        reinterpret_cast<INT_PTR>(ShellExecuteW(GetHandle(), L"open", url.c_str(), nullptr,
+                                                nullptr, SW_SHOWNORMAL)) > 32;
+    result->Success(flutter::EncodableValue(opened));
+    return;
+  }
+
   if (method == "setWindowTitle" && args != nullptr) {
     std::wstring title = Utf8ToWide(GetStringArg(*args, "title"));
     if (GetHandle() && !title.empty()) {

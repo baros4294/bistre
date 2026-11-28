@@ -16,7 +16,6 @@ Scope (owner): the next release completes everything `docs/` describes, not only
 ### Gaps `docs/` records (build each with a test; change the doc line in the same commit)
 - [ ] G1 Updater crash-loop rollback: a launcher runs `bistre-updater --apply-staged` and `--mark-healthy`, `plan_next_boot` in production (Spec 00, Spec 10)
 - [ ] G2 Sub-agent worktree sandboxes: a UI caller for `prepare_subagent_sandbox` (Spec 00, Spec 04)
-- [ ] G3 Web sources open in the browser; today Copy link only (Spec 00, Spec 02)
 - [ ] G4 In-app audio and video playback beyond WAV (ADR-0019 Not Built, Spec 00 media row)
 - [ ] G5 Linux drag and drop; pasted files and pictures on Linux and Android; touch toolbar Paste for files (Spec 08)
 - [ ] G6 Lag repair replays an event cursor instead of reconciling against the run list (Spec 08)

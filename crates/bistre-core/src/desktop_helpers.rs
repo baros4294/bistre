@@ -1,6 +1,6 @@
 //! Linux desktop helpers: the folder picker (`zenity` / `kdialog`), notifications
 //! (`notify-send`), files and pictures on the clipboard (`wl-paste` / `xclip`), and opening a
-//! folder or a file (`xdg-open`). Each runs through the same containment as
+//! folder, a file, or a web page (`xdg-open`). Each runs through the same containment as
 //! every other child (`no_window_command` + `run_bounded`: process group, parent-death signal,
 //! whole-tree kill on timeout), with arguments built here so text from a chat is never read as
 //! an option.
@@ -121,6 +121,28 @@ pub async fn open_file(path: &str) -> BistreResult<()> {
     let mut cmd = no_window_command("xdg-open");
     cmd.arg(file);
     finished_ok(&run_bounded(cmd, HANDOFF_TIMEOUT).await?, "xdg_open_failed")
+}
+
+/// Opens a web page in the default browser through `xdg-open`.
+pub async fn open_web_link(url: &str) -> BistreResult<()> {
+    let link = checked_web_link(url)?;
+    let mut cmd = no_window_command("xdg-open");
+    cmd.arg(link.as_str());
+    finished_ok(&run_bounded(cmd, HANDOFF_TIMEOUT).await?, "xdg_open_failed")
+}
+
+/// Only an `http` or `https` URL with a host and no user name or password opens: any other
+/// scheme would hand `xdg-open` a local file or another app's handler.
+fn checked_web_link(url: &str) -> BistreResult<reqwest::Url> {
+    let refused = || BistreError::with_detail(DiagnosticKey::InvalidInput, "open_web_link_refused");
+    let link = reqwest::Url::parse(url.trim()).map_err(|_| refused())?;
+    let has_host = link.host_str().is_some_and(|h| !h.is_empty());
+    let has_login = !link.username().is_empty() || link.password().is_some();
+    if matches!(link.scheme(), "http" | "https") && has_host && !has_login {
+        Ok(link)
+    } else {
+        Err(refused())
+    }
 }
 
 fn checked_open_file(path: &str) -> BistreResult<&Path> {
@@ -360,6 +382,33 @@ file://other-host/etc/passwd
             Some("--title=Choose --directory")
         );
         assert_eq!(k[1], "Choose --directory");
+    }
+
+    #[test]
+    fn only_a_web_page_link_opens() {
+        for good in [
+            "https://example.com/a?b=1#c",
+            "http://example.org",
+            " https://example.com ",
+        ] {
+            assert!(checked_web_link(good).is_ok(), "{good}");
+        }
+        for bad in [
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "ftp://example.com",
+            "https://user:pass@example.com",
+            "https://user@example.com",
+            "/home/user/page.html",
+            "example.com",
+            "",
+        ] {
+            assert_eq!(
+                checked_web_link(bad).err().map(|e| e.key),
+                Some(DiagnosticKey::InvalidInput),
+                "{bad}"
+            );
+        }
     }
 
     #[tokio::test]

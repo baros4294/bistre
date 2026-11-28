@@ -325,6 +325,9 @@ class _TurnDetailsModalState extends State<TurnDetailsModal> {
                               for (final source in sources) ...[
                                 GroundingSourceRow(
                                   source: source,
+                                  onOpenLink: () => unawaited(
+                                    widget.controller.openWebLink(source.url),
+                                  ),
                                   onCopyLink: () => unawaited(
                                     widget.controller.copyText(source.url),
                                   ),

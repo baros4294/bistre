@@ -237,6 +237,8 @@ class _SourcesTabBody extends StatelessWidget {
           padding: const EdgeInsetsDirectional.only(bottom: BistreSpacing.s8),
           child: GroundingSourceRow(
             source: sources[index],
+            onOpenLink: () =>
+                unawaited(controller.openWebLink(sources[index].url)),
             onCopyLink: () =>
                 unawaited(controller.copyText(sources[index].url)),
           ),
@@ -246,15 +248,17 @@ class _SourcesTabBody extends StatelessWidget {
   }
 }
 
-/// One source: title, site, the cited passage, and Copy link.
+/// One source: title, site, the cited passage, Open in browser, and Copy link.
 class GroundingSourceRow extends StatelessWidget {
   const GroundingSourceRow({
     super.key,
     required this.source,
+    required this.onOpenLink,
     required this.onCopyLink,
   });
 
   final EngineGroundingSource source;
+  final VoidCallback onOpenLink;
   final VoidCallback onCopyLink;
 
   @override
@@ -308,6 +312,13 @@ class GroundingSourceRow extends StatelessWidget {
                 ],
               ],
             ),
+          ),
+          BistreIconButton(
+            icon: BistreUiIcon.globe,
+            size: 13,
+            dimension: 28,
+            semanticsLabel: l10n.t(L10nKey.chatSourceOpen),
+            onPressed: onOpenLink,
           ),
           BistreIconButton(
             icon: BistreUiIcon.copy,

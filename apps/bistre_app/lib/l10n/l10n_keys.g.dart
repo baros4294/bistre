@@ -179,6 +179,8 @@ enum L10nKey {
   chatSearchAllScope('chat.search_all_scope'),
   chatSearchThreadScope('chat.search_thread_scope'),
   chatShowEarlierMessages('chat.show_earlier_messages'),
+  chatSourceOpen('chat.source_open'),
+  chatSourceOpenFailed('chat.source_open_failed'),
   chatSvgPreview('chat.svg.preview'),
   chatSvgSource('chat.svg.source'),
   chatTableCopyCsv('chat.table.copy_csv'),
