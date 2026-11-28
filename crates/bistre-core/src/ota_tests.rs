@@ -127,6 +127,9 @@ async fn staging_requires_digest_and_rejects_mismatch() -> TestResult {
 // release, so a version bump never makes the offered update the installed one.
 pub(crate) const FIXTURE_PK: &str = "RWT7IrOCLc/O0aoKBhyVUd83g63ULp8gQabCBrFwRgSPIMa6w7TMOWVP";
 /// A v2 manifest with an asset for every target.
+/// The checks below read the Windows asset, whatever host runs them.
+const WINDOWS: Option<crate::ota_manifest::OtaTarget> =
+    Some(crate::ota_manifest::OtaTarget::WindowsX64);
 pub(crate) const FIXTURE_MANIFEST: &str = r#"{"format":2,"semver":"99.0.0","track":"track_b","release_notes":"Faster startup","targets":{"android-arm64":{"url":"https://example.invalid/bistre-v99.0.0-android-arm64.apk","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":1024},"linux-x64":{"url":"https://example.invalid/bistre-v99.0.0-linux-x64.AppImage","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":1024},"windows-x64":{"url":"https://example.invalid/bistre-v99.0.0-windows-x64-setup.exe","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":1024}}}"#;
 pub(crate) const FIXTURE_SIG: &str = "untrusted comment: bistre test fixture\n\
 RUT7IrOCLc/O0VmBhWBkOvW3BV2hFT5kUUzPdc7pRimVjy8PAHOIFsxmVupJ3dN261JY6VDj5/jVuyyTjtykOb99MQQo8RVJ4wE=\n\
@@ -202,6 +205,7 @@ async fn missing_release_key_disables_ota_before_any_request()
         "0.1.0",
         0,
         Some(""),
+        WINDOWS,
     )
     .await;
     assert_eq!(
@@ -244,15 +248,34 @@ async fn signed_manifest_yields_verified_manifest() -> Result<(), Box<dyn std::e
         "0.1.0",
         0,
         Some(FIXTURE_PK),
+        WINDOWS,
     )
     .await?;
     server.await?;
     assert!(summary.signature_verified);
     assert!(summary.update_available);
     assert_eq!(verified.latest_version(), "99.0.0");
-    let expected = crate::ota_manifest::OtaTarget::current()
-        .map(|t| format!("https://example.invalid/{}", t.asset_file_name("v99.0.0")));
-    assert_eq!(Some(verified.download_url.clone()), expected);
+    assert_eq!(
+        verified.download_url,
+        "https://example.invalid/bistre-v99.0.0-windows-x64-setup.exe"
+    );
+
+    // An install Bistre cannot replace (no known package kind) is offered nothing.
+    let (addr, server) = serve_feed(FIXTURE_MANIFEST, Some(FIXTURE_SIG), 2).await?;
+    let res = check_for_updates(
+        &http,
+        &format!("http://{addr}/manifest.json"),
+        "0.1.0",
+        0,
+        Some(FIXTURE_PK),
+        None,
+    )
+    .await;
+    server.await?;
+    assert_eq!(
+        res.err().map(|e| e.key),
+        Some(DiagnosticKey::OtaNoAssetForPlatform)
+    );
     Ok(())
 }
 
@@ -280,6 +303,7 @@ async fn old_or_incomplete_manifests_fail_with_their_own_reason() -> TestResult 
             "0.1.0",
             0,
             Some(FIXTURE_PK),
+            WINDOWS,
         )
         .await;
         server.await?;
@@ -300,6 +324,7 @@ async fn tampered_or_unsigned_manifest_is_rejected() -> Result<(), Box<dyn std::
         "0.1.0",
         0,
         Some(FIXTURE_PK),
+        WINDOWS,
     )
     .await;
     server.await?;
@@ -315,6 +340,7 @@ async fn tampered_or_unsigned_manifest_is_rejected() -> Result<(), Box<dyn std::
         "0.1.0",
         0,
         Some(FIXTURE_PK),
+        WINDOWS,
     )
     .await;
     server.await?;

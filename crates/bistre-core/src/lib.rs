@@ -211,6 +211,9 @@ pub struct InProcessEngine {
     run_tasks: Arc<Mutex<tokio::task::JoinSet<()>>>,
     /// Release key override (tests only); unset uses `ota::OFFICIAL_RELEASE_PUBKEY_B64`.
     ota_release_key: std::sync::OnceLock<String>,
+    /// Package kind override (tests only, so a check reads the same asset on every host);
+    /// unset uses `OtaTarget::current`.
+    ota_target: std::sync::OnceLock<Option<ota_manifest::OtaTarget>>,
     /// Active bidirectional Live Voice WebSocket sessions.
     live_voice: Arc<voice::LiveVoiceManager>,
     /// Native host-bridge coordinator and ephemeral screenshot buffer (`computer_use`).
@@ -358,6 +361,7 @@ impl InProcessEngine {
             verified_update: Arc::new(Mutex::new(None)),
             run_tasks: Arc::new(Mutex::new(tokio::task::JoinSet::new())),
             ota_release_key: std::sync::OnceLock::new(),
+            ota_target: std::sync::OnceLock::new(),
             live_voice: Arc::new(voice::LiveVoiceManager::new()),
             host_actions: Arc::new(computer_use::HostActionBroker::new()),
         }))

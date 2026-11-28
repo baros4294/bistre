@@ -694,6 +694,9 @@ impl InProcessEngine {
                 &settings.ota_channel,
                 self.active_runs.load(Ordering::Relaxed),
                 self.ota_release_key.get().map(String::as_str),
+                *self
+                    .ota_target
+                    .get_or_init(crate::ota_manifest::OtaTarget::current),
             )
             .await?;
             *lock_or_recover(&self.verified_update, "verified_update") = Some(verified);
