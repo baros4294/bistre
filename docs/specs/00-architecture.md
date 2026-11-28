@@ -53,7 +53,7 @@ The specs describe the target. This table records what the code does today; upda
 | `PublicWebTransport` (public-IP pinning, validated redirects) | Implemented | `ssrf.rs` |
 | OTA: streamed SHA-256, mandatory minisign, `VerifiedManifest` | Implemented | official Ed25519 key (`84A60109283936B3`) embedded in `OFFICIAL_RELEASE_PUBKEY_B64`; `MINISIGN_SECRET_KEY`/`MINISIGN_PASSWORD` provisioned in GitHub `release` environment; slim top update banner |
 | Offline BPE tokenizer (`o200k_base` universal) | Implemented | `crates/bistre-core/src/tokenizer.rs` (`tiktoken 5.1.1` + `vocab-o200k_base`, zero hardcoded vendor/model vocabularies, single-threaded, zero network) |
-| Updater crash-loop rollback | Built, not wired | `bistre-updater` only runs `--verify-manifest`; `plan_next_boot` is test-only |
+| Updater crash-loop rollback | Built, not wired | `bistre-updater` has `--apply-staged`, `--mark-healthy`, and `--verify-manifest`, but nothing starts it (no launcher calls it), and `plan_next_boot` is test-only |
 | Model catalog: daily cached refresh of OpenRouter (every output kind) and LiteLLM, provider-scoped prices and limits, modalities, media units, Settings toggle | Implemented | `registry.rs`, `registry_parse.rs`, `providers.rs`, `usage_details_pill.dart` |
 | Media output: pictures and speech in chat replies, image, speech, and video models answering a chat turn, files on the reply, cut-off video jobs fetched by Try again | Partial | `media_wire.rs`, `media_gen.rs`, `media_jobs.rs`; no in-app audio or video player (ADR-0019 "Not Built") |
 | Usage dedupe by `request_id` | Implemented | `wallet.rs`, `bistre-storage`, `engine_runs.rs` (`wallet_ledger.job_id` deduplication) |

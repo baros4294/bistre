@@ -10,7 +10,7 @@
 
 ## Decision
 1. Use `flutter_rust_bridge 2.13.0` with Dart Native Assets (`apps/bistre_app/hook/build.dart`) compiling `crates/bistre-ffi` (`crate-type = ["staticlib", "cdylib"]`).
-2. Pin exact Rust toolchain 1.100.0 in `rust-toolchain.toml` (required by `native_toolchain_rust` for deterministic build hooks).
+2. Pin exact Rust toolchain 1.100.0 in `rust-toolchain.toml` (the build hook, `flutter_rust_bridge_hooks`, builds with it for deterministic output).
 3. Enforce `-C link-arg=-Wl,-z,max-page-size=16384` (plus size flags `force-unwind-tables=no`, `--gc-sections`, `--icf=safe`; `ADR-0016`) in `.cargo/config.toml` and `apps/bistre_app/hook/build.dart` for `aarch64-linux-android`, and `useLegacyPackaging = false` in Android Gradle.
 4. Keep `crates/bistre-ffi` on Rust edition 2021 for maximum `frb_codegen 2.13.0` compatibility while pure domain crates use Rust edition 2024.
 

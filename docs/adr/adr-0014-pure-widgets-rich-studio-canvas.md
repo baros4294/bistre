@@ -12,7 +12,7 @@ Modern AI workbenches must render rich structured outputs, GFM pipe tables, inli
    - Native LaTeX Math (`math_folio_view.dart`): Pure-Dart TeX parser & layout engine rendered directly with bundled offline `NotoSansMath` (fractions, superscripts/subscripts, radicals, Greek symbols, matrices) plus 1-click Copy LaTeX.
    - Native Mermaid Diagrams (`mermaid_canvas_view.dart`): Pure-Dart parser & Sepia `CustomPainter` supporting `flowchart`/`graph` (TD/LR), `sequenceDiagram`, `stateDiagram`, and `erDiagram` with Source/Diagram toggle and 1-click Copy Mermaid (zero WebView/JS runtime).
 2. Reasoning, Tool Timelines & Reversible Compaction:
-   - Collapsible `ReasoningBlock` + `ReasoningEffortSelector` (`off` / `low` / `medium` / `high`) backed by streaming `ThinkingDelta` across all 4 Rust wire dialects.
+   - Collapsible `ReasoningBlock` + `ThinkingEffortPicker` (Auto and Adaptive, then a slider from Off to Max) backed by streaming `ThinkingDelta` across all 4 Rust wire dialects.
    - `ToolTimelineView` rendering `imara-diff` unified diffs, inline 4-level Tier-2 approval bar (`Allow once` / `Allow for chat` / `Deny`), and 1-click `Rewind` backed by SQLite `workspace_checkpoints`.
    - Non-destructive `CompactionSummary` DAG cards with `Undo` plus Fixed Context Start Pin (`Pin context start`) cleanly separating prompt projection from canonical history.
 3. Visual DAG Session Tree, 4-Tab Studio Pane & Composer Power Tools:
