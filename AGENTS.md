@@ -64,8 +64,8 @@ Prompts the app sends are code.
 - `apps/bistre_app`: no Material/Cupertino, `flutter_localizations`, `google_fonts`, third-party state/HTTP/SQL packages, hardcoded strings, raw `Color(...)` outside `bistre_theme.dart`, or left/right geometry. State is `ChangeNotifier`/`ValueNotifier` split by domain; the root `WidgetsApp` listens only to appearance and locale.
 
 ## 9. Runtime, security, and UI invariants
-- Rust: `#![deny(unsafe_code)]` (audited `// SAFETY:` shims only in crypto, daemon, updater); no `unwrap`, `expect`, `panic!`, `dbg!`, `process::exit`; bounded channels; no blocking I/O on async threads; every await in a run races its cancel signal.
-- Processes: `no_window_command`, `spawn_contained`/`run_bounded`, `spawn_detached_daemon`; whole-tree kill on timeout. Raw `Command::new`, Dart `Process`, and `mmap` are banned.
+- Rust: `#![deny(unsafe_code)]` (audited `// SAFETY:` shims only in crypto, daemon); no `unwrap`, `expect`, `panic!`, `dbg!`, `process::exit`; bounded channels; no blocking I/O on async threads; every await in a run races its cancel signal.
+- Processes: `no_window_command`, `spawn_contained`/`run_bounded`, `spawn_detached`; whole-tree kill on timeout. Raw `Command::new`, Dart `Process`, and `mmap` are banned.
 - Domain invariants live in their specs with tests (Spec 01, 02, 04, 06, 10, ADR-0017); never retry a spend cap, and reserve before each paid POST. One version: `Cargo.toml` = `pubspec.yaml` (`just bump`).
 - Flutter UI: read `docs/design/design.md` and `.agents/skills/fullstack-architect/SKILL.md` first. 10 Ink Primitives, typed `BistreUiIcon`, streaming deltas only in a leaf `ValueNotifier`, Reduce motion honoured, tap targets labelled and at least 40 px (48 dp touch), `TextEditingController.text` untouched while composing.
 - CI: Actions pinned to 40-char SHAs, `persist-credentials: false`, least privilege, `timeout-minutes`, no `${{ }}` inside `run:`.

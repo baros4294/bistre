@@ -8,7 +8,7 @@ import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `blank`, `current_engine`, `delta`, `diagnostic`, `map_ffi_update_check`, `open_engine`, `retire_engine`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 /// Initializes the Rust core engine for `data_dir`. On Windows and Linux that is the data
 /// folder's `bistre-daemon` (started when it is not running), or the engine in this process
@@ -194,6 +194,14 @@ Future<String> stageUpdate({required FfiUpdateCheckResult check}) =>
 /// Re-downloads, verifies SHA-256 offline, and stages the currently running version for reinstall.
 Future<String> reinstallUpdate({required FfiUpdateCheckResult check}) =>
     BistreRustLib.instance.api.crateApiReinstallUpdate(check: check);
+
+/// The staged update a restart would install, if any.
+Future<String?> pendingUpdateVersion() =>
+    BistreRustLib.instance.api.crateApiPendingUpdateVersion();
+
+/// Checks the staged update's SHA-256 again and hands it to the platform installer.
+Future<FfiStagedInstall> installStagedUpdate() =>
+    BistreRustLib.instance.api.crateApiInstallStagedUpdate();
 
 /// Cancels any active streaming reply for `thread_id`.
 Future<bool> cancelActiveRun({required String threadId}) =>
@@ -995,6 +1003,28 @@ class FfiSearchHit {
           role == other.role &&
           snippet == other.snippet &&
           createdAtMs == other.createdAtMs;
+}
+
+/// What the app does after core handed an update over.
+class FfiStagedInstall {
+  final String version;
+
+  /// Android: the verified APK for the system installer; empty on desktop, where core
+  /// already started the installer and the app quits.
+  final String androidApkPath;
+
+  const FfiStagedInstall({required this.version, required this.androidApkPath});
+
+  @override
+  int get hashCode => version.hashCode ^ androidApkPath.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FfiStagedInstall &&
+          runtimeType == other.runtimeType &&
+          version == other.version &&
+          androidApkPath == other.androidApkPath;
 }
 
 /// Thin FFI DTO mirror of `SteeringMessage`.

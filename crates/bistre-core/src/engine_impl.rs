@@ -10,7 +10,7 @@ use super::{
     StoryChapterRecord, StoryEntryRecord, StoryProgressionRecord, StorySceneRecord,
     StorySnapshotRecord, StoryThreadStateRecord, SystemPowerEvent, ThreadMode, ThreadPatch,
     ThreadSummary, UpdateCheckResult, UserPersonaRecord, WorkspaceCheckpointRecord, broadcast,
-    credentials, hooks, mcp, ota, providers, skills, story, tools, verify_signed_pack,
+    credentials, hooks, mcp, ota, ota_install, providers, skills, story, tools, verify_signed_pack,
 };
 use super::{AttachmentInput, ModelCatalogInfo, StorageFileEntry};
 use crate::engine_runs::utc_day_start_unix_ms;

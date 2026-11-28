@@ -10,6 +10,7 @@ import '../../design/smooth_scroll.dart';
 import '../../l10n/bistre_localizations.dart';
 import '../../l10n/l10n_keys.g.dart';
 import '../../platform/desktop_host.dart';
+import '../../platform/power_guard_host.dart';
 import '../shell/folio_controller.dart';
 
 /// Updates & Local Storage Studio:
@@ -181,7 +182,7 @@ class _UpdatesStorageSettingsViewState
                         ),
                         const SizedBox(width: 8),
                         if (check.latestVersion == check.currentVersion &&
-                            ctrl.stagedUpdatePath == null) ...[
+                            ctrl.pendingUpdateVersion == null) ...[
                           EngravedButton(
                             label: ctrl.stagingUpdate
                                 ? l10n.t(L10nKey.settingsOtaStaging)
@@ -213,6 +214,28 @@ class _UpdatesStorageSettingsViewState
                     ],
                   ),
                 ),
+                if (ctrl.pendingUpdateVersion case final pending?)
+                  BistreSettingRow(
+                    label: l10n.t(
+                      L10nKey.settingsOtaStagedReady,
+                      <String, Object?>{'version': pending},
+                    ),
+                    description: l10n.t(
+                      BistrePowerGuardHost.isAndroid
+                          ? L10nKey.settingsOtaInstallAndroidHint
+                          : L10nKey.settingsOtaInstallDesktopHint,
+                    ),
+                    trailing: EngravedButton(
+                      label: ctrl.installingUpdate
+                          ? l10n.t(L10nKey.settingsOtaInstalling)
+                          : l10n.t(L10nKey.settingsOtaInstall),
+                      primary: true,
+                      compact: true,
+                      onPressed: ctrl.installingUpdate || ctrl.hasAnyActiveRun
+                          ? null
+                          : () => unawaited(ctrl.installUpdate()),
+                    ),
+                  ),
                 if (check != null && check.updateAvailable)
                   Padding(
                     padding: const EdgeInsetsDirectional.all(BistreSpacing.s16),
@@ -268,12 +291,9 @@ class _UpdatesStorageSettingsViewState
                                 color: theme.statusWarn,
                               ),
                             ],
-                            const SizedBox(height: 10),
-                            if (ctrl.stagedUpdatePath != null)
-                              WaxSealBadge(
-                                label: l10n.t(L10nKey.settingsOtaStagedReady),
-                              )
-                            else
+                            if (ctrl.pendingUpdateVersion !=
+                                check.latestVersion) ...[
+                              const SizedBox(height: 10),
                               EngravedButton(
                                 label: ctrl.stagingUpdate
                                     ? l10n.t(L10nKey.settingsOtaStaging)
@@ -286,6 +306,7 @@ class _UpdatesStorageSettingsViewState
                                         ctrl.stageAvailableUpdate(),
                                       ),
                               ),
+                            ],
                           ],
                         ),
                       ),

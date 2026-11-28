@@ -1,5 +1,5 @@
 //! Shared protocol types, typed diagnostic keys, exact fixed-point money accounting,
-//! and engine DTOs shared across pure Rust core, storage, crypto, FFI, daemon, and updater.
+//! and engine DTOs shared across pure Rust core, storage, crypto, FFI, and daemon.
 //!
 //! Invariants:
 //! - Zero English UI sentences; all user-facing diagnostics flow as stable `DiagnosticKey` codes.
@@ -165,6 +165,12 @@ pub enum DiagnosticKey {
     #[error("diag.ota.managed_externally")]
     #[serde(rename = "diag.ota.managed_externally")]
     OtaManagedExternally,
+
+    /// The system installer did not install the update (password prompt dismissed, or the
+    /// package tool failed or is missing).
+    #[error("diag.ota.install_failed")]
+    #[serde(rename = "diag.ota.install_failed")]
+    OtaInstallFailed,
 
     #[error("diag.export.failed")]
     #[serde(rename = "diag.export.failed")]
@@ -378,6 +384,7 @@ impl DiagnosticKey {
             Self::OtaCheckFailed => "diag.ota.check_failed",
             Self::OtaActiveRunsDeferred => "diag.ota.active_runs_deferred",
             Self::OtaManagedExternally => "diag.ota.managed_externally",
+            Self::OtaInstallFailed => "diag.ota.install_failed",
             Self::ExportFailed => "diag.export.failed",
             Self::InvalidInput => "diag.validation.invalid_input",
             Self::RuntimeAlreadyRunning => "diag.runtime.already_running",

@@ -137,20 +137,31 @@ const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 #[cfg(windows)]
 const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 
-/// The one child that is NOT contained: `bistre-daemon --active-scoped --data-dir <dir>`, which
-/// must outlive the window so runs survive closing it (ADR-0003). It gets no window, its own
-/// process group, no parent-death signal, and no kill-on-close job; it bounds its own life
-/// by exiting once no app is attached and no work is live.
+/// The daemon, `bistre-daemon --active-scoped --data-dir <dir>`: it must outlive the window so
+/// runs survive closing it (ADR-0003), and bounds its own life by exiting once no app is
+/// attached and no work is live.
 pub fn spawn_detached_daemon(exe: &Path, data_dir: &Path) -> std::io::Result<()> {
+    spawn_detached(
+        exe,
+        &[
+            OsStr::new("--active-scoped"),
+            OsStr::new("--data-dir"),
+            data_dir.as_os_str(),
+        ],
+    )
+}
+
+/// The only children that are NOT contained, because they must outlive the window: the daemon
+/// and an update's installer or relaunched app (Spec 10). Each gets no window, its own process
+/// group, no parent-death signal, no kill-on-close job, and no provider keys.
+pub fn spawn_detached(exe: &Path, args: &[&OsStr]) -> std::io::Result<()> {
     let build = || {
         #[expect(
             clippy::disallowed_methods,
-            reason = "Audited: the daemon must outlive the app, so it skips the contained helpers."
+            reason = "Audited: these children must outlive the app, so they skip the contained helpers."
         )]
         let mut cmd = Command::new(exe);
-        cmd.arg("--active-scoped")
-            .arg("--data-dir")
-            .arg(data_dir)
+        cmd.args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -171,7 +182,7 @@ pub fn spawn_detached_daemon(exe: &Path, data_dir: &Path) -> std::io::Result<()>
         cmd.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB);
         #[expect(
             clippy::disallowed_methods,
-            reason = "Audited detached daemon spawn; containment would kill it with the window."
+            reason = "Audited detached spawn; containment would kill it with the window."
         )]
         let first = cmd.spawn();
         if first.is_ok() {
@@ -181,7 +192,7 @@ pub fn spawn_detached_daemon(exe: &Path, data_dir: &Path) -> std::io::Result<()>
         cmd.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
         #[expect(
             clippy::disallowed_methods,
-            reason = "Audited detached daemon spawn; containment would kill it with the window."
+            reason = "Audited detached spawn; containment would kill it with the window."
         )]
         let child = cmd.spawn();
         child.map(drop)
@@ -192,14 +203,13 @@ pub fn spawn_detached_daemon(exe: &Path, data_dir: &Path) -> std::io::Result<()>
         let mut cmd = build();
         #[expect(
             clippy::disallowed_methods,
-            reason = "Audited detached daemon spawn; containment would kill it with the window."
+            reason = "Audited detached spawn; containment would kill it with the window."
         )]
         let child = cmd.spawn();
         child.map(drop)
     }
 }
 
-/// Returns the first `PATH` entry containing `exe` (checked once per process for the shell probe).
 pub fn find_on_path(exe: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path)

@@ -624,6 +624,24 @@ class BistreDesktopHost {
     return false;
   }
 
+  /// Android: opens the system installer on the verified update APK core staged; `false`
+  /// when it did not open.
+  static Future<bool> installUpdate(String apkPath) async {
+    if (!Platform.isAndroid) return false;
+    try {
+      return await _channel.invokeMethod<bool>(
+            'installUpdate',
+            <String, Object?>{'path': apkPath},
+          ) ??
+          false;
+    } on PlatformException catch (e) {
+      debugPrint('[bistre] non-fatal install_update: $e');
+    } on MissingPluginException catch (e) {
+      debugPrint('[bistre] non-fatal install_update: $e');
+    }
+    return false;
+  }
+
   /// Opens `filePath` in its default app (safe local files only); `false` when it was not
   /// opened.
   static Future<bool> openFile(String filePath) async {

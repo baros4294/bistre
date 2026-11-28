@@ -191,6 +191,9 @@ abstract class BistreRustLibApiImplPlatform
   FfiSkill dco_decode_ffi_skill(dynamic raw);
 
   @protected
+  FfiStagedInstall dco_decode_ffi_staged_install(dynamic raw);
+
+  @protected
   FfiSteeringMessage dco_decode_ffi_steering_message(dynamic raw);
 
   @protected
@@ -565,6 +568,9 @@ abstract class BistreRustLibApiImplPlatform
 
   @protected
   FfiSkill sse_decode_ffi_skill(SseDeserializer deserializer);
+
+  @protected
+  FfiStagedInstall sse_decode_ffi_staged_install(SseDeserializer deserializer);
 
   @protected
   FfiSteeringMessage sse_decode_ffi_steering_message(
@@ -1062,6 +1068,12 @@ abstract class BistreRustLibApiImplPlatform
 
   @protected
   void sse_encode_ffi_skill(FfiSkill self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ffi_staged_install(
+    FfiStagedInstall self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_ffi_steering_message(

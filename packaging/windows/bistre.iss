@@ -40,7 +40,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
-CloseApplicationsFilter=bistre_app.exe,bistre-daemon.exe,bistre-updater.exe
+CloseApplicationsFilter=bistre_app.exe,bistre-daemon.exe
 RestartApplications=no
 
 [InstallDelete]
@@ -61,6 +61,8 @@ Name: "{autodesktop}\Bistre"; Filename: "{app}\bistre_app.exe"; WorkingDir: "{ap
 
 [Run]
 Filename: "{app}\bistre_app.exe"; Description: "{cm:LaunchProgram,Bistre}"; Flags: nowait postinstall skipifsilent
+; The in-app update runs this setup silently; Bistre opens again once it finishes.
+Filename: "{app}\bistre_app.exe"; Flags: nowait; Check: WizardSilent
 
 [Code]
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

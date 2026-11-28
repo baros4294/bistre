@@ -308,6 +308,13 @@ abstract interface class BistreEngineGateway {
   Future<EngineUpdateCheck> checkForUpdates({String? feedUrlOverride});
   Future<String> stageUpdate(EngineUpdateCheck check);
   Future<String> reinstallUpdate(EngineUpdateCheck check);
+
+  /// The staged version that installs over this build, or null.
+  Future<String?> pendingUpdateVersion();
+
+  /// Hands the staged update to the platform installer. Returns the APK the Android app
+  /// opens in the system installer; empty on desktop, where the app quits next.
+  Future<String> installStagedUpdate();
   Future<List<EngineSearchHit>> searchNodes(
     String query, {
     String? threadId,

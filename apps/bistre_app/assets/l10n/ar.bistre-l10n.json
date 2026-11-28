@@ -1288,6 +1288,13 @@
       "max_chars": 110,
       "placeholders": {}
     },
+    "diag.ota.install_failed": {
+      "message": "لم يُثبَّت التحديث. حاول مرة أخرى، أو ثبّته من صفحة التنزيل.",
+      "context": "Rust DiagnosticKey::OtaInstallFailed: the system installer did not install the update (password prompt dismissed, or the package tool failed or is missing)",
+      "tone": "diagnostic",
+      "max_chars": 110,
+      "placeholders": {}
+    },
     "diag.export.failed": {
       "message": "تعذر حفظ الملف أو تصديره.",
       "context": "Diagnostic when chat export or DB backup fails",
@@ -1705,11 +1712,16 @@
       "placeholders": {}
     },
     "settings.ota.staged_ready": {
-      "message": "تم التحقق من التحديث وتجهيزه. أعد تشغيل Bistre للتطبيق.",
-      "context": "Confirmation once update artifact is verified and staged",
+      "message": "تم تنزيل الإصدار {version} والتحقق منه",
+      "context": "Updates settings row once the update is downloaded and its checksum verified",
       "tone": "calm_editorial",
-      "max_chars": 110,
-      "placeholders": {}
+      "max_chars": 64,
+      "placeholders": {
+        "version": {
+          "type": "string",
+          "example": "0.2.3"
+        }
+      }
     },
     "settings.ota.signature_verified": {
       "message": "تم التحقق",
@@ -1973,7 +1985,7 @@
       "placeholders": {}
     },
     "toast.update_staged": {
-      "message": "تم تنزيل التحديث والتحقق منه",
+      "message": "التحديث جاهز للتثبيت",
       "context": "Toast after OTA artifact staging",
       "tone": "calm_editorial",
       "max_chars": 52,
@@ -8035,6 +8047,34 @@
       "context": "Notice when the picture in the file viewer could not be copied",
       "tone": "calm_editorial",
       "max_chars": 64,
+      "placeholders": {}
+    },
+    "settings.ota.install": {
+      "message": "تثبيت التحديث",
+      "context": "Button in Updates settings that runs the downloaded, verified update",
+      "tone": "concise_action",
+      "max_chars": 30,
+      "placeholders": {}
+    },
+    "settings.ota.installing": {
+      "message": "جارٍ التثبيت",
+      "context": "Install update button label while the installer starts",
+      "tone": "concise_action",
+      "max_chars": 30,
+      "placeholders": {}
+    },
+    "settings.ota.install_desktop_hint": {
+      "message": "سيُغلق Bistre ويثبّت التحديث ثم يفتح من جديد. قد يطلب جهازك الإذن أولًا.",
+      "context": "Note under the staged update on Windows and Linux: the app closes and the installer reopens it",
+      "tone": "calm_editorial",
+      "max_chars": 140,
+      "placeholders": {}
+    },
+    "settings.ota.install_android_hint": {
+      "message": "سيطلب منك Android تأكيد التثبيت.",
+      "context": "Note under the staged update on Android: the system installer asks to confirm",
+      "tone": "calm_editorial",
+      "max_chars": 90,
       "placeholders": {}
     }
   }

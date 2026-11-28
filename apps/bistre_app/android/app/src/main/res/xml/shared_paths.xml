@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- What the file viewer may hand to another app: files sent with or made in chats, and
-     files pasted or dropped in (copied into the cache). -->
+<!-- What Bistre may hand to another app: files sent with or made in chats, files pasted or
+     dropped in (copied into the cache), and the verified update for the system installer. -->
 <paths>
     <files-path name="attachments" path="bistre_data/attachments/" />
     <cache-path name="shared" path="." />
+    <files-path name="updates" path="bistre_data/ota_staging/" />
 </paths>

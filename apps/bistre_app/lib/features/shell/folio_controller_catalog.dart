@@ -244,6 +244,15 @@ extension FolioCatalogActions on FolioController {
 
   // --- OTA Updates & Storage Management ---
 
+  bool get showUpdateBanner =>
+      (_updateCheck?.updateAvailable ?? false) && !_updateBannerDismissed;
+
+  void dismissUpdateBanner() {
+    if (_updateBannerDismissed) return;
+    _updateBannerDismissed = true;
+    _notify();
+  }
+
   Future<void> checkForUpdates({
     String? feedUrlOverride,
     bool background = false,
@@ -283,9 +292,12 @@ extension FolioCatalogActions on FolioController {
     _lastOtaDetail = null;
     _notify();
     try {
-      _stagedUpdatePath = reinstall
-          ? await _gateway.reinstallUpdate(check)
-          : await _gateway.stageUpdate(check);
+      if (reinstall) {
+        await _gateway.reinstallUpdate(check);
+      } else {
+        await _gateway.stageUpdate(check);
+      }
+      _pendingUpdateVersion = check.latestVersion;
       _stagingUpdate = false;
       showToast(L10nKey.toastUpdateStaged);
       _notify();
@@ -303,6 +315,43 @@ extension FolioCatalogActions on FolioController {
       );
       _notify();
     }
+  }
+
+  /// Loads the staged update left from an earlier session, so Install update survives a
+  /// restart.
+  Future<void> _loadPendingUpdate() async {
+    try {
+      _pendingUpdateVersion = await _gateway.pendingUpdateVersion();
+    } catch (e) {
+      _lastOtaDiagnostic = FolioController.extractDiagnosticKey(e);
+      _lastOtaDetail = FolioController.extractDiagnosticDetail(e);
+    }
+    _notify();
+  }
+
+  /// Runs the staged update. Desktop: core started the installer, so Bistre quits through
+  /// the normal close path and the installer reopens it. Android: the system installer
+  /// opens and asks the user to confirm.
+  Future<void> installUpdate() async {
+    if (_installingUpdate || _pendingUpdateVersion == null) return;
+    _installingUpdate = true;
+    _lastOtaDiagnostic = null;
+    _lastOtaDetail = null;
+    _notify();
+    try {
+      final apk = await _gateway.installStagedUpdate();
+      if (apk.isEmpty) {
+        _pendingUpdateVersion = null;
+        await ServicesBinding.instance.exitApplication(AppExitType.cancelable);
+      } else if (!await BistreDesktopHost.installUpdate(apk)) {
+        throw Exception('diag.ota.install_failed');
+      }
+    } catch (e) {
+      _lastOtaDiagnostic = FolioController.extractDiagnosticKey(e);
+      _lastOtaDetail = FolioController.extractDiagnosticDetail(e);
+    }
+    _installingUpdate = false;
+    _notify();
   }
 
   /// Whether [attachment] is audio or video on a desktop, which the file manager opens.

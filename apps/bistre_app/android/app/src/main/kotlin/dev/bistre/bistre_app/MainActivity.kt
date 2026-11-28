@@ -185,6 +185,10 @@ class MainActivity : FlutterActivity() {
                     val path = call.argument<String>("path")
                     result.success(path != null && ViewerFiles.openInApp(this, path))
                 }
+                "installUpdate" -> {
+                    val path = call.argument<String>("path")
+                    result.success(path != null && ViewerFiles.installUpdate(this, path))
+                }
                 "openWebLink" -> {
                     val url = call.argument<String>("url")
                     result.success(url != null && openWebLink(url))

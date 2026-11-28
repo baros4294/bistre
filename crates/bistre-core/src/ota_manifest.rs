@@ -19,32 +19,87 @@ pub const MANIFEST_FORMAT: u32 = 2;
 #[serde(rename_all = "kebab-case")]
 pub enum OtaTarget {
     WindowsX64,
+    /// The `AppImage`.
     LinuxX64,
+    LinuxX64Deb,
+    LinuxX64Rpm,
     AndroidArm64,
 }
 
-impl OtaTarget {
-    pub const ALL: [Self; 3] = [Self::WindowsX64, Self::LinuxX64, Self::AndroidArm64];
+/// Where the Linux `.deb` and `.rpm` install the app.
+pub const LINUX_PACKAGE_DIR: &str = "/opt/bistre";
+/// The file list dpkg keeps for an installed `bistre` package.
+const DPKG_FILE_LIST: &str = "/var/lib/dpkg/info/bistre.list";
 
-    /// The target of the running build; `None` where updates are not offered.
-    pub const fn current() -> Option<Self> {
+impl OtaTarget {
+    pub const ALL: [Self; 5] = [
+        Self::WindowsX64,
+        Self::LinuxX64,
+        Self::LinuxX64Deb,
+        Self::LinuxX64Rpm,
+        Self::AndroidArm64,
+    ];
+
+    /// The target of the running build; `None` where updates are not offered (another OS, a
+    /// Flatpak or Snap, or the portable archive). On Linux the install decides: `$APPIMAGE`
+    /// is the `AppImage`, and a build in [`LINUX_PACKAGE_DIR`] is the `.deb` when dpkg lists
+    /// it, else the `.rpm`.
+    pub fn current() -> Option<Self> {
         if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
             Some(Self::WindowsX64)
-        } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-            Some(Self::LinuxX64)
         } else if cfg!(all(target_os = "android", target_arch = "aarch64")) {
             Some(Self::AndroidArm64)
+        } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+            Self::linux_install()
         } else {
             None
         }
     }
 
-    /// The release file this target installs: the Windows installer, the self-contained
-    /// `AppImage` (`.deb`/`.rpm` stay with the system package manager), and the APK.
+    fn linux_install() -> Option<Self> {
+        if crate::ota::detect_ownership_mode() != "self_managed" {
+            return None;
+        }
+        if std::env::var_os("APPIMAGE").is_some_and(|p| !p.is_empty()) {
+            return Some(Self::LinuxX64);
+        }
+        // An unreadable path means the install cannot be told apart: no update is offered.
+        let in_package_dir =
+            std::env::current_exe().is_ok_and(|exe| exe.starts_with(LINUX_PACKAGE_DIR));
+        if !in_package_dir {
+            return None;
+        }
+        Some(if Path::new(DPKG_FILE_LIST).is_file() {
+            Self::LinuxX64Deb
+        } else {
+            Self::LinuxX64Rpm
+        })
+    }
+
+    /// The target a manifest names (`linux-x64-deb`); `None` for a name this build does not know.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|t| t.name() == name)
+    }
+
+    /// The manifest's name for this target.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::WindowsX64 => "windows-x64",
+            Self::LinuxX64 => "linux-x64",
+            Self::LinuxX64Deb => "linux-x64-deb",
+            Self::LinuxX64Rpm => "linux-x64-rpm",
+            Self::AndroidArm64 => "android-arm64",
+        }
+    }
+
+    /// The release file this target installs: the Windows installer, the `AppImage`, the
+    /// `.deb`, the `.rpm`, and the APK.
     pub fn asset_file_name(self, tag: &str) -> String {
         match self {
             Self::WindowsX64 => format!("bistre-{tag}-windows-x64-setup.exe"),
             Self::LinuxX64 => format!("bistre-{tag}-linux-x64.AppImage"),
+            Self::LinuxX64Deb => format!("bistre-{tag}-linux-x64.deb"),
+            Self::LinuxX64Rpm => format!("bistre-{tag}-linux-x64.rpm"),
             Self::AndroidArm64 => format!("bistre-{tag}-android-arm64.apk"),
         }
     }
@@ -96,7 +151,19 @@ pub struct OtaManifestV2 {
     pub track: String,
     #[serde(default)]
     pub release_notes: String,
+    /// A target this build does not know is skipped, so a later release may add one.
+    #[serde(deserialize_with = "known_targets")]
     pub targets: BTreeMap<OtaTarget, OtaAsset>,
+}
+
+fn known_targets<'de, D: serde::Deserializer<'de>>(
+    de: D,
+) -> Result<BTreeMap<OtaTarget, OtaAsset>, D::Error> {
+    let raw = BTreeMap::<String, OtaAsset>::deserialize(de)?;
+    Ok(raw
+        .into_iter()
+        .filter_map(|(name, asset)| OtaTarget::from_name(&name).map(|target| (target, asset)))
+        .collect())
 }
 
 impl OtaManifestV2 {
@@ -304,7 +371,18 @@ mod tests {
         );
         let m = build_release_manifest(dir.path(), "v0.3.0", "0.3.0", "owner/repo", "notes")?;
         assert_eq!(m.semver, "0.3.0");
-        assert_eq!(m.targets.len(), 3, "the SBOM is never an asset");
+        assert_eq!(
+            m.targets.len(),
+            OtaTarget::ALL.len(),
+            "the SBOM is never an asset"
+        );
+        for target in OtaTarget::ALL {
+            assert_eq!(
+                serde_json::to_value(target)?,
+                target.name(),
+                "one name per target"
+            );
+        }
         assert_eq!(
             m.asset_for(Some(OtaTarget::LinuxX64))?.url,
             "https://github.com/owner/repo/releases/download/v0.3.0/bistre-v0.3.0-linux-x64.AppImage"
@@ -338,5 +416,20 @@ mod tests {
             OtaTarget::AndroidArm64.asset_file_name("v1.0.0"),
             "bistre-v1.0.0-android-arm64.apk"
         );
+    }
+
+    #[test]
+    fn a_target_this_build_does_not_know_is_skipped() -> Result<(), Box<dyn std::error::Error>> {
+        let asset = serde_json::json!({"url": "https://example.com/a", "sha256": "a".repeat(64), "size_bytes": 1});
+        let raw = serde_json::json!({
+            "format": MANIFEST_FORMAT, "semver": "9.0.0", "track": "track_b",
+            "targets": {"linux-x64-deb": asset, "plan9-x64": asset}
+        });
+        let m = OtaManifestV2::parse(&serde_json::to_vec(&raw)?)?;
+        assert_eq!(
+            m.targets.keys().copied().collect::<Vec<_>>(),
+            vec![OtaTarget::LinuxX64Deb]
+        );
+        Ok(())
     }
 }
