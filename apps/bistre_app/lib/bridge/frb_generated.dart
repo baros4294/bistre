@@ -81,7 +81,7 @@ class BistreRustLib
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1087333560;
+  int get rustContentHash => 1265659033;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -491,10 +491,6 @@ abstract class BistreRustLibApi extends BaseApi {
   });
 
   Future<FfiPowerGuardStatus> crateApiRunsPowerGuardStatus();
-
-  Future<String> crateApiHarnessPrepareSubagentSandboxJson({
-    required String workspaceRoot,
-  });
 
   List<FfiDialectDescriptor> crateApiProvidersProviderDialectDescriptors();
 
@@ -4385,39 +4381,6 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
       const TaskConstMeta(debugName: "power_guard_status", argNames: []);
 
   @override
-  Future<String> crateApiHarnessPrepareSubagentSandboxJson({
-    required String workspaceRoot,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(workspaceRoot, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 112,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiHarnessPrepareSubagentSandboxJsonConstMeta,
-        argValues: [workspaceRoot],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiHarnessPrepareSubagentSandboxJsonConstMeta =>
-      const TaskConstMeta(
-        debugName: "prepare_subagent_sandbox_json",
-        argNames: ["workspaceRoot"],
-      );
-
-  @override
   List<FfiDialectDescriptor> crateApiProvidersProviderDialectDescriptors() {
     return handler.executeSync(
       SyncTask(
@@ -4426,7 +4389,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 113,
+            funcId: 112,
           )!;
         },
         codec: SseCodec(
@@ -4456,7 +4419,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 114,
+            funcId: 113,
             port: port_,
           );
         },
@@ -4483,7 +4446,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 115,
+            funcId: 114,
             port: port_,
           );
         },
@@ -4515,7 +4478,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 116,
+            funcId: 115,
             port: port_,
           );
         },
@@ -4551,7 +4514,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 117,
+            funcId: 116,
             port: port_,
           );
         },
@@ -4584,7 +4547,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 118,
+            funcId: 117,
             port: port_,
           );
         },
@@ -4612,7 +4575,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 119,
+            funcId: 118,
             port: port_,
           );
         },
@@ -4642,7 +4605,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 120,
+            funcId: 119,
             port: port_,
           );
         },
@@ -4674,7 +4637,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 121,
+            funcId: 120,
             port: port_,
           );
         },
@@ -4709,7 +4672,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 122,
+            funcId: 121,
           )!;
         },
         codec: SseCodec(
@@ -4747,7 +4710,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 123,
+            funcId: 122,
             port: port_,
           );
         },
@@ -4786,7 +4749,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 124,
+            funcId: 123,
             port: port_,
           );
         },
@@ -4817,7 +4780,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 125,
+            funcId: 124,
             port: port_,
           );
         },
@@ -4849,7 +4812,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 126,
+            funcId: 125,
             port: port_,
           );
         },
@@ -4886,7 +4849,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 127,
+            funcId: 126,
             port: port_,
           );
         },
@@ -4925,7 +4888,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 128,
+            funcId: 127,
             port: port_,
           );
         },
@@ -4960,7 +4923,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 129,
+            funcId: 128,
             port: port_,
           );
         },
@@ -4992,7 +4955,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 130,
+            funcId: 129,
             port: port_,
           );
         },
@@ -5026,7 +4989,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 131,
+            funcId: 130,
             port: port_,
           );
         },
@@ -5061,7 +5024,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 132,
+            funcId: 131,
             port: port_,
           );
         },
@@ -5094,7 +5057,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 133,
+            funcId: 132,
             port: port_,
           );
         },
@@ -5124,7 +5087,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 134,
+            funcId: 133,
             port: port_,
           );
         },
@@ -5159,7 +5122,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 135,
+            funcId: 134,
             port: port_,
           );
         },
@@ -5196,7 +5159,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 136,
+            funcId: 135,
             port: port_,
           );
         },
@@ -5232,7 +5195,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 137,
+            funcId: 136,
             port: port_,
           );
         },
@@ -5270,7 +5233,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 138,
+            funcId: 137,
             port: port_,
           );
         },
@@ -5305,7 +5268,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 139,
+            funcId: 138,
             port: port_,
           );
         },
@@ -5340,7 +5303,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 140,
+            funcId: 139,
             port: port_,
           );
         },
@@ -5375,7 +5338,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 141,
+            funcId: 140,
             port: port_,
           );
         },
@@ -5410,7 +5373,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 142,
+            funcId: 141,
             port: port_,
           );
         },
@@ -5445,7 +5408,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 143,
+            funcId: 142,
             port: port_,
           );
         },
@@ -5477,7 +5440,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 144,
+            funcId: 143,
             port: port_,
           );
         },
@@ -5513,7 +5476,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 145,
+            funcId: 144,
             port: port_,
           );
         },
@@ -5548,7 +5511,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 146,
+            funcId: 145,
             port: port_,
           );
         },
@@ -5583,7 +5546,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 147,
+            funcId: 146,
             port: port_,
           );
         },
@@ -5612,7 +5575,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 148,
+            funcId: 147,
             port: port_,
           );
         },
@@ -5640,7 +5603,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 149,
+            funcId: 148,
             port: port_,
           );
         },
@@ -5676,7 +5639,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 150,
+            funcId: 149,
             port: port_,
           );
         },
@@ -5711,7 +5674,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 151,
+            funcId: 150,
             port: port_,
           );
         },
@@ -5742,7 +5705,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 152,
+            funcId: 151,
             port: port_,
           );
         },
@@ -5775,7 +5738,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 153,
+              funcId: 152,
               port: port_,
             );
           },
@@ -5809,7 +5772,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 154,
+            funcId: 153,
             port: port_,
           );
         },
@@ -5842,7 +5805,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 155,
+            funcId: 154,
             port: port_,
           );
         },
@@ -5881,7 +5844,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 156,
+            funcId: 155,
             port: port_,
           );
         },
@@ -5914,7 +5877,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 157,
+            funcId: 156,
             port: port_,
           );
         },
@@ -5951,7 +5914,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 158,
+            funcId: 157,
             port: port_,
           );
         },
@@ -5986,7 +5949,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 159,
+            funcId: 158,
             port: port_,
           );
         },
@@ -6047,7 +6010,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 160,
+            funcId: 159,
             port: port_,
           );
         },
@@ -6126,7 +6089,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 161,
+            funcId: 160,
             port: port_,
           );
         },
@@ -6211,7 +6174,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 162,
+            funcId: 161,
             port: port_,
           );
         },
@@ -6281,7 +6244,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 163,
+            funcId: 162,
             port: port_,
           );
         },
@@ -6312,7 +6275,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 164,
+            funcId: 163,
             port: port_,
           );
         },
@@ -6352,7 +6315,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 165,
+            funcId: 164,
             port: port_,
           );
         },
@@ -6383,7 +6346,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 166,
+            funcId: 165,
             port: port_,
           );
         },
@@ -6416,7 +6379,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 167,
+            funcId: 166,
             port: port_,
           );
         },
@@ -6449,7 +6412,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 168,
+            funcId: 167,
             port: port_,
           );
         },
@@ -6482,7 +6445,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 169,
+            funcId: 168,
             port: port_,
           );
         },
@@ -6515,7 +6478,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 170,
+            funcId: 169,
             port: port_,
           );
         },
@@ -6554,7 +6517,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 171,
+            funcId: 170,
             port: port_,
           );
         },
@@ -6591,7 +6554,7 @@ class BistreRustLibApiImpl extends BistreRustLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 172,
+            funcId: 171,
             port: port_,
           );
         },

@@ -241,12 +241,6 @@ Future<FfiCronJob> upsertCronJob({required FfiCronJob job}) =>
 Future<void> deleteCronJob({required String jobId}) =>
     BistreRustLib.instance.api.crateApiHarnessDeleteCronJob(jobId: jobId);
 
-/// Prepares an isolated `git worktree` (or copy-sandbox fallback) for a background subagent.
-Future<String> prepareSubagentSandboxJson({required String workspaceRoot}) =>
-    BistreRustLib.instance.api.crateApiHarnessPrepareSubagentSandboxJson(
-      workspaceRoot: workspaceRoot,
-    );
-
 /// The hooks of `workspace_root` for review; `None` when the folder has no hooks file.
 Future<FfiWorkspaceHooksStatus?> workspaceHooksStatus({
   required String workspaceRoot,

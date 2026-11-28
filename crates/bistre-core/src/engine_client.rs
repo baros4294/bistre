@@ -9,7 +9,7 @@ use super::{
     SteeringMessage, StorageFileEntry, StorageStats, StoryChapterRecord, StoryEntryRecord,
     StoryProgressionRecord, StorySceneRecord, StorySnapshotRecord, StoryThreadStateRecord,
     SystemPowerEvent, ThreadMode, ThreadPatch, ThreadSummary, UpdateCheckResult, UserPersonaRecord,
-    WorkspaceCheckpointRecord, broadcast, hooks, mcp, skills, story, subagents, tools,
+    WorkspaceCheckpointRecord, broadcast, hooks, mcp, skills, story, tools,
 };
 
 /// Unified engine boundary implemented by:
@@ -562,10 +562,6 @@ pub trait EngineClient: Send + Sync {
     fn delete_cron_job(&self, job_id: String) -> BoxFuture<'_, BistreResult<()>>;
     /// Starts a due job's run in a new chat under its unattended policy; returns the chat id.
     fn start_scheduled_run(&self, job: CronJobRecord) -> BoxFuture<'_, BistreResult<String>>;
-    fn prepare_subagent_sandbox(
-        &self,
-        workspace_root: String,
-    ) -> BoxFuture<'_, BistreResult<subagents::SubagentSandbox>>;
     fn list_character_cards(&self) -> BoxFuture<'_, BistreResult<Vec<CharacterCardRecord>>>;
     fn upsert_character_card(
         &self,
